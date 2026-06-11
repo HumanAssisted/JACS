@@ -12,7 +12,6 @@ package jacs
 import "C"
 import (
 	"encoding/json"
-	"errors"
 )
 
 // W3cRequestProofParams describes the request-bound DID authentication proof
@@ -37,7 +36,7 @@ func parseJSONObject(payload string, op string) (map[string]interface{}, error) 
 // ExportW3cDid exports this agent's did:wba identifier.
 func (a *JacsSimpleAgent) ExportW3cDid(origin *string) (string, error) {
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
 	cOrigin, freeOrigin := cStringOpt(origin)
 	defer freeOrigin()
@@ -52,7 +51,7 @@ func (a *JacsSimpleAgent) ExportW3cDid(origin *string) (string, error) {
 // ExportW3cDidDocument exports this agent's did:wba DID document.
 func (a *JacsSimpleAgent) ExportW3cDidDocument(origin *string) (map[string]interface{}, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cOrigin, freeOrigin := cStringOpt(origin)
 	defer freeOrigin()
@@ -67,7 +66,7 @@ func (a *JacsSimpleAgent) ExportW3cDidDocument(origin *string) (map[string]inter
 // ExportW3cAgentDescription exports this agent's W3C agent description.
 func (a *JacsSimpleAgent) ExportW3cAgentDescription(origin *string) (map[string]interface{}, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cOrigin, freeOrigin := cStringOpt(origin)
 	defer freeOrigin()
@@ -82,7 +81,7 @@ func (a *JacsSimpleAgent) ExportW3cAgentDescription(origin *string) (map[string]
 // GenerateW3cWellKnown generates W3C discovery documents keyed by URL path.
 func (a *JacsSimpleAgent) GenerateW3cWellKnown(origin *string) (map[string]interface{}, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cOrigin, freeOrigin := cStringOpt(origin)
 	defer freeOrigin()
@@ -97,7 +96,7 @@ func (a *JacsSimpleAgent) GenerateW3cWellKnown(origin *string) (map[string]inter
 // SignW3cRequest creates a request-bound DID authentication proof.
 func (a *JacsSimpleAgent) SignW3cRequest(params W3cRequestProofParams) (map[string]interface{}, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
@@ -116,7 +115,7 @@ func (a *JacsSimpleAgent) SignW3cRequest(params W3cRequestProofParams) (map[stri
 // VerifyW3cRequest verifies a request-bound DID authentication proof.
 func (a *JacsSimpleAgent) VerifyW3cRequest(proofJSON, didDocumentJSON string, body *string, maxAgeSeconds uint64, expectedMethod *string, expectedURL *string) (map[string]interface{}, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cProof, freeProof := cString(proofJSON)
 	defer freeProof()

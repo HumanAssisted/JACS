@@ -106,7 +106,7 @@ func agreementV2TranscriptRef(t *testing.T, name string) map[string]interface{} 
 
 func TestAgreementV2CreateSignVerifyParity(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 	agentID := agreementV2AgentID(t, agent)
 
 	created := agreementV2Create(t, agent, agentID)
@@ -132,8 +132,8 @@ func TestAgreementV2CreateSignVerifyParity(t *testing.T) {
 
 func TestAgreementV2NotaryRoleParity(t *testing.T) {
 	skipIfLibraryMissing(t)
-	signer := ephemeral(t, "ed25519")
-	notary := ephemeral(t, "ed25519")
+	signer := newEphemeralAgent(t, "ed25519")
+	notary := newEphemeralAgent(t, "ed25519")
 	signerID := agreementV2AgentID(t, signer)
 	notaryID := agreementV2AgentID(t, notary)
 	input := agreementV2BaseInput(t, signerID)
@@ -161,7 +161,7 @@ func TestAgreementV2NotaryRoleParity(t *testing.T) {
 
 func TestAgreementV2TranscriptBranchMergeParity(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 	agentID := agreementV2AgentID(t, agent)
 	base := agreementV2Create(t, agent, agentID)
 
@@ -192,7 +192,7 @@ func TestAgreementV2TranscriptBranchMergeParity(t *testing.T) {
 
 func TestAgreementV2TermsConflictResolutionParity(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 	agentID := agreementV2AgentID(t, agent)
 	fixture := loadAgreementV2Fixture(t)
 	base := agreementV2Create(t, agent, agentID)

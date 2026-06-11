@@ -2593,26 +2593,11 @@ pub extern "C" fn jacs_simple_verify_w3c_request(
     })
 }
 
-/// Verify self. Returns VerificationResult JSON. Caller must free with jacs_free_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_simple_verify_self(handle: *const SimpleAgentHandle) -> *mut c_char {
-    ffi_guard(ptr::null_mut(), || {
-        if handle.is_null() {
-            return ptr::null_mut();
-        }
-        let h = unsafe { &*handle };
-        clear_last_simple_error();
-        match h.wrapper.verify_self() {
-            Ok(json) => CString::new(json)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
-    })
-}
+ffi_simple_getter!(
+    jacs_simple_verify_self,
+    verify_self,
+    "Verify self. Returns VerificationResult JSON. Caller must free with jacs_free_string."
+);
 
 /// Verify a signed document. Returns VerificationResult JSON.
 #[unsafe(no_mangle)]
@@ -2629,16 +2614,7 @@ pub extern "C" fn jacs_simple_verify_json(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
-        match h.wrapper.verify_json(doc_str) {
-            Ok(json) => CString::new(json)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
+        simple_string_result(h.wrapper.verify_json(doc_str))
     })
 }
 
@@ -2657,16 +2633,7 @@ pub extern "C" fn jacs_simple_verify_by_id(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
-        match h.wrapper.verify_by_id_json(id_str) {
-            Ok(json) => CString::new(json)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
+        simple_string_result(h.wrapper.verify_by_id_json(id_str))
     })
 }
 
@@ -2691,16 +2658,7 @@ pub extern "C" fn jacs_simple_verify_with_key(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
-        match h.wrapper.verify_with_key_json(doc_str, key_str) {
-            Ok(json) => CString::new(json)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
+        simple_string_result(h.wrapper.verify_with_key_json(doc_str, key_str))
     })
 }
 
@@ -2719,16 +2677,7 @@ pub extern "C" fn jacs_simple_sign_message(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
-        match h.wrapper.sign_message_json(data_str) {
-            Ok(json) => CString::new(json)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
+        simple_string_result(h.wrapper.sign_message_json(data_str))
     })
 }
 
@@ -2745,16 +2694,7 @@ pub extern "C" fn jacs_simple_sign_raw_bytes(
         }
         let h = unsafe { &*handle };
         let data_slice = unsafe { slice::from_raw_parts(data, data_len) };
-        clear_last_simple_error();
-        match h.wrapper.sign_raw_bytes_base64(data_slice) {
-            Ok(b64) => CString::new(b64)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
+        simple_string_result(h.wrapper.sign_raw_bytes_base64(data_slice))
     })
 }
 
@@ -2774,16 +2714,7 @@ pub extern "C" fn jacs_simple_sign_file(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
-        match h.wrapper.sign_file_json(path_str, embed != 0) {
-            Ok(json) => CString::new(json)
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            Err(e) => {
-                set_last_simple_error(e.to_string());
-                ptr::null_mut()
-            }
-        }
+        simple_string_result(h.wrapper.sign_file_json(path_str, embed != 0))
     })
 }
 
@@ -2803,7 +2734,6 @@ pub extern "C" fn jacs_simple_create_agreement_v2(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(h.wrapper.create_agreement_v2_json(input))
     })
 }
@@ -2829,7 +2759,6 @@ pub extern "C" fn jacs_simple_apply_agreement_v2(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(h.wrapper.apply_agreement_v2_json(document, mutation))
     })
 }
@@ -2855,7 +2784,6 @@ pub extern "C" fn jacs_simple_sign_agreement_v2(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(h.wrapper.sign_agreement_v2_json(document, role))
     })
 }
@@ -2876,7 +2804,6 @@ pub extern "C" fn jacs_simple_verify_agreement_v2(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(h.wrapper.verify_agreement_v2_json(document))
     })
 }
@@ -2911,7 +2838,6 @@ pub extern "C" fn jacs_simple_detect_agreement_v2_branch_conflict(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(
             h.wrapper
                 .detect_agreement_v2_branch_conflict_json(base, left, right),
@@ -2949,7 +2875,6 @@ pub extern "C" fn jacs_simple_merge_agreement_v2_transcript_branches(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(
             h.wrapper
                 .merge_agreement_v2_transcript_branches_json(base, left, right),
@@ -2993,7 +2918,6 @@ pub extern "C" fn jacs_simple_resolve_agreement_v2_branch_conflict(
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
         };
-        clear_last_simple_error();
         simple_string_result(h.wrapper.resolve_agreement_v2_branch_conflict_json(
             base,
             previous,
