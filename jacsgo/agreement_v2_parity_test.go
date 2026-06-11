@@ -12,6 +12,36 @@ type agreementV2ScenarioFixture struct {
 	BaseInput      map[string]interface{}            `json:"base_input"`
 	TranscriptRefs map[string]map[string]interface{} `json:"transcript_refs"`
 	TermsConflict  map[string]string                 `json:"terms_conflict"`
+	Expected       agreementV2Expected               `json:"expected"`
+}
+
+type agreementV2Expected struct {
+	Verify          agreementV2ExpectedVerify `json:"verify"`
+	TranscriptMerge agreementV2ExpectedMerge  `json:"transcriptMerge"`
+	TermsConflict   agreementV2ExpectedTerms  `json:"termsConflict"`
+	Notary          agreementV2ExpectedNotary `json:"notary"`
+}
+
+type agreementV2ExpectedVerify struct {
+	Valid          bool   `json:"valid"`
+	ExpectedStatus string `json:"expectedStatus"`
+	SignerCount    int    `json:"signerCount"`
+}
+
+type agreementV2ExpectedMerge struct {
+	SameDocument           bool `json:"sameDocument"`
+	SameParent             bool `json:"sameParent"`
+	AutoMergeable          bool `json:"autoMergeable"`
+	MergedTranscriptLength int  `json:"mergedTranscriptLength"`
+}
+
+type agreementV2ExpectedTerms struct {
+	AutoMergeable bool   `json:"autoMergeable"`
+	ConflictField string `json:"conflictField"`
+}
+
+type agreementV2ExpectedNotary struct {
+	Role string `json:"role"`
 }
 
 func loadAgreementV2Fixture(t *testing.T) agreementV2ScenarioFixture {
@@ -106,6 +136,7 @@ func agreementV2TranscriptRef(t *testing.T, name string) map[string]interface{} 
 
 func TestAgreementV2CreateSignVerifyParity(t *testing.T) {
 	skipIfLibraryMissing(t)
+	fixture := loadAgreementV2Fixture(t)
 	agent := newEphemeralAgent(t, "ed25519")
 	agentID := agreementV2AgentID(t, agent)
 
@@ -119,19 +150,20 @@ func TestAgreementV2CreateSignVerifyParity(t *testing.T) {
 		t.Fatalf("VerifyAgreementV2 failed: %v", err)
 	}
 
-	if !report.Valid {
-		t.Fatalf("expected valid report: %#v", report)
+	if report.Valid != fixture.Expected.Verify.Valid {
+		t.Fatalf("expected valid=%v, got report: %#v", fixture.Expected.Verify.Valid, report)
 	}
-	if report.ExpectedStatus != "final" {
-		t.Fatalf("expected final status, got %q", report.ExpectedStatus)
+	if report.ExpectedStatus != fixture.Expected.Verify.ExpectedStatus {
+		t.Fatalf("expected %q status, got %q", fixture.Expected.Verify.ExpectedStatus, report.ExpectedStatus)
 	}
-	if report.SignerCount != 1 {
-		t.Fatalf("expected one signer, got %d", report.SignerCount)
+	if report.SignerCount != fixture.Expected.Verify.SignerCount {
+		t.Fatalf("expected %d signer(s), got %d", fixture.Expected.Verify.SignerCount, report.SignerCount)
 	}
 }
 
 func TestAgreementV2NotaryRoleParity(t *testing.T) {
 	skipIfLibraryMissing(t)
+	fixture := loadAgreementV2Fixture(t)
 	signer := newEphemeralAgent(t, "ed25519")
 	notary := newEphemeralAgent(t, "ed25519")
 	signerID := agreementV2AgentID(t, signer)
@@ -154,13 +186,14 @@ func TestAgreementV2NotaryRoleParity(t *testing.T) {
 	document := agreementV2Doc(t, notarized)
 	signatures := document["agreementSignatures"].([]interface{})
 	entry := signatures[0].(map[string]interface{})
-	if entry["role"] != "notary" {
-		t.Fatalf("expected notary role, got %#v", entry["role"])
+	if entry["role"] != fixture.Expected.Notary.Role {
+		t.Fatalf("expected %q role, got %#v", fixture.Expected.Notary.Role, entry["role"])
 	}
 }
 
 func TestAgreementV2TranscriptBranchMergeParity(t *testing.T) {
 	skipIfLibraryMissing(t)
+	fixture := loadAgreementV2Fixture(t)
 	agent := newEphemeralAgent(t, "ed25519")
 	agentID := agreementV2AgentID(t, agent)
 	base := agreementV2Create(t, agent, agentID)
@@ -177,7 +210,9 @@ func TestAgreementV2TranscriptBranchMergeParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectAgreementV2BranchConflict failed: %v", err)
 	}
-	if !analysis.SameDocument || !analysis.SameParent || !analysis.AutoMergeable {
+	if analysis.SameDocument != fixture.Expected.TranscriptMerge.SameDocument ||
+		analysis.SameParent != fixture.Expected.TranscriptMerge.SameParent ||
+		analysis.AutoMergeable != fixture.Expected.TranscriptMerge.AutoMergeable {
 		t.Fatalf("expected transcript-only auto-mergeable analysis: %#v", analysis)
 	}
 	merged, err := agent.MergeAgreementV2TranscriptBranches(base, left, right)
@@ -185,7 +220,7 @@ func TestAgreementV2TranscriptBranchMergeParity(t *testing.T) {
 		t.Fatalf("MergeAgreementV2TranscriptBranches failed: %v", err)
 	}
 	mergedDoc := agreementV2Doc(t, merged)
-	if len(mergedDoc["transcript"].([]interface{})) != 2 {
+	if len(mergedDoc["transcript"].([]interface{})) != fixture.Expected.TranscriptMerge.MergedTranscriptLength {
 		t.Fatalf("expected two transcript entries: %s", merged)
 	}
 }
@@ -209,10 +244,10 @@ func TestAgreementV2TermsConflictResolutionParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectAgreementV2BranchConflict failed: %v", err)
 	}
-	if analysis.AutoMergeable {
+	if analysis.AutoMergeable != fixture.Expected.TermsConflict.AutoMergeable {
 		t.Fatalf("terms conflicts must not auto-merge: %#v", analysis)
 	}
-	if len(analysis.ConflictFields) != 1 || analysis.ConflictFields[0] != "terms" {
+	if len(analysis.ConflictFields) != 1 || analysis.ConflictFields[0] != fixture.Expected.TermsConflict.ConflictField {
 		t.Fatalf("expected terms conflict, got %#v", analysis.ConflictFields)
 	}
 	resolved, err := agent.ResolveAgreementV2BranchConflict(

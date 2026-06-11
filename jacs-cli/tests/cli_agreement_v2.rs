@@ -105,6 +105,10 @@ fn fixture() -> Value {
     serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
 
+fn expected() -> Value {
+    fixture()["expected"].clone()
+}
+
 fn base_input(agent_id: &str) -> Value {
     let scenario = fixture();
     let mut input = scenario["base_input"].clone();
@@ -135,7 +139,7 @@ fn agreement_v2_cli_executes_full_public_workflow() {
     let input_path = write_json(&dir, "agreement-input.json", &base_input(&agent_id));
     let created =
         output_json_with_paths(&dir, &["agreement-v2", "create", "--input"], &[&input_path]);
-    assert_eq!(created["jacsType"], json!("agreement"));
+    assert_eq!(created["jacsType"], expected()["createdType"]);
 
     let created_path = write_json(&dir, "created.json", &created);
     let signed = output_json_with_paths(
@@ -143,7 +147,10 @@ fn agreement_v2_cli_executes_full_public_workflow() {
         &["agreement-v2", "sign", "--agreement"],
         &[&created_path],
     );
-    assert_eq!(signed["agreementSignatures"][0]["role"], json!("signer"));
+    assert_eq!(
+        signed["agreementSignatures"][0]["role"],
+        expected()["signerRole"]
+    );
 
     let signed_path = write_json(&dir, "signed.json", &signed);
     let report = output_json_with_paths(
@@ -151,8 +158,11 @@ fn agreement_v2_cli_executes_full_public_workflow() {
         &["agreement-v2", "verify", "--agreement"],
         &[&signed_path],
     );
-    assert_eq!(report["valid"], json!(true));
-    assert_eq!(report["expectedStatus"], json!("final"));
+    assert_eq!(report["valid"], expected()["verify"]["valid"]);
+    assert_eq!(
+        report["expectedStatus"],
+        expected()["verify"]["expectedStatus"]
+    );
 
     let left_mutation = write_json(
         &dir,
@@ -202,7 +212,10 @@ fn agreement_v2_cli_executes_full_public_workflow() {
             right_path.to_str().unwrap(),
         ],
     );
-    assert_eq!(analysis["autoMergeable"], json!(true));
+    assert_eq!(
+        analysis["autoMergeable"],
+        expected()["transcriptMerge"]["autoMergeable"]
+    );
 
     let merged = output_json(
         &dir,
@@ -217,7 +230,12 @@ fn agreement_v2_cli_executes_full_public_workflow() {
             right_path.to_str().unwrap(),
         ],
     );
-    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        merged["transcript"].as_array().unwrap().len(),
+        expected()["transcriptMerge"]["mergedTranscriptLength"]
+            .as_u64()
+            .unwrap() as usize
+    );
 
     let left_terms_mutation = write_json(
         &dir,
@@ -495,7 +513,7 @@ fn agreement_v2_cli_create_reads_input_from_stdin() {
         .clone();
     let created: Value = serde_json::from_slice(&output).expect("created agreement json");
 
-    assert_eq!(created["jacsType"], json!("agreement"));
+    assert_eq!(created["jacsType"], expected()["createdType"]);
     if let Some(agent_id_value) = created.pointer("/parties/0/agentId") {
         assert_eq!(agent_id_value, &json!(agent_id));
     }
@@ -525,7 +543,7 @@ fn agreement_v2_cli_notary_role_signs_and_verifies() {
         &["agreement-v2", "create", "--input"],
         &[&input_path],
     );
-    assert_eq!(created["jacsType"], json!("agreement"));
+    assert_eq!(created["jacsType"], expected()["createdType"]);
 
     let created_path = write_json(&notary_dir, "created.json", &created);
     let notarized = output_json_with_paths(
@@ -533,7 +551,10 @@ fn agreement_v2_cli_notary_role_signs_and_verifies() {
         &["agreement-v2", "sign", "--role", "notary", "--agreement"],
         &[&created_path],
     );
-    assert_eq!(notarized["agreementSignatures"][0]["role"], json!("notary"));
+    assert_eq!(
+        notarized["agreementSignatures"][0]["role"],
+        expected()["notary"]["role"]
+    );
 
     let signer_public_keys = signer_dir.path().join("jacs_data/public_keys");
     let notary_public_keys = notary_dir.path().join("jacs_data/public_keys");
@@ -549,7 +570,10 @@ fn agreement_v2_cli_notary_role_signs_and_verifies() {
         &["agreement-v2", "sign", "--agreement"],
         &[&notarized_path],
     );
-    assert_eq!(signed["agreementSignatures"][0]["role"], json!("notary"));
+    assert_eq!(
+        signed["agreementSignatures"][0]["role"],
+        expected()["notary"]["role"]
+    );
 
     let signed_path = write_json(&signer_dir, "signed.json", &signed);
     let report = output_json_with_paths(
@@ -557,5 +581,5 @@ fn agreement_v2_cli_notary_role_signs_and_verifies() {
         &["agreement-v2", "verify", "--agreement"],
         &[&signed_path],
     );
-    assert_eq!(report["valid"], json!(true));
+    assert_eq!(report["valid"], expected()["verify"]["valid"]);
 }

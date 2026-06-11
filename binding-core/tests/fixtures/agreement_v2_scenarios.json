@@ -1,5 +1,31 @@
 {
   "_description": "Shared agreement v2 behavioral parity fixture. Binding, CLI, MCP, and WASM tests inject runtime agent ids into this scenario so every surface exercises the same workflow data.",
+  "expected": {
+    "verify": {
+      "valid": true,
+      "status": "final",
+      "expectedStatus": "final",
+      "verificationDepth": "cryptographic",
+      "signerCount": 1,
+      "witnessCount": 0,
+      "notaryCount": 0
+    },
+    "transcriptMerge": {
+      "sameDocument": true,
+      "sameParent": true,
+      "autoMergeable": true,
+      "mergedTranscriptLength": 2
+    },
+    "termsConflict": {
+      "autoMergeable": false,
+      "conflictField": "terms"
+    },
+    "notary": {
+      "role": "notary"
+    },
+    "createdType": "agreement",
+    "signerRole": "signer"
+  },
   "base_input": {
     "title": "Agreement v2 parity",
     "description": "Portable agreement v2 workflow test.",

@@ -148,12 +148,15 @@ fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
         .verify_agreement_v2_json(&signed, &signers_json)
         .expect("verify agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
-    assert_eq!(report["valid"], Value::Bool(true));
-    assert_eq!(report["status"], Value::String("final".to_string()));
-    assert_eq!(report["signerCount"], Value::from(1));
+    assert_eq!(report["valid"], wasm_expected()["verify"]["valid"]);
+    assert_eq!(report["status"], wasm_expected()["verify"]["status"]);
+    assert_eq!(
+        report["signerCount"],
+        wasm_expected()["verify"]["signerCount"]
+    );
     assert_eq!(
         report["verificationDepth"],
-        Value::String("cryptographic".to_string())
+        wasm_expected()["verify"]["verificationDepth"]
     );
 }
 
@@ -200,6 +203,10 @@ fn wasm_agent_id(handle: &CoreAgentHandle) -> String {
 
 fn wasm_agreement_v2_fixture() -> Value {
     serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
+}
+
+fn wasm_expected() -> Value {
+    wasm_agreement_v2_fixture()["expected"].clone()
 }
 
 fn wasm_agreement_v2_input(agent_id: &str) -> Value {
@@ -366,7 +373,10 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
             .expect("detect branch conflict"),
     )
     .unwrap();
-    assert_eq!(analysis["autoMergeable"], Value::Bool(true));
+    assert_eq!(
+        analysis["autoMergeable"],
+        wasm_expected()["transcriptMerge"]["autoMergeable"]
+    );
 
     let merged: Value = serde_json::from_str(
         &handle
@@ -374,7 +384,12 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
             .expect("merge transcript branches"),
     )
     .unwrap();
-    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        merged["transcript"].as_array().unwrap().len(),
+        wasm_expected()["transcriptMerge"]["mergedTranscriptLength"]
+            .as_u64()
+            .unwrap() as usize
+    );
 
     let left_terms = handle
         .apply_agreement_v2_json(
@@ -442,7 +457,7 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
     .unwrap();
     assert_eq!(
         notarized["agreementSignatures"][0]["role"],
-        Value::String("notary".to_string())
+        wasm_expected()["notary"]["role"]
     );
 }
 

@@ -11,6 +11,10 @@ fn fixture() -> Value {
     serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
 
+fn expected() -> Value {
+    fixture()["expected"].clone()
+}
+
 fn ephemeral_agent() -> (SimpleAgentWrapper, String) {
     let (wrapper, info_json) =
         SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral agent");
@@ -80,10 +84,14 @@ fn simple_wrapper_round_trips_create_sign_verify() {
         .verify_agreement_v2_json(&signed)
         .expect("verify agreement v2");
     let report: Value = serde_json::from_str(&report_json).expect("report json");
+    let expected = expected();
 
-    assert_eq!(report["valid"], json!(true));
-    assert_eq!(report["expectedStatus"], json!("final"));
-    assert_eq!(report["signerCount"], json!(1));
+    assert_eq!(report["valid"], expected["verify"]["valid"]);
+    assert_eq!(
+        report["expectedStatus"],
+        expected["verify"]["expectedStatus"]
+    );
+    assert_eq!(report["signerCount"], expected["verify"]["signerCount"]);
 }
 
 #[test]
@@ -128,8 +136,12 @@ fn simple_wrapper_supports_notary_signature_role() {
         .sign_agreement_v2_json(&created, "notary")
         .expect("sign agreement v2 as notary");
     let document: Value = serde_json::from_str(&notarized).expect("notarized agreement json");
+    let expected = expected();
 
-    assert_eq!(document["agreementSignatures"][0]["role"], json!("notary"));
+    assert_eq!(
+        document["agreementSignatures"][0]["role"],
+        expected["notary"]["role"]
+    );
 }
 
 #[test]
@@ -222,21 +234,34 @@ fn simple_wrapper_detects_and_merges_transcript_only_branches() {
         .detect_agreement_v2_branch_conflict_json(&base, &left, &right)
         .expect("analyze branch conflict");
     let analysis: Value = serde_json::from_str(&analysis_json).expect("analysis json");
-    assert_eq!(analysis["sameDocument"], json!(true));
-    assert_eq!(analysis["sameParent"], json!(true));
-    assert_eq!(analysis["autoMergeable"], json!(true));
+    let expected = expected();
+    assert_eq!(
+        analysis["sameDocument"],
+        expected["transcriptMerge"]["sameDocument"]
+    );
+    assert_eq!(
+        analysis["sameParent"],
+        expected["transcriptMerge"]["sameParent"]
+    );
+    assert_eq!(
+        analysis["autoMergeable"],
+        expected["transcriptMerge"]["autoMergeable"]
+    );
 
     let merged = wrapper
         .merge_agreement_v2_transcript_branches_json(&base, &left, &right)
         .expect("merge transcript branches");
     let merged_doc: Value = serde_json::from_str(&merged).expect("merged agreement json");
+    let expected_len = expected["transcriptMerge"]["mergedTranscriptLength"]
+        .as_u64()
+        .unwrap() as usize;
 
     assert_eq!(
         merged_doc["transcript"]
             .as_array()
             .expect("transcript")
             .len(),
-        2
+        expected_len
     );
     assert_eq!(
         merged_doc["links"][0]["jacsId"],
@@ -264,13 +289,18 @@ fn simple_wrapper_resolves_terms_branch_conflict_explicitly() {
         .detect_agreement_v2_branch_conflict_json(&base, &left, &right)
         .expect("analyze branch conflict");
     let analysis: Value = serde_json::from_str(&analysis_json).expect("analysis json");
-    assert_eq!(analysis["autoMergeable"], json!(false));
+    let expected = expected();
+    assert_eq!(
+        analysis["autoMergeable"],
+        expected["termsConflict"]["autoMergeable"]
+    );
+    let cf = expected["termsConflict"]["conflictField"].clone();
     assert!(
         analysis["conflictFields"]
             .as_array()
             .expect("conflict fields")
             .iter()
-            .any(|field| field == "terms")
+            .any(|field| field == &cf)
     );
 
     let resolved = wrapper

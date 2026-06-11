@@ -43,6 +43,10 @@ def _terms(name: str) -> str:
     return FIXTURE["terms_conflict"][name]
 
 
+def _expected():
+    return FIXTURE["expected"]
+
+
 def _apply(agent, document: str, mutation) -> str:
     return agent.apply_agreement_v2(document, mutation)
 
@@ -54,9 +58,9 @@ def test_agreement_v2_create_sign_verify_round_trip():
     signed = agent.sign_agreement_v2(created, "signer")
     report = agent.verify_agreement_v2(signed)
 
-    assert report["valid"] is True
-    assert report["expectedStatus"] == "final"
-    assert report["signerCount"] == 1
+    assert report["valid"] == _expected()["verify"]["valid"]
+    assert report["expectedStatus"] == _expected()["verify"]["expectedStatus"]
+    assert report["signerCount"] == _expected()["verify"]["signerCount"]
 
 
 def test_agreement_v2_notary_role_round_trip():
@@ -73,7 +77,7 @@ def test_agreement_v2_notary_role_round_trip():
     notarized = notary.sign_agreement_v2(created, "notary")
     document = json.loads(notarized)
 
-    assert document["agreementSignatures"][0]["role"] == "notary"
+    assert document["agreementSignatures"][0]["role"] == _expected()["notary"]["role"]
 
 
 def test_agreement_v2_transcript_branches_auto_merge():
@@ -92,12 +96,12 @@ def test_agreement_v2_transcript_branches_auto_merge():
     )
 
     analysis = agent.detect_agreement_v2_branch_conflict(base, left, right)
-    assert analysis["sameDocument"] is True
-    assert analysis["sameParent"] is True
-    assert analysis["autoMergeable"] is True
+    assert analysis["sameDocument"] == _expected()["transcriptMerge"]["sameDocument"]
+    assert analysis["sameParent"] == _expected()["transcriptMerge"]["sameParent"]
+    assert analysis["autoMergeable"] == _expected()["transcriptMerge"]["autoMergeable"]
 
     merged = json.loads(agent.merge_agreement_v2_transcript_branches(base, left, right))
-    assert len(merged["transcript"]) == 2
+    assert len(merged["transcript"]) == _expected()["transcriptMerge"]["mergedTranscriptLength"]
 
 
 def test_agreement_v2_terms_conflict_requires_explicit_resolution():
@@ -107,8 +111,8 @@ def test_agreement_v2_terms_conflict_requires_explicit_resolution():
     right = _apply(agent, base, {"type": "updateTerms", "terms": _terms("right")})
 
     analysis = agent.detect_agreement_v2_branch_conflict(base, left, right)
-    assert analysis["autoMergeable"] is False
-    assert "terms" in analysis["conflictFields"]
+    assert analysis["autoMergeable"] == _expected()["termsConflict"]["autoMergeable"]
+    assert _expected()["termsConflict"]["conflictField"] in analysis["conflictFields"]
 
     resolved = json.loads(
         agent.resolve_agreement_v2_branch_conflict(

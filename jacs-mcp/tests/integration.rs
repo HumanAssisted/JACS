@@ -166,6 +166,10 @@ fn agreement_v2_terms(name: &str) -> String {
         .to_string()
 }
 
+fn agreement_v2_expected() -> serde_json::Value {
+    agreement_v2_fixture()["expected"].clone()
+}
+
 impl Drop for RmcpSession {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.base);
@@ -480,15 +484,21 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         )
         .await?;
     assert_eq!(verify_result["success"], true, "{}", verify_result);
-    assert_eq!(verify_result["result"]["valid"], true, "{}", verify_result);
     assert_eq!(
-        verify_result["valid"], true,
+        verify_result["result"]["valid"],
+        agreement_v2_expected()["verify"]["valid"],
+        "{}",
+        verify_result
+    );
+    assert_eq!(
+        verify_result["valid"],
+        agreement_v2_expected()["verify"]["valid"],
         "valid agreement must report top-level valid=true: {}",
         verify_result
     );
     assert_eq!(
         verify_result["result"]["expectedStatus"],
-        serde_json::json!("final")
+        agreement_v2_expected()["verify"]["expectedStatus"]
     );
 
     let left_result = session
@@ -524,7 +534,10 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         )
         .await?;
     assert_eq!(analysis_result["success"], true, "{}", analysis_result);
-    assert_eq!(analysis_result["result"]["autoMergeable"], true);
+    assert_eq!(
+        analysis_result["result"]["autoMergeable"],
+        agreement_v2_expected()["transcriptMerge"]["autoMergeable"]
+    );
 
     let merged_result = session
         .call_tool(
@@ -542,7 +555,12 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             .as_str()
             .expect("merged agreement"),
     )?;
-    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        merged["transcript"].as_array().unwrap().len(),
+        agreement_v2_expected()["transcriptMerge"]["mergedTranscriptLength"]
+            .as_u64()
+            .unwrap() as usize
+    );
 
     let left_terms_result = session
         .call_tool(
