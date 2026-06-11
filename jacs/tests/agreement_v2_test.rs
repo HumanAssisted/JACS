@@ -235,6 +235,55 @@ fn final_document_verifies_without_local_version_archive() {
 
 #[test]
 #[serial(jacs_env)]
+fn legitimate_single_version_agreement_chain_fully_verified() {
+    let mut ctx = draft_golden_agreement();
+
+    let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
+        .expect("verify single-version agreement");
+
+    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.chain_fully_verified);
+    assert_eq!(report.verified_chain_depth, 0);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn verify_reports_incomplete_chain_when_prior_version_missing() {
+    let mut ctx = finalized_golden_agreement();
+    let mut verifier = generated_ed25519_agent("Archive-free verifier");
+    cache_all_public_keys(&mut [
+        &mut verifier,
+        &mut ctx.agent_a,
+        &mut ctx.agent_b,
+        &mut ctx.hai,
+        &mut ctx.outsider,
+    ]);
+
+    let report = verify_with_agent(&mut verifier, &ctx.current.to_string())
+        .expect("verify final without archived prior versions");
+
+    // Design decision: archive-free verification is valid but reports an incomplete chain.
+    assert!(report.valid, "{:?}", report.errors);
+    assert!(!report.chain_fully_verified);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.contains("prior version") && note.contains("could not be loaded")),
+        "expected missing-prior-version note, got {:?}",
+        report.notes
+    );
+    assert!(
+        !report.errors.iter().any(|error| {
+            error.contains("allPreviousVersions") || error.contains("prior version")
+        }),
+        "missing local archive should not be a hard chain error: {:?}",
+        report.errors
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
 fn create_rejects_invalid_party_role() {
     let mut ctx = empty_golden_cast();
     let a_id = normalized_id(&ctx.agent_a);
@@ -1218,6 +1267,67 @@ fn transcript_only_branches_are_detected_and_auto_merged() {
     let report =
         verify_with_agent(&mut ctx.agent_a, &merged.to_string()).expect("verify merged branch");
     assert!(report.valid, "{:?}", report.errors);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn merge_link_binds_content_hash() {
+    let mut ctx = finalized_golden_agreement();
+    let (_left, right, merged) = transcript_merge_fixture(&mut ctx);
+    let right_version = required_str(&right, JACS_VERSION_FIELDNAME).to_string();
+
+    let merge_link = merged["links"]
+        .as_array()
+        .expect("links array")
+        .iter()
+        .find(|link| {
+            link.get("jacsVersion").and_then(Value::as_str) == Some(right_version.as_str())
+        })
+        .expect("merge link to right branch");
+    let link_hash = merge_link
+        .get(SHA256_FIELDNAME)
+        .and_then(Value::as_str)
+        .expect("merge link content hash");
+
+    assert!(!link_hash.is_empty());
+    assert_eq!(link_hash, required_str(&right, SHA256_FIELDNAME));
+
+    let report =
+        verify_with_agent(&mut ctx.hai, &merged.to_string()).expect("verify merged branch");
+    assert!(report.valid, "{:?}", report.errors);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn merge_link_content_mismatch_is_rejected() {
+    let mut ctx = finalized_golden_agreement();
+    let (_left, right, merged) = transcript_merge_fixture(&mut ctx);
+    let right_version = required_str(&right, JACS_VERSION_FIELDNAME).to_string();
+    let tampered = manual_successor(&mut ctx.hai, &merged, |doc| {
+        let merge_link = doc["links"]
+            .as_array_mut()
+            .expect("links array")
+            .iter_mut()
+            .find(|link| {
+                link.get("jacsVersion").and_then(Value::as_str) == Some(right_version.as_str())
+            })
+            .expect("merge link to right branch");
+        merge_link[SHA256_FIELDNAME] =
+            json!("0000000000000000000000000000000000000000000000000000000000000000");
+    });
+
+    let report =
+        verify_with_agent(&mut ctx.hai, &tampered.to_string()).expect("verify tampered merge link");
+
+    assert!(!report.valid, "{:?}", report.errors);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|error| error.contains("content hash mismatch")),
+        "expected merge-link content hash mismatch, got {:?}",
+        report.errors
+    );
 }
 
 #[test]
@@ -2565,6 +2675,45 @@ fn sync_versions_to_cast(ctx: &mut GoldenAgreement) {
             .store_jacs_document(version)
             .expect("sync version to outsider");
     }
+}
+
+fn transcript_merge_fixture(ctx: &mut GoldenAgreement) -> (Value, Value, Value) {
+    let base = ctx.current.clone();
+    let left_entry = signed_message_ref(&mut ctx.agent_a, "Left branch performance note.");
+    let left = apply_with_agent(
+        &mut ctx.agent_a,
+        &base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: left_entry },
+    )
+    .expect("left branch append")
+    .value;
+
+    let right_entry = signed_message_ref(&mut ctx.agent_b, "Right branch performance note.");
+    let right = apply_with_agent(
+        &mut ctx.agent_b,
+        &base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: right_entry },
+    )
+    .expect("right branch append")
+    .value;
+
+    ctx.hai
+        .store_jacs_document(&left)
+        .expect("archive left branch for merge verification");
+    ctx.hai
+        .store_jacs_document(&right)
+        .expect("archive right branch for merge verification");
+
+    let merged = merge_transcript_branches_with_agent(
+        &mut ctx.hai,
+        &base.to_string(),
+        &left.to_string(),
+        &right.to_string(),
+    )
+    .expect("auto merge transcript branches")
+    .value;
+
+    (left, right, merged)
 }
 
 fn generated_ed25519_agent(name: &str) -> Agent {

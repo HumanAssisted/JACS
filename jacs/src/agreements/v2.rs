@@ -70,7 +70,7 @@ const SIGNATURE_POLICY_FIELDS: &[&str] = &[
 ];
 const AGREEMENT_SIGNATURE_FIELDS: &[&str] = &["signature", "role", "signedTranscriptHash"];
 const JACS_DOCUMENT_REF_FIELDS: &[&str] = &["jacsId", "jacsVersion", "jacsSha256"];
-const AGREEMENT_LINK_FIELDS: &[&str] = &["jacsId", "jacsVersion"];
+const AGREEMENT_LINK_FIELDS: &[&str] = &["jacsId", "jacsVersion", "jacsSha256"];
 const TERMINAL_NON_SIGNING_STATUSES: &[&str] =
     &["final", "expired", "disputed", "superseded", "terminated"];
 const AUTO_MERGE_GUARD_FIELDS: &[&str] = &["status", "agreementSignatures", "links", "controllers"];
@@ -174,6 +174,17 @@ pub struct AgreementV2VerificationReport {
     pub witness_count: usize,
     pub notary_count: usize,
     pub errors: Vec<String>,
+    pub verified_chain_depth: usize,
+    pub chain_fully_verified: bool,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+struct ChainVerification {
+    error: Option<String>,
+    verified_depth: usize,
+    fully_verified: bool,
+    notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -511,6 +522,7 @@ fn build_verification_report(
         .to_string();
     let expected_status = recompute_status(value);
     let mut errors = Vec::new();
+    let mut notes = Vec::new();
 
     match value.get("jacsAgreementHash").and_then(Value::as_str) {
         Some(stored) if stored == recomputed_agreement_hash => {}
@@ -532,8 +544,25 @@ fn build_verification_report(
         errors.push(err.to_string());
     }
 
-    if let Err(err) = verify_previous_versions_chain(agent, value) {
+    let chain = verify_previous_versions_chain(agent, value);
+    if let Some(err) = chain.error {
         errors.push(err);
+    }
+    let verified_chain_depth = chain.verified_depth;
+    let mut chain_fully_verified = chain.fully_verified;
+    notes.extend(chain.notes);
+
+    let (merge_link_errors, merge_link_notes, merge_targets_loaded) =
+        verify_merge_links(agent, value);
+    let merge_links_valid = merge_link_errors.is_empty();
+    errors.extend(merge_link_errors);
+    notes.extend(merge_link_notes);
+    if !merge_targets_loaded || !merge_links_valid {
+        chain_fully_verified = false;
+    }
+
+    if let Some(note) = check_freshness(agent, value) {
+        notes.push(note);
     }
 
     let transcript_prefix_hashes = compute_transcript_prefix_hashes(value)?;
@@ -561,6 +590,9 @@ fn build_verification_report(
         witness_count: signed_counts.witnesses.len(),
         notary_count: signed_counts.notaries.len(),
         errors,
+        verified_chain_depth,
+        chain_fully_verified,
+        notes,
     })
 }
 
@@ -625,7 +657,7 @@ pub fn merge_transcript_branches_with_agent(
         }
     }
     merged["transcript"] = Value::Array(merged_transcript);
-    append_merge_link(&mut merged, &right.value)?;
+    append_merge_link(agent, &mut merged, &right.value)?;
     validate_agreement_v2(&merged)?;
     assert_status_consistent(&merged)?;
 
@@ -681,7 +713,7 @@ pub fn resolve_branch_conflict_with_agent(
 
     let mut resolved = previous.value.clone();
     apply_mutation_to_document(&mut resolved, resolution)?;
-    append_merge_link(&mut resolved, &side_branch.value)?;
+    append_merge_link(agent, &mut resolved, &side_branch.value)?;
     validate_agreement_v2(&resolved)?;
     assert_status_consistent(&resolved)?;
     emit_successor(agent, &previous.value, resolved)
@@ -853,10 +885,16 @@ fn contains_canonical_value(items: &[Value], candidate: &Value) -> Result<bool, 
     Ok(false)
 }
 
-fn append_merge_link(document: &mut Value, merged_branch: &Value) -> Result<(), JacsError> {
+fn append_merge_link(
+    agent: &Agent,
+    document: &mut Value,
+    merged_branch: &Value,
+) -> Result<(), JacsError> {
+    let branch_hash = agent.hash_doc(merged_branch)?;
     let link = json!({
         "jacsId": required_str(merged_branch, "jacsId")?,
-        "jacsVersion": required_str(merged_branch, JACS_VERSION_FIELDNAME)?
+        "jacsVersion": required_str(merged_branch, JACS_VERSION_FIELDNAME)?,
+        "jacsSha256": branch_hash
     });
     let links = array_mut(document, "links")?;
     if !contains_canonical_value(links, &link)? {
@@ -1311,6 +1349,12 @@ fn validate_links(document: &Value) -> Result<(), JacsError> {
         for field in ["jacsId", "jacsVersion"] {
             if link_object.get(field).and_then(Value::as_str).is_none() {
                 return Err(malformed(&format!("links[].{}", field), "missing string"));
+            }
+        }
+        if let Some(hash) = link_object.get(SHA256_FIELDNAME) {
+            match hash.as_str() {
+                Some(hash) if !hash.is_empty() => {}
+                _ => return Err(malformed("links[].jacsSha256", "missing non-empty string")),
             }
         }
     }
@@ -1881,14 +1925,128 @@ fn verify_header_signature_and_controller(
     )
 }
 
-fn verify_previous_versions_chain(agent: &mut Agent, document: &Value) -> Result<(), String> {
-    let all_previous_versions = document
+fn verify_merge_links(agent: &mut Agent, document: &Value) -> (Vec<String>, Vec<String>, bool) {
+    let mut errors = Vec::new();
+    let mut notes = Vec::new();
+    let mut all_targets_loaded = true;
+    let Some(links) = document.get("links").and_then(Value::as_array) else {
+        return (errors, notes, all_targets_loaded);
+    };
+
+    for link in links {
+        let Some(recorded_hash) = link.get(SHA256_FIELDNAME).and_then(Value::as_str) else {
+            continue;
+        };
+        let id = link.get("jacsId").and_then(Value::as_str).unwrap_or("");
+        let version = link
+            .get(JACS_VERSION_FIELDNAME)
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if id.is_empty() || version.is_empty() {
+            continue;
+        }
+
+        let key = format!("{}:{}", id, version);
+        let Ok(linked_doc) = agent.get_document(&key) else {
+            all_targets_loaded = false;
+            notes.push(format!(
+                "merge link target {}:{} could not be loaded; merge content not revalidated",
+                id, version
+            ));
+            continue;
+        };
+
+        match agent.hash_doc(&linked_doc.value) {
+            Ok(recomputed_hash) if recomputed_hash == recorded_hash => {}
+            Ok(recomputed_hash) => errors.push(format!(
+                "merge link target {}:{} content hash mismatch: link records {}, recomputed {}",
+                id, version, recorded_hash, recomputed_hash
+            )),
+            Err(err) => errors.push(format!(
+                "merge link target {}:{} content hash could not be recomputed: {}",
+                id, version, err
+            )),
+        }
+    }
+
+    (errors, notes, all_targets_loaded)
+}
+
+fn check_freshness(agent: &mut Agent, document: &Value) -> Option<String> {
+    let jacs_id = document.get("jacsId").and_then(Value::as_str)?;
+    let current_version = document
+        .get(JACS_VERSION_FIELDNAME)
+        .and_then(Value::as_str)?;
+    let current_version_date = document
+        .get(JACS_VERSION_DATE_FIELDNAME)
+        .and_then(Value::as_str)?;
+    let current_timestamp = time_utils::parse_rfc3339_to_timestamp(current_version_date).ok()?;
+    let prefix = format!("{}:", jacs_id);
+    let mut latest_newer_version: Option<(i64, String)> = None;
+
+    for key in agent.get_document_keys() {
+        if !key.starts_with(&prefix) {
+            continue;
+        }
+        let Ok(stored_doc) = agent.get_document(&key) else {
+            continue;
+        };
+        let Some(version) = stored_doc
+            .value
+            .get(JACS_VERSION_FIELDNAME)
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if version == current_version {
+            continue;
+        }
+        let Some(version_date) = stored_doc
+            .value
+            .get(JACS_VERSION_DATE_FIELDNAME)
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let Ok(timestamp) = time_utils::parse_rfc3339_to_timestamp(version_date) else {
+            continue;
+        };
+        if timestamp <= current_timestamp {
+            continue;
+        }
+
+        let replace = latest_newer_version
+            .as_ref()
+            .map(|(latest_timestamp, _)| timestamp > *latest_timestamp)
+            .unwrap_or(true);
+        if replace {
+            latest_newer_version = Some((timestamp, version.to_string()));
+        }
+    }
+
+    latest_newer_version.map(|(_, newer_version)| {
+        format!(
+            "a newer stored version exists for this agreement; verified document may be superseded by {}",
+            newer_version
+        )
+    })
+}
+
+fn verify_previous_versions_chain(agent: &mut Agent, document: &Value) -> ChainVerification {
+    let Some(all_previous_versions) = document
         .get("allPreviousVersions")
         .and_then(Value::as_array)
-        .ok_or_else(|| {
-            "jacsPreviousVersion chain cannot be verified because allPreviousVersions is missing"
-                .to_string()
-        })?;
+    else {
+        return ChainVerification {
+            error: Some(
+                "jacsPreviousVersion chain cannot be verified because allPreviousVersions is missing"
+                    .to_string(),
+            ),
+            verified_depth: 0,
+            fully_verified: false,
+            notes: Vec::new(),
+        };
+    };
     let listed_versions: Result<Vec<String>, String> = all_previous_versions
         .iter()
         .map(|version| {
@@ -1898,49 +2056,101 @@ fn verify_previous_versions_chain(agent: &mut Agent, document: &Value) -> Result
                 .ok_or_else(|| "allPreviousVersions contains a non-string value".to_string())
         })
         .collect();
-    let listed_versions = listed_versions?;
+    let listed_versions = match listed_versions {
+        Ok(listed_versions) => listed_versions,
+        Err(err) => {
+            return ChainVerification {
+                error: Some(err),
+                verified_depth: 0,
+                fully_verified: false,
+                notes: Vec::new(),
+            };
+        }
+    };
 
     let Some(previous_version) = document
         .get(JACS_PREVIOUS_VERSION_FIELDNAME)
         .and_then(Value::as_str)
     else {
         if listed_versions.is_empty() {
-            return Ok(());
+            return ChainVerification {
+                error: None,
+                verified_depth: 0,
+                fully_verified: true,
+                notes: Vec::new(),
+            };
         }
-        return Err(
-            "allPreviousVersions is non-empty but jacsPreviousVersion is missing".to_string(),
-        );
+        return ChainVerification {
+            error: Some(
+                "allPreviousVersions is non-empty but jacsPreviousVersion is missing".to_string(),
+            ),
+            verified_depth: 0,
+            fully_verified: false,
+            notes: Vec::new(),
+        };
     };
 
     if all_previous_versions.last().and_then(Value::as_str) != Some(previous_version) {
-        return Err("allPreviousVersions does not reconcile with jacsPreviousVersion".to_string());
+        return ChainVerification {
+            error: Some(
+                "allPreviousVersions does not reconcile with jacsPreviousVersion".to_string(),
+            ),
+            verified_depth: 0,
+            fully_verified: false,
+            notes: Vec::new(),
+        };
     }
 
-    let jacs_id = document
-        .get("jacsId")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "allPreviousVersions chain cannot be verified without jacsId".to_string())?;
+    let Some(jacs_id) = document.get("jacsId").and_then(Value::as_str) else {
+        return ChainVerification {
+            error: Some("allPreviousVersions chain cannot be verified without jacsId".to_string()),
+            verified_depth: 0,
+            fully_verified: false,
+            notes: Vec::new(),
+        };
+    };
 
     let mut walked_versions = Vec::new();
     let mut cursor = Some(previous_version.to_string());
     let mut guard = 0usize;
+    let mut verification = ChainVerification {
+        error: None,
+        verified_depth: 0,
+        fully_verified: true,
+        notes: Vec::new(),
+    };
     while let Some(version) = cursor {
         guard += 1;
         if guard > listed_versions.len() + 1 {
-            return Err("allPreviousVersions chain appears to contain a cycle".to_string());
+            verification.error =
+                Some("allPreviousVersions chain appears to contain a cycle".to_string());
+            verification.fully_verified = false;
+            return verification;
         }
-        walked_versions.push(version.clone());
         let key = format!("{}:{}", jacs_id, version);
         let Ok(previous_doc) = agent.get_document(&key) else {
             walked_versions.reverse();
-            return verify_walked_version_suffix(&listed_versions, &walked_versions);
+            if let Err(err) = verify_walked_version_suffix(&listed_versions, &walked_versions) {
+                verification.error = Some(err);
+            } else {
+                verification.fully_verified = false;
+                verification.notes.push(format!(
+                    "prior version '{}' referenced in allPreviousVersions could not be loaded; chain not fully verified",
+                    version
+                ));
+            }
+            return verification;
         };
-        verify_header_signature_and_controller(agent, &previous_doc.value).map_err(|err| {
-            format!(
+        if let Err(err) = verify_header_signature_and_controller(agent, &previous_doc.value) {
+            verification.error = Some(format!(
                 "prior version '{}' failed header verification: {}",
                 version, err
-            )
-        })?;
+            ));
+            verification.fully_verified = false;
+            return verification;
+        }
+        verification.verified_depth += 1;
+        walked_versions.push(version.clone());
         cursor = previous_doc
             .value
             .get(JACS_PREVIOUS_VERSION_FIELDNAME)
@@ -1950,13 +2160,15 @@ fn verify_previous_versions_chain(agent: &mut Agent, document: &Value) -> Result
 
     walked_versions.reverse();
     if walked_versions == listed_versions {
-        return Ok(());
+        return verification;
     }
 
-    Err(format!(
+    verification.error = Some(format!(
         "allPreviousVersions does not reconcile with stored jacsPreviousVersion chain: listed {:?}, walked {:?}",
         listed_versions, walked_versions
-    ))
+    ));
+    verification.fully_verified = false;
+    verification
 }
 
 fn verify_walked_version_suffix(
