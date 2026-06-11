@@ -58,6 +58,10 @@
 use crate::storage::jenv::get_required_env_var;
 #[cfg(target_arch = "wasm32")]
 use crate::time_utils;
+// wasm32 has no tokio runtime: futures_executor's single-threaded poll loop
+// is the only option there. Everywhere else, storage futures MUST be driven
+// by tokio — see `bridge_block_on`.
+#[cfg(target_arch = "wasm32")]
 use futures_executor::block_on;
 use futures_util::StreamExt;
 use object_store::{
@@ -215,6 +219,54 @@ impl ObjectStore for WebLocalStorage {
             }
         }
         Box::pin(futures_util::stream::iter(items))
+    }
+}
+
+/// Drive a storage future to completion from synchronous code.
+///
+/// `object_store`'s `LocalFileSystem` cooperates with an ambient tokio
+/// runtime (`maybe_spawn_blocking`): when a tokio context is present its
+/// futures resolve via `tokio::task::spawn_blocking`. Polling such futures
+/// on `futures_executor`'s local pool — the previous implementation —
+/// livelocks under a tokio context: the future self-wakes without ever
+/// progressing, pinning one core (observed as the hai temporal-memory demo
+/// freeze, episodic, in `fact_versions` re-reads; stack: `local_pool::
+/// run_executor` spinning in `wake_by_ref`). `database_traits.rs` already
+/// documents that sync facades must bridge through a tokio handle.
+///
+/// Strategy:
+/// - no ambient tokio context → `block_on` a dedicated, lazily-built
+///   storage runtime (cheap, current-thread);
+/// - inside a tokio context (worker thread or a `Runtime::block_on`
+///   region, where `Handle::block_on` would panic) → run the future on
+///   the storage runtime from a scoped thread. The caller's thread stays
+///   blocked exactly as before; the storage runtime drives the future
+///   with a real tokio timer/blocking pool.
+#[cfg(not(target_arch = "wasm32"))]
+fn block_on<F>(fut: F) -> F::Output
+where
+    F: std::future::Future + Send,
+    F::Output: Send,
+{
+    use std::sync::OnceLock;
+    use tokio::runtime::{Builder, Handle, Runtime};
+    static STORAGE_RT: OnceLock<Runtime> = OnceLock::new();
+    fn storage_rt() -> &'static Runtime {
+        STORAGE_RT.get_or_init(|| {
+            Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("jacs storage bridge runtime")
+        })
+    }
+    match Handle::try_current() {
+        Err(_) => storage_rt().block_on(fut),
+        Ok(_) => std::thread::scope(|scope| {
+            scope
+                .spawn(|| storage_rt().block_on(fut))
+                .join()
+                .expect("jacs storage bridge thread panicked")
+        }),
     }
 }
 
@@ -504,9 +556,19 @@ impl MultiStorage {
         let mut file_list = Vec::new();
         let object_store = self.get_read_storage(preference)?;
         let prefix_path = self.object_path(prefix)?;
-        let mut list_stream = object_store.list(Some(&prefix_path));
+        // One bridge call for the whole listing: per-item bridging would poll
+        // the stream across executor entries (and spawn a scoped thread per
+        // item when called from inside a tokio context).
+        let metas: Vec<Result<object_store::ObjectMeta, ObjectStoreError>> = block_on(async {
+            let mut list_stream = object_store.list(Some(&prefix_path));
+            let mut metas = Vec::new();
+            while let Some(meta) = list_stream.next().await {
+                metas.push(meta);
+            }
+            metas
+        });
 
-        while let Some(meta) = block_on(list_stream.next()) {
+        for meta in metas {
             let meta = meta?;
             debug!("Name: {}, size: {}", meta.location, meta.size);
             let loc = meta.location.to_string();

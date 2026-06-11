@@ -2,6 +2,19 @@
 
 (unreleased)
 
+### Fixed
+
+- **Storage sync-facade livelock under tokio.** `MultiStorage`'s synchronous
+  methods drove `object_store` futures with `futures_executor::block_on`;
+  `object_store::LocalFileSystem` cooperates with an ambient tokio runtime
+  (`maybe_spawn_blocking`), so polling its futures on the foreign local pool
+  from inside a tokio context livelocked episodically — the future self-wakes
+  without progressing, pinning one core (surfaced as an indefinite freeze in
+  hai's temporal-memory verified re-reads). Storage futures now run on a
+  dedicated lazily-built tokio runtime; callers already inside a tokio
+  context dispatch via a scoped thread. `list` drives the whole listing in
+  one bridge call. wasm32 keeps `futures_executor` (no tokio there).
+
 ### Security
 
 - Fixed `jacs document verify` so it verifies the document signature, not just schema and `jacsSha256`; forged documents with recomputed hashes now fail verification.
