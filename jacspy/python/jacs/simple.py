@@ -816,6 +816,19 @@ def check_agreement(
         raise JacsError(f"Failed to check agreement: {e}")
 
 
+class AgreementV2Role:
+    """Named roles accepted by :func:`sign_agreement_v2`.
+
+    The agreement v2 helpers still accept the raw lowercase strings; these
+    constants document and standardize the allowed values so callers do not
+    have to hardcode magic strings.
+    """
+
+    SIGNER = "signer"
+    WITNESS = "witness"
+    NOTARY = "notary"
+
+
 def _v2_doc_to_str(document):
     """Normalize a document arg (JSON string, dict, or SignedDocument) to a JSON string."""
     if isinstance(document, SignedDocument):
@@ -853,7 +866,7 @@ def apply_agreement_v2(document: Union[str, dict, SignedDocument], mutation: Uni
         raise JacsError(f"Failed to apply agreement v2 mutation: {e}")
 
 
-def sign_agreement_v2(document: Union[str, dict, SignedDocument], role: str = "signer") -> str:
+def sign_agreement_v2(document: Union[str, dict, SignedDocument], role: str = AgreementV2Role.SIGNER) -> str:
     """Add this agent's ``signer``, ``witness``, or ``notary`` agreement signature."""
     agent = _get_simple_agent()
     try:
@@ -1797,6 +1810,7 @@ __all__ = [
     "sign_agreement",
     "check_agreement",
     # Agreement v2 functions
+    "AgreementV2Role",
     "create_agreement_v2",
     "apply_agreement_v2",
     "sign_agreement_v2",

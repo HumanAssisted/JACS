@@ -48,14 +48,14 @@ type provenanceMetadata struct {
 	GeneratedBy  string `json:"generated_by"`
 	JacsVersion  string `json:"jacs_version"`
 	AgentEd25519 struct {
-		AgentID            string `json:"agent_id"`
-		Algorithm          string `json:"algorithm"`
-		PublicKeyFilename  string `json:"public_key_filename"`
+		AgentID           string `json:"agent_id"`
+		Algorithm         string `json:"algorithm"`
+		PublicKeyFilename string `json:"public_key_filename"`
 	} `json:"agent_ed25519"`
 	AgentPq2025 struct {
-		AgentID            string `json:"agent_id"`
-		Algorithm          string `json:"algorithm"`
-		PublicKeyFilename  string `json:"public_key_filename"`
+		AgentID           string `json:"agent_id"`
+		Algorithm         string `json:"algorithm"`
+		PublicKeyFilename string `json:"public_key_filename"`
 	} `json:"agent_pq2025"`
 }
 

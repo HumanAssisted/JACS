@@ -225,6 +225,37 @@ export interface ExtractMediaOpts {
     /** PRD §3.2 wire form. */
     rawPayload?: boolean;
 }
+export type AgreementV2Role = 'signer' | 'witness' | 'notary';
+export declare const AgreementV2Role: {
+  readonly SIGNER: 'signer';
+  readonly WITNESS: 'witness';
+  readonly NOTARY: 'notary';
+};
+export interface AgreementV2VerificationReport {
+  valid: boolean;
+  status: string;
+  expectedStatus: string;
+  recomputedAgreementHash: string;
+  recomputedTranscriptHash: string;
+  signerCount: number;
+  witnessCount: number;
+  notaryCount: number;
+  verifiedChainDepth?: number;
+  chainFullyVerified?: boolean;
+  errors?: string[];
+  notes?: string[];
+}
+export interface AgreementV2MergeAnalysis {
+  sameDocument: boolean;
+  sameParent: boolean;
+  autoMergeable: boolean;
+  conflictFields?: string[];
+  leftChangedFields?: string[];
+  rightChangedFields?: string[];
+  leftTranscriptAdditions: number;
+  rightTranscriptAdditions: number;
+  errors?: string[];
+}
 export declare function createAgreementV2(input: any): Promise<string>;
 export declare function createAgreementV2Sync(input: any): string;
 export declare function applyAgreementV2(document: any, mutation: any): Promise<string>;
@@ -233,8 +264,12 @@ export declare function signAgreementV2(document: any, role?: string): Promise<s
 export declare function signAgreementV2Sync(document: any, role?: string): string;
 export declare function verifyAgreementV2(document: any): Promise<any>;
 export declare function verifyAgreementV2Sync(document: any): any;
+export declare function verifyAgreementV2Typed(document: any): Promise<AgreementV2VerificationReport>;
+export declare function verifyAgreementV2TypedSync(document: any): AgreementV2VerificationReport;
 export declare function detectAgreementV2BranchConflict(base: any, left: any, right: any): Promise<any>;
 export declare function detectAgreementV2BranchConflictSync(base: any, left: any, right: any): any;
+export declare function detectAgreementV2BranchConflictTyped(base: any, left: any, right: any): Promise<AgreementV2MergeAnalysis>;
+export declare function detectAgreementV2BranchConflictTypedSync(base: any, left: any, right: any): AgreementV2MergeAnalysis;
 export declare function mergeAgreementV2TranscriptBranches(base: any, left: any, right: any): Promise<string>;
 export declare function mergeAgreementV2TranscriptBranchesSync(base: any, left: any, right: any): string;
 export declare function resolveAgreementV2BranchConflict(base: any, previous: any, side: any, mutation: any): Promise<string>;

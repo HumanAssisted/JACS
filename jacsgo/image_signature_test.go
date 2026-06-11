@@ -111,7 +111,7 @@ var formatCases = []struct {
 // signImage + verifyImage round trips, one per format.
 // ----------------------------------------------------------------------------
 
-func TestSignImagePngRoundTrip(t *testing.T) { runSignImageRoundTrip(t, formatCases[0]) }
+func TestSignImagePngRoundTrip(t *testing.T)  { runSignImageRoundTrip(t, formatCases[0]) }
 func TestSignImageJpegRoundTrip(t *testing.T) { runSignImageRoundTrip(t, formatCases[1]) }
 func TestSignImageWebpRoundTrip(t *testing.T) { runSignImageRoundTrip(t, formatCases[2]) }
 
@@ -149,9 +149,15 @@ func runSignImageRoundTrip(t *testing.T, fc struct {
 // C1 permissive vs strict per format.
 // ----------------------------------------------------------------------------
 
-func TestVerifyImagePermissiveMissingSignaturePng(t *testing.T)  { runPermissiveMissing(t, formatCases[0]) }
-func TestVerifyImagePermissiveMissingSignatureJpeg(t *testing.T) { runPermissiveMissing(t, formatCases[1]) }
-func TestVerifyImagePermissiveMissingSignatureWebp(t *testing.T) { runPermissiveMissing(t, formatCases[2]) }
+func TestVerifyImagePermissiveMissingSignaturePng(t *testing.T) {
+	runPermissiveMissing(t, formatCases[0])
+}
+func TestVerifyImagePermissiveMissingSignatureJpeg(t *testing.T) {
+	runPermissiveMissing(t, formatCases[1])
+}
+func TestVerifyImagePermissiveMissingSignatureWebp(t *testing.T) {
+	runPermissiveMissing(t, formatCases[2])
+}
 
 func runPermissiveMissing(t *testing.T, fc struct {
 	name      string

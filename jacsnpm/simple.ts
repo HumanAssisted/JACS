@@ -778,6 +778,55 @@ function requireSimpleAgent(): JacsSimpleAgent {
   return globalSimpleAgent;
 }
 
+/**
+ * Named roles accepted by {@link signAgreementV2}. The methods still accept the
+ * raw lowercase strings; these symbols document the allowed values.
+ */
+export type AgreementV2Role = 'signer' | 'witness' | 'notary';
+
+/** Constant accessor for the {@link AgreementV2Role} values. */
+export const AgreementV2Role = {
+  SIGNER: 'signer',
+  WITNESS: 'witness',
+  NOTARY: 'notary',
+} as const;
+
+/**
+ * Shape of the JSON object returned (as a string, or parsed for the `verify*`
+ * variants) by {@link verifyAgreementV2}. Field names are camelCase to match
+ * the wire format emitted by the Rust verifier.
+ */
+export interface AgreementV2VerificationReport {
+  valid: boolean;
+  status: string;
+  expectedStatus: string;
+  recomputedAgreementHash: string;
+  recomputedTranscriptHash: string;
+  signerCount: number;
+  witnessCount: number;
+  notaryCount: number;
+  verifiedChainDepth?: number;
+  chainFullyVerified?: boolean;
+  errors?: string[];
+  notes?: string[];
+}
+
+/**
+ * Shape of the branch/merge analysis returned by
+ * {@link detectAgreementV2BranchConflict}.
+ */
+export interface AgreementV2MergeAnalysis {
+  sameDocument: boolean;
+  sameParent: boolean;
+  autoMergeable: boolean;
+  conflictFields?: string[];
+  leftChangedFields?: string[];
+  rightChangedFields?: string[];
+  leftTranscriptAdditions: number;
+  rightTranscriptAdditions: number;
+  errors?: string[];
+}
+
 export async function createAgreementV2(input: any): Promise<string> {
   return requireSimpleAgent().createAgreementV2(normalizeJsonInput(input));
 }
@@ -816,6 +865,23 @@ export function verifyAgreementV2Sync(document: any): any {
   return requireSimpleAgent().verifyAgreementV2Sync(normalizeDocumentInput(document));
 }
 
+/**
+ * Convenience wrapper over {@link verifyAgreementV2} that types the parsed
+ * report. Identical runtime behaviour; only the static type is narrowed.
+ */
+export async function verifyAgreementV2Typed(
+  document: any,
+): Promise<AgreementV2VerificationReport> {
+  return (await verifyAgreementV2(document)) as AgreementV2VerificationReport;
+}
+
+/** Sync variant of {@link verifyAgreementV2Typed}. */
+export function verifyAgreementV2TypedSync(
+  document: any,
+): AgreementV2VerificationReport {
+  return verifyAgreementV2Sync(document) as AgreementV2VerificationReport;
+}
+
 export async function detectAgreementV2BranchConflict(base: any, left: any, right: any): Promise<any> {
   return requireSimpleAgent().detectAgreementV2BranchConflict(
     normalizeDocumentInput(base),
@@ -830,6 +896,35 @@ export function detectAgreementV2BranchConflictSync(base: any, left: any, right:
     normalizeDocumentInput(left),
     normalizeDocumentInput(right),
   );
+}
+
+/**
+ * Convenience wrapper over {@link detectAgreementV2BranchConflict} that types
+ * the parsed analysis. Identical runtime behaviour.
+ */
+export async function detectAgreementV2BranchConflictTyped(
+  base: any,
+  left: any,
+  right: any,
+): Promise<AgreementV2MergeAnalysis> {
+  return (await detectAgreementV2BranchConflict(
+    base,
+    left,
+    right,
+  )) as AgreementV2MergeAnalysis;
+}
+
+/** Sync variant of {@link detectAgreementV2BranchConflictTyped}. */
+export function detectAgreementV2BranchConflictTypedSync(
+  base: any,
+  left: any,
+  right: any,
+): AgreementV2MergeAnalysis {
+  return detectAgreementV2BranchConflictSync(
+    base,
+    left,
+    right,
+  ) as AgreementV2MergeAnalysis;
 }
 
 export async function mergeAgreementV2TranscriptBranches(base: any, left: any, right: any): Promise<string> {

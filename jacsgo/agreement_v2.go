@@ -73,7 +73,7 @@ func (a *JacsSimpleAgent) SignAgreementV2(documentJSON, role string) (string, er
 		return "", errSimpleAgentClosed
 	}
 	if role == "" {
-		role = "signer"
+		role = AgreementV2RoleSigner.String()
 	}
 	cDocument, freeDocument := cString(documentJSON)
 	defer freeDocument()

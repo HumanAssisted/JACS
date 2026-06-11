@@ -221,14 +221,14 @@ func TestMissingSignatureKindInFixture(t *testing.T) {
 func TestGoSentinelErrorsExist(t *testing.T) {
 	// These references ensure the sentinel errors exist at compile time.
 	sentinels := map[string]error{
-		"ErrConfigNotFound":    ErrConfigNotFound,
-		"ErrConfigInvalid":     ErrConfigInvalid,
-		"ErrSigningFailed":     ErrSigningFailed,
+		"ErrConfigNotFound":     ErrConfigNotFound,
+		"ErrConfigInvalid":      ErrConfigInvalid,
+		"ErrSigningFailed":      ErrSigningFailed,
 		"ErrVerificationFailed": ErrVerificationFailed,
-		"ErrInvalidDocument":   ErrInvalidDocument,
-		"ErrAgentNotTrusted":   ErrAgentNotTrusted,
-		"ErrKeyNotFound":       ErrKeyNotFound,
-		"ErrMissingSignature":  ErrMissingSignature,
+		"ErrInvalidDocument":    ErrInvalidDocument,
+		"ErrAgentNotTrusted":    ErrAgentNotTrusted,
+		"ErrKeyNotFound":        ErrKeyNotFound,
+		"ErrMissingSignature":   ErrMissingSignature,
 	}
 
 	for name, sentinel := range sentinels {

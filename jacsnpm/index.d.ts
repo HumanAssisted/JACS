@@ -484,3 +484,38 @@ export declare class JacsSimpleAgent {
   /** Sync variant of [`extractMediaSignature`]. */
   extractMediaSignatureSync(filePath: string, opts?: ExtractMediaOptsNapi | undefined | null): string | null
 }
+
+/** Named roles accepted by `signAgreementV2`. Additive typing over the raw string param. */
+export type AgreementV2Role = 'signer' | 'witness' | 'notary'
+export declare const AgreementV2Role: {
+  readonly SIGNER: 'signer'
+  readonly WITNESS: 'witness'
+  readonly NOTARY: 'notary'
+}
+/** Parsed shape of the `verifyAgreementV2` report (camelCase wire format). */
+export interface AgreementV2VerificationReport {
+  valid: boolean
+  status: string
+  expectedStatus: string
+  recomputedAgreementHash: string
+  recomputedTranscriptHash: string
+  signerCount: number
+  witnessCount: number
+  notaryCount: number
+  verifiedChainDepth?: number
+  chainFullyVerified?: boolean
+  errors?: string[]
+  notes?: string[]
+}
+/** Parsed shape of the `detectAgreementV2BranchConflict` analysis. */
+export interface AgreementV2MergeAnalysis {
+  sameDocument: boolean
+  sameParent: boolean
+  autoMergeable: boolean
+  conflictFields?: string[]
+  leftChangedFields?: string[]
+  rightChangedFields?: string[]
+  leftTranscriptAdditions: number
+  rightTranscriptAdditions: number
+  errors?: string[]
+}
