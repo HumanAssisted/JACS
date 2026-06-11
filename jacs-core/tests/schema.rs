@@ -3,6 +3,7 @@
 use jacs_core::CoreError;
 use jacs_core::schema::{
     CONFIG_SCHEMA_STRING, DEFAULT_SCHEMA_STRINGS, EmbeddedSchemaResolver, SCHEMA_SHORT_NAME,
+    V2_SCHEMA_ID,
 };
 
 const EXPECTED_KEYS: &[&str] = &[
@@ -51,10 +52,7 @@ fn schema_short_name_returns_expected_slot_for_known_id() {
             "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json",
             "agreement",
         ),
-        (
-            "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
-            "agreement",
-        ),
+        (V2_SCHEMA_ID, "agreement"),
         (
             "https://hai.ai/schemas/header/v1/header.schema.json",
             "header",
@@ -71,6 +69,16 @@ fn schema_short_name_returns_expected_slot_for_known_id() {
             .unwrap_or_else(|| panic!("SCHEMA_SHORT_NAME missing $id {id}"));
         assert_eq!(*got, *expected, "wrong short name for {id}");
     }
+}
+
+#[test]
+fn v2_schema_id_constant_matches_embedded_schema() {
+    let schema = EmbeddedSchemaResolver::resolve("schemas/agreement/v2/agreement.schema.json")
+        .expect("agreement v2 schema resolves");
+    assert_eq!(
+        schema.get("$id").and_then(serde_json::Value::as_str),
+        Some(V2_SCHEMA_ID)
+    );
 }
 
 #[test]

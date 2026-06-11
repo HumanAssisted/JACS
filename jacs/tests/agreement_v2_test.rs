@@ -2066,7 +2066,7 @@ fn v2_schema_is_embedded_and_enforced_as_source_of_truth() {
     .expect("embedded agreement v2 schema");
     assert_eq!(
         schema.get("$id").and_then(Value::as_str),
-        Some("https://hai.ai/schemas/agreement/v2/agreement.schema.json")
+        Some(jacs_core::schema::V2_SCHEMA_ID)
     );
 
     let mut ctx = empty_golden_cast();
@@ -2123,6 +2123,64 @@ fn v2_schema_is_embedded_and_enforced_as_source_of_truth() {
         transcript_extra.is_err(),
         "transcript document refs must reject fields outside the v2 schema"
     );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_unknown_top_level_field() {
+    let mut ctx = draft_golden_agreement();
+    let tampered = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
+        value["maliciousField"] = json!("x");
+    });
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &tampered.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    );
+
+    assert_err_contains(result, "maliciousField");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_downgraded_schema_identity_native() {
+    let mut ctx = draft_golden_agreement();
+    let downgraded = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
+        value["$schema"] =
+            json!("https://hai.ai/schemas/components/agreement/v1/agreement.schema.json");
+    });
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &downgraded.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    );
+
+    assert_err_contains(result, "$schema");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_malformed_datetime_or_id_native() {
+    let mut ctx = draft_golden_agreement();
+    let malformed = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
+        value["controllers"][0] = json!("not-a-uuid");
+    });
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &malformed.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    );
+
+    assert_err_contains(result, "controllers[0]");
 }
 
 #[test]
@@ -2867,6 +2925,17 @@ fn required_str<'a>(value: &'a Value, field: &str) -> &'a str {
         .get(field)
         .and_then(Value::as_str)
         .unwrap_or_else(|| panic!("missing string field {}", field))
+}
+
+fn assert_err_contains<T, E: std::fmt::Display>(result: Result<T, E>, needle: &str) {
+    let Err(err) = result else {
+        panic!("expected error containing '{needle}'");
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains(needle),
+        "expected error containing '{needle}', got: {msg}"
+    );
 }
 
 #[test]

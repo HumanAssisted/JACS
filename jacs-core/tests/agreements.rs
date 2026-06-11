@@ -265,6 +265,125 @@ fn v2_transplanted_signature_from_other_agreement_is_rejected() {
     assert_eq!(report["signatures"][0]["valid"], json!(false));
 }
 
+fn core_v2_agent_id(agent: &CoreAgent) -> String {
+    agent
+        .export_agent()
+        .get("jacsId")
+        .and_then(Value::as_str)
+        .expect("agent id")
+        .to_string()
+}
+
+fn core_v2_input(agent_id: &str) -> Value {
+    json!({
+        "title": "Core agreement",
+        "description": "Portable agreement schema validation.",
+        "terms": "Terms.",
+        "termsFormat": "text/plain",
+        "status": "draft",
+        "parties": [{"agentId": agent_id, "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "controllers": [agent_id]
+    })
+}
+
+fn core_v2_agreement() -> (CoreAgent, Value, String) {
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let agent_id = core_v2_agent_id(&agent);
+    let agreement =
+        agreements::v2::create(&mut agent, &core_v2_input(&agent_id)).expect("create agreement");
+    (agent, agreement, agent_id)
+}
+
+#[test]
+fn core_rejects_schema_invalid_agreement() {
+    let (mut agent, mut agreement, agent_id) = core_v2_agreement();
+    agreement["title"] = json!("");
+    let result = agreements::v2::apply(
+        &mut agent,
+        &agreement,
+        &json!({"type": "setStatus", "status": "proposed"}),
+    );
+    assert!(
+        result.is_err(),
+        "portable apply must schema-validate output"
+    );
+
+    let invalid = json!({
+        "$schema": jacs_core::schema::V2_SCHEMA_ID,
+        "jacsId": agent_id,
+        "jacsType": "agreement",
+        "jacsVersion": "018f4dc2-85f9-7b2e-8c22-849b8463bcb3",
+        "jacsVersionDate": "2030-01-01T00:00:00Z",
+        "jacsOriginalVersion": "018f4dc2-85f9-7b2e-8c22-849b8463bcb3",
+        "jacsOriginalDate": "2030-01-01T00:00:00Z",
+        "jacsLevel": "artifact",
+        "jacsAgreementHash": "hash",
+        "title": "Missing parties",
+        "description": "Invalid by schema.",
+        "terms": "Terms.",
+        "status": "draft",
+        "signaturePolicy": {"partyQuorum": "all"},
+        "agreementSignatures": []
+    });
+    assert!(
+        jacs_core::schema::validate_agreement_v2_document(&invalid).is_err(),
+        "direct validation must reject missing required parties"
+    );
+}
+
+#[test]
+fn core_rejects_unknown_top_level_field() {
+    let (_agent, mut agreement, _agent_id) = core_v2_agreement();
+    agreement["maliciousField"] = json!("x");
+    let err = jacs_core::schema::validate_agreement_v2_document(&agreement)
+        .expect_err("unknown top-level fields must be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("maliciousField"),
+        "error should name the offending field: {msg}"
+    );
+}
+
+#[test]
+fn core_rejects_downgraded_schema_identity() {
+    let (_agent, mut agreement, _agent_id) = core_v2_agreement();
+    agreement["$schema"] =
+        json!("https://hai.ai/schemas/components/agreement/v1/agreement.schema.json");
+    assert!(
+        jacs_core::schema::validate_agreement_v2_document(&agreement).is_err(),
+        "agreement v2 validator must reject downgraded schema identity"
+    );
+
+    let (_agent, mut agreement, _agent_id) = core_v2_agreement();
+    agreement["jacsType"] = json!("document");
+    assert!(
+        jacs_core::schema::validate_agreement_v2_document(&agreement).is_err(),
+        "agreement v2 validator must reject a flipped jacsType"
+    );
+}
+
+#[test]
+fn core_rejects_malformed_id() {
+    let (_agent, mut agreement, _agent_id) = core_v2_agreement();
+    agreement["controllers"][0] = json!("not-a-uuid");
+    let err = jacs_core::schema::validate_agreement_v2_document(&agreement)
+        .expect_err("malformed controller IDs must be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("controllers[0]"),
+        "error should name the malformed ID field: {msg}"
+    );
+}
+
+#[test]
+fn core_accepts_valid_agreement() {
+    let (mut agent, agreement, _agent_id) = core_v2_agreement();
+    let signed = agreements::v2::sign(&mut agent, &agreement, "signer").expect("sign agreement");
+    jacs_core::schema::validate_agreement_v2_document(&signed)
+        .expect("freshly signed agreement validates");
+}
+
 #[test]
 fn v2_cannot_sign_after_expires_at() {
     let mut a = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");

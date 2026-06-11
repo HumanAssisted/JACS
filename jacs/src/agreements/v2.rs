@@ -15,19 +15,16 @@ use crate::agent::{
 };
 use crate::crypt::hash::{hash_public_key, hash_string};
 use crate::error::JacsError;
-use crate::schema::utils::EmbeddedSchemaResolver;
 use crate::simple::SimpleAgent;
 use crate::simple::types::SignedDocument;
 use crate::time_utils;
 use crate::validation::normalize_agent_id;
-use jsonschema::{Draft, Validator};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 const AGREEMENT_SIGNATURE_PLACEMENT: &str = "agreementSignature";
-const AGREEMENT_V2_SCHEMA: &str = include_str!("../../schemas/agreement/v2/agreement.schema.json");
 const CONSENT_HASH_FIELDS: &[&str] = &[
     "title",
     "description",
@@ -366,7 +363,7 @@ pub fn create_with_agent(
     }
 
     let mut document = json!({
-        "$schema": "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
+        "$schema": jacs_core::schema::V2_SCHEMA_ID,
         "jacsType": "agreement",
         "jacsLevel": "artifact",
         "title": input.title,
@@ -1084,20 +1081,7 @@ fn assert_agreement_v2(document: &Value) -> Result<(), JacsError> {
 }
 
 fn validate_agreement_v2_schema(document: &Value) -> Result<(), JacsError> {
-    let schema: Value = serde_json::from_str(AGREEMENT_V2_SCHEMA)?;
-    let validator = Validator::options()
-        .with_draft(Draft::Draft7)
-        .with_retriever(EmbeddedSchemaResolver::new())
-        .build(&schema)
-        .map_err(|err| {
-            JacsError::SchemaError(format!("failed to compile agreement v2 schema: {}", err))
-        })?;
-    validator.validate(document).map_err(|err| {
-        JacsError::SchemaError(format!(
-            "agreement v2 schema validation failed at '{}': {}",
-            err.instance_path, err
-        ))
-    })
+    jacs_core::schema::validate_agreement_v2_document(document).map_err(JacsError::from)
 }
 
 fn validate_agreement_v2(document: &Value) -> Result<(), JacsError> {

@@ -381,7 +381,7 @@ pub mod v2 {
             .unwrap_or_else(|| json!([agent_id]));
 
         let mut doc = json!({
-            "$schema": "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
+            "$schema": crate::schema::V2_SCHEMA_ID,
             "jacsId": uuid::Uuid::new_v4().to_string(),
             "jacsType": "agreement",
             "jacsVersion": version,
@@ -796,6 +796,7 @@ pub mod v2 {
         obj.remove("jacsSha256");
         agent.sign_document_inplace(doc, "jacsSignature")?;
         update_document_hash(doc)?;
+        crate::schema::validate_agreement_v2_document(doc)?;
         Ok(())
     }
 
