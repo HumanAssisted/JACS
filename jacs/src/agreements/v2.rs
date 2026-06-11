@@ -737,10 +737,22 @@ pub fn merge_transcript_branches_with_agent(
         )));
     }
 
-    let left_additions = transcript_append_additions(&base.value, &left.value)?
-        .expect("analysis guaranteed append-only left transcript");
-    let right_additions = transcript_append_additions(&base.value, &right.value)?
-        .expect("analysis guaranteed append-only right transcript");
+    let left_additions =
+        transcript_append_additions(&base.value, &left.value)?.ok_or_else(|| {
+            JacsError::Internal {
+            message:
+                "merge invariant violated: left branch was not append-only after auto-merge check"
+                    .to_string(),
+        }
+        })?;
+    let right_additions =
+        transcript_append_additions(&base.value, &right.value)?.ok_or_else(|| {
+            JacsError::Internal {
+            message:
+                "merge invariant violated: right branch was not append-only after auto-merge check"
+                    .to_string(),
+        }
+        })?;
 
     let mut merged = left.value.clone();
     let mut merged_transcript = transcript_values(&base.value);
