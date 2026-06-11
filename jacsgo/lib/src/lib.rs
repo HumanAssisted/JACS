@@ -554,7 +554,8 @@ pub extern "C" fn jacs_agent_verify_document_by_id(
     }
 }
 
-/// Re-encrypt the agent's private key with a new password.
+/// Re-encrypt the agent's private key via the hardened binding-core path
+/// (symlink-safe, atomic replace, owner-only 0o600).
 /// Returns 0 on success, negative values on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_reencrypt_key(
@@ -577,41 +578,11 @@ pub extern "C" fn jacs_agent_reencrypt_key(
     };
 
     let handle_ref = unsafe { &*handle };
-    let agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -4,
-    };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    // Get key path from agent config
-    let key_path = if let Some(config) = &agent.config {
-        let key_dir = config
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys");
-        let key_file = config
-            .jacs_agent_private_key_filename()
-            .as_deref()
-            .unwrap_or("jacs.private.pem.enc");
-        format!("{}/{}", key_dir, key_file)
-    } else {
-        "./jacs_keys/jacs.private.pem.enc".to_string()
-    };
-    drop(agent);
-
-    let encrypted_data = match std::fs::read(&key_path) {
-        Ok(d) => d,
-        Err(_) => return -5,
-    };
-
-    use jacs_core::crypt::aes_encrypt::reencrypt_private_key;
-    let re_encrypted = match reencrypt_private_key(&encrypted_data, old_pw, new_pw) {
-        Ok(d) => d,
-        Err(_) => return -6,
-    };
-
-    match std::fs::write(&key_path, &re_encrypted) {
+    match wrapper.reencrypt_key(old_pw, new_pw) {
         Ok(_) => 0,
-        Err(_) => -7,
+        Err(_) => -4,
     }
 }
 
