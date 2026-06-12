@@ -6,9 +6,9 @@
 //! Advanced methods (agreements, A2A, attestation, batch, agent management)
 //! live in sibling modules: [`super::advanced`], [`super::batch`], etc.
 
-use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
+use crate::agent::{Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME};
 use crate::create_minimal_blank_agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
@@ -1366,12 +1366,29 @@ impl SimpleAgent {
                     reason: e.to_string(),
                 })?;
 
-        let document_key = jacs_doc.getkey();
-
-        // Verify the signature using the agent's own key
+        // Verify the parsed input value directly. Storage keeps document
+        // versions immutable, so looking up by id:version here can return an
+        // earlier stored copy instead of the caller-provided bytes.
         let mut errors = Vec::new();
-        if let Err(e) = agent.verify_document_signature(&document_key, None, None, None, None) {
+        if let Err(e) = agent.verify_document_files(&jacs_doc.value) {
             errors.push(e.to_string());
+        }
+
+        match agent.get_public_key() {
+            Ok(public_key) => {
+                if let Err(e) = agent.signature_verification_procedure(
+                    &jacs_doc.value,
+                    None,
+                    DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+                    public_key,
+                    None,
+                    None,
+                    None,
+                ) {
+                    errors.push(e.to_string());
+                }
+            }
+            Err(e) => errors.push(e.to_string()),
         }
 
         // Verify hash
@@ -1585,12 +1602,22 @@ impl SimpleAgent {
             }
         };
 
-        let document_key = jacs_doc.getkey();
+        // Verify the parsed input value directly. Storage keeps document
+        // versions immutable, so looking up by id:version here can return an
+        // earlier stored copy instead of the caller-provided bytes.
+        if let Err(e) = agent.verify_document_files(&jacs_doc.value) {
+            errors.push(e.to_string());
+        }
 
-        // Verify the signature using the provided public key
-        if let Err(e) =
-            agent.verify_document_signature(&document_key, None, None, Some(public_key), None)
-        {
+        if let Err(e) = agent.signature_verification_procedure(
+            &jacs_doc.value,
+            None,
+            DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+            public_key,
+            None,
+            None,
+            None,
+        ) {
             errors.push(e.to_string());
         }
 
