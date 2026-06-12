@@ -387,10 +387,18 @@ impl SimpleAgentWrapper {
     pub fn create_agreement_v2_json(&self, input_json: &str) -> BindingResult<String> {
         let input: jacs::agreements::v2::CreateAgreementV2 = serde_json::from_str(input_json)
             .map_err(|e| {
-                BindingCoreError::validation(format!("Invalid agreement v2 create input: {}", e))
+                BindingCoreError::validation(format!(
+                    "{}: {}",
+                    crate::agreement_v2::CTX_INVALID_CREATE_INPUT,
+                    e
+                ))
             })?;
         let signed = jacs::agreements::v2::create(&self.inner, input).map_err(|e| {
-            BindingCoreError::agreement_failed(format!("Failed to create agreement v2: {}", e))
+            BindingCoreError::agreement_failed(format!(
+                "{}: {}",
+                crate::agreement_v2::CTX_CREATE,
+                e
+            ))
         })?;
         Ok(signed.raw)
     }
@@ -404,11 +412,19 @@ impl SimpleAgentWrapper {
     ) -> BindingResult<String> {
         let mutation: jacs::agreements::v2::AgreementV2Mutation =
             serde_json::from_str(mutation_json).map_err(|e| {
-                BindingCoreError::validation(format!("Invalid agreement v2 mutation input: {}", e))
+                BindingCoreError::validation(format!(
+                    "{}: {}",
+                    crate::agreement_v2::CTX_INVALID_MUTATION,
+                    e
+                ))
             })?;
         let signed =
             jacs::agreements::v2::apply(&self.inner, document_json, mutation).map_err(|e| {
-                BindingCoreError::agreement_failed(format!("Failed to update agreement v2: {}", e))
+                BindingCoreError::agreement_failed(format!(
+                    "{}: {}",
+                    crate::agreement_v2::CTX_APPLY,
+                    e
+                ))
             })?;
         Ok(signed.raw)
     }
@@ -416,9 +432,9 @@ impl SimpleAgentWrapper {
     /// Sign an agreement v2 document as signer, witness, or notary.
     #[cfg(feature = "agreements")]
     pub fn sign_agreement_v2_json(&self, document_json: &str, role: &str) -> BindingResult<String> {
-        let role = parse_agreement_v2_role(role)?;
+        let role = crate::agreement_v2::parse_agreement_v2_role(role)?;
         let signed = jacs::agreements::v2::sign(&self.inner, document_json, role).map_err(|e| {
-            BindingCoreError::agreement_failed(format!("Failed to sign agreement v2: {}", e))
+            BindingCoreError::agreement_failed(format!("{}: {}", crate::agreement_v2::CTX_SIGN, e))
         })?;
         Ok(signed.raw)
     }
@@ -427,9 +443,19 @@ impl SimpleAgentWrapper {
     #[cfg(feature = "agreements")]
     pub fn verify_agreement_v2_json(&self, document_json: &str) -> BindingResult<String> {
         let report = jacs::agreements::v2::verify(&self.inner, document_json).map_err(|e| {
-            BindingCoreError::verification_failed(format!("Failed to verify agreement v2: {}", e))
+            BindingCoreError::verification_failed(format!(
+                "{}: {}",
+                crate::agreement_v2::CTX_VERIFY,
+                e
+            ))
         })?;
-        serialize_json(&report, "agreement v2 verification report")
+        serde_json::to_string(&report).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "{}: {}",
+                crate::agreement_v2::CTX_SERIALIZE_VERIFY,
+                e
+            ))
+        })
     }
 
     /// Analyze whether two agreement v2 branches are auto-mergeable.
@@ -447,11 +473,18 @@ impl SimpleAgentWrapper {
         )
         .map_err(|e| {
             BindingCoreError::agreement_failed(format!(
-                "Failed to analyze agreement v2 branch conflict: {}",
+                "{}: {}",
+                crate::agreement_v2::CTX_DETECT,
                 e
             ))
         })?;
-        serialize_json(&analysis, "agreement v2 branch analysis")
+        serde_json::to_string(&analysis).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "{}: {}",
+                crate::agreement_v2::CTX_SERIALIZE_BRANCH,
+                e
+            ))
+        })
     }
 
     /// Auto-merge transcript-only agreement v2 branches.
@@ -469,10 +502,7 @@ impl SimpleAgentWrapper {
             right_document_json,
         )
         .map_err(|e| {
-            BindingCoreError::agreement_failed(format!(
-                "Failed to merge agreement v2 transcript branches: {}",
-                e
-            ))
+            BindingCoreError::agreement_failed(format!("{}: {}", crate::agreement_v2::CTX_MERGE, e))
         })?;
         Ok(signed.raw)
     }
@@ -489,7 +519,8 @@ impl SimpleAgentWrapper {
         let mutation: jacs::agreements::v2::AgreementV2Mutation =
             serde_json::from_str(mutation_json).map_err(|e| {
                 BindingCoreError::validation(format!(
-                    "Invalid agreement v2 branch resolution mutation input: {}",
+                    "{}: {}",
+                    crate::agreement_v2::CTX_INVALID_RESOLUTION_MUTATION,
                     e
                 ))
             })?;
@@ -502,7 +533,8 @@ impl SimpleAgentWrapper {
         )
         .map_err(|e| {
             BindingCoreError::agreement_failed(format!(
-                "Failed to resolve agreement v2 branch conflict: {}",
+                "{}: {}",
+                crate::agreement_v2::CTX_RESOLVE,
                 e
             ))
         })?;
@@ -665,19 +697,6 @@ impl SimpleAgentWrapper {
 // =============================================================================
 // Option parsing helpers
 // =============================================================================
-
-#[cfg(feature = "agreements")]
-fn parse_agreement_v2_role(role: &str) -> BindingResult<jacs::agreements::v2::AgreementV2Role> {
-    match role {
-        "signer" => Ok(jacs::agreements::v2::AgreementV2Role::Signer),
-        "witness" => Ok(jacs::agreements::v2::AgreementV2Role::Witness),
-        "notary" => Ok(jacs::agreements::v2::AgreementV2Role::Notary),
-        _ => Err(BindingCoreError::validation(format!(
-            "Invalid agreement v2 signature role '{}'; expected signer, witness, or notary",
-            role
-        ))),
-    }
-}
 
 fn map_jacs_err(e: jacs::error::JacsError, op: &str) -> BindingCoreError {
     use jacs::error::JacsError;

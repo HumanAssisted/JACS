@@ -11,8 +11,6 @@ package jacs
 import "C"
 import (
 	"encoding/json"
-	"errors"
-	"unsafe"
 )
 
 func simpleStringResult(result *C.char, fallback string) (string, error) {
@@ -43,10 +41,10 @@ func callJSON[T any](result *C.char, fallback string) (*T, error) {
 // inputJSON must match the Rust CreateAgreementV2 wire shape.
 func (a *JacsSimpleAgent) CreateAgreementV2(inputJSON string) (string, error) {
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	cInput := C.CString(inputJSON)
-	defer C.free(unsafe.Pointer(cInput))
+	cInput, freeInput := cString(inputJSON)
+	defer freeInput()
 	return simpleStringResult(
 		C.jacs_simple_create_agreement_v2(a.handle, cInput),
 		"failed to create agreement v2",
@@ -56,12 +54,12 @@ func (a *JacsSimpleAgent) CreateAgreementV2(inputJSON string) (string, error) {
 // ApplyAgreementV2 applies an agreement v2 mutation and returns the successor document JSON.
 func (a *JacsSimpleAgent) ApplyAgreementV2(documentJSON, mutationJSON string) (string, error) {
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	cDocument := C.CString(documentJSON)
-	defer C.free(unsafe.Pointer(cDocument))
-	cMutation := C.CString(mutationJSON)
-	defer C.free(unsafe.Pointer(cMutation))
+	cDocument, freeDocument := cString(documentJSON)
+	defer freeDocument()
+	cMutation, freeMutation := cString(mutationJSON)
+	defer freeMutation()
 	return simpleStringResult(
 		C.jacs_simple_apply_agreement_v2(a.handle, cDocument, cMutation),
 		"failed to update agreement v2",
@@ -72,15 +70,15 @@ func (a *JacsSimpleAgent) ApplyAgreementV2(documentJSON, mutationJSON string) (s
 // Empty role defaults to "signer".
 func (a *JacsSimpleAgent) SignAgreementV2(documentJSON, role string) (string, error) {
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
 	if role == "" {
-		role = "signer"
+		role = AgreementV2RoleSigner.String()
 	}
-	cDocument := C.CString(documentJSON)
-	defer C.free(unsafe.Pointer(cDocument))
-	cRole := C.CString(role)
-	defer C.free(unsafe.Pointer(cRole))
+	cDocument, freeDocument := cString(documentJSON)
+	defer freeDocument()
+	cRole, freeRole := cString(role)
+	defer freeRole()
 	return simpleStringResult(
 		C.jacs_simple_sign_agreement_v2(a.handle, cDocument, cRole),
 		"failed to sign agreement v2",
@@ -90,60 +88,44 @@ func (a *JacsSimpleAgent) SignAgreementV2(documentJSON, role string) (string, er
 // VerifyAgreementV2 verifies agreement v2 hash, role, status, transcript, and signature invariants.
 func (a *JacsSimpleAgent) VerifyAgreementV2(documentJSON string) (*AgreementV2VerificationReport, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
-	cDocument := C.CString(documentJSON)
-	defer C.free(unsafe.Pointer(cDocument))
-	raw, err := simpleStringResult(
+	cDocument, freeDocument := cString(documentJSON)
+	defer freeDocument()
+	return callJSON[AgreementV2VerificationReport](
 		C.jacs_simple_verify_agreement_v2(a.handle, cDocument),
 		"failed to verify agreement v2",
 	)
-	if err != nil {
-		return nil, err
-	}
-	var report AgreementV2VerificationReport
-	if err := json.Unmarshal([]byte(raw), &report); err != nil {
-		return nil, err
-	}
-	return &report, nil
 }
 
 // DetectAgreementV2BranchConflict reports whether two successor versions are transcript-only mergeable.
 func (a *JacsSimpleAgent) DetectAgreementV2BranchConflict(baseJSON, leftJSON, rightJSON string) (*AgreementV2MergeAnalysis, error) {
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
-	cBase := C.CString(baseJSON)
-	defer C.free(unsafe.Pointer(cBase))
-	cLeft := C.CString(leftJSON)
-	defer C.free(unsafe.Pointer(cLeft))
-	cRight := C.CString(rightJSON)
-	defer C.free(unsafe.Pointer(cRight))
-	raw, err := simpleStringResult(
+	cBase, freeBase := cString(baseJSON)
+	defer freeBase()
+	cLeft, freeLeft := cString(leftJSON)
+	defer freeLeft()
+	cRight, freeRight := cString(rightJSON)
+	defer freeRight()
+	return callJSON[AgreementV2MergeAnalysis](
 		C.jacs_simple_detect_agreement_v2_branch_conflict(a.handle, cBase, cLeft, cRight),
 		"failed to detect agreement v2 branch conflict",
 	)
-	if err != nil {
-		return nil, err
-	}
-	var analysis AgreementV2MergeAnalysis
-	if err := json.Unmarshal([]byte(raw), &analysis); err != nil {
-		return nil, err
-	}
-	return &analysis, nil
 }
 
 // MergeAgreementV2TranscriptBranches auto-merges two transcript-only branches.
 func (a *JacsSimpleAgent) MergeAgreementV2TranscriptBranches(baseJSON, leftJSON, rightJSON string) (string, error) {
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	cBase := C.CString(baseJSON)
-	defer C.free(unsafe.Pointer(cBase))
-	cLeft := C.CString(leftJSON)
-	defer C.free(unsafe.Pointer(cLeft))
-	cRight := C.CString(rightJSON)
-	defer C.free(unsafe.Pointer(cRight))
+	cBase, freeBase := cString(baseJSON)
+	defer freeBase()
+	cLeft, freeLeft := cString(leftJSON)
+	defer freeLeft()
+	cRight, freeRight := cString(rightJSON)
+	defer freeRight()
 	return simpleStringResult(
 		C.jacs_simple_merge_agreement_v2_transcript_branches(a.handle, cBase, cLeft, cRight),
 		"failed to merge agreement v2 transcript branches",
@@ -153,16 +135,16 @@ func (a *JacsSimpleAgent) MergeAgreementV2TranscriptBranches(baseJSON, leftJSON,
 // ResolveAgreementV2BranchConflict resolves a conflicting branch with an explicit mutation.
 func (a *JacsSimpleAgent) ResolveAgreementV2BranchConflict(baseJSON, previousJSON, sideBranchJSON, mutationJSON string) (string, error) {
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	cBase := C.CString(baseJSON)
-	defer C.free(unsafe.Pointer(cBase))
-	cPrevious := C.CString(previousJSON)
-	defer C.free(unsafe.Pointer(cPrevious))
-	cSideBranch := C.CString(sideBranchJSON)
-	defer C.free(unsafe.Pointer(cSideBranch))
-	cMutation := C.CString(mutationJSON)
-	defer C.free(unsafe.Pointer(cMutation))
+	cBase, freeBase := cString(baseJSON)
+	defer freeBase()
+	cPrevious, freePrevious := cString(previousJSON)
+	defer freePrevious()
+	cSideBranch, freeSideBranch := cString(sideBranchJSON)
+	defer freeSideBranch()
+	cMutation, freeMutation := cString(mutationJSON)
+	defer freeMutation()
 	return simpleStringResult(
 		C.jacs_simple_resolve_agreement_v2_branch_conflict(a.handle, cBase, cPrevious, cSideBranch, cMutation),
 		"failed to resolve agreement v2 branch conflict",

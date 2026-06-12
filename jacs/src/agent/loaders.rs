@@ -788,6 +788,16 @@ struct RemoteKeysApiResponse {
     public_key_hash: String,
 }
 
+/// Maximum number of HTTP redirects to follow when fetching a remote key.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_REMOTE_KEY_REDIRECTS: usize = 3;
+
+/// Maximum number of bytes to read from a remote key-service response body.
+/// A public-key PEM/JSON payload is only a few KB; this bound prevents an
+/// oversized or streaming body from exhausting memory.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_REMOTE_KEY_RESPONSE_BYTES: usize = 64 * 1024;
+
 /// Decodes a public key from either PEM or Base64 format.
 ///
 /// The remote key service may return public keys in two formats:
@@ -922,6 +932,26 @@ fn resolve_keys_base_url() -> String {
         .unwrap_or_else(|_| "https://hai.ai".to_string())
 }
 
+/// Returns true if `url` satisfies the remote-key-fetch transport policy:
+/// HTTPS is required, except plain-HTTP is permitted only for explicit
+/// loopback hosts (localhost / 127.0.0.1) to support local testing.
+/// Used both for the initial base URL and for every redirect hop so a
+/// redirect cannot move the request to an off-policy host/scheme.
+#[cfg(not(target_arch = "wasm32"))]
+fn is_key_url_in_policy(url_str: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url_str) else {
+        return false;
+    };
+    match u.scheme() {
+        "https" => true,
+        "http" => matches!(
+            u.host_str(),
+            Some("localhost") | Some("127.0.0.1") | Some("[::1]")
+        ),
+        _ => false,
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn build_remote_key_lookup_url(base_url: &str, agent_id: &str, version: &str) -> String {
     format!(
@@ -930,6 +960,36 @@ fn build_remote_key_lookup_url(base_url: &str, agent_id: &str, version: &str) ->
         agent_id,
         version
     )
+}
+
+/// Reads at most `max_bytes` from `reader`, returning an error if the source
+/// has more than `max_bytes` available. Pure helper so the cap is unit-testable
+/// without a live network.
+#[cfg(not(target_arch = "wasm32"))]
+fn read_body_capped<R: std::io::Read>(
+    mut reader: R,
+    max_bytes: usize,
+) -> Result<Vec<u8>, JacsError> {
+    use std::io::Read;
+
+    // Read up to max_bytes + 1 so we can detect overflow.
+    let mut buf = Vec::new();
+    let read = std::io::Read::by_ref(&mut reader)
+        .take((max_bytes as u64) + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| {
+            JacsError::NetworkError(format!(
+                "Failed to read remote key service response body: {}",
+                e
+            ))
+        })?;
+    if read > max_bytes {
+        return Err(JacsError::NetworkError(format!(
+            "Remote key service response exceeded maximum allowed size of {} bytes",
+            max_bytes
+        )));
+    }
+    Ok(buf)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -960,10 +1020,7 @@ pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKe
     let base_url = resolve_keys_base_url();
 
     // Enforce HTTPS for security (prevent MITM on key fetch)
-    if !base_url.starts_with("https://")
-        && !base_url.starts_with("http://localhost")
-        && !base_url.starts_with("http://127.0.0.1")
-    {
+    if !is_key_url_in_policy(&base_url) {
         return Err(JacsError::ConfigError(format!(
             "JACS_KEYS_BASE_URL must use HTTPS (got '{}'). \
             Only localhost URLs are allowed over HTTP for testing.",
@@ -983,6 +1040,15 @@ pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKe
     // Build blocking HTTP client with 30 second timeout
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= MAX_REMOTE_KEY_REDIRECTS {
+                attempt.stop()
+            } else if is_key_url_in_policy(attempt.url().as_str()) {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
         .build()
         .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
 
@@ -1091,8 +1157,18 @@ fn fetch_public_key_attempt(
         )));
     }
 
+    if let Some(len) = response.content_length()
+        && len > MAX_REMOTE_KEY_RESPONSE_BYTES as u64
+    {
+        return Err(JacsError::NetworkError(format!(
+            "Remote key service response exceeded maximum allowed size of {} bytes",
+            MAX_REMOTE_KEY_RESPONSE_BYTES
+        )));
+    }
+
     // Parse JSON response
-    let api_response: RemoteKeysApiResponse = response.json().map_err(|e| {
+    let body = read_body_capped(response, MAX_REMOTE_KEY_RESPONSE_BYTES)?;
+    let api_response: RemoteKeysApiResponse = serde_json::from_slice(&body).map_err(|e| {
         JacsError::NetworkError(format!(
             "Failed to parse remote key service response as JSON: {}",
             e
@@ -1288,7 +1364,7 @@ CDEF
         use serial_test::serial;
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_resolve_keys_base_url_defaults_to_hai_root() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1301,7 +1377,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_resolve_keys_base_url_prefers_jacs_over_hai_alias() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1334,7 +1410,68 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        fn test_is_key_url_in_policy_allows_https() {
+            assert!(is_key_url_in_policy("https://hai.ai/jacs/v1/agents"));
+            assert!(is_key_url_in_policy("https://evil.example/jacs/v1/agents"));
+        }
+
+        #[test]
+        fn test_is_key_url_in_policy_allows_loopback_http() {
+            assert!(is_key_url_in_policy("http://localhost:8080/jacs/v1/agents"));
+            assert!(is_key_url_in_policy("http://127.0.0.1/jacs/v1/agents"));
+            assert!(is_key_url_in_policy("http://127.0.0.1/k"));
+            assert!(is_key_url_in_policy("http://[::1]/k"));
+        }
+
+        #[test]
+        fn test_is_key_url_in_policy_rejects_loopback_prefix_bypass() {
+            assert!(!is_key_url_in_policy("http://localhost.evil.com"));
+            assert!(!is_key_url_in_policy("http://127.0.0.1.evil.com"));
+            assert!(!is_key_url_in_policy("http://localhost.attacker.com:80/x"));
+        }
+
+        #[test]
+        fn test_off_policy_redirect_target_rejected() {
+            assert!(!is_key_url_in_policy("http://evil.example/jacs/v1/agents"));
+            assert!(!is_key_url_in_policy("ftp://evil.example/jacs/v1/agents"));
+            assert!(!is_key_url_in_policy("ftp://localhost/x"));
+            assert!(!is_key_url_in_policy("file:///etc/passwd"));
+            assert!(!is_key_url_in_policy("not a url"));
+        }
+
+        #[test]
+        fn test_read_body_capped_reads_small_body() {
+            let result =
+                read_body_capped(std::io::Cursor::new(b"small body".to_vec()), 64).unwrap();
+            assert_eq!(result, b"small body".to_vec());
+        }
+
+        #[test]
+        fn test_read_body_capped_rejects_oversized() {
+            let result = read_body_capped(std::io::Cursor::new(vec![0u8; 100]), 64);
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                JacsError::NetworkError(msg) => {
+                    assert!(
+                        msg.contains("exceeded maximum allowed size"),
+                        "Error: {}",
+                        msg
+                    );
+                }
+                other => panic!("Expected NetworkError, got: {:?}", other),
+            }
+        }
+
+        #[test]
+        fn test_read_body_capped_allows_exact_cap() {
+            let body = vec![0u8; 64];
+            let result = read_body_capped(std::io::Cursor::new(body.clone()), 64).unwrap();
+            assert_eq!(result, body);
+        }
+
+        #[test]
+        #[serial(jacs_env)]
         fn test_fetch_public_key_invalid_url() {
             // Set an invalid base URL to test error handling
             // Disable retries for faster test execution
@@ -1373,7 +1510,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_fetch_public_key_default_url() {
             // Verify default URL is used when env var is not set
             // Disable retries for faster test execution
@@ -1408,7 +1545,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_fetch_public_key_retries_env_var() {
             // Test that JACS_KEY_FETCH_RETRIES is respected
             // SAFETY: This test is run in isolation

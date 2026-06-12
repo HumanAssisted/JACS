@@ -92,6 +92,9 @@ pub mod agreements;
 #[cfg(feature = "attestation")]
 pub mod attestation;
 
+#[cfg(feature = "conflict")]
+pub mod conflict;
+
 pub mod cli_utils;
 /// The primary error type for all JACS operations.
 pub use error::JacsError;

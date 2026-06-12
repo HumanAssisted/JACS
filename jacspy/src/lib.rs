@@ -321,14 +321,14 @@ impl JacsAgent {
     }
 
     /// Sign a request payload and return a signed JACS document.
-    fn sign_request(&self, py: Python, params_obj: PyObject) -> PyResult<String> {
+    fn sign_request(&self, py: Python, params_obj: Py<PyAny>) -> PyResult<String> {
         let bound_params = params_obj.bind(py);
         let payload_value = conversion_utils::pyany_to_value(py, bound_params)?;
         self.inner.sign_request(payload_value).to_py()
     }
 
     /// Verify a response document and return the payload.
-    fn verify_response(&self, py: Python, document_string: String) -> PyResult<PyObject> {
+    fn verify_response(&self, py: Python, document_string: String) -> PyResult<Py<PyAny>> {
         let payload = self.inner.verify_response(document_string).to_py()?;
         conversion_utils::value_to_pyobject(py, &payload)
     }
@@ -338,7 +338,7 @@ impl JacsAgent {
         &self,
         py: Python,
         document_string: String,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let (payload, agent_id) = self
             .inner
             .verify_response_with_agent_id(document_string)
@@ -808,7 +808,7 @@ fn parse_json_value(json_str: &str, label: &str) -> PyResult<serde_json::Value> 
     })
 }
 
-fn py_json_arg_to_string(py: Python, value: PyObject, label: &str) -> PyResult<String> {
+fn py_json_arg_to_string(py: Python, value: Py<PyAny>, label: &str) -> PyResult<String> {
     let bound = value.bind(py);
     if let Ok(raw_json) = bound.extract::<String>() {
         return Ok(raw_json);
@@ -823,17 +823,18 @@ fn py_json_arg_to_string(py: Python, value: PyObject, label: &str) -> PyResult<S
     })
 }
 
-fn parsed_wrapper_json_to_py<E: std::fmt::Display>(
+#[cfg(feature = "agreements")]
+fn wrapper_json_to_py_preserve_kind(
     py: Python,
-    result: Result<String, E>,
+    result: BindingResult<String>,
     context: &str,
-) -> PyResult<PyObject> {
-    let raw = map_py_runtime_result(result, context)?;
+) -> PyResult<Py<PyAny>> {
+    let raw = result.to_py()?;
     let value = parse_json_value(&raw, context)?;
     json_value_to_py(py, &value)
 }
 
-fn agent_info_json_to_pydict(py: Python, info_json: &str, keys: &[&str]) -> PyResult<PyObject> {
+fn agent_info_json_to_pydict(py: Python, info_json: &str, keys: &[&str]) -> PyResult<Py<PyAny>> {
     let info = parse_json_value(info_json, "agent info")?;
     let dict = pyo3::types::PyDict::new(py);
 
@@ -844,7 +845,7 @@ fn agent_info_json_to_pydict(py: Python, info_json: &str, keys: &[&str]) -> PyRe
     Ok(dict.into())
 }
 
-fn signed_document_json_to_pydict(py: Python, signed_raw: &str) -> PyResult<PyObject> {
+fn signed_document_json_to_pydict(py: Python, signed_raw: &str) -> PyResult<Py<PyAny>> {
     let signed_doc = parse_json_value(signed_raw, "signed document")?;
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("raw", signed_raw)?;
@@ -879,7 +880,7 @@ fn verification_result_json_to_pydict(
     result_json: &str,
     include_data: bool,
     include_attachments: bool,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     let result = parse_json_value(result_json, "verification result")?;
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
@@ -927,7 +928,7 @@ fn simple_agent_with_info<E: std::fmt::Display>(
     result: Result<(SimpleAgentWrapper, String), E>,
     context: &str,
     keys: &[&str],
-) -> PyResult<(SimpleAgent, PyObject)> {
+) -> PyResult<(SimpleAgent, Py<PyAny>)> {
     let (wrapper, info_json) = map_py_runtime_result(result, context)?;
     let dict = agent_info_json_to_pydict(py, &info_json, keys)?;
     Ok((SimpleAgent { inner: wrapper }, dict))
@@ -939,7 +940,7 @@ impl SimpleAgent {
         py: Python,
         result: Result<String, E>,
         context: &str,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let signed_raw = map_py_runtime_result(result, context)?;
         signed_document_json_to_pydict(py, &signed_raw)
     }
@@ -951,7 +952,7 @@ impl SimpleAgent {
         context: &str,
         include_data: bool,
         include_attachments: bool,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let result_json = map_py_runtime_result(result, context)?;
         verification_result_json_to_pydict(py, &result_json, include_data, include_attachments)
     }
@@ -974,7 +975,7 @@ impl SimpleAgent {
         name: &str,
         purpose: Option<&str>,
         key_algorithm: Option<&str>,
-    ) -> PyResult<(Self, PyObject)> {
+    ) -> PyResult<(Self, Py<PyAny>)> {
         simple_agent_with_info(
             py,
             SimpleAgentWrapper::create(name, purpose, key_algorithm),
@@ -1009,7 +1010,7 @@ impl SimpleAgent {
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
     #[staticmethod]
     #[pyo3(signature = (algorithm=None))]
-    fn ephemeral(py: Python, algorithm: Option<&str>) -> PyResult<(Self, PyObject)> {
+    fn ephemeral(py: Python, algorithm: Option<&str>) -> PyResult<(Self, Py<PyAny>)> {
         simple_agent_with_info(
             py,
             SimpleAgentWrapper::ephemeral(algorithm),
@@ -1035,7 +1036,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     dict with valid, signer_id, timestamp, errors
-    fn verify_self(&self, py: Python) -> PyResult<PyObject> {
+    fn verify_self(&self, py: Python) -> PyResult<Py<PyAny>> {
         self.verification_result(
             py,
             self.inner.verify_self(),
@@ -1052,7 +1053,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     dict with raw, document_id, agent_id, timestamp
-    fn sign_message(&self, py: Python, data: PyObject) -> PyResult<PyObject> {
+    fn sign_message(&self, py: Python, data: Py<PyAny>) -> PyResult<Py<PyAny>> {
         let bound_data = data.bind(py);
         let json_value = conversion_utils::pyany_to_value(py, bound_data)?;
         let data_json = map_py_runtime_result(
@@ -1074,7 +1075,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     dict with raw, document_id, agent_id, timestamp
-    fn sign_file(&self, py: Python, file_path: &str, embed: bool) -> PyResult<PyObject> {
+    fn sign_file(&self, py: Python, file_path: &str, embed: bool) -> PyResult<Py<PyAny>> {
         self.signed_document_result(
             py,
             self.inner.sign_file_json(file_path, embed),
@@ -1090,12 +1091,11 @@ impl SimpleAgent {
     /// Returns:
     ///     JSON string of the signed agreement document.
     #[cfg(feature = "agreements")]
-    fn create_agreement_v2(&self, py: Python, input: PyObject) -> PyResult<String> {
+    fn create_agreement_v2(&self, py: Python, input: Py<PyAny>) -> PyResult<String> {
         let input_json = py_json_arg_to_string(py, input, "agreement v2 create input")?;
-        map_py_runtime_result(
-            self.inner.create_agreement_v2_json(&input_json),
-            "Failed to create agreement v2",
-        )
+        let inner = &self.inner;
+        let result = py.detach(|| inner.create_agreement_v2_json(&input_json));
+        result.to_py()
     }
 
     /// Apply an agreement v2 mutation and return the successor document JSON.
@@ -1104,34 +1104,33 @@ impl SimpleAgent {
         &self,
         py: Python,
         document_json: &str,
-        mutation: PyObject,
+        mutation: Py<PyAny>,
     ) -> PyResult<String> {
         let mutation_json = py_json_arg_to_string(py, mutation, "agreement v2 mutation")?;
-        map_py_runtime_result(
-            self.inner
-                .apply_agreement_v2_json(document_json, &mutation_json),
-            "Failed to update agreement v2",
-        )
+        let document_json = document_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| inner.apply_agreement_v2_json(&document_json, &mutation_json));
+        result.to_py()
     }
 
     /// Add this agent's signer, witness, or notary agreement signature.
     #[cfg(feature = "agreements")]
     #[pyo3(signature = (document_json, role="signer"))]
-    fn sign_agreement_v2(&self, document_json: &str, role: &str) -> PyResult<String> {
-        map_py_runtime_result(
-            self.inner.sign_agreement_v2_json(document_json, role),
-            "Failed to sign agreement v2",
-        )
+    fn sign_agreement_v2(&self, py: Python, document_json: &str, role: &str) -> PyResult<String> {
+        let document_json = document_json.to_string();
+        let role = role.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| inner.sign_agreement_v2_json(&document_json, &role));
+        result.to_py()
     }
 
     /// Verify agreement v2 hash, role, status, transcript, and signature invariants.
     #[cfg(feature = "agreements")]
-    fn verify_agreement_v2(&self, py: Python, document_json: &str) -> PyResult<PyObject> {
-        parsed_wrapper_json_to_py(
-            py,
-            self.inner.verify_agreement_v2_json(document_json),
-            "agreement v2 verification report",
-        )
+    fn verify_agreement_v2(&self, py: Python, document_json: &str) -> PyResult<Py<PyAny>> {
+        let document_json = document_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| inner.verify_agreement_v2_json(&document_json));
+        wrapper_json_to_py_preserve_kind(py, result, "agreement v2 verification report")
     }
 
     /// Detect whether two successor versions are transcript-only mergeable.
@@ -1142,34 +1141,42 @@ impl SimpleAgent {
         base_document_json: &str,
         left_document_json: &str,
         right_document_json: &str,
-    ) -> PyResult<PyObject> {
-        parsed_wrapper_json_to_py(
-            py,
-            self.inner.detect_agreement_v2_branch_conflict_json(
-                base_document_json,
-                left_document_json,
-                right_document_json,
-            ),
-            "agreement v2 branch analysis",
-        )
+    ) -> PyResult<Py<PyAny>> {
+        let base_document_json = base_document_json.to_string();
+        let left_document_json = left_document_json.to_string();
+        let right_document_json = right_document_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            inner.detect_agreement_v2_branch_conflict_json(
+                &base_document_json,
+                &left_document_json,
+                &right_document_json,
+            )
+        });
+        wrapper_json_to_py_preserve_kind(py, result, "agreement v2 branch analysis")
     }
 
     /// Auto-merge two transcript-only branches.
     #[cfg(feature = "agreements")]
     fn merge_agreement_v2_transcript_branches(
         &self,
+        py: Python,
         base_document_json: &str,
         left_document_json: &str,
         right_document_json: &str,
     ) -> PyResult<String> {
-        map_py_runtime_result(
-            self.inner.merge_agreement_v2_transcript_branches_json(
-                base_document_json,
-                left_document_json,
-                right_document_json,
-            ),
-            "Failed to merge agreement v2 transcript branches",
-        )
+        let base_document_json = base_document_json.to_string();
+        let left_document_json = left_document_json.to_string();
+        let right_document_json = right_document_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            inner.merge_agreement_v2_transcript_branches_json(
+                &base_document_json,
+                &left_document_json,
+                &right_document_json,
+            )
+        });
+        result.to_py()
     }
 
     /// Resolve a conflicting branch by applying an explicit resolution mutation.
@@ -1180,19 +1187,23 @@ impl SimpleAgent {
         base_document_json: &str,
         previous_document_json: &str,
         side_branch_document_json: &str,
-        mutation: PyObject,
+        mutation: Py<PyAny>,
     ) -> PyResult<String> {
         let mutation_json =
             py_json_arg_to_string(py, mutation, "agreement v2 branch resolution mutation")?;
-        map_py_runtime_result(
-            self.inner.resolve_agreement_v2_branch_conflict_json(
-                base_document_json,
-                previous_document_json,
-                side_branch_document_json,
+        let base_document_json = base_document_json.to_string();
+        let previous_document_json = previous_document_json.to_string();
+        let side_branch_document_json = side_branch_document_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            inner.resolve_agreement_v2_branch_conflict_json(
+                &base_document_json,
+                &previous_document_json,
+                &side_branch_document_json,
                 &mutation_json,
-            ),
-            "Failed to resolve agreement v2 branch conflict",
-        )
+            )
+        });
+        result.to_py()
     }
 
     /// Verify a signed JACS document.
@@ -1202,7 +1213,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     dict with valid, data, signer_id, timestamp, attachments, errors
-    fn verify(&self, py: Python, signed_document: &str) -> PyResult<PyObject> {
+    fn verify(&self, py: Python, signed_document: &str) -> PyResult<Py<PyAny>> {
         self.verification_result(
             py,
             self.inner.verify_json(signed_document),
@@ -1279,7 +1290,7 @@ impl SimpleAgent {
 
     /// Export this agent's did:wba DID document.
     #[pyo3(signature = (origin=None))]
-    fn export_w3c_did_document(&self, py: Python, origin: Option<&str>) -> PyResult<PyObject> {
+    fn export_w3c_did_document(&self, py: Python, origin: Option<&str>) -> PyResult<Py<PyAny>> {
         let json_str = self.inner.export_w3c_did_document_json(origin).to_py()?;
         let value = parse_json_value(&json_str, "W3C DID document")?;
         json_value_to_py(py, &value)
@@ -1287,7 +1298,11 @@ impl SimpleAgent {
 
     /// Export this agent's W3C agent description document.
     #[pyo3(signature = (origin=None))]
-    fn export_w3c_agent_description(&self, py: Python, origin: Option<&str>) -> PyResult<PyObject> {
+    fn export_w3c_agent_description(
+        &self,
+        py: Python,
+        origin: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
         let json_str = self
             .inner
             .export_w3c_agent_description_json(origin)
@@ -1298,7 +1313,7 @@ impl SimpleAgent {
 
     /// Generate W3C well-known discovery documents keyed by URL path.
     #[pyo3(signature = (origin=None))]
-    fn generate_w3c_well_known(&self, py: Python, origin: Option<&str>) -> PyResult<PyObject> {
+    fn generate_w3c_well_known(&self, py: Python, origin: Option<&str>) -> PyResult<Py<PyAny>> {
         let json_str = self.inner.generate_w3c_well_known_json(origin).to_py()?;
         let value = parse_json_value(&json_str, "W3C well-known documents")?;
         json_value_to_py(py, &value)
@@ -1316,7 +1331,7 @@ impl SimpleAgent {
         nonce: Option<&str>,
         created: Option<&str>,
         origin: Option<&str>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let params = serde_json::json!({
             "method": method,
             "url": url,
@@ -1345,7 +1360,7 @@ impl SimpleAgent {
         max_age_seconds: u64,
         method: Option<&str>,
         url: Option<&str>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let json_str = self
             .inner
             .verify_w3c_request_json(
@@ -1392,7 +1407,7 @@ impl SimpleAgent {
         description: Option<&str>,
         domain: Option<&str>,
         default_storage: Option<&str>,
-    ) -> PyResult<(Self, PyObject)> {
+    ) -> PyResult<(Self, Py<PyAny>)> {
         let params = serde_json::json!({
             "name": name,
             "password": password,
@@ -1427,7 +1442,7 @@ impl SimpleAgent {
     /// Returns:
     ///     Tuple of (SimpleAgent, dict with agent info)
     #[staticmethod]
-    fn create_with_params(py: Python, params_json: &str) -> PyResult<(Self, PyObject)> {
+    fn create_with_params(py: Python, params_json: &str) -> PyResult<(Self, Py<PyAny>)> {
         simple_agent_with_info(
             py,
             SimpleAgentWrapper::create_with_params(params_json),
@@ -1443,7 +1458,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     dict with valid, data, signer_id, timestamp, attachments, errors
-    fn verify_by_id(&self, py: Python, document_id: &str) -> PyResult<PyObject> {
+    fn verify_by_id(&self, py: Python, document_id: &str) -> PyResult<Py<PyAny>> {
         self.verification_result(
             py,
             self.inner.verify_by_id_json(document_id),
@@ -1466,7 +1481,7 @@ impl SimpleAgent {
         py: Python,
         signed_document: &str,
         public_key_base64: &str,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         self.verification_result(
             py,
             self.inner
@@ -1695,7 +1710,7 @@ impl SimpleAgent {
     /// Returns:
     ///     dict with `path`, `signers_added`, `backup_path`.
     #[pyo3(signature = (file_path, *, no_backup=false))]
-    fn sign_text_file(&self, py: Python, file_path: &str, no_backup: bool) -> PyResult<PyObject> {
+    fn sign_text_file(&self, py: Python, file_path: &str, no_backup: bool) -> PyResult<Py<PyAny>> {
         let opts = serde_json::json!({"backup": !no_backup}).to_string();
         let json_str = self.inner.sign_text_file_json(file_path, &opts).to_py()?;
         let value = parse_json_value(&json_str, "sign_text_file outcome")?;
@@ -1704,7 +1719,7 @@ impl SimpleAgent {
 
     /// Short alias for [`sign_text_file`] (matches the CLI verb).
     #[pyo3(signature = (file_path, *, no_backup=false))]
-    fn sign_text(&self, py: Python, file_path: &str, no_backup: bool) -> PyResult<PyObject> {
+    fn sign_text(&self, py: Python, file_path: &str, no_backup: bool) -> PyResult<Py<PyAny>> {
         self.sign_text_file(py, file_path, no_backup)
     }
 
@@ -1728,7 +1743,7 @@ impl SimpleAgent {
         file_path: &str,
         strict: bool,
         key_dir: Option<&str>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let opts = build_verify_text_opts(strict, key_dir);
         let json_str = self.inner.verify_text_file_json(file_path, &opts).to_py()?;
         let value = parse_json_value(&json_str, "verify_text_file result")?;
@@ -1743,7 +1758,7 @@ impl SimpleAgent {
         file_path: &str,
         strict: bool,
         key_dir: Option<&str>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         self.verify_text_file(py, file_path, strict, key_dir)
     }
 
@@ -1770,7 +1785,7 @@ impl SimpleAgent {
         robust: bool,
         format: Option<&str>,
         refuse_overwrite: bool,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let mut obj = serde_json::Map::new();
         obj.insert("robust".to_string(), serde_json::Value::Bool(robust));
         if let Some(f) = format {
@@ -1813,7 +1828,7 @@ impl SimpleAgent {
         strict: bool,
         key_dir: Option<&str>,
         robust: bool,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let opts = build_verify_image_opts(strict, key_dir, robust);
         let json_str = self.inner.verify_image_json(file_path, &opts).to_py()?;
         let value = parse_json_value(&json_str, "verify_image result")?;
@@ -1882,11 +1897,11 @@ fn build_verify_image_opts(strict: bool, key_dir: Option<&str>, robust: bool) ->
     serde_json::Value::Object(obj).to_string()
 }
 
-/// Convert a `serde_json::Value` into a `PyObject` by going through `json.loads`.
+/// Convert a `serde_json::Value` into a `Py<PyAny>` by going through `json.loads`.
 /// We already have helpers in `conversion_utils` for the other direction; for
 /// JSON returned by the wrapper layer, the simplest faithful conversion is to
 /// hand it to Python's stdlib `json.loads`.
-fn json_value_to_py(py: Python, value: &serde_json::Value) -> PyResult<PyObject> {
+fn json_value_to_py(py: Python, value: &serde_json::Value) -> PyResult<Py<PyAny>> {
     let json_string = serde_json::to_string(value).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "Failed to re-serialize JSON for Python conversion: {}",
@@ -1919,7 +1934,7 @@ fn verify_document_standalone(
     key_resolution: Option<&str>,
     data_directory: Option<&str>,
     key_directory: Option<&str>,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     let r = jacs_binding_core::verify_document_standalone(
         signed_document,
         key_resolution,
@@ -1938,7 +1953,7 @@ fn verify_document_standalone(
 /// Verify an agent's DNS TXT record matches its public key hash.
 #[pyfunction]
 #[pyo3(signature = (agent_json, domain))]
-fn verify_agent_dns(py: Python, agent_json: &str, domain: &str) -> PyResult<PyObject> {
+fn verify_agent_dns(py: Python, agent_json: &str, domain: &str) -> PyResult<Py<PyAny>> {
     let r = jacs_binding_core::verify_agent_dns(agent_json, domain).to_py()?;
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("verified", r.verified)?;
@@ -2300,7 +2315,7 @@ fn check_agreement(
 ///
 /// DEPRECATED: Use JacsAgent().sign_request() or SimpleAgent.sign_message() instead.
 #[pyfunction]
-fn sign_request(_py: Python, _params_obj: PyObject) -> PyResult<String> {
+fn sign_request(_py: Python, _params_obj: Py<PyAny>) -> PyResult<String> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_request() is deprecated. Use JacsAgent().sign_request() or \
          SimpleAgent.load().sign_message() instead.",
@@ -2311,7 +2326,7 @@ fn sign_request(_py: Python, _params_obj: PyObject) -> PyResult<String> {
 ///
 /// DEPRECATED: Use JacsAgent().verify_response() or SimpleAgent.verify() instead.
 #[pyfunction]
-fn verify_response(_py: Python, _document_string: String) -> PyResult<PyObject> {
+fn verify_response(_py: Python, _document_string: String) -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_response() is deprecated. Use JacsAgent().verify_response() or \
          SimpleAgent.load().verify() instead.",
@@ -2322,7 +2337,7 @@ fn verify_response(_py: Python, _document_string: String) -> PyResult<PyObject> 
 ///
 /// DEPRECATED: Use JacsAgent().verify_response_with_agent_id() instead.
 #[pyfunction]
-fn verify_response_with_agent_id(_py: Python, _document_string: String) -> PyResult<PyObject> {
+fn verify_response_with_agent_id(_py: Python, _document_string: String) -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_response_with_agent_id() is deprecated. \
          Use JacsAgent().verify_response_with_agent_id() instead.",
@@ -2343,7 +2358,7 @@ fn create_simple(
     _name: &str,
     _purpose: Option<&str>,
     _key_algorithm: Option<&str>,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "create_simple() is deprecated. Use SimpleAgent.create() instead, which returns \
          both the agent instance and info dict.",
@@ -2364,7 +2379,7 @@ fn load_simple(_config_path: Option<&str>) -> PyResult<()> {
 ///
 /// DEPRECATED: Use SimpleAgent.load().verify_self() instead.
 #[pyfunction]
-fn verify_self_simple() -> PyResult<PyObject> {
+fn verify_self_simple() -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_self_simple() is deprecated. Use SimpleAgent.load().verify_self() instead.",
     ))
@@ -2374,7 +2389,7 @@ fn verify_self_simple() -> PyResult<PyObject> {
 ///
 /// DEPRECATED: Use SimpleAgent.load().sign_message() instead.
 #[pyfunction]
-fn sign_message_simple(_py: Python, _data: PyObject) -> PyResult<PyObject> {
+fn sign_message_simple(_py: Python, _data: Py<PyAny>) -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_message_simple() is deprecated. Use SimpleAgent.load().sign_message() instead.",
     ))
@@ -2384,7 +2399,7 @@ fn sign_message_simple(_py: Python, _data: PyObject) -> PyResult<PyObject> {
 ///
 /// DEPRECATED: Use SimpleAgent.load().sign_file() instead.
 #[pyfunction]
-fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<PyObject> {
+fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "sign_file_simple() is deprecated. Use SimpleAgent.load().sign_file() instead.",
     ))
@@ -2394,7 +2409,7 @@ fn sign_file_simple(_file_path: &str, _embed: bool) -> PyResult<PyObject> {
 ///
 /// DEPRECATED: Use SimpleAgent.load().verify() instead.
 #[pyfunction]
-fn verify_simple(_py: Python, _signed_document: &str) -> PyResult<PyObject> {
+fn verify_simple(_py: Python, _signed_document: &str) -> PyResult<Py<PyAny>> {
     Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
         "verify_simple() is deprecated. Use SimpleAgent.load().verify() instead.",
     ))
@@ -2556,9 +2571,17 @@ fn jacs_mcp_resolve_input_path(raw: &str, kind: &str) -> PyResult<String> {
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))
 }
 
+// Hoisted out of the `#[pymodule]` body: the inline `#[pyfn]` form is
+// deprecated (removal planned upstream); registered below via add_function.
+#[pyfunction]
+#[pyo3(name = "log_to_python")]
+fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {
+    log_to_python(py, &message, &log_level)
+}
+
 #[pymodule]
 fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     // =============================================================================
     // Primary API Classes (Recommended)
@@ -2614,11 +2637,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // These functions either error with deprecation messages or provide
     // limited functionality. New code should use JacsAgent or SimpleAgent.
 
-    #[pyfn(m, name = "log_to_python")]
-    fn py_log_to_python(py: Python, message: String, log_level: String) -> PyResult<()> {
-        log_to_python(py, &message, &log_level)
-    }
-
+    m.add_function(wrap_pyfunction!(py_log_to_python, m)?)?;
     m.add_function(wrap_pyfunction!(load, m)?)?;
     m.add_function(wrap_pyfunction!(sign_agent, m)?)?;
     m.add_function(wrap_pyfunction!(verify_string, m)?)?;

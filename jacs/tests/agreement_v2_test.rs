@@ -13,7 +13,7 @@ use jacs::agreements::v2::{
     merge_transcript_branches_with_agent, resolve_branch_conflict_with_agent, sign_with_agent,
     verify_with_agent,
 };
-use jacs::crypt::hash::hash_public_key;
+use jacs::crypt::hash::{hash_public_key, hash_string};
 use jacs::validation::normalize_agent_id;
 use serde_json::{Value, json};
 use serial_test::serial;
@@ -135,6 +135,106 @@ fn post_final_transcript_append_preserves_prior_signature_validity() {
 
 #[test]
 #[serial(jacs_env)]
+fn rejects_deeply_nested_agreement_input() {
+    let mut ctx = finalized_golden_agreement();
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::AppendTranscript {
+            entry: deeply_nested_value(70),
+        },
+    );
+
+    assert_err_contains(result, "nesting depth");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_oversized_agreement_input() {
+    let mut ctx = finalized_golden_agreement();
+    let document = ctx.current.to_string();
+    assert!(
+        document.len() > 256,
+        "test agreement must exceed the temporary byte cap"
+    );
+
+    let previous_max = std::env::var_os("JACS_MAX_DOCUMENT_SIZE");
+    // SAFETY: serial_test ensures this env mutation is isolated for the test.
+    unsafe {
+        std::env::set_var("JACS_MAX_DOCUMENT_SIZE", "256");
+    }
+    let result = verify_with_agent(&mut ctx.agent_a, &document);
+    // SAFETY: paired cleanup for the isolated env mutation above.
+    unsafe {
+        if let Some(value) = previous_max {
+            std::env::set_var("JACS_MAX_DOCUMENT_SIZE", value);
+        } else {
+            std::env::remove_var("JACS_MAX_DOCUMENT_SIZE");
+        }
+    }
+
+    assert_err_contains(result, "too large");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn accepts_agreement_within_resource_limits() {
+    let mut ctx = finalized_golden_agreement();
+    let report =
+        verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string()).expect("verify agreement");
+
+    assert!(report.valid, "{:?}", report.errors);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn moderate_transcript_prefix_hashes_match_full_hash() {
+    let mut ctx = draft_golden_agreement();
+
+    for index in 0..50 {
+        let entry = signed_message_ref(&mut ctx.agent_a, &format!("Transcript entry {index}"));
+        ctx.current = apply_with_agent(
+            &mut ctx.agent_a,
+            &ctx.current.to_string(),
+            AgreementV2Mutation::AppendTranscript { entry },
+        )
+        .expect("append transcript entry")
+        .value;
+    }
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    )
+    .expect("propose transcript-bearing agreement")
+    .value;
+
+    let expected_transcript_hash = hash_string(&jacs::protocol::canonicalize_json(
+        &ctx.current["transcript"],
+    ));
+    assert_eq!(
+        compute_transcript_hash(&ctx.current).expect("transcript hash"),
+        expected_transcript_hash
+    );
+
+    ctx.current = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("sign full transcript")
+    .value;
+
+    let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
+        .expect("verify signed full transcript");
+    assert!(report.valid, "{:?}", report.errors);
+    assert_eq!(report.recomputed_transcript_hash, expected_transcript_hash);
+}
+
+#[test]
+#[serial(jacs_env)]
 fn post_final_terms_edit_is_rejected() {
     let mut ctx = finalized_golden_agreement();
 
@@ -229,6 +329,55 @@ fn final_document_verifies_without_local_version_archive() {
     assert!(
         report.valid,
         "current agreement verification should not require local archived prior versions: {:?}",
+        report.errors
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn legitimate_single_version_agreement_chain_fully_verified() {
+    let mut ctx = draft_golden_agreement();
+
+    let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
+        .expect("verify single-version agreement");
+
+    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.chain_fully_verified);
+    assert_eq!(report.verified_chain_depth, 0);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn verify_reports_incomplete_chain_when_prior_version_missing() {
+    let mut ctx = finalized_golden_agreement();
+    let mut verifier = generated_ed25519_agent("Archive-free verifier");
+    cache_all_public_keys(&mut [
+        &mut verifier,
+        &mut ctx.agent_a,
+        &mut ctx.agent_b,
+        &mut ctx.hai,
+        &mut ctx.outsider,
+    ]);
+
+    let report = verify_with_agent(&mut verifier, &ctx.current.to_string())
+        .expect("verify final without archived prior versions");
+
+    // Design decision: archive-free verification is valid but reports an incomplete chain.
+    assert!(report.valid, "{:?}", report.errors);
+    assert!(!report.chain_fully_verified);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.contains("prior version") && note.contains("could not be loaded")),
+        "expected missing-prior-version note, got {:?}",
+        report.notes
+    );
+    assert!(
+        !report.errors.iter().any(|error| {
+            error.contains("allPreviousVersions") || error.contains("prior version")
+        }),
+        "missing local archive should not be a hard chain error: {:?}",
         report.errors
     );
 }
@@ -469,6 +618,99 @@ fn timeout_and_expires_at_stop_new_signatures() {
 
 #[test]
 #[serial(jacs_env)]
+fn final_agreement_remains_valid_after_expires_at() {
+    use jacs::agreements::v2::recompute_status;
+
+    // A fully-signed agreement that satisfies quorum must recompute to "final"
+    // even when expiresAt is in the past (no retroactive invalidation).
+    let final_doc = json!({
+        "status": "final",
+        "expiresAt": "2000-01-01T00:00:00Z",
+        "parties": [{"agentId": "agent-a", "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "agreementSignatures": [{
+            "role": "signer",
+            "signature": {"agentID": "agent-a"}
+        }]
+    });
+    assert_eq!(recompute_status(&final_doc), "final");
+
+    // End-to-end: a real final agreement (future expiry) verifies valid.
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    input.status = "proposed".to_string();
+    input.expires_at = Some("2999-01-01T00:00:00Z".to_string());
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create proposed agreement")
+        .value;
+    ctx.current = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("A signs to final")
+    .value;
+    assert_eq!(ctx.current["status"], json!("final"));
+    let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
+        .expect("verify final agreement");
+    assert!(report.valid, "{:?}", report.errors);
+    assert_eq!(report.expected_status, "final");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn cannot_sign_after_expires_at() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    // No signatures yet; expiresAt in the past => recomputes to "expired".
+    input.status = "expired".to_string();
+    input.expires_at = Some("2000-01-01T00:00:00Z".to_string());
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create expired agreement")
+        .value;
+    let err = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    );
+    assert!(err.is_err(), "signing past expiresAt must fail");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn cannot_sign_before_effective_from() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    input.status = "proposed".to_string();
+    input.effective_from = Some("2999-01-01T00:00:00Z".to_string());
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create not-yet-effective agreement")
+        .value;
+    let err = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    );
+    assert!(err.is_err(), "signing before effectiveFrom must fail");
+}
+
+#[test]
+#[serial(jacs_env)]
 fn invalid_policy_counts_and_duplicate_parties_are_rejected() {
     let mut ctx = empty_golden_cast();
     let a_id = normalized_id(&ctx.agent_a);
@@ -688,6 +930,189 @@ fn status_final_cannot_be_set_before_policy_is_satisfied() {
 
 #[test]
 #[serial(jacs_env)]
+fn loosening_quorum_after_signature_is_rejected() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let b_id = normalized_id(&ctx.agent_b);
+
+    ctx.current = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![party(&a_id, "signer"), party(&b_id, "signer")],
+            json!({"partyQuorum": 2}),
+            vec![a_id.clone(), b_id],
+        ),
+    )
+    .expect("create draft")
+    .value;
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    )
+    .expect("propose agreement")
+    .value;
+    ctx.current = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("A signs")
+    .value;
+    assert_eq!(ctx.current["status"], json!("partially_signed"));
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetSignaturePolicy {
+            signature_policy: json!({"partyQuorum": 1}),
+        },
+    );
+
+    assert!(
+        result.is_err(),
+        "quorum loosening after a signature must be rejected"
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn loosening_quorum_on_proposed_without_signatures_is_rejected() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let b_id = normalized_id(&ctx.agent_b);
+
+    ctx.current = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![party(&a_id, "signer"), party(&b_id, "signer")],
+            json!({"partyQuorum": 2}),
+            vec![a_id.clone(), b_id],
+        ),
+    )
+    .expect("create draft")
+    .value;
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    )
+    .expect("propose agreement")
+    .value;
+    assert_eq!(ctx.current["status"], json!("proposed"));
+    assert_eq!(
+        ctx.current["agreementSignatures"].as_array().unwrap().len(),
+        0
+    );
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetSignaturePolicy {
+            signature_policy: json!({"partyQuorum": 1}),
+        },
+    );
+
+    assert!(
+        result.is_err(),
+        "quorum loosening after proposal must be rejected"
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn setting_policy_on_fresh_draft_succeeds() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let b_id = normalized_id(&ctx.agent_b);
+
+    ctx.current = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![party(&a_id, "signer"), party(&b_id, "signer")],
+            json!({"partyQuorum": 2}),
+            vec![a_id.clone(), b_id],
+        ),
+    )
+    .expect("create draft")
+    .value;
+    assert_eq!(ctx.current["status"], json!("draft"));
+    assert_eq!(
+        ctx.current["agreementSignatures"].as_array().unwrap().len(),
+        0
+    );
+    assert_eq!(
+        ctx.current["allPreviousVersions"].as_array().unwrap().len(),
+        0
+    );
+
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetSignaturePolicy {
+            signature_policy: json!({"partyQuorum": 1}),
+        },
+    )
+    .expect("set policy on fresh draft")
+    .value;
+
+    assert_eq!(ctx.current["status"], json!("draft"));
+    assert_eq!(ctx.current["signaturePolicy"], json!({"partyQuorum": 1}));
+}
+
+#[test]
+#[serial(jacs_env)]
+fn tightening_quorum_after_proposal_succeeds() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let b_id = normalized_id(&ctx.agent_b);
+    let hai_id = normalized_id(&ctx.hai);
+
+    ctx.current = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![
+                party(&a_id, "signer"),
+                party(&b_id, "signer"),
+                party(&hai_id, "signer"),
+            ],
+            json!({"partyQuorum": 2}),
+            vec![a_id.clone(), b_id, hai_id],
+        ),
+    )
+    .expect("create draft")
+    .value;
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    )
+    .expect("propose agreement")
+    .value;
+    assert_eq!(ctx.current["status"], json!("proposed"));
+
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetSignaturePolicy {
+            signature_policy: json!({"partyQuorum": 3}),
+        },
+    )
+    .expect("tighten quorum after proposal")
+    .value;
+
+    assert_eq!(ctx.current["status"], json!("proposed"));
+    assert_eq!(ctx.current["signaturePolicy"], json!({"partyQuorum": 3}));
+}
+
+#[test]
+#[serial(jacs_env)]
 fn effective_and_expiry_fields_are_in_consent_scope() {
     let mut ctx = empty_golden_cast();
     let a_id = normalized_id(&ctx.agent_a);
@@ -817,6 +1242,65 @@ fn party_tampering_invalidates_existing_consent_signatures() {
 
 #[test]
 #[serial(jacs_env)]
+fn transplanted_signature_from_other_agreement_is_rejected() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let parties = vec![party(&a_id, "signer")];
+    let signature_policy = json!({"partyQuorum": "all"});
+    let controllers = vec![a_id.clone()];
+
+    let agreement_a = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            parties.clone(),
+            signature_policy.clone(),
+            controllers.clone(),
+        ),
+    )
+    .expect("create agreement A")
+    .value;
+    let agreement_b = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(parties, signature_policy, controllers),
+    )
+    .expect("create agreement B")
+    .value;
+
+    assert_ne!(
+        required_str(&agreement_a, "jacsId"),
+        required_str(&agreement_b, "jacsId")
+    );
+    assert_eq!(
+        required_str(&agreement_a, "jacsAgreementHash"),
+        required_str(&agreement_b, "jacsAgreementHash")
+    );
+
+    let signed_a = sign_with_agent(
+        &mut ctx.agent_a,
+        &agreement_a.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("sign agreement A")
+    .value;
+    let transplanted_entry = signed_a["agreementSignatures"][0].clone();
+
+    let b_with_transplant = manual_successor(&mut ctx.agent_a, &agreement_b, |next| {
+        next["agreementSignatures"]
+            .as_array_mut()
+            .expect("agreement signatures array")
+            .push(transplanted_entry);
+        next["status"] = json!("final");
+    });
+
+    let report = verify_with_agent(&mut ctx.agent_a, &b_with_transplant.to_string())
+        .expect("verify transplanted signature");
+    assert!(!report.valid, "{:?}", report.errors);
+    assert_eq!(report.signer_count, 0);
+    assert!(!report.errors.is_empty());
+}
+
+#[test]
+#[serial(jacs_env)]
 fn transcript_only_branches_are_detected_and_auto_merged() {
     let mut ctx = finalized_golden_agreement();
     let base = ctx.current.clone();
@@ -883,6 +1367,67 @@ fn transcript_only_branches_are_detected_and_auto_merged() {
     let report =
         verify_with_agent(&mut ctx.agent_a, &merged.to_string()).expect("verify merged branch");
     assert!(report.valid, "{:?}", report.errors);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn merge_link_binds_content_hash() {
+    let mut ctx = finalized_golden_agreement();
+    let (_left, right, merged) = transcript_merge_fixture(&mut ctx);
+    let right_version = required_str(&right, JACS_VERSION_FIELDNAME).to_string();
+
+    let merge_link = merged["links"]
+        .as_array()
+        .expect("links array")
+        .iter()
+        .find(|link| {
+            link.get("jacsVersion").and_then(Value::as_str) == Some(right_version.as_str())
+        })
+        .expect("merge link to right branch");
+    let link_hash = merge_link
+        .get(SHA256_FIELDNAME)
+        .and_then(Value::as_str)
+        .expect("merge link content hash");
+
+    assert!(!link_hash.is_empty());
+    assert_eq!(link_hash, required_str(&right, SHA256_FIELDNAME));
+
+    let report =
+        verify_with_agent(&mut ctx.hai, &merged.to_string()).expect("verify merged branch");
+    assert!(report.valid, "{:?}", report.errors);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn merge_link_content_mismatch_is_rejected() {
+    let mut ctx = finalized_golden_agreement();
+    let (_left, right, merged) = transcript_merge_fixture(&mut ctx);
+    let right_version = required_str(&right, JACS_VERSION_FIELDNAME).to_string();
+    let tampered = manual_successor(&mut ctx.hai, &merged, |doc| {
+        let merge_link = doc["links"]
+            .as_array_mut()
+            .expect("links array")
+            .iter_mut()
+            .find(|link| {
+                link.get("jacsVersion").and_then(Value::as_str) == Some(right_version.as_str())
+            })
+            .expect("merge link to right branch");
+        merge_link[SHA256_FIELDNAME] =
+            json!("0000000000000000000000000000000000000000000000000000000000000000");
+    });
+
+    let report =
+        verify_with_agent(&mut ctx.hai, &tampered.to_string()).expect("verify tampered merge link");
+
+    assert!(!report.valid, "{:?}", report.errors);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|error| error.contains("content hash mismatch")),
+        "expected merge-link content hash mismatch, got {:?}",
+        report.errors
+    );
 }
 
 #[test]
@@ -1621,7 +2166,7 @@ fn v2_schema_is_embedded_and_enforced_as_source_of_truth() {
     .expect("embedded agreement v2 schema");
     assert_eq!(
         schema.get("$id").and_then(Value::as_str),
-        Some("https://hai.ai/schemas/agreement/v2/agreement.schema.json")
+        Some(jacs_core::schema::V2_SCHEMA_ID)
     );
 
     let mut ctx = empty_golden_cast();
@@ -1678,6 +2223,64 @@ fn v2_schema_is_embedded_and_enforced_as_source_of_truth() {
         transcript_extra.is_err(),
         "transcript document refs must reject fields outside the v2 schema"
     );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_unknown_top_level_field() {
+    let mut ctx = draft_golden_agreement();
+    let tampered = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
+        value["maliciousField"] = json!("x");
+    });
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &tampered.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    );
+
+    assert_err_contains(result, "maliciousField");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_downgraded_schema_identity_native() {
+    let mut ctx = draft_golden_agreement();
+    let downgraded = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
+        value["$schema"] =
+            json!("https://hai.ai/schemas/components/agreement/v1/agreement.schema.json");
+    });
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &downgraded.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    );
+
+    assert_err_contains(result, "$schema");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_malformed_datetime_or_id_native() {
+    let mut ctx = draft_golden_agreement();
+    let malformed = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
+        value["controllers"][0] = json!("not-a-uuid");
+    });
+
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &malformed.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    );
+
+    assert_err_contains(result, "controllers[0]");
 }
 
 #[test]
@@ -1739,6 +2342,308 @@ fn agreement_signature_role_tampering_is_detected() {
         "expected witness role failure, got {:?}",
         report.errors
     );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn create_rejects_caller_supplied_agreement_signatures() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+
+    // First, legitimately sign a real agreement so we have a genuine signature entry.
+    let real = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![party(&a_id, "signer")],
+            json!({"partyQuorum": "all"}),
+            vec![a_id.clone()],
+        ),
+    )
+    .expect("create agreement");
+    let signed = sign_with_agent(
+        &mut ctx.agent_a,
+        &real.value.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("sign agreement")
+    .value;
+    let smuggled_entry = signed["agreementSignatures"][0].clone();
+
+    // Now attempt to create a *fresh* agreement that smuggles in a pre-existing
+    // signature. Even a genuine entry must be rejected: agreements start unsigned,
+    // and a forged `final` status could otherwise ride along until a full verify.
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id],
+    );
+    input.agreement_signatures = vec![smuggled_entry];
+    input.status = "final".to_string();
+
+    let result = create_with_agent(&mut ctx.agent_a, input);
+    assert!(
+        result.is_err(),
+        "create must reject caller-supplied agreementSignatures"
+    );
+    let message = result.err().unwrap().to_string();
+    assert!(
+        message.contains("agreementSignatures must be empty at creation"),
+        "unexpected error: {}",
+        message
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn merge_rejects_branch_carrying_forged_agreement_signature() {
+    let mut ctx = finalized_golden_agreement();
+
+    // Forge a base whose carried consent signature has tampered cryptographic
+    // bytes. The array shape is unchanged, so the branches below are still
+    // transcript-only auto-mergeable, but the carried signature is invalid.
+    let forged_base = manual_successor(&mut ctx.hai, &ctx.current, |value| {
+        let signature = value["agreementSignatures"][0]["signature"]
+            .as_object_mut()
+            .expect("signature object");
+        let original = signature
+            .get("signature")
+            .and_then(Value::as_str)
+            .expect("signature bytes")
+            .to_string();
+        signature.insert(
+            "signature".to_string(),
+            json!(flip_last_base64_char(&original)),
+        );
+    });
+
+    // Sanity: a direct verify of the forged base reports invalid carried signature.
+    let base_report =
+        verify_with_agent(&mut ctx.agent_a, &forged_base.to_string()).expect("verify forged base");
+    assert!(!base_report.valid, "forged base should not verify");
+
+    let left_entry = signed_message_ref(&mut ctx.agent_a, "Left branch note over forged base.");
+    let left = apply_with_agent(
+        &mut ctx.agent_a,
+        &forged_base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: left_entry },
+    )
+    .expect("left branch append")
+    .value;
+
+    let right_entry = signed_message_ref(&mut ctx.agent_b, "Right branch note over forged base.");
+    let right = apply_with_agent(
+        &mut ctx.agent_b,
+        &forged_base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: right_entry },
+    )
+    .expect("right branch append")
+    .value;
+
+    let merged = merge_transcript_branches_with_agent(
+        &mut ctx.hai,
+        &forged_base.to_string(),
+        &left.to_string(),
+        &right.to_string(),
+    );
+    assert!(
+        merged.is_err(),
+        "merge must refuse to launder a forged carried signature into a fresh successor"
+    );
+    let message = merged.err().unwrap().to_string();
+    assert!(
+        message.contains("refusing to merge unverified agreement"),
+        "unexpected error: {}",
+        message
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn resolve_rejects_branch_carrying_forged_agreement_signature() {
+    let mut ctx = finalized_golden_agreement();
+
+    let forged_base = manual_successor(&mut ctx.hai, &ctx.current, |value| {
+        let signature = value["agreementSignatures"][0]["signature"]
+            .as_object_mut()
+            .expect("signature object");
+        let original = signature
+            .get("signature")
+            .and_then(Value::as_str)
+            .expect("signature bytes")
+            .to_string();
+        signature.insert(
+            "signature".to_string(),
+            json!(flip_last_base64_char(&original)),
+        );
+    });
+
+    let previous_entry =
+        signed_message_ref(&mut ctx.agent_a, "Previous branch note over forged base.");
+    let previous = apply_with_agent(
+        &mut ctx.agent_a,
+        &forged_base.to_string(),
+        AgreementV2Mutation::AppendTranscript {
+            entry: previous_entry,
+        },
+    )
+    .expect("previous branch append")
+    .value;
+
+    let side_entry = signed_message_ref(&mut ctx.agent_b, "Side branch note over forged base.");
+    let side_branch = apply_with_agent(
+        &mut ctx.agent_b,
+        &forged_base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: side_entry },
+    )
+    .expect("side branch append")
+    .value;
+
+    let resolution_entry = signed_message_ref(&mut ctx.hai, "Resolution note.");
+    let resolved = resolve_branch_conflict_with_agent(
+        &mut ctx.agent_a,
+        &forged_base.to_string(),
+        &previous.to_string(),
+        &side_branch.to_string(),
+        AgreementV2Mutation::AppendTranscript {
+            entry: resolution_entry,
+        },
+    );
+    assert!(
+        resolved.is_err(),
+        "resolve must refuse to launder a forged carried signature into a fresh successor"
+    );
+    let message = resolved.err().unwrap().to_string();
+    assert!(
+        message.contains("refusing to resolve unverified agreement"),
+        "unexpected error: {}",
+        message
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn verify_does_not_persist_unstored_agreement() {
+    let mut ctx = draft_golden_agreement();
+
+    // Build a never-before-stored successor version: fresh jacsVersion + re-signed
+    // header, but we deliberately do NOT call store_jacs_document.
+    let unstored = unstored_successor(&mut ctx.agent_a, &ctx.current);
+    let unstored_key = format!(
+        "{}:{}",
+        required_str(&unstored, "jacsId"),
+        required_str(&unstored, "jacsVersion")
+    );
+
+    let keys_before = ctx.agent_a.get_document_keys();
+    assert!(
+        !keys_before.iter().any(|key| key == &unstored_key),
+        "precondition: unstored version must be absent from storage"
+    );
+
+    let report = verify_with_agent(&mut ctx.agent_a, &unstored.to_string())
+        .expect("verify unstored agreement");
+    assert!(report.valid, "{:?}", report.errors);
+
+    let keys_after = ctx.agent_a.get_document_keys();
+    assert!(
+        !keys_after.iter().any(|key| key == &unstored_key),
+        "verify must not persist the caller-supplied document to storage"
+    );
+    assert!(
+        ctx.agent_a.get_document(&unstored_key).is_err(),
+        "verify must not store the unverified document"
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn detect_branch_conflict_does_not_persist_unstored_agreement() {
+    let mut ctx = finalized_golden_agreement();
+    let base = ctx.current.clone();
+
+    let left_entry = signed_message_ref(&mut ctx.agent_a, "Left detect-only note.");
+    let left = apply_with_agent(
+        &mut ctx.agent_a,
+        &base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: left_entry },
+    )
+    .expect("left branch append")
+    .value;
+
+    // Right branch is built off the same base but never stored anywhere.
+    let right = unstored_successor(&mut ctx.agent_b, &left);
+    let mut right = right;
+    // Rebase the unstored right branch onto `base` so the analysis treats it as a sibling.
+    right[JACS_PREVIOUS_VERSION_FIELDNAME] = base[JACS_VERSION_FIELDNAME].clone();
+    let right = resign_unstored(&mut ctx.agent_b, right);
+    let right_key = format!(
+        "{}:{}",
+        required_str(&right, "jacsId"),
+        required_str(&right, "jacsVersion")
+    );
+
+    assert!(
+        !ctx.agent_a
+            .get_document_keys()
+            .iter()
+            .any(|key| key == &right_key),
+        "precondition: detect input must be absent from storage"
+    );
+
+    let _ = detect_branch_conflict(&base.to_string(), &left.to_string(), &right.to_string())
+        .expect("analyze branches");
+
+    assert!(
+        ctx.agent_a.get_document(&right_key).is_err(),
+        "detect_branch_conflict must not persist the caller-supplied document"
+    );
+}
+
+/// Build a successor version (fresh jacsVersion + re-signed header) WITHOUT
+/// storing it, so tests can assert read-only operations do not persist input.
+fn unstored_successor(signer: &mut Agent, previous: &Value) -> Value {
+    let mut next = previous.clone();
+    let previous_version = next[JACS_VERSION_FIELDNAME]
+        .as_str()
+        .expect("previous jacsVersion")
+        .to_string();
+    if let Some(all_previous_versions) = next
+        .get_mut("allPreviousVersions")
+        .and_then(Value::as_array_mut)
+        && !all_previous_versions
+            .iter()
+            .any(|version| version.as_str() == Some(previous_version.as_str()))
+    {
+        all_previous_versions.push(json!(previous_version.clone()));
+    }
+    next[JACS_PREVIOUS_VERSION_FIELDNAME] = json!(previous_version);
+    next[JACS_VERSION_FIELDNAME] = json!(Uuid::new_v4().to_string());
+    next[JACS_VERSION_DATE_FIELDNAME] = json!(jacs::time_utils::now_rfc3339());
+    resign_unstored(signer, next)
+}
+
+/// Re-sign and re-hash a document header in place WITHOUT storing it.
+fn resign_unstored(signer: &mut Agent, mut next: Value) -> Value {
+    if let Some(object) = next.as_object_mut() {
+        object.remove(DOCUMENT_AGENT_SIGNATURE_FIELDNAME);
+        object.remove(SHA256_FIELDNAME);
+    }
+    next[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] = signer
+        .signing_procedure(&next, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+        .expect("unstored header signature");
+    let document_hash = signer.hash_doc(&next).expect("unstored hash");
+    next[SHA256_FIELDNAME] = json!(document_hash);
+    next
+}
+
+/// Flip the last base64 character of a signature so the bytes no longer verify,
+/// while keeping the string a valid base64 length.
+fn flip_last_base64_char(signature: &str) -> String {
+    let mut chars: Vec<char> = signature.chars().collect();
+    if let Some(last) = chars.last_mut() {
+        *last = if *last == 'A' { 'B' } else { 'A' };
+    }
+    chars.into_iter().collect()
 }
 
 struct GoldenAgreement {
@@ -1930,6 +2835,45 @@ fn sync_versions_to_cast(ctx: &mut GoldenAgreement) {
     }
 }
 
+fn transcript_merge_fixture(ctx: &mut GoldenAgreement) -> (Value, Value, Value) {
+    let base = ctx.current.clone();
+    let left_entry = signed_message_ref(&mut ctx.agent_a, "Left branch performance note.");
+    let left = apply_with_agent(
+        &mut ctx.agent_a,
+        &base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: left_entry },
+    )
+    .expect("left branch append")
+    .value;
+
+    let right_entry = signed_message_ref(&mut ctx.agent_b, "Right branch performance note.");
+    let right = apply_with_agent(
+        &mut ctx.agent_b,
+        &base.to_string(),
+        AgreementV2Mutation::AppendTranscript { entry: right_entry },
+    )
+    .expect("right branch append")
+    .value;
+
+    ctx.hai
+        .store_jacs_document(&left)
+        .expect("archive left branch for merge verification");
+    ctx.hai
+        .store_jacs_document(&right)
+        .expect("archive right branch for merge verification");
+
+    let merged = merge_transcript_branches_with_agent(
+        &mut ctx.hai,
+        &base.to_string(),
+        &left.to_string(),
+        &right.to_string(),
+    )
+    .expect("auto merge transcript branches")
+    .value;
+
+    (left, right, merged)
+}
+
 fn generated_ed25519_agent(name: &str) -> Agent {
     generated_ed25519_agent_with_type(name, "ai")
 }
@@ -2081,4 +3025,251 @@ fn required_str<'a>(value: &'a Value, field: &str) -> &'a str {
         .get(field)
         .and_then(Value::as_str)
         .unwrap_or_else(|| panic!("missing string field {}", field))
+}
+
+fn deeply_nested_value(depth: usize) -> Value {
+    let mut value = json!("leaf");
+    for _ in 0..depth {
+        value = json!({ "a": value });
+    }
+    value
+}
+
+fn assert_err_contains<T, E: std::fmt::Display>(result: Result<T, E>, needle: &str) {
+    let Err(err) = result else {
+        panic!("expected error containing '{needle}'");
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains(needle),
+        "expected error containing '{needle}', got: {msg}"
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn camelcase_update_terms_mutation_json_applies_all_fields() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create agreement")
+        .value;
+
+    let mutation_json = r#"{
+        "type": "updateTerms",
+        "terms": "Revised terms text.",
+        "termsFormat": "text/markdown",
+        "effectiveFrom": "2030-01-01T00:00:00Z",
+        "expiresAt": "2031-01-01T00:00:00Z"
+    }"#;
+    let mutation: AgreementV2Mutation =
+        serde_json::from_str(mutation_json).expect("deserialize camelCase updateTerms mutation");
+
+    ctx.current = apply_with_agent(&mut ctx.agent_a, &ctx.current.to_string(), mutation)
+        .expect("apply updateTerms")
+        .value;
+
+    assert_eq!(ctx.current["terms"], json!("Revised terms text."));
+    assert_eq!(ctx.current["termsFormat"], json!("text/markdown"));
+    assert_eq!(ctx.current["effectiveFrom"], json!("2030-01-01T00:00:00Z"));
+    assert_eq!(ctx.current["expiresAt"], json!("2031-01-01T00:00:00Z"));
+}
+
+// ---------------------------------------------------------------------------
+// Structured observability: agreement v2 lifecycle events (Task B8)
+// ---------------------------------------------------------------------------
+
+use std::sync::{Arc as StdArc, Mutex as StdMutex};
+use tracing::Level;
+use tracing_subscriber::Layer;
+use tracing_subscriber::layer::SubscriberExt;
+
+#[derive(Debug, Clone)]
+struct B8CapturedEvent {
+    level: Level,
+    fields: Vec<(String, String)>,
+}
+
+struct B8CaptureLayer {
+    events: StdArc<StdMutex<Vec<B8CapturedEvent>>>,
+}
+
+impl<S: tracing::Subscriber> Layer<S> for B8CaptureLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let mut fields = Vec::new();
+        let mut visitor = B8FieldVisitor(&mut fields);
+        event.record(&mut visitor);
+        if let Ok(mut events) = self.events.lock() {
+            events.push(B8CapturedEvent {
+                level: *event.metadata().level(),
+                fields,
+            });
+        }
+    }
+}
+
+struct B8FieldVisitor<'a>(&'a mut Vec<(String, String)>);
+
+impl tracing::field::Visit for B8FieldVisitor<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0
+            .push((field.name().to_string(), format!("{:?}", value)));
+    }
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+}
+
+fn b8_capture_logs<F: FnOnce()>(f: F) -> Vec<B8CapturedEvent> {
+    let events = StdArc::new(StdMutex::new(Vec::new()));
+    let layer = B8CaptureLayer {
+        events: events.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(layer);
+    tracing::subscriber::with_default(subscriber, f);
+    StdArc::try_unwrap(events)
+        .expect("events arc unique")
+        .into_inner()
+        .expect("events mutex not poisoned")
+}
+
+fn b8_events_named<'a>(events: &'a [B8CapturedEvent], name: &str) -> Vec<&'a B8CapturedEvent> {
+    events
+        .iter()
+        .filter(|e| e.fields.iter().any(|(k, v)| k == "event" && v == name))
+        .collect()
+}
+
+fn b8_field<'a>(event: &'a B8CapturedEvent, field: &str) -> Option<&'a str> {
+    event
+        .fields
+        .iter()
+        .find(|(k, _)| k == field)
+        .map(|(_, v)| v.as_str())
+}
+
+#[test]
+#[serial(jacs_env)]
+fn agreement_v2_lifecycle_emits_structured_events() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+
+    // create + sign (single-party, all quorum -> self-finalizes) under capture.
+    let events = b8_capture_logs(|| {
+        let created = create_with_agent(
+            &mut ctx.agent_a,
+            base_agreement_input(
+                vec![party(&a_id, "signer")],
+                json!({"partyQuorum": "all"}),
+                vec![a_id.clone()],
+            ),
+        )
+        .expect("create agreement v2")
+        .value;
+
+        let _signed = sign_with_agent(
+            &mut ctx.agent_a,
+            &created.to_string(),
+            AgreementV2Role::Signer,
+        )
+        .expect("sign agreement v2")
+        .value;
+    });
+
+    let created_events = b8_events_named(&events, "agreement_v2_created");
+    assert!(
+        !created_events.is_empty(),
+        "expected agreement_v2_created event; got {:?}",
+        events.iter().map(|e| &e.fields).collect::<Vec<_>>()
+    );
+    assert!(b8_field(created_events[0], "document_id").is_some());
+    assert!(b8_field(created_events[0], "status").is_some());
+
+    let signed_events = b8_events_named(&events, "agreement_v2_signed");
+    assert!(
+        !signed_events.is_empty(),
+        "expected agreement_v2_signed event"
+    );
+    assert_eq!(b8_field(signed_events[0], "role"), Some("signer"));
+    assert!(b8_field(signed_events[0], "document_id").is_some());
+}
+
+#[test]
+#[serial(jacs_env)]
+fn agreement_v2_invalid_verification_emits_warn() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+
+    let created = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![party(&a_id, "signer")],
+            json!({"partyQuorum": "all"}),
+            vec![a_id.clone()],
+        ),
+    )
+    .expect("create agreement v2")
+    .value;
+
+    // Tamper the stored agreement hash so verification fails, then emit a
+    // structurally valid successor so it loads but verifies invalid.
+    let mut tampered = created.clone();
+    tampered["jacsAgreementHash"] =
+        json!("0000000000000000000000000000000000000000000000000000000000000000");
+    let tampered_key = format!(
+        "{}:{}",
+        created["jacsId"].as_str().unwrap(),
+        created["jacsVersion"].as_str().unwrap()
+    );
+    let tampered = ctx
+        .agent_a
+        .update_document(&tampered_key, &tampered.to_string(), None, None)
+        .expect("emit tampered successor")
+        .value;
+
+    let agreement_id = tampered["jacsId"].as_str().unwrap().to_string();
+
+    let events = b8_capture_logs(|| {
+        let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
+            .expect("verify returns a report");
+        assert!(!report.valid, "tampered agreement must verify invalid");
+    });
+
+    let verified_events = b8_events_named(&events, "agreement_v2_verified");
+    let warn_event = verified_events
+        .iter()
+        .find(|e| e.level == Level::WARN)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a WARN agreement_v2_verified event; got {:?}",
+                events
+                    .iter()
+                    .map(|e| (e.level, &e.fields))
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(b8_field(warn_event, "valid"), Some("false"));
+    assert_eq!(
+        b8_field(warn_event, "document_id"),
+        Some(agreement_id.as_str())
+    );
+    assert!(b8_field(warn_event, "error_count").is_some());
 }

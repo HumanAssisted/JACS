@@ -40,11 +40,16 @@ fn read_json_arg(raw: &str) -> Result<String, Box<dyn Error>> {
         return Ok(buf);
     }
 
+    let trimmed = raw.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    if matches!(trimmed.as_bytes().first().copied(), Some(b'{') | Some(b'[')) {
+        return Ok(raw.to_string());
+    }
+
     if std::path::Path::new(raw).exists() {
         return Ok(std::fs::read_to_string(raw)?);
     }
 
-    Ok(raw.to_string())
+    Err(format!("file not found: '{raw}' (argument did not start with '{{' or '[' so it was treated as a file path; pass inline JSON, a readable file, or '-' for stdin)").into())
 }
 
 fn print_json_pretty<T: serde::Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
@@ -133,7 +138,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     require_dns,
                     non_strict,
                 )
-                .expect("Failed to load agent from config");
+                .map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
                 let pk = agent.get_public_key().expect("public key");
                 let digest = match enc {
@@ -213,10 +220,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     require_dns,
                     non_strict,
                 )
-                .expect("Failed to load agent from config");
+                .map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 agent
                     .verify_self_signature()
-                    .expect("signature verification");
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("agent self-signature verification failed: {e}").into()
+                    })?;
                 println!(
                     "Agent {} signature verified OK.",
                     agent.get_lookup_id().expect("jacsId")
@@ -494,7 +505,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
 
                 let _attachment_links = agent.parse_attachement_arg(attachments);
                 let _ = create_documents(
@@ -523,7 +536,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
                 update_documents(
@@ -542,7 +557,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let _agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let schema = create_matches.get_one::<String>("schema");
                 let _no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
@@ -553,12 +570,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
                 let _agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let schema = create_matches.get_one::<String>("schema");
 
                 // Use updated set_file_list with storage
                 let _files: Vec<String> = default_set_file_list(filename, directory, None)
-                    .expect("Failed to determine file list");
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("failed to determine file list from --filename/--directory: {e}")
+                            .into()
+                    })?;
                 check_agreement(&mut agent, schema, filename, directory)?;
             }
             Some(("create-agreement", create_matches)) => {
@@ -575,7 +597,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.to_string())
                     .collect();
 
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 // Use updated set_file_list with storage
                 let _ =
                     create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
@@ -586,7 +610,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = verify_matches.get_one::<String>("directory");
                 let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let _agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
                 verify_documents(&mut agent, schema, filename, directory)?;
@@ -597,11 +623,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = extract_matches.get_one::<String>("directory");
                 let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let _agentfile = extract_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent().expect("REASON");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
                 let _files: Vec<String> = default_set_file_list(filename, directory, None)
-                    .expect("Failed to determine file list");
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("failed to determine file list from --filename/--directory: {e}")
+                            .into()
+                    })?;
                 // extract the contents but do not save
                 extract_documents(&mut agent, schema, filename, directory)?;
             }
@@ -614,7 +645,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let input_raw = read_json_arg(sub_m.get_one::<String>("input").unwrap())?;
                 let input: jacs::agreements::v2::CreateAgreementV2 =
                     serde_json::from_str(&input_raw)?;
-                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let doc = jacs::agreements::v2::create_with_agent(&mut agent, input)?;
                 print_json_pretty(&doc.value)?;
             }
@@ -623,7 +656,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let mutation_raw = read_json_arg(sub_m.get_one::<String>("mutation").unwrap())?;
                 let mutation: jacs::agreements::v2::AgreementV2Mutation =
                     serde_json::from_str(&mutation_raw)?;
-                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let doc = jacs::agreements::v2::apply_with_agent(&mut agent, &agreement, mutation)?;
                 print_json_pretty(&doc.value)?;
             }
@@ -634,15 +669,32 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str())
                     .unwrap_or("signer");
                 let role = parse_agreement_v2_role(role)?;
-                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let doc = jacs::agreements::v2::sign_with_agent(&mut agent, &agreement, role)?;
                 print_json_pretty(&doc.value)?;
             }
             Some(("verify", sub_m)) => {
                 let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
-                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let report = jacs::agreements::v2::verify_with_agent(&mut agent, &agreement)?;
                 print_json_pretty(&report)?;
+                if !report.valid {
+                    let agreement_id = serde_json::from_str::<serde_json::Value>(&agreement)
+                        .ok()
+                        .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
+                        .unwrap_or_else(|| "unknown".to_string());
+                    tracing::warn!(
+                        event = "agreement_v2_verify_invalid",
+                        agreement_id = %agreement_id,
+                        errors = ?report.errors,
+                        "agreement v2 verification failed"
+                    );
+                    process::exit(1);
+                }
             }
             Some(("detect-conflict", sub_m)) => {
                 let base = read_json_arg(sub_m.get_one::<String>("base").unwrap())?;
@@ -655,7 +707,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let base = read_json_arg(sub_m.get_one::<String>("base").unwrap())?;
                 let left = read_json_arg(sub_m.get_one::<String>("left").unwrap())?;
                 let right = read_json_arg(sub_m.get_one::<String>("right").unwrap())?;
-                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let doc = jacs::agreements::v2::merge_transcript_branches_with_agent(
                     &mut agent, &base, &left, &right,
                 )?;
@@ -668,13 +722,18 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let mutation_raw = read_json_arg(sub_m.get_one::<String>("mutation").unwrap())?;
                 let mutation: jacs::agreements::v2::AgreementV2Mutation =
                     serde_json::from_str(&mutation_raw)?;
-                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
+                    format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
+                })?;
                 let doc = jacs::agreements::v2::resolve_branch_conflict_with_agent(
                     &mut agent, &base, &previous, &side, mutation,
                 )?;
                 print_json_pretty(&doc.value)?;
             }
-            _ => println!("please enter subcommand see jacs agreement-v2 --help"),
+            _ => {
+                eprintln!("No agreement-v2 subcommand given. Run `jacs agreement-v2 --help`.");
+                process::exit(2);
+            }
         },
         #[cfg(not(feature = "agreements"))]
         Some(("agreement-v2", _)) => {
@@ -2558,5 +2617,39 @@ fn handle_extract_media_signature(sub: &clap::ArgMatches) {
             eprintln!("extract-media-signature error: {}", e);
             process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_json_arg;
+
+    #[test]
+    fn read_json_arg_accepts_inline_object() {
+        assert_eq!(read_json_arg("{\"a\":1}").unwrap(), "{\"a\":1}");
+    }
+
+    #[test]
+    fn read_json_arg_accepts_inline_array_with_leading_ws() {
+        assert_eq!(read_json_arg("  [1,2]").unwrap(), "  [1,2]");
+    }
+
+    #[test]
+    fn read_json_arg_reads_existing_file() {
+        let dir = std::env::temp_dir().join(format!("jacs_rja_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("agreement.json");
+        std::fs::write(&p, "{\"k\":true}").unwrap();
+        let got = read_json_arg(p.to_str().unwrap()).unwrap();
+        assert_eq!(got, "{\"k\":true}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_json_arg_missing_path_is_clear_error() {
+        let err = read_json_arg("/no/such/agreement.json").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("file not found"), "got: {msg}");
+        assert!(msg.contains("/no/such/agreement.json"), "got: {msg}");
     }
 }

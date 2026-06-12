@@ -220,6 +220,19 @@
 <li>Verify before acting on <code>status</code>. The verifier recomputes hashes, role counts, quorum, notary/witness requirements, and transcript tamper evidence.</li>
 <li>Resolve concurrent branches in Rust core: transcript-only branches auto-merge; terms conflicts require an explicit successor mutation.</li>
 </ol>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Before the first agreement-v2 call you need a loaded agent with keys on disk and a config:</p>
+<ul>
+<li>CLI: run <code>jacs quickstart --name my-agent --domain example.com</code> once. It creates <code>./jacs.config.json</code>, a key pair, and (if missing) a generated password under <code>./jacs_keys</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> or let quickstart manage it.</li>
+<li>Python / Node.js: load or create a <code>SimpleAgent</code> (<code>SimpleAgent.create_agent(...)</code> / <code>JacsSimpleAgent.create(...)</code>), or use <code>ephemeral()</code> for throwaway single-agent demos.</li>
+</ul>
+<p>Multiple distinct agents must share a <code>data_directory</code> (or exchange public keys out of band) so a verifier can resolve every signer's key. Ephemeral agents keep keys in memory only and cannot verify each other's signatures.</p>
+<h2 id="roles-quorum-and-notaries"><a class="header" href="#roles-quorum-and-notaries">Roles, Quorum, and Notaries</a></h2>
+<ul>
+<li><code>signaturePolicy.partyQuorum</code> is <code>all</code> or an integer M (M-of-N signer parties).</li>
+<li><code>witnessRequired</code> and <code>notaryRequired</code> are separate counts; a <code>notary</code> (the role HAI uses) attests the final state and is counted independently of signer quorum.</li>
+<li><code>controllers</code> lists agents allowed to emit new versions; <code>owners</code> are soft copyright claims. Keep them distinct from <code>parties</code>.</li>
+</ul>
 <h2 id="mutations"><a class="header" href="#mutations">Mutations</a></h2>
 <p>All public surfaces accept the same mutation JSON:</p>
 <pre><code class="language-json">{ "type": "appendTranscript", "entry": { "jacsId": "...", "jacsVersion": "...", "jacsSha256": "..." } }
@@ -252,31 +265,47 @@ report = agent.verify_agreement_v2(signed)
 assert report["valid"] is True
 </code></pre>
 <h2 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h2>
-<pre><code class="language-js">const { JacsSimpleAgent } = require("jacs");
+<p>This single-agent example self-signs and self-verifies, so the agent resolves its own key. For multiple distinct agents, see the multi-agent walkthrough, which shares key storage so each agent can resolve the others' public keys.</p>
+<pre><code class="language-js">import { JacsSimpleAgent } from "@hai.ai/jacs";
 
-const agent = JacsSimpleAgent.ephemeral("ed25519");
-const agentId = agent.getAgentId();
+async function main() {
+  const agent = JacsSimpleAgent.ephemeral("ed25519");
+  const agentId = agent.getAgentId();
 
-const agreement = await agent.createAgreementV2(JSON.stringify({
-  title: "Refund approval",
-  description: "Approval for a bounded refund.",
-  terms: "Refund up to $25 for order 123.",
-  status: "proposed",
-  parties: [{ agentId, agentType: "ai", role: "signer" }],
-  signaturePolicy: { partyQuorum: "all", witnessRequired: 0, notaryRequired: 0 },
-  controllers: [agentId]
-}));
+  const agreement = await agent.createAgreementV2(JSON.stringify({
+    title: "Refund approval",
+    description: "Approval for a bounded refund.",
+    terms: "Refund up to $25 for order 123.",
+    status: "proposed",
+    parties: [{ agentId, agentType: "ai", role: "signer" }],
+    signaturePolicy: { partyQuorum: "all", witnessRequired: 0, notaryRequired: 0 },
+    controllers: [agentId],
+  }));
 
-const signed = await agent.signAgreementV2(agreement, "signer");
-const report = await agent.verifyAgreementV2(signed);
+  const signed = await agent.signAgreementV2(agreement, "signer");
+  const report = await agent.verifyAgreementV2(signed);
+  console.log("valid:", report.valid);
+}
+
+main();
 </code></pre>
 <h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
-<pre><code class="language-bash">jacs agent --new
+<pre><code class="language-bash">jacs quickstart --name agent-a --domain example.com
 jacs agreement-v2 create --input agreement-input.json &gt; agreement.json
 jacs agreement-v2 sign --agreement agreement.json --role signer &gt; signed.json
 jacs agreement-v2 verify --agreement signed.json
 </code></pre>
 <p>For branch handling:</p>
+<pre><code class="language-bash">jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
+jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
+jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+</code></pre>
+<h2 id="branch-merge-and-conflicts"><a class="header" href="#branch-merge-and-conflicts">Branch Merge and Conflicts</a></h2>
+<p>Two agents can emit successor versions from the same prior version. Resolve them in core, never by editing JSON by hand:</p>
+<ul>
+<li>Transcript-only branches (each side only appended transcript entries) auto-merge. Detect with <code>detect-conflict</code>, then <code>merge-transcript</code>.</li>
+<li>Any terms, party, policy, status, signature, controller, or link divergence is a real conflict and requires an explicit successor via <code>resolve-conflict</code> (CLI) or <code>resolveAgreementV2BranchConflict</code> / <code>resolve_agreement_v2_branch_conflict</code> (Node/Python).</li>
+</ul>
 <pre><code class="language-bash">jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
 jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
 jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
@@ -307,6 +336,41 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 <li>For post-final terms changes, create a successor agreement or explicit conflict resolution rather than mutating a final agreement in place.</li>
 <li>Delegated signing is reserved for a future feature. In v2 core, the agent that signs must be listed in <code>parties</code> with the matching role.</li>
 </ul>
+<h2 id="migrating-from-v1-agreements"><a class="header" href="#migrating-from-v1-agreements">Migrating from v1 agreements</a></h2>
+<p>JACS still ships the original v1 "sidecar" agreement: a <code>jacsAgreement</code> field attached to an <em>existing</em> signed document, with separate <code>create_agreement</code> / <code>sign_agreement</code> / <code>check_agreement</code> calls and an <code>AgreementOptions</code> struct. v1 answers "did these agents approve this existing payload?" Agreement v2 answers "did these agents consent to <em>these terms</em>, under <em>this policy</em>, with <em>this process record</em>?" - it is a self-contained <code>jacsType: "agreement"</code> document with its own content hash, version chain, parties, roles, signature policy, notary, and transcript.</p>
+<p>v1 is still supported but legacy; new work should use v2.</p>
+<h3 id="conceptual-difference"><a class="header" href="#conceptual-difference">Conceptual difference</a></h3>
+<ul>
+<li><strong>v1 sidecar</strong>: signatures over a referenced document. The agreement is a field bolted onto some other JSON. No standalone identity, no roles beyond "must sign", no transcript, no notary, no branch handling.</li>
+<li><strong>v2 document</strong>: a first-class agreement document. Parties carry <code>role</code> (<code>signer</code> / <code>witness</code> / <code>notary</code> / <code>observer</code>), the <code>signaturePolicy</code> expresses quorum and witness/notary requirements, a <code>transcript</code> records process evidence, and successor versions / branches are reconciled by core helpers.</li>
+</ul>
+<h3 id="operation-mapping"><a class="header" href="#operation-mapping">Operation mapping</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>v1 operation</th><th>v2 equivalent</th></tr></thead><tbody>
+<tr><td><code>create_agreement</code> (binding) / <code>jacs document create-agreement</code> (CLI)</td><td><code>create_agreement_v2</code> / <code>jacs agreement-v2 create</code></td></tr>
+<tr><td><code>sign_agreement</code> (binding) / <code>jacs document sign-agreement</code> (CLI)</td><td><code>sign_agreement_v2</code> / <code>jacs agreement-v2 sign --role signer</code></td></tr>
+<tr><td><code>check_agreement</code> (binding) / <code>jacs document check-agreement</code> (CLI)</td><td><code>verify_agreement_v2</code> / <code>jacs agreement-v2 verify</code></td></tr>
+<tr><td><code>AgreementOptions.quorum</code> (M-of-N)</td><td><code>signaturePolicy.partyQuorum</code> (<code>all</code>, <code>majority</code>, or integer M)</td></tr>
+<tr><td><code>AgreementOptions.timeout</code></td><td><code>signaturePolicy.timeout</code></td></tr>
+<tr><td><code>AgreementOptions.required_algorithms</code></td><td><code>signaturePolicy.requiredAlgorithms</code></td></tr>
+<tr><td><code>AgreementOptions.minimum_strength</code></td><td><code>signaturePolicy.minimumStrength</code></td></tr>
+</tbody></table>
+</div>
+<p>There is no v1 equivalent for v2 mutations (<code>apply_agreement_v2</code> / <code>jacs agreement-v2 apply</code>) or branch handling (<code>jacs agreement-v2 detect-conflict</code> / <code>merge-transcript</code> / <code>resolve-conflict</code>) - these are new in v2.</p>
+<h3 id="what-stays-the-same"><a class="header" href="#what-stays-the-same">What stays the same</a></h3>
+<ul>
+<li>The cryptographic signing model: the same agent identity and keys sign in both versions, and signatures are JACS signatures over canonical content.</li>
+<li>You still load an agent with keys on disk (or <code>ephemeral()</code> for single-agent demos) before any agreement call.</li>
+</ul>
+<h3 id="what-is-new-in-v2"><a class="header" href="#what-is-new-in-v2">What is new in v2</a></h3>
+<ul>
+<li>Roles: <code>signer</code>, <code>witness</code>, <code>notary</code>, <code>observer</code> (v1 has only "agents that must sign").</li>
+<li>Notary and witness requirements (<code>signaturePolicy.notaryRequired</code>, <code>signaturePolicy.witnessRequired</code>), counted independently of signer quorum.</li>
+<li>A <code>transcript</code> of process evidence whose tampering is detectable.</li>
+<li>Branch merge / conflict resolution for concurrent successor versions.</li>
+<li>A top-level <code>valid</code> verdict from <code>verify_agreement_v2</code> (the report also carries <code>expectedStatus</code>).</li>
+<li>Fail-closed CLI: <code>jacs agreement-v2 verify</code> exits non-zero when the agreement is not valid.</li>
+</ul>
+<p>For the full v2 walkthrough, see the <a href="#workflow">Workflow</a>, <a href="#python">Python</a>, <a href="#nodejs">Node.js</a>, and <a href="#cli">CLI</a> sections above and the <a href="../rust/agreements.html">Rust core / legacy comparison</a>.</p>
 <h2 id="verification-matrix"><a class="header" href="#verification-matrix">Verification Matrix</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Coverage</th></tr></thead><tbody>
 <tr><td>Create standalone Agreement v2</td><td>Rust core tests, binding parity fixture, CLI/MCP/WASM tests</td></tr>
@@ -328,6 +392,12 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 </tbody></table>
 </div>
 <p>The fixture <code>binding-core/tests/fixtures/agreement_v2_scenarios.json</code> is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.</p>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<ul>
+<li><code>report.valid</code> is false with a signature error: the verifier could not resolve a signer's key. Confirm all agents share a <code>data_directory</code>, or that the signer published a reachable public key.</li>
+<li>"outsider" rejection on sign/apply: the acting agent is not listed in <code>parties</code> with the matching role. Add it to <code>parties</code> (and to <code>controllers</code> for mutations).</li>
+<li>Status looks wrong: treat stored <code>status</code> as a cache and always call verify; the report carries the recomputed <code>expectedStatus</code>.</li>
+</ul>
 
                     </main>
 

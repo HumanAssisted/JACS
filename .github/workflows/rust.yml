@@ -68,7 +68,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -129,7 +129,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -152,7 +152,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install system dependencies (D-Bus for keychain support)
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
@@ -180,7 +180,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -192,6 +192,9 @@ jobs:
 
       - name: Run binding-core tests
         run: make test-jacs-binding-core
+
+      - name: Run jacs-wasm native sanity tests
+        run: make test-jacs-wasm
 
   # NOTE: jacs-mcp tests run in components.yml (with full-tools).
   # Removed duplicate quick-jacs-mcp and quick-jacs-mcp-minimal jobs.
@@ -210,7 +213,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -235,7 +238,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -262,7 +265,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install system dependencies (D-Bus for keychain support)
         if: runner.os == 'Linux'
@@ -287,7 +290,8 @@ jobs:
         run: |
           cargo build -p jacs-cli
           cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
-          cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
+          cargo test -p jacs-binding-core --features agreements,pq-tests --lib --tests --verbose
+          cargo test -p jacs-wasm --test native_sanity --verbose
           cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
         env:
@@ -324,7 +328,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install system dependencies (D-Bus for keychain support)
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
@@ -347,7 +351,8 @@ jobs:
         run: |
           cargo build -p jacs-cli
           cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
-          cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
+          cargo test -p jacs-binding-core --features agreements,pq-tests --lib --tests --verbose
+          cargo test -p jacs-wasm --test native_sanity --verbose
           cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
         env:

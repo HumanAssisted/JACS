@@ -1,5 +1,7 @@
 package jacs
 
+import "encoding/json"
+
 // AgentInfo contains information about a created or loaded agent.
 type AgentInfo struct {
 	// AgentID is the unique identifier for the agent (UUID).
@@ -42,6 +44,24 @@ type VerificationResult struct {
 	Errors []string `json:"errors,omitempty"`
 }
 
+// AgreementV2Role is a named role accepted by
+// [JacsSimpleAgent.SignAgreementV2]. The signing method still accepts the raw
+// lowercase string; these constants document and standardize the allowed
+// values so callers do not hardcode magic strings.
+type AgreementV2Role string
+
+const (
+	// AgreementV2RoleSigner is a binding party whose signature counts toward quorum.
+	AgreementV2RoleSigner AgreementV2Role = "signer"
+	// AgreementV2RoleWitness attests to having observed the agreement without binding consent.
+	AgreementV2RoleWitness AgreementV2Role = "witness"
+	// AgreementV2RoleNotary provides an authoritative third-party attestation.
+	AgreementV2RoleNotary AgreementV2Role = "notary"
+)
+
+// String returns the wire value of the role.
+func (r AgreementV2Role) String() string { return string(r) }
+
 // AgreementV2VerificationReport is returned by
 // [JacsSimpleAgent.VerifyAgreementV2].
 type AgreementV2VerificationReport struct {
@@ -68,6 +88,47 @@ type AgreementV2MergeAnalysis struct {
 	LeftTranscriptAdditions  int      `json:"leftTranscriptAdditions"`
 	RightTranscriptAdditions int      `json:"rightTranscriptAdditions"`
 	Errors                   []string `json:"errors,omitempty"`
+}
+
+// AgreementV2CreateInput is an optional typed convenience for building the JSON
+// passed to [JacsSimpleAgent.CreateAgreementV2]. Callers may still pass a raw
+// JSON string; marshal this struct with encoding/json to produce that string.
+// Field names match the Rust CreateAgreementV2 wire shape (camelCase).
+type AgreementV2CreateInput struct {
+	Question        string                 `json:"question,omitempty"`
+	Context         string                 `json:"context,omitempty"`
+	Terms           map[string]interface{} `json:"terms,omitempty"`
+	RequiredSigners []string               `json:"requiredSigners,omitempty"`
+	Policy          map[string]interface{} `json:"policy,omitempty"`
+}
+
+// JSON marshals the input to the JSON string accepted by CreateAgreementV2.
+func (in AgreementV2CreateInput) JSON() (string, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// AgreementV2Mutation is an optional typed convenience for building the JSON
+// passed to [JacsSimpleAgent.ApplyAgreementV2] /
+// [JacsSimpleAgent.ResolveAgreementV2BranchConflict]. Field names match the
+// Rust AgreementV2Mutation wire shape (camelCase).
+type AgreementV2Mutation struct {
+	SetTerms          map[string]interface{}   `json:"setTerms,omitempty"`
+	AppendTranscript  []map[string]interface{} `json:"appendTranscript,omitempty"`
+	SetStatus         string                   `json:"setStatus,omitempty"`
+	AddRequiredSigner string                   `json:"addRequiredSigner,omitempty"`
+}
+
+// JSON marshals the mutation to the JSON string accepted by ApplyAgreementV2.
+func (m AgreementV2Mutation) JSON() (string, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // Attachment represents a file attachment in a signed document.

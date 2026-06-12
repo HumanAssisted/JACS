@@ -166,6 +166,10 @@ fn agreement_v2_terms(name: &str) -> String {
         .to_string()
 }
 
+fn agreement_v2_expected() -> serde_json::Value {
+    agreement_v2_fixture()["expected"].clone()
+}
+
 impl Drop for RmcpSession {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.base);
@@ -480,10 +484,21 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         )
         .await?;
     assert_eq!(verify_result["success"], true, "{}", verify_result);
-    assert_eq!(verify_result["result"]["valid"], true, "{}", verify_result);
+    assert_eq!(
+        verify_result["result"]["valid"],
+        agreement_v2_expected()["verify"]["valid"],
+        "{}",
+        verify_result
+    );
+    assert_eq!(
+        verify_result["valid"],
+        agreement_v2_expected()["verify"]["valid"],
+        "valid agreement must report top-level valid=true: {}",
+        verify_result
+    );
     assert_eq!(
         verify_result["result"]["expectedStatus"],
-        serde_json::json!("final")
+        agreement_v2_expected()["verify"]["expectedStatus"]
     );
 
     let left_result = session
@@ -519,7 +534,10 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         )
         .await?;
     assert_eq!(analysis_result["success"], true, "{}", analysis_result);
-    assert_eq!(analysis_result["result"]["autoMergeable"], true);
+    assert_eq!(
+        analysis_result["result"]["autoMergeable"],
+        agreement_v2_expected()["transcriptMerge"]["autoMergeable"]
+    );
 
     let merged_result = session
         .call_tool(
@@ -537,7 +555,12 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             .as_str()
             .expect("merged agreement"),
     )?;
-    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        merged["transcript"].as_array().unwrap().len(),
+        agreement_v2_expected()["transcriptMerge"]["mergedTranscriptLength"]
+            .as_u64()
+            .unwrap() as usize
+    );
 
     let left_terms_result = session
         .call_tool(
@@ -583,12 +606,101 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         resolved["terms"],
         serde_json::json!(agreement_v2_terms("resolved"))
     );
+    let resolution_link = &resolved["links"][0];
+    assert!(
+        resolution_link.is_object(),
+        "resolution link must be an object: {}",
+        resolution_link
+    );
     assert_eq!(
-        resolved["links"][0],
-        serde_json::json!({
-            "jacsId": right_terms["jacsId"],
-            "jacsVersion": right_terms["jacsVersion"]
-        })
+        resolution_link["jacsId"], right_terms["jacsId"],
+        "resolution link must reference the side branch's jacsId"
+    );
+    assert_eq!(
+        resolution_link["jacsVersion"], right_terms["jacsVersion"],
+        "resolution link must reference the side branch's jacsVersion"
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_verify_agreement_v2_surfaces_invalid_verdict() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
+
+    let created_result = session
+        .call_tool(
+            "jacs_create_agreement_v2",
+            serde_json::json!({ "input": agreement_v2_input(&agent_id) }),
+        )
+        .await?;
+    assert_eq!(created_result["success"], true, "{}", created_result);
+    let created = created_result["agreement"]
+        .as_str()
+        .expect("created agreement")
+        .to_string();
+
+    let signed_result = session
+        .call_tool(
+            "jacs_sign_agreement_v2",
+            serde_json::json!({ "agreement": created, "role": "signer" }),
+        )
+        .await?;
+    assert_eq!(signed_result["success"], true, "{}", signed_result);
+    let signed = signed_result["agreement"]
+        .as_str()
+        .expect("signed agreement")
+        .to_string();
+
+    // Tamper with the signed agreement so the recomputed hash no longer matches.
+    let mut tampered: serde_json::Value =
+        serde_json::from_str(&signed).expect("parse signed agreement");
+    assert!(
+        tampered.get("terms").is_some(),
+        "signed agreement must include top-level terms: {}",
+        tampered
+    );
+    tampered["terms"] = serde_json::json!("tampered terms that break the hash");
+
+    let verify_result = session
+        .call_tool(
+            "jacs_verify_agreement_v2",
+            serde_json::json!({ "agreement": tampered.to_string() }),
+        )
+        .await?;
+
+    // The verdict MUST be surfaced UNAMBIGUOUSLY at the top level: a caller can
+    // read `valid` directly and cannot be fooled by a bare `success:true`.
+    // A tampered (post-signing) agreement fails the JACS content-hash check at
+    // load time, so verification reports the failure as success:false AND
+    // valid:false (fail closed) with an explicit error and no nested report.
+    assert_eq!(
+        verify_result["valid"], false,
+        "tampered agreement must report top-level valid=false: {}",
+        verify_result
+    );
+    assert_eq!(
+        verify_result["success"], false,
+        "tampered agreement that fails the hash check must report success=false: {}",
+        verify_result
+    );
+    assert!(
+        verify_result["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("verify"),
+        "tampered agreement must carry an explicit error message: {}",
+        verify_result
+    );
+    // The old fail-open shape (success:true with no/ignored verdict) must be impossible.
+    assert_ne!(
+        verify_result["valid"],
+        serde_json::Value::Null,
+        "top-level valid must never be absent/null: {}",
+        verify_result
     );
 
     session.client.cancellation_token().cancel();
@@ -1369,4 +1481,67 @@ fn a2a_assess_agent_rejects_invalid_card() {
         result.is_err(),
         "assess_a2a_agent should reject invalid JSON"
     );
+}
+
+#[tokio::test]
+async fn mcp_agreement_v2_notary_role_signs_and_verifies() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
+
+    let mut input = agreement_v2_input(&agent_id);
+    let signer_agent_id = "00000000-0000-4000-8000-000000000099";
+    input["parties"] = serde_json::json!([
+        {"agentId": signer_agent_id, "agentType": "ai", "role": "signer"},
+        {"agentId": agent_id, "agentType": "ai", "role": "notary"}
+    ]);
+    input["signaturePolicy"]["notaryRequired"] = serde_json::json!(1);
+
+    let created_result = session
+        .call_tool(
+            "jacs_create_agreement_v2",
+            serde_json::json!({ "input": input }),
+        )
+        .await?;
+    assert_eq!(created_result["success"], true, "{}", created_result);
+    let created = created_result["agreement"]
+        .as_str()
+        .expect("created agreement")
+        .to_string();
+
+    let signed_result = session
+        .call_tool(
+            "jacs_sign_agreement_v2",
+            serde_json::json!({ "agreement": created, "role": "notary" }),
+        )
+        .await?;
+    assert_eq!(signed_result["success"], true, "{}", signed_result);
+    let signed = signed_result["agreement"]
+        .as_str()
+        .expect("signed agreement")
+        .to_string();
+
+    let signed_doc: serde_json::Value = serde_json::from_str(&signed)?;
+    assert_eq!(
+        signed_doc["agreementSignatures"][0]["role"],
+        serde_json::json!("notary"),
+        "notary signature role must be recorded: {}",
+        signed_doc
+    );
+
+    let verify_result = session
+        .call_tool(
+            "jacs_verify_agreement_v2",
+            serde_json::json!({ "agreement": signed }),
+        )
+        .await?;
+    assert_eq!(verify_result["success"], true, "{}", verify_result);
+    assert_eq!(
+        verify_result["valid"], true,
+        "notary-signed agreement must verify valid=true: {}",
+        verify_result
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
 }

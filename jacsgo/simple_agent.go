@@ -13,6 +13,7 @@ import "C"
 import (
 	"encoding/json"
 	"errors"
+	"sync"
 	"unsafe"
 )
 
@@ -28,6 +29,7 @@ import (
 // JacsSimpleAgent represents a JACS agent via the narrow simple contract.
 // Multiple JacsSimpleAgent instances can be used concurrently.
 type JacsSimpleAgent struct {
+	mu     sync.RWMutex
 	handle C.SimpleAgentHandle
 }
 
@@ -143,6 +145,8 @@ func CreateSimpleAgentWithParams(paramsJSON string) (*JacsSimpleAgent, *AgentInf
 
 // Close releases resources. After Close, the agent must not be used.
 func (a *JacsSimpleAgent) Close() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.handle != nil {
 		C.jacs_simple_free(a.handle)
 		a.handle = nil
@@ -155,32 +159,28 @@ func (a *JacsSimpleAgent) Close() {
 
 // GetAgentID returns the agent's unique identifier.
 func (a *JacsSimpleAgent) GetAgentID() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	result := C.jacs_simple_get_agent_id(a.handle)
-	if result == nil {
-		return "", simpleLastError("failed to get agent ID")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return simpleStringResult(C.jacs_simple_get_agent_id(a.handle), "failed to get agent ID")
 }
 
 // KeyID returns the JACS signing key identifier.
 func (a *JacsSimpleAgent) KeyID() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	result := C.jacs_simple_key_id(a.handle)
-	if result == nil {
-		return "", simpleLastError("failed to get key ID")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return simpleStringResult(C.jacs_simple_key_id(a.handle), "failed to get key ID")
 }
 
 // IsStrict returns whether the agent is in strict mode.
 func (a *JacsSimpleAgent) IsStrict() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return false
 	}
@@ -189,45 +189,38 @@ func (a *JacsSimpleAgent) IsStrict() bool {
 
 // ExportAgent exports the agent's identity JSON for P2P exchange.
 func (a *JacsSimpleAgent) ExportAgent() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	result := C.jacs_simple_export_agent(a.handle)
-	if result == nil {
-		return "", simpleLastError("failed to export agent")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return simpleStringResult(C.jacs_simple_export_agent(a.handle), "failed to export agent")
 }
 
 // GetPublicKeyPEM returns the public key in PEM format.
 func (a *JacsSimpleAgent) GetPublicKeyPEM() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	result := C.jacs_simple_get_public_key_pem(a.handle)
-	if result == nil {
-		return "", simpleLastError("failed to get public key PEM")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return simpleStringResult(C.jacs_simple_get_public_key_pem(a.handle), "failed to get public key PEM")
 }
 
 // GetPublicKeyBase64 returns the public key as base64-encoded raw bytes.
 func (a *JacsSimpleAgent) GetPublicKeyBase64() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
-	result := C.jacs_simple_get_public_key_base64(a.handle)
-	if result == nil {
-		return "", simpleLastError("failed to get public key base64")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return simpleStringResult(C.jacs_simple_get_public_key_base64(a.handle), "failed to get public key base64")
 }
 
 // ConfigPath returns the config file path, or nil if ephemeral/not loaded from disk.
 func (a *JacsSimpleAgent) ConfigPath() *string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return nil
 	}
@@ -242,6 +235,8 @@ func (a *JacsSimpleAgent) ConfigPath() *string {
 
 // Diagnostics returns runtime diagnostic info as a JSON string.
 func (a *JacsSimpleAgent) Diagnostics() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "{}"
 	}
@@ -260,8 +255,10 @@ func (a *JacsSimpleAgent) Diagnostics() string {
 // VerifySelf verifies the agent's own document signature.
 // Returns a VerificationResult.
 func (a *JacsSimpleAgent) VerifySelf() (*VerificationResult, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	return callJSON[VerificationResult](C.jacs_simple_verify_self(a.handle), "failed to verify self")
 }
@@ -269,8 +266,10 @@ func (a *JacsSimpleAgent) VerifySelf() (*VerificationResult, error) {
 // Verify verifies a signed document JSON string.
 // Returns a VerificationResult.
 func (a *JacsSimpleAgent) Verify(signedDocument string) (*VerificationResult, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cDoc, freeDoc := cString(signedDocument)
 	defer freeDoc()
@@ -281,8 +280,10 @@ func (a *JacsSimpleAgent) Verify(signedDocument string) (*VerificationResult, er
 // VerifyByID verifies a stored document by its ID (e.g., "uuid:version").
 // Returns a VerificationResult.
 func (a *JacsSimpleAgent) VerifyByID(documentID string) (*VerificationResult, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cID, freeID := cString(documentID)
 	defer freeID()
@@ -293,8 +294,10 @@ func (a *JacsSimpleAgent) VerifyByID(documentID string) (*VerificationResult, er
 // VerifyWithKey verifies a signed document with an explicit public key (base64-encoded).
 // Returns a VerificationResult.
 func (a *JacsSimpleAgent) VerifyWithKey(signedDocument, publicKeyBase64 string) (*VerificationResult, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 	cDoc, freeDoc := cString(signedDocument)
 	defer freeDoc()
@@ -310,8 +313,10 @@ func (a *JacsSimpleAgent) VerifyWithKey(signedDocument, publicKeyBase64 string) 
 
 // SignMessage signs a JSON message. Returns a SignedDocument.
 func (a *JacsSimpleAgent) SignMessage(data interface{}) (*SignedDocument, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 
 	// Marshal data to JSON
@@ -347,26 +352,25 @@ func (a *JacsSimpleAgent) SignMessage(data interface{}) (*SignedDocument, error)
 
 // SignRawBytes signs raw bytes and returns the signature as base64.
 func (a *JacsSimpleAgent) SignRawBytes(data []byte) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsSimpleAgent is closed")
+		return "", errSimpleAgentClosed
 	}
 	if len(data) == 0 {
 		return "", errors.New("data must not be empty")
 	}
 
 	cData := (*C.uint8_t)(unsafe.Pointer(&data[0]))
-	result := C.jacs_simple_sign_raw_bytes(a.handle, cData, C.size_t(len(data)))
-	if result == nil {
-		return "", simpleLastError("failed to sign raw bytes")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return simpleStringResult(C.jacs_simple_sign_raw_bytes(a.handle, cData, C.size_t(len(data))), "failed to sign raw bytes")
 }
 
 // SignFile signs a file with optional content embedding. Returns a SignedDocument.
 func (a *JacsSimpleAgent) SignFile(filePath string, embed bool) (*SignedDocument, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsSimpleAgent is closed")
+		return nil, errSimpleAgentClosed
 	}
 
 	cPath, freePath := cString(filePath)

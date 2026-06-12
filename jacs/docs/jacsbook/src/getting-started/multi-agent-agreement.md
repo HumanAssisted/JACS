@@ -12,12 +12,35 @@ Create agreement -> append transcript refs -> signers consent -> HAI notarizes -
 
 ## Python
 
+The three agents are persistent and share one `data_directory` so each can resolve the others' public keys when verifying. Independent `ephemeral()` agents keep keys in memory only and cannot verify each other's signatures.
+
 ```python
+import tempfile
+from pathlib import Path
+
 from jacs import SimpleAgent
 
-agent_a, a = SimpleAgent.ephemeral(algorithm="ed25519")
-agent_b, b = SimpleAgent.ephemeral(algorithm="ed25519")
-hai, h = SimpleAgent.ephemeral(algorithm="ed25519")
+PASSWORD = "MultiAgentDemo!2026"
+workspace = Path(tempfile.mkdtemp(prefix="jacs_multi_agent_"))
+shared_data = workspace / "shared_data"  # all agents share this so keys resolve
+
+
+def make_agent(name, agent_type="ai"):
+    agent, info = SimpleAgent.create_agent(
+        name=name,
+        password=PASSWORD,
+        algorithm="ring-Ed25519",
+        data_directory=str(shared_data),
+        key_directory=str(workspace / f"{name}_keys"),
+        config_path=str(workspace / f"{name}.config.json"),
+        agent_type=agent_type,
+    )
+    return agent, info
+
+
+agent_a, a = make_agent("agent-a")
+agent_b, b = make_agent("agent-b", agent_type="human")
+hai, h = make_agent("hai-notary")
 
 agreement = agent_a.create_agreement_v2({
     "title": "Bounded refund authorization",
@@ -43,6 +66,7 @@ agreement = agent_a.sign_agreement_v2(agreement, "signer")
 agreement = agent_b.sign_agreement_v2(agreement, "signer")
 agreement = hai.sign_agreement_v2(agreement, "notary")
 
+# hai resolves agent_a's and agent_b's public keys from the shared data directory.
 report = hai.verify_agreement_v2(agreement)
 assert report["valid"]
 assert report["expectedStatus"] == "final"

@@ -6,6 +6,7 @@ const FIXTURE = JSON.parse(fs.readFileSync(
   path.resolve(__dirname, '../../binding-core/tests/fixtures/agreement_v2_scenarios.json'),
   'utf8',
 ));
+const EXPECTED = FIXTURE.expected;
 
 describe('Node.js agreement v2 behavioral parity', function () {
   let JacsSimpleAgent;
@@ -50,9 +51,9 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const signed = await agent.signAgreementV2(created, 'signer');
     const report = await agent.verifyAgreementV2(signed);
 
-    expect(report.valid).to.equal(true);
-    expect(report.expectedStatus).to.equal('final');
-    expect(report.signerCount).to.equal(1);
+    expect(report.valid).to.equal(EXPECTED.verify.valid);
+    expect(report.expectedStatus).to.equal(EXPECTED.verify.expectedStatus);
+    expect(report.signerCount).to.equal(EXPECTED.verify.signerCount);
   });
 
   it('supports notary signatures as a distinct agreement role', function () {
@@ -68,7 +69,7 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const created = signer.createAgreementV2Sync(JSON.stringify(input));
     const notarized = JSON.parse(notary.signAgreementV2Sync(created, 'notary'));
 
-    expect(notarized.agreementSignatures[0].role).to.equal('notary');
+    expect(notarized.agreementSignatures[0].role).to.equal(EXPECTED.notary.role);
   });
 
   it('auto-merges transcript-only branches', function () {
@@ -84,12 +85,12 @@ describe('Node.js agreement v2 behavioral parity', function () {
     });
 
     const analysis = agent.detectAgreementV2BranchConflictSync(base, left, right);
-    expect(analysis.sameDocument).to.equal(true);
-    expect(analysis.sameParent).to.equal(true);
-    expect(analysis.autoMergeable).to.equal(true);
+    expect(analysis.sameDocument).to.equal(EXPECTED.transcriptMerge.sameDocument);
+    expect(analysis.sameParent).to.equal(EXPECTED.transcriptMerge.sameParent);
+    expect(analysis.autoMergeable).to.equal(EXPECTED.transcriptMerge.autoMergeable);
 
     const merged = JSON.parse(agent.mergeAgreementV2TranscriptBranchesSync(base, left, right));
-    expect(merged.transcript).to.have.length(2);
+    expect(merged.transcript).to.have.length(EXPECTED.transcriptMerge.mergedTranscriptLength);
   });
 
   it('resolves terms conflicts with an explicit successor mutation', function () {
@@ -99,8 +100,8 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const right = apply(agent, base, { type: 'updateTerms', terms: FIXTURE.terms_conflict.right });
 
     const analysis = agent.detectAgreementV2BranchConflictSync(base, left, right);
-    expect(analysis.autoMergeable).to.equal(false);
-    expect(analysis.conflictFields).to.include('terms');
+    expect(analysis.autoMergeable).to.equal(EXPECTED.termsConflict.autoMergeable);
+    expect(analysis.conflictFields).to.include(EXPECTED.termsConflict.conflictField);
 
     const resolved = JSON.parse(
       agent.resolveAgreementV2BranchConflictSync(
@@ -113,9 +114,12 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const rightDoc = JSON.parse(right);
 
     expect(resolved.terms).to.equal(FIXTURE.terms_conflict.resolved);
-    expect(resolved.links[0]).to.deep.equal({
+    // Resolution links also carry jacsSha256 (content-hash binding of the
+    // resolved branch), so assert the identity fields as a subset.
+    expect(resolved.links[0]).to.include({
       jacsId: rightDoc.jacsId,
       jacsVersion: rightDoc.jacsVersion,
     });
+    expect(resolved.links[0].jacsSha256).to.be.a('string').and.have.length(64);
   });
 });

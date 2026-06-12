@@ -5,11 +5,11 @@
 ## Description
 Python, Node, and Go now expose the agreement v2 methods, but their parity tests only verify method names. The actual agreement workflows are behavior-tested in Rust binding-core, so language-specific return parsing, argument normalization, CGo error propagation, PyO3 dict/string handling, and Node async/sync wrapper behavior can drift without a failing cross-language test.
 ## Evidence
-File: `/Users/jonathan.hendler/personal/JACS-agreement-v2-code/binding-core/tests/agreement_v2_json.rs:59` - Rust binding-core tests exercise create/sign/verify, notary, transcript-only merge, and explicit conflict resolution behavior.
-File: `/Users/jonathan.hendler/personal/JACS-agreement-v2-code/jacspy/tests/test_method_parity.py:9` - Python parity test explicitly states it is structural, not behavioral.
-File: `/Users/jonathan.hendler/personal/JACS-agreement-v2-code/jacsnpm/test/method-parity.test.js:8` - Node parity test explicitly states it is structural, not behavioral.
-File: `/Users/jonathan.hendler/personal/JACS-agreement-v2-code/jacsgo/method_parity_test.go:10` - Go parity test explicitly states it is structural, not behavioral.
-PRD: `/Users/jonathan.hendler/personal/hai/docs/jacs/JACS_AGREEMENT_NEW_SCHEMA.md` - requires SDK functions across Python/Go/npm surfaces and portable workflows for agents and humans.
+File: `binding-core/tests/agreement_v2_json.rs:59` - Rust binding-core tests exercise create/sign/verify, notary, transcript-only merge, and explicit conflict resolution behavior.
+File: `jacspy/tests/test_method_parity.py:9` - Python parity test explicitly states it is structural, not behavioral.
+File: `jacsnpm/test/method-parity.test.js:8` - Node parity test explicitly states it is structural, not behavioral.
+File: `jacsgo/method_parity_test.go:10` - Go parity test explicitly states it is structural, not behavioral.
+PRD: the Agreement v2 schema PRD (internal) - requires SDK functions across Python/Go/npm surfaces and portable workflows for agents and humans.
 ## Suggested Fix
 Add one shared JSON fixture/scenario set for agreement v2 and run it in Python, Node, and Go:
 - create agreement

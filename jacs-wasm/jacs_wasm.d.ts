@@ -44,7 +44,7 @@ export class CoreAgentHandle {
   createAgreementV2Json(input_json: string): string;
   applyAgreementV2Json(agreement_json: string, mutation_json: string): string;
   signAgreementV2Json(agreement_json: string, role: string): string;
-  verifyAgreementV2Json(agreement_json: string): string;
+  verifyAgreementV2Json(agreement_json: string, signers_json: string): string;
   detectAgreementV2BranchConflictJson(
     base_json: string,
     left_json: string,
@@ -138,3 +138,45 @@ export default function __wbg_init(
     | InitInput
     | Promise<InitInput>,
 ): Promise<InitOutput>;
+
+// ---------------------------------------------------------------------------
+// Agreement v2 typed surface (additive; Task C7).
+//
+// The `CoreAgentHandle` agreement v2 methods carry a `Json` suffix and take/
+// return JSON strings. The aliases and interfaces below give callers accurate
+// names and shapes without changing the generated wasm-bindgen surface. The
+// suffix-free method names (e.g. `signAgreementV2`) are exposed by the
+// higher-level `index.ts` wrappers, not by this raw handle.
+// ---------------------------------------------------------------------------
+
+/** Named roles accepted by `CoreAgentHandle.signAgreementV2Json`. */
+export type AgreementV2Role = 'signer' | 'witness' | 'notary';
+
+/** Parsed shape of `CoreAgentHandle.verifyAgreementV2Json` (camelCase wire format). */
+export interface AgreementV2VerificationReport {
+  valid: boolean;
+  status: string;
+  expectedStatus: string;
+  recomputedAgreementHash: string;
+  recomputedTranscriptHash: string;
+  signerCount: number;
+  witnessCount: number;
+  notaryCount: number;
+  verifiedChainDepth?: number;
+  chainFullyVerified?: boolean;
+  errors?: string[];
+  notes?: string[];
+}
+
+/** Parsed shape of `CoreAgentHandle.detectAgreementV2BranchConflictJson`. */
+export interface AgreementV2MergeAnalysis {
+  sameDocument: boolean;
+  sameParent: boolean;
+  autoMergeable: boolean;
+  conflictFields?: string[];
+  leftChangedFields?: string[];
+  rightChangedFields?: string[];
+  leftTranscriptAdditions: number;
+  rightTranscriptAdditions: number;
+  errors?: string[];
+}

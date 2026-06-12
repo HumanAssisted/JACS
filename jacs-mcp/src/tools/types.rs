@@ -111,64 +111,118 @@ pub struct CheckAgreementResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CreateAgreementV2Params {
     #[schemars(
-        description = "CreateAgreementV2 object: title, description, terms, parties, signaturePolicy, and optional workflow fields."
+        description = "CreateAgreementV2 input object (camelCase keys). Fields: `title` (string), \
+            `description` (string), `terms` (the agreement text the parties consent to), \
+            `parties` (array of {agentId, agentType, role} where role is one of \"signer\", \
+            \"witness\", \"notary\"), `signaturePolicy` (e.g. {\"quorum\": 2, \"requiredRoles\": \
+            [\"signer\"]}), and optional `controllers`/`owners` (arrays of agent IDs). Returns a \
+            signed `jacsType: \"agreement\"` document. Example: {\"title\":\"Deploy approval\", \
+            \"terms\":\"Approve deploying model v2\",\"parties\":[{\"agentId\":\"<uuid>\", \
+            \"agentType\":\"ai\",\"role\":\"signer\"}],\"signaturePolicy\":{\"quorum\":1}}."
     )]
     pub input: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ApplyAgreementV2Params {
-    #[schemars(description = "Full agreement v2 document JSON to mutate.")]
+    #[schemars(
+        description = "The full agreement v2 document JSON (the artifact returned by create or a \
+            prior apply) that this mutation is applied to. Pass the document as a JSON string."
+    )]
     pub agreement: String,
     #[schemars(
-        description = "AgreementV2Mutation object, e.g. {\"type\":\"appendTranscript\",\"entry\":{...}}."
+        description = "A typed AgreementV2Mutation object (camelCase keys). The `type` selects the \
+            mutation and other fields are camelCase. Supported: \
+            {\"type\":\"appendTranscript\",\"entry\":{\"jacsId\":\"...\",\"jacsVersion\":\"...\", \
+            \"jacsSha256\":\"...\"}}, {\"type\":\"updateTerms\",\"terms\":\"...\"}, \
+            {\"type\":\"setStatus\",\"status\":\"proposed\"}, {\"type\":\"addLink\",\"link\": \
+            {\"jacsId\":\"...\",\"jacsVersion\":\"...\"}}, plus setParties/setPolicy/setOwners. \
+            Emits a successor version."
     )]
     pub mutation: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SignAgreementV2Params {
-    #[schemars(description = "Full agreement v2 document JSON to sign.")]
+    #[schemars(
+        description = "The full agreement v2 document JSON to add this agent's signature to. \
+            Pass the document as a JSON string."
+    )]
     pub agreement: String,
-    #[schemars(description = "Signature role: signer, witness, or notary. Defaults to signer.")]
+    #[schemars(
+        description = "Signature role this agent signs as. One of: \"signer\" (a consenting \
+            party), \"witness\" (attests it observed the signing), or \"notary\" (an authority \
+            that certifies the agreement). Defaults to \"signer\"."
+    )]
     pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VerifyAgreementV2Params {
-    #[schemars(description = "Full agreement v2 document JSON to verify.")]
+    #[schemars(
+        description = "The full agreement v2 document JSON to verify. The verifier recomputes the \
+            agreement and transcript hashes, checks quorum/role/witness/notary requirements, and \
+            validates each agreement signature. Read the top-level `valid` field of the result \
+            (NOT `success`) to decide whether to trust the agreement."
+    )]
     pub agreement: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DetectAgreementV2BranchConflictParams {
-    #[schemars(description = "Base agreement v2 document JSON.")]
+    #[schemars(
+        description = "The common-ancestor agreement v2 document JSON that both branches derive from."
+    )]
     pub base: String,
-    #[schemars(description = "Left successor agreement v2 document JSON.")]
+    #[schemars(description = "One successor agreement v2 document JSON branched from `base`.")]
     pub left: String,
-    #[schemars(description = "Right successor agreement v2 document JSON.")]
+    #[schemars(
+        description = "The other successor agreement v2 document JSON branched from `base`. The \
+            result reports whether the two branches are transcript-only (auto-mergeable) or \
+            conflict on consent-scope fields (terms, parties, policy, status, signatures)."
+    )]
     pub right: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MergeAgreementV2TranscriptBranchesParams {
-    #[schemars(description = "Base agreement v2 document JSON.")]
+    #[schemars(
+        description = "The common-ancestor agreement v2 document JSON both branches derive from."
+    )]
     pub base: String,
-    #[schemars(description = "Left successor agreement v2 document JSON.")]
+    #[schemars(
+        description = "One transcript-only successor agreement v2 document JSON branched from `base`."
+    )]
     pub left: String,
-    #[schemars(description = "Right successor agreement v2 document JSON.")]
+    #[schemars(
+        description = "The other transcript-only successor agreement v2 document JSON branched from \
+            `base`. Both branches must differ from base only in appended transcript entries; \
+            otherwise use detect-conflict then resolve-conflict. Emits a merged successor version."
+    )]
     pub right: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ResolveAgreementV2BranchConflictParams {
-    #[schemars(description = "Base agreement v2 document JSON.")]
+    #[schemars(
+        description = "The common-ancestor agreement v2 document JSON both branches derive from."
+    )]
     pub base: String,
-    #[schemars(description = "Previous/version-to-rebase agreement v2 document JSON.")]
+    #[schemars(
+        description = "The branch you are keeping and rebasing the resolution onto (agreement v2 \
+            document JSON)."
+    )]
     pub previous: String,
-    #[schemars(description = "Side-branch agreement v2 document JSON.")]
+    #[schemars(
+        description = "The divergent branch whose changes are being reconciled (agreement v2 \
+            document JSON). It is recorded as a link on the resolved successor version."
+    )]
     pub side_branch: String,
-    #[schemars(description = "AgreementV2Mutation object that resolves the conflict.")]
+    #[schemars(
+        description = "A typed AgreementV2Mutation object (camelCase keys, same shape as \
+            jacs_apply_agreement_v2) that produces the agreed resolution, e.g. \
+            {\"type\":\"updateTerms\",\"terms\":\"reconciled terms\"}."
+    )]
     pub mutation: serde_json::Value,
 }
 
@@ -184,6 +238,23 @@ pub struct AgreementV2DocumentResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AgreementV2ValueResult {
     pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Result envelope for `jacs_verify_agreement_v2`.
+///
+/// `success` means the verify operation EXECUTED (input parsed, verification ran).
+/// `valid` is the cryptographic/structural verdict and is the authoritative
+/// answer to "should this agreement be trusted". A caller must never read
+/// `success: true` and assume the agreement is good — `valid` carries that.
+/// On an execution/parse failure, `success` is false and `valid` is false.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyAgreementV2Result {
+    pub success: bool,
+    pub valid: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]

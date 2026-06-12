@@ -58,7 +58,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createConfig = exports.hashString = exports.JacsAgent = void 0;
+exports.AgreementV2Role = exports.createConfig = exports.hashString = exports.JacsAgent = void 0;
 exports.isStrict = isStrict;
 exports.quickstart = quickstart;
 exports.quickstartSync = quickstartSync;
@@ -84,8 +84,12 @@ exports.signAgreementV2 = signAgreementV2;
 exports.signAgreementV2Sync = signAgreementV2Sync;
 exports.verifyAgreementV2 = verifyAgreementV2;
 exports.verifyAgreementV2Sync = verifyAgreementV2Sync;
+exports.verifyAgreementV2Typed = verifyAgreementV2Typed;
+exports.verifyAgreementV2TypedSync = verifyAgreementV2TypedSync;
 exports.detectAgreementV2BranchConflict = detectAgreementV2BranchConflict;
 exports.detectAgreementV2BranchConflictSync = detectAgreementV2BranchConflictSync;
+exports.detectAgreementV2BranchConflictTyped = detectAgreementV2BranchConflictTyped;
+exports.detectAgreementV2BranchConflictTypedSync = detectAgreementV2BranchConflictTypedSync;
 exports.mergeAgreementV2TranscriptBranches = mergeAgreementV2TranscriptBranches;
 exports.mergeAgreementV2TranscriptBranchesSync = mergeAgreementV2TranscriptBranchesSync;
 exports.resolveAgreementV2BranchConflict = resolveAgreementV2BranchConflict;
@@ -612,6 +616,12 @@ function requireSimpleAgent() {
     }
     return globalSimpleAgent;
 }
+/** Constant accessor for the {@link AgreementV2Role} values. */
+exports.AgreementV2Role = {
+    SIGNER: 'signer',
+    WITNESS: 'witness',
+    NOTARY: 'notary',
+};
 async function createAgreementV2(input) {
     return requireSimpleAgent().createAgreementV2(normalizeJsonInput(input));
 }
@@ -636,11 +646,33 @@ async function verifyAgreementV2(document) {
 function verifyAgreementV2Sync(document) {
     return requireSimpleAgent().verifyAgreementV2Sync(normalizeDocumentInput(document));
 }
+/**
+ * Convenience wrapper over {@link verifyAgreementV2} that types the parsed
+ * report. Identical runtime behaviour; only the static type is narrowed.
+ */
+async function verifyAgreementV2Typed(document) {
+    return (await verifyAgreementV2(document));
+}
+/** Sync variant of {@link verifyAgreementV2Typed}. */
+function verifyAgreementV2TypedSync(document) {
+    return verifyAgreementV2Sync(document);
+}
 async function detectAgreementV2BranchConflict(base, left, right) {
     return requireSimpleAgent().detectAgreementV2BranchConflict(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));
 }
 function detectAgreementV2BranchConflictSync(base, left, right) {
     return requireSimpleAgent().detectAgreementV2BranchConflictSync(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));
+}
+/**
+ * Convenience wrapper over {@link detectAgreementV2BranchConflict} that types
+ * the parsed analysis. Identical runtime behaviour.
+ */
+async function detectAgreementV2BranchConflictTyped(base, left, right) {
+    return (await detectAgreementV2BranchConflict(base, left, right));
+}
+/** Sync variant of {@link detectAgreementV2BranchConflictTyped}. */
+function detectAgreementV2BranchConflictTypedSync(base, left, right) {
+    return detectAgreementV2BranchConflictSync(base, left, right);
 }
 async function mergeAgreementV2TranscriptBranches(base, left, right) {
     return requireSimpleAgent().mergeAgreementV2TranscriptBranches(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));

@@ -39,7 +39,26 @@ pub fn sign_email_named(
     signer: &impl JacsSigner,
     filename: &str,
 ) -> Result<Vec<u8>, EmailError> {
-    sign_email_inner(raw_email, signer, filename)
+    sign_email_inner(raw_email, signer, filename, None)
+}
+
+/// Sign a raw RFC 5322 email with extra application-defined payload fields.
+///
+/// Same as [`sign_email_named`], but merges `content_extras` into the email
+/// signature payload before signing. The extras therefore live inside the
+/// JACS document's `content` field and are covered by the signature — unlike
+/// fields injected after signing, which document verification rejects as
+/// unauthenticated (SV-5).
+///
+/// Returns an error if an extra key collides with a reserved email payload
+/// field (e.g. `headers`, `attachments`).
+pub fn sign_email_named_with_extras(
+    raw_email: &[u8],
+    signer: &impl JacsSigner,
+    filename: &str,
+    content_extras: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Vec<u8>, EmailError> {
+    sign_email_inner(raw_email, signer, filename, Some(content_extras))
 }
 
 /// Sign a raw RFC 5322 email and attach a JACS signature document.
@@ -57,7 +76,7 @@ pub fn sign_email_named(
 ///
 /// Returns the modified email bytes with the JACS attachment.
 pub fn sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>, EmailError> {
-    sign_email_inner(raw_email, signer, DEFAULT_JACS_SIGNATURE_FILENAME)
+    sign_email_inner(raw_email, signer, DEFAULT_JACS_SIGNATURE_FILENAME, None)
 }
 
 /// Inner implementation of email signing with configurable filename.
@@ -65,6 +84,7 @@ fn sign_email_inner(
     raw_email: &[u8],
     signer: &impl JacsSigner,
     filename: &str,
+    content_extras: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> Result<Vec<u8>, EmailError> {
     // Step 0: Size check
     check_email_size(raw_email)?;
@@ -84,7 +104,7 @@ fn sign_email_inner(
     let payload = build_email_signature_payload(&parts, parent_signature_hash, true, true, false)?;
 
     // Step 6: Create a real JACS document containing the email hash payload
-    let jacs_doc_json = build_jacs_email_document(&payload, signer)?;
+    let jacs_doc_json = build_jacs_email_document(&payload, content_extras, signer)?;
 
     // Step 7: Attach via add_jacs_attachment_named (to the wrapped email)
     add_jacs_attachment_named(&wrapped_email, jacs_doc_json.as_bytes(), filename)
@@ -423,14 +443,33 @@ fn build_header_entry(name: &str, value: &str) -> Result<SignedHeaderEntry, Emai
 /// with standard JACS signing, hashing, and identity binding. The email
 /// hash payload becomes the `content` field of the JACS document.
 ///
+/// `content_extras`, when provided, are merged into the payload before
+/// signing so they are covered by the document signature. Keys that collide
+/// with reserved email payload fields are rejected.
+///
 /// Returns the raw JSON string of the signed JACS document.
 pub(crate) fn build_jacs_email_document(
     payload: &EmailSignaturePayload,
+    content_extras: Option<&serde_json::Map<String, serde_json::Value>>,
     signer: &impl JacsSigner,
 ) -> Result<String, EmailError> {
     // Convert the payload to a serde_json::Value for sign_message
-    let payload_value = serde_json::to_value(payload)
+    let mut payload_value = serde_json::to_value(payload)
         .map_err(|e| EmailError::InvalidJacsDocument(format!("payload serialization: {e}")))?;
+
+    if let Some(extras) = content_extras {
+        let obj = payload_value.as_object_mut().ok_or_else(|| {
+            EmailError::InvalidJacsDocument("email payload is not a JSON object".to_string())
+        })?;
+        for (key, value) in extras {
+            if obj.contains_key(key) {
+                return Err(EmailError::InvalidJacsDocument(format!(
+                    "extra content field '{key}' collides with a reserved email payload field"
+                )));
+            }
+            obj.insert(key.clone(), value.clone());
+        }
+    }
 
     // Use the JacsSigner to create and sign a real JACS document.
     // sign_message() preserves the legacy signed-message type label:
@@ -478,7 +517,7 @@ pub fn sign_email_yaml_named(
     filename: &str,
 ) -> Result<Vec<u8>, EmailError> {
     // First sign normally to get the JACS document JSON
-    let signed_email = sign_email_inner(raw_email, signer, "jacs-signature.json")?;
+    let signed_email = sign_email_inner(raw_email, signer, "jacs-signature.json", None)?;
 
     // Extract the JSON JACS document from the signed email
     let json_bytes = super::attachment::get_jacs_attachment(&signed_email)?;
@@ -514,7 +553,7 @@ pub fn sign_email_html_named(
     filename: &str,
 ) -> Result<Vec<u8>, EmailError> {
     // First sign normally to get the JACS document JSON
-    let signed_email = sign_email_inner(raw_email, signer, "jacs-signature.json")?;
+    let signed_email = sign_email_inner(raw_email, signer, "jacs-signature.json", None)?;
 
     // Extract the JSON JACS document from the signed email
     let json_bytes = super::attachment::get_jacs_attachment(&signed_email)?;
@@ -641,6 +680,65 @@ mod tests {
             result.valid,
             "JACS document should be valid: {:?}",
             result.errors
+        );
+    }
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_with_extras_signs_extras_inside_content_and_verifies() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent();
+        let email = simple_text_email();
+        let mut extras = serde_json::Map::new();
+        extras.insert(
+            "app_notice".to_string(),
+            serde_json::Value::String("countersigned by example".to_string()),
+        );
+
+        let signed =
+            sign_email_named_with_extras(&email, &agent, "jacs-signature.json", &extras).unwrap();
+
+        let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
+        let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
+        let jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
+        assert_eq!(
+            jacs_doc
+                .pointer("/content/app_notice")
+                .and_then(|v| v.as_str()),
+            Some("countersigned by example"),
+            "extras must live inside the signed content"
+        );
+
+        let result = agent.verify(doc_str).unwrap();
+        assert!(
+            result.valid,
+            "document with content extras should verify: {:?}",
+            result.errors
+        );
+
+        let (verified_doc, parts) = crate::email::verify_email_document_named(
+            &signed,
+            &agent,
+            &agent.get_public_key().unwrap(),
+            "jacs-signature.json",
+        )
+        .unwrap();
+        let content = crate::email::verify_email_content(&verified_doc, &parts);
+        assert!(content.valid, "email content should verify with extras");
+    }
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_with_extras_rejects_reserved_payload_key_collision() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent();
+        let email = simple_text_email();
+        let mut extras = serde_json::Map::new();
+        extras.insert("headers".to_string(), serde_json::Value::Null);
+
+        let err = sign_email_named_with_extras(&email, &agent, "jacs-signature.json", &extras)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("collides"),
+            "collision must be rejected, got: {err}"
         );
     }
     #[test]

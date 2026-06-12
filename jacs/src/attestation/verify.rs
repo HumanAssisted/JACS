@@ -657,9 +657,13 @@ mod tests {
             .unwrap();
         let key = format!("{}:{}", doc.id, doc.version);
 
-        // Tamper with the stored document's hash by re-storing with wrong hash
+        // Tamper with the stored document's hash by re-storing with wrong hash.
+        // Stored versions are immutable (insert-ignore on existing keys), so
+        // the original must be evicted first for the tampered write to land.
         let mut tampered = doc.value.clone();
         tampered["jacsSha256"] = json!("tampered_hash_value");
+        use crate::storage::StorageDocumentTraits as _;
+        agent.storage_ref().remove_document(&key).unwrap();
         agent.store_jacs_document(&tampered).unwrap();
 
         let result = agent.verify_attestation_local_impl(&key).unwrap();
@@ -677,11 +681,15 @@ mod tests {
             .unwrap();
         let key = format!("{}:{}", doc.id, doc.version);
 
-        // Tamper with the signature by re-storing with wrong sig
+        // Tamper with the signature by re-storing with wrong sig. Stored
+        // versions are immutable (insert-ignore on existing keys), so the
+        // original must be evicted first for the tampered write to land.
         let mut tampered = doc.value.clone();
         if let Some(sig) = tampered.get_mut("jacsSignature") {
             sig["signature"] = json!("tampered_signature_value");
         }
+        use crate::storage::StorageDocumentTraits as _;
+        agent.storage_ref().remove_document(&key).unwrap();
         agent.store_jacs_document(&tampered).unwrap();
 
         let result = agent.verify_attestation_local_impl(&key).unwrap();

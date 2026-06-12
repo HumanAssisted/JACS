@@ -99,6 +99,8 @@ Transcript-only branches can auto-merge. Terms conflicts require an explicit suc
 
 ## Legacy Sidecar Agreements
 
+> Legacy v1; new work should use Agreement v2. See [Migrating from v1 agreements](../guides/agreement-v2.md#migrating-from-v1-agreements).
+
 The older `jacsAgreement` field on arbitrary signed documents remains available for simple countersignature workflows:
 
 ```bash

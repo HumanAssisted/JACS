@@ -992,7 +992,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!("Failed to create agreement v2: {}", e)),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1042,7 +1042,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!("Failed to update agreement v2: {}", e)),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1077,7 +1077,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!("Failed to sign agreement v2: {}", e)),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1102,17 +1102,68 @@ impl JacsMcpServer {
         }
         #[cfg(feature = "agreement-tools")]
         {
+            // Extract the agreement id once for any failure log (fail soft to "unknown").
+            let agreement_id = serde_json::from_str::<serde_json::Value>(&params.agreement)
+                .ok()
+                .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
+                .unwrap_or_else(|| "unknown".to_string());
+
             let result = match self.agent.verify_agreement_v2_json(&params.agreement) {
-                Ok(report_json) => AgreementV2ValueResult {
-                    success: true,
-                    result: serde_json::from_str(&report_json).ok(),
-                    error: None,
+                Ok(report_json) => match serde_json::from_str::<serde_json::Value>(&report_json) {
+                    Ok(report_value) => {
+                        // Fail closed: a report missing `valid` is treated as invalid.
+                        let valid = report_value
+                            .get("valid")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        if !valid {
+                            let errors = report_value
+                                .get("errors")
+                                .map(|e| e.to_string())
+                                .unwrap_or_default();
+                            tracing::warn!(
+                                event = "agreement_v2_verify_invalid",
+                                agreement_id = %agreement_id,
+                                errors = %errors,
+                                "agreement v2 verification failed"
+                            );
+                        }
+                        VerifyAgreementV2Result {
+                            success: true,
+                            valid,
+                            result: Some(report_value),
+                            error: None,
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            event = "agreement_v2_verify_invalid",
+                            agreement_id = %agreement_id,
+                            error = %e,
+                            "agreement v2 verification report failed to parse"
+                        );
+                        VerifyAgreementV2Result {
+                            success: false,
+                            valid: false,
+                            result: None,
+                            error: Some(format!("Failed to parse agreement v2 report: {}", e)),
+                        }
+                    }
                 },
-                Err(e) => AgreementV2ValueResult {
-                    success: false,
-                    result: None,
-                    error: Some(format!("Failed to verify agreement v2: {}", e)),
-                },
+                Err(e) => {
+                    tracing::warn!(
+                        event = "agreement_v2_verify_invalid",
+                        agreement_id = %agreement_id,
+                        error = %e,
+                        "agreement v2 verification failed"
+                    );
+                    VerifyAgreementV2Result {
+                        success: false,
+                        valid: false,
+                        result: None,
+                        error: Some(e.to_string()),
+                    }
+                }
             };
             let serialized =
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
@@ -1149,10 +1200,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2ValueResult {
                     success: false,
                     result: None,
-                    error: Some(format!(
-                        "Failed to detect agreement v2 branch conflict: {}",
-                        e
-                    )),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1190,10 +1238,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!(
-                        "Failed to merge agreement v2 transcript branches: {}",
-                        e
-                    )),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1248,10 +1293,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!(
-                        "Failed to resolve agreement v2 branch conflict: {}",
-                        e
-                    )),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =

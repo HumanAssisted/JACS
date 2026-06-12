@@ -9,7 +9,7 @@ use serde_json::{Map as JsonMap, Value};
 pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     if obj.is_none() {
         Ok(Value::Null)
-    } else if let Ok(b) = obj.downcast::<PyBool>() {
+    } else if let Ok(b) = obj.cast::<PyBool>() {
         Ok(Value::Bool(b.is_true()))
     } else if let Ok(i) = obj.extract::<i64>() {
         Ok(Value::Number(i.into()))
@@ -17,9 +17,9 @@ pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         Ok(Value::Number(serde_json::Number::from_f64(f).ok_or_else(
             || PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid float value"),
         )?))
-    } else if let Ok(s) = obj.downcast::<PyString>() {
+    } else if let Ok(s) = obj.cast::<PyString>() {
         Ok(Value::String(s.to_string_lossy().into_owned()))
-    } else if let Ok(bytes) = obj.downcast::<PyBytes>() {
+    } else if let Ok(bytes) = obj.cast::<PyBytes>() {
         // Convert bytes to base64 encoded string with a type marker
         let bytes_data = bytes.as_bytes();
         let base64_str = general_purpose::STANDARD.encode(bytes_data);
@@ -30,7 +30,7 @@ pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         map.insert("data".to_string(), Value::String(base64_str));
         Ok(Value::Object(map))
     }
-    // else if let Ok(_datetime) = obj.downcast::<PyDateTime>() {
+    // else if let Ok(_datetime) = obj.cast::<PyDateTime>() {
     //     // Extract datetime as ISO format string
     //     let datetime_str = obj.call_method0("isoformat")?.extract::<String>()?;
 
@@ -40,13 +40,13 @@ pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     //     map.insert("data".to_string(), Value::String(datetime_str));
     //     Ok(Value::Object(map))
     // }
-    else if let Ok(list) = obj.downcast::<PyList>() {
+    else if let Ok(list) = obj.cast::<PyList>() {
         let mut vec = Vec::new();
         for item_obj in list.iter() {
             vec.push(pyany_to_value(py, &item_obj)?);
         }
         Ok(Value::Array(vec))
-    } else if let Ok(dict) = obj.downcast::<PyDict>() {
+    } else if let Ok(dict) = obj.cast::<PyDict>() {
         let mut map = JsonMap::new();
         for (key_obj, value_obj) in dict.iter() {
             let key = key_obj.extract::<String>()?;
@@ -62,8 +62,8 @@ pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     }
 }
 
-// Helper function to convert serde_json::Value to PyObject
-pub fn value_to_pyobject(py: Python, value: &Value) -> PyResult<PyObject> {
+// Helper function to convert serde_json::Value to Py<PyAny>
+pub fn value_to_pyobject(py: Python, value: &Value) -> PyResult<Py<PyAny>> {
     match value {
         Value::Null => Ok(py.None()),
         Value::Bool(b) => (*b).into_py_any(py),
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_pyany_to_value_conversion() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // --- Basic Types ---
             assert_eq!(pyany_to_value(py, py.None().bind(py)).unwrap(), Value::Null);
             assert_eq!(
@@ -244,16 +244,16 @@ mod tests {
 
     #[test]
     fn test_value_to_pyobject_conversion() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // --- Basic Types ---
             let py_none = value_to_pyobject(py, &Value::Null).unwrap();
             assert!(py_none.bind(py).is_none());
 
             let py_true = value_to_pyobject(py, &json!(true)).unwrap();
-            assert!(py_true.bind(py).downcast::<PyBool>().unwrap().is_true());
+            assert!(py_true.bind(py).cast::<PyBool>().unwrap().is_true());
 
             let py_false = value_to_pyobject(py, &json!(false)).unwrap();
-            assert!(!py_false.bind(py).downcast::<PyBool>().unwrap().is_true());
+            assert!(!py_false.bind(py).cast::<PyBool>().unwrap().is_true());
 
             let py_int = value_to_pyobject(py, &json!(42)).unwrap();
             assert_eq!(py_int.bind(py).extract::<i64>().unwrap(), 42);
@@ -272,16 +272,10 @@ mod tests {
 
             // --- Lists ---
             let py_list_empty = value_to_pyobject(py, &json!([])).unwrap();
-            assert!(
-                py_list_empty
-                    .bind(py)
-                    .downcast::<PyList>()
-                    .unwrap()
-                    .is_empty()
-            );
+            assert!(py_list_empty.bind(py).cast::<PyList>().unwrap().is_empty());
 
             let py_list_simple = value_to_pyobject(py, &json!([false, 5, "x"])).unwrap();
-            let bound_list = py_list_simple.bind(py).downcast::<PyList>().unwrap();
+            let bound_list = py_list_simple.bind(py).cast::<PyList>().unwrap();
             assert_eq!(bound_list.len(), 3);
             assert!(!bound_list.get_item(0).unwrap().extract::<bool>().unwrap());
             assert_eq!(bound_list.get_item(1).unwrap().extract::<i64>().unwrap(), 5);
@@ -291,7 +285,7 @@ mod tests {
             );
 
             let py_list_nested = value_to_pyobject(py, &json!([[1, 2], []])).unwrap();
-            let bound_nested_list = py_list_nested.bind(py).downcast::<PyList>().unwrap();
+            let bound_nested_list = py_list_nested.bind(py).cast::<PyList>().unwrap();
             assert_eq!(bound_nested_list.len(), 2);
             assert!(
                 bound_nested_list
@@ -303,24 +297,18 @@ mod tests {
                 bound_nested_list
                     .get_item(1)
                     .unwrap()
-                    .downcast::<PyList>()
+                    .cast::<PyList>()
                     .unwrap()
                     .is_empty()
             );
 
             // --- Objects ---
             let py_obj_empty = value_to_pyobject(py, &json!({})).unwrap();
-            assert!(
-                py_obj_empty
-                    .bind(py)
-                    .downcast::<PyDict>()
-                    .unwrap()
-                    .is_empty()
-            );
+            assert!(py_obj_empty.bind(py).cast::<PyDict>().unwrap().is_empty());
 
             let py_obj_simple =
                 value_to_pyobject(py, &json!({"x": 10, "y": null, "z": "zee"})).unwrap();
-            let bound_dict = py_obj_simple.bind(py).downcast::<PyDict>().unwrap();
+            let bound_dict = py_obj_simple.bind(py).cast::<PyDict>().unwrap();
             assert_eq!(bound_dict.len(), 3);
             assert_eq!(
                 bound_dict
@@ -344,7 +332,7 @@ mod tests {
 
             let py_obj_nested =
                 value_to_pyobject(py, &json!({"data": [1], "nested": {"a": true}})).unwrap();
-            let bound_nested_dict = py_obj_nested.bind(py).downcast::<PyDict>().unwrap();
+            let bound_nested_dict = py_obj_nested.bind(py).cast::<PyDict>().unwrap();
             assert_eq!(bound_nested_dict.len(), 2);
             assert!(
                 bound_nested_dict

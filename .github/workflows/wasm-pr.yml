@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Pinned toolchain matches `release-wasm.yml`. `rust-version =
       # 1.93` in `jacs-wasm/Cargo.toml` requires this.
@@ -100,6 +100,17 @@ jobs:
           cargo check -p jacs-core
           cargo check -p jacs-core --target wasm32-unknown-unknown
           cargo check -p jacs-wasm --target wasm32-unknown-unknown
+
+      # ------------------------------------------------------------------
+      # 2b. Native (non-wasm32) jacs-wasm sanity suite. Runs the Rust
+      # `tests/native_sanity.rs` cases — agreement v2 round-trip, forged
+      # signature rejection, metrics, and the declaration-drift guard that
+      # checks `#[wasm_bindgen(js_name = ...)]` against jacs_wasm.d.ts.
+      # These do not need a browser, so they gate the PR independently of
+      # the wasm-pack browser lane below.
+      # ------------------------------------------------------------------
+      - name: jacs-wasm native sanity tests
+        run: cargo test -p jacs-wasm --test native_sanity --verbose
 
       # ------------------------------------------------------------------
       # 3. wasm-pack test --headless --firefox

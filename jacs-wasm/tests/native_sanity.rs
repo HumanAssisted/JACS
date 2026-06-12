@@ -135,6 +135,8 @@ fn export_agent_returns_json_with_jacs_id() {
 fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
     let handle = create_ephemeral("ed25519").expect("create");
     let agent_id = wasm_agent_id(&handle);
+    let pk_b64 = handle.get_public_key_base64().expect("pk b64");
+    let signers_json = wasm_agreement_v2_signers_json(&agent_id, &pk_b64);
 
     let created = handle
         .create_agreement_v2_json(&wasm_agreement_v2_input(&agent_id).to_string())
@@ -143,12 +145,55 @@ fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
         .sign_agreement_v2_json(&created, "signer")
         .expect("sign agreement v2");
     let report_json = handle
-        .verify_agreement_v2_json(&signed)
+        .verify_agreement_v2_json(&signed, &signers_json)
         .expect("verify agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
-    assert_eq!(report["valid"], Value::Bool(true));
-    assert_eq!(report["status"], Value::String("final".to_string()));
-    assert_eq!(report["signerCount"], Value::from(1));
+    assert_eq!(report["valid"], wasm_expected()["verify"]["valid"]);
+    assert_eq!(report["status"], wasm_expected()["verify"]["status"]);
+    assert_eq!(
+        report["signerCount"],
+        wasm_expected()["verify"]["signerCount"]
+    );
+    assert_eq!(
+        report["verificationDepth"],
+        wasm_expected()["verify"]["verificationDepth"]
+    );
+}
+
+#[test]
+fn agreement_v2_forged_signature_is_rejected_and_not_counted() {
+    use base64::Engine as _;
+
+    let handle = create_ephemeral("ed25519").expect("create");
+    let agent_id = wasm_agent_id(&handle);
+    let pk_b64 = handle.get_public_key_base64().expect("pk b64");
+    let signers_json = wasm_agreement_v2_signers_json(&agent_id, &pk_b64);
+
+    let created = handle
+        .create_agreement_v2_json(&wasm_agreement_v2_input(&agent_id).to_string())
+        .expect("create agreement v2");
+    let signed = handle
+        .sign_agreement_v2_json(&created, "signer")
+        .expect("sign agreement v2");
+    let mut forged: Value = serde_json::from_str(&signed).expect("signed agreement json");
+    let mut forged_entry = forged["agreementSignatures"][0].clone();
+    forged_entry["signature"]["signature"] =
+        json!(base64::engine::general_purpose::STANDARD.encode([0u8; 64]));
+    forged["agreementSignatures"] = json!([forged_entry]);
+    forged["status"] = json!("final");
+
+    let report_json = handle
+        .verify_agreement_v2_json(&forged.to_string(), &signers_json)
+        .expect("verify forged agreement v2");
+    let report: Value = serde_json::from_str(&report_json).unwrap();
+    assert_eq!(report["valid"], Value::Bool(false));
+    assert_eq!(report["signerCount"], Value::from(0));
+    assert_eq!(report["signatures"][0]["agentID"], Value::String(agent_id));
+    assert_eq!(
+        report["signatures"][0]["role"],
+        Value::String("signer".to_string())
+    );
+    assert_eq!(report["signatures"][0]["valid"], Value::Bool(false));
 }
 
 fn wasm_agent_id(handle: &CoreAgentHandle) -> String {
@@ -160,6 +205,10 @@ fn wasm_agreement_v2_fixture() -> Value {
     serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
 
+fn wasm_expected() -> Value {
+    wasm_agreement_v2_fixture()["expected"].clone()
+}
+
 fn wasm_agreement_v2_input(agent_id: &str) -> Value {
     let scenario = wasm_agreement_v2_fixture();
     let mut input = scenario["base_input"].clone();
@@ -168,6 +217,15 @@ fn wasm_agreement_v2_input(agent_id: &str) -> Value {
     ]);
     input["controllers"] = json!([agent_id]);
     input
+}
+
+fn wasm_agreement_v2_signers_json(agent_id: &str, public_key_base64: &str) -> String {
+    json!([{
+        "agentId": agent_id,
+        "publicKeyBase64": public_key_base64,
+        "algorithm": "ed25519"
+    }])
+    .to_string()
 }
 
 fn wasm_transcript_ref(name: &str) -> Value {
@@ -183,14 +241,22 @@ fn wasm_terms(name: &str) -> String {
 
 #[test]
 fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
-    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../binding-core/tests/fixtures/method_parity.json");
-    let fixture: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
-    let declarations =
-        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("jacs_wasm.d.ts"))
-            .unwrap();
-    let mapping = [
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            manifest_dir.join("../binding-core/tests/fixtures/method_parity.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let declarations = std::fs::read_to_string(manifest_dir.join("jacs_wasm.d.ts")).unwrap();
+    let agent_handle_src =
+        std::fs::read_to_string(manifest_dir.join("src/agent_handle.rs")).unwrap();
+
+    // SOURCE OF TRUTH for the expected camelCase js_name of each agreement v2
+    // method. If the Rust source declares a *different* js_name (drift), the
+    // test fails at the parsed-vs-expected check below.
+    let expected_js_names = [
         ("create_agreement_v2_json", "createAgreementV2Json"),
         ("apply_agreement_v2_json", "applyAgreementV2Json"),
         ("sign_agreement_v2_json", "signAgreementV2Json"),
@@ -208,21 +274,77 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
             "resolveAgreementV2BranchConflictJson",
         ),
     ];
+
+    // Parse src/agent_handle.rs into rust_fn_name -> js_name by scanning for
+    // `#[wasm_bindgen(js_name = <JsName>)]` followed by the next `fn <name>(`.
+    let declared_js_names = parse_wasm_bindgen_js_names(&agent_handle_src);
+
     let agreement_methods = fixture["feature_gated_methods"]["agreements"]
         .as_array()
         .expect("agreement methods");
 
     for method in agreement_methods {
         let rust_name = method.as_str().expect("method name");
-        let wasm_name = mapping
+        let expected = expected_js_names
             .iter()
-            .find_map(|(rust, wasm)| (*rust == rust_name).then_some(*wasm))
-            .unwrap_or_else(|| panic!("missing wasm mapping for {rust_name}"));
+            .find_map(|(rust, js)| (*rust == rust_name).then_some(*js))
+            .unwrap_or_else(|| {
+                panic!("test mapping missing expected js_name for {rust_name}; update the test")
+            });
+
+        let actual = declared_js_names.get(rust_name).unwrap_or_else(|| {
+            panic!("src/agent_handle.rs has no #[wasm_bindgen(js_name = ...)] for {rust_name}")
+        });
+
+        assert_eq!(
+            actual, expected,
+            "js_name drift for {rust_name}: source declares {actual}, expected {expected}"
+        );
+
         assert!(
-            declarations.contains(&format!("{wasm_name}(")),
-            "missing {wasm_name} declaration for {rust_name}"
+            declarations.contains(&format!("{expected}(")),
+            "missing {expected} declaration in jacs_wasm.d.ts for {rust_name}"
         );
     }
+}
+
+/// Deterministic, dependency-free parser: scans Rust source for
+/// `#[wasm_bindgen(js_name = <JsName>)]` attributes and binds each to the
+/// next `fn <rust_name>(` declaration that follows. Returns a map of
+/// rust_fn_name -> js_name.
+fn parse_wasm_bindgen_js_names(src: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let mut pending: Option<String> = None;
+    for line in src.lines() {
+        if let Some(idx) = line.find("#[wasm_bindgen(js_name =") {
+            let after = &line[idx + "#[wasm_bindgen(js_name =".len()..];
+            let token: String = after
+                .trim_start()
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != ')' && *c != ']')
+                .collect();
+            let token = token.trim().to_string();
+            if !token.is_empty() {
+                pending = Some(token);
+            }
+            continue;
+        }
+        if let Some(js_name) = pending.clone()
+            && let Some(fidx) = line.find("fn ")
+        {
+            let after = &line[fidx + "fn ".len()..];
+            let fn_name: String = after
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != '(' && *c != '<')
+                .collect();
+            let fn_name = fn_name.trim().to_string();
+            if !fn_name.is_empty() {
+                map.insert(fn_name, js_name);
+                pending = None;
+            }
+        }
+    }
+    map
 }
 
 #[test]
@@ -251,7 +373,10 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
             .expect("detect branch conflict"),
     )
     .unwrap();
-    assert_eq!(analysis["autoMergeable"], Value::Bool(true));
+    assert_eq!(
+        analysis["autoMergeable"],
+        wasm_expected()["transcriptMerge"]["autoMergeable"]
+    );
 
     let merged: Value = serde_json::from_str(
         &handle
@@ -259,7 +384,12 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
             .expect("merge transcript branches"),
     )
     .unwrap();
-    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        merged["transcript"].as_array().unwrap().len(),
+        wasm_expected()["transcriptMerge"]["mergedTranscriptLength"]
+            .as_u64()
+            .unwrap() as usize
+    );
 
     let left_terms = handle
         .apply_agreement_v2_json(
@@ -286,12 +416,26 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
     .unwrap();
     let right_terms_doc: Value = serde_json::from_str(&right_terms).unwrap();
     assert_eq!(resolved["terms"], Value::String(wasm_terms("resolved")));
+
+    // The resolution link binds the merged-in (right) branch by content hash:
+    // canonical JSON with `jacsSha256` stripped, then sha256 hex (matches the
+    // engine's own content hashing and native `hash_doc`).
+    let mut right_for_hash = right_terms_doc.clone();
+    right_for_hash.as_object_mut().unwrap().remove("jacsSha256");
+    let expected_link_hash = jacs_core::verify::sha256_hex(
+        jacs_core::canonical::canonicalize_json_try(&right_for_hash)
+            .expect("canonicalize right branch")
+            .as_bytes(),
+    );
+    assert_eq!(resolved["links"][0]["jacsId"], right_terms_doc["jacsId"]);
     assert_eq!(
-        resolved["links"][0],
-        json!({
-            "jacsId": right_terms_doc["jacsId"],
-            "jacsVersion": right_terms_doc["jacsVersion"]
-        })
+        resolved["links"][0]["jacsVersion"],
+        right_terms_doc["jacsVersion"]
+    );
+    assert_eq!(
+        resolved["links"][0]["jacsSha256"].as_str(),
+        Some(expected_link_hash.as_str()),
+        "branch-resolution link must bind the merged branch content hash"
     );
 
     let notary = create_ephemeral("ed25519").expect("notary");
@@ -313,7 +457,7 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
     .unwrap();
     assert_eq!(
         notarized["agreementSignatures"][0]["role"],
-        Value::String("notary".to_string())
+        wasm_expected()["notary"]["role"]
     );
 }
 

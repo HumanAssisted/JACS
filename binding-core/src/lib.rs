@@ -3811,6 +3811,7 @@ mod tests {
     // =========================================================================
 
     /// Helper: create an ephemeral AgentWrapper for A2A tests.
+    #[cfg(feature = "a2a")]
     fn ephemeral_wrapper() -> AgentWrapper {
         let wrapper = AgentWrapper::new();
         wrapper.ephemeral(Some("ed25519")).unwrap();

@@ -298,7 +298,7 @@
     },
     "agreementLink": {
       "type": "object",
-      "description": "Reference from this agreement to another JACS document version. Deliberately slim: just jacsId and jacsVersion.",
+      "description": "Reference from this agreement to another JACS document version. User-supplied links are slim jacsId and jacsVersion refs; jacsSha256 is set on merge/branch-resolution links to bind merged content.",
       "properties": {
         "jacsId": {
           "type": "string",
@@ -308,6 +308,11 @@
         "jacsVersion": {
           "type": "string",
           "format": "uuid",
+          "hai": "base"
+        },
+        "jacsSha256": {
+          "type": "string",
+          "minLength": 1,
           "hai": "base"
         }
       },

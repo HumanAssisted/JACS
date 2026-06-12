@@ -44,7 +44,7 @@ jobs:
           fi
           echo "available=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.tap-token.outputs.available == 'true'
 
       - name: Resolve versions and artifact checksums
@@ -126,7 +126,7 @@ jobs:
 
       - name: Checkout Homebrew tap repository
         if: steps.tap-token.outputs.available == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.inputs.tap_repository || 'HumanAssisted/homebrew-jacs' }}
           ref: ${{ github.event.inputs.tap_branch || 'master' }}

@@ -311,7 +311,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("check-agreement")
-                        .about("given a document, provide alist of agents that should sign document")
+                        .about("List the agents that should sign a document's agreement (legacy v1; prefer `jacs agreement-v2`)")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -342,7 +342,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("create-agreement")
-                        .about("given a document, provide alist of agents that should sign document")
+                        .about("Create a jacsAgreement sidecar on a document (legacy v1; prefer `jacs agreement-v2 create`)")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -401,7 +401,7 @@ pub fn build_cli() -> Command {
 
                 ).subcommand(
                     Command::new("sign-agreement")
-                        .about("given a document, sign the agreement section")
+                        .about("Sign a document's jacsAgreement sidecar (legacy v1; prefer `jacs agreement-v2 sign`)")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -523,6 +523,28 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("agreement-v2")
                 .about("Work with standalone JACS agreement v2 documents")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .long_about(
+                    "Work with standalone JACS agreement v2 documents.\n\n\
+                     An agreement v2 is a self-contained, cryptographically signed `jacsType: \"agreement\"` \
+                     artifact: terms, parties, a signature policy (quorum, required roles), an optional \
+                     transcript, links to related documents, controllers, and owners. Unlike the legacy \
+                     `jacs document *-agreement` sidecar commands, an agreement v2 is its own verifiable \
+                     document with a content hash and a version chain.\n\n\
+                     Typical workflow:\n  \
+                     1. create  -> build the agreement from a CreateAgreementV2 JSON input\n  \
+                     2. sign    -> each party adds a signer/witness/notary signature\n  \
+                     3. verify  -> recompute hashes, quorum, roles, and status before acting\n\n\
+                     Use `apply` to emit a successor version from a typed mutation (append transcript, \
+                     update terms, set status, etc.). Use `detect-conflict`, `merge-transcript`, and \
+                     `resolve-conflict` when two agents branch from the same prior version.",
+                )
+                .after_help(
+                    "Workflow: create -> sign -> verify. Use `apply` for mutations; \
+                     `detect-conflict`/`merge-transcript`/`resolve-conflict` for divergent branches.\n\
+                     Run `jacs agreement-v2 <SUBCOMMAND> --help` for per-command flags.",
+                )
                 .subcommand(
                     Command::new("create")
                         .about("Create a standalone agreement v2 document")
@@ -589,24 +611,88 @@ pub fn build_cli() -> Command {
                 .subcommand(
                     Command::new("detect-conflict")
                         .about("Detect whether two agreement v2 branches can auto-merge")
-                        .arg(Arg::new("base").long("base").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("left").long("left").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("right").long("right").required(true).value_parser(value_parser!(String))),
+                        .arg(
+                            Arg::new("base")
+                                .long("base")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Common ancestor agreement (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("left")
+                                .long("left")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("One branch successor of base (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("right")
+                                .long("right")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Other branch successor of base (JSON, path, or '-' for stdin)"),
+                        ),
                 )
                 .subcommand(
                     Command::new("merge-transcript")
                         .about("Auto-merge two transcript-only agreement v2 branches")
-                        .arg(Arg::new("base").long("base").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("left").long("left").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("right").long("right").required(true).value_parser(value_parser!(String))),
+                        .arg(
+                            Arg::new("base")
+                                .long("base")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Common ancestor agreement (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("left")
+                                .long("left")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("One transcript-only branch successor (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("right")
+                                .long("right")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Other transcript-only branch successor (JSON, path, or '-' for stdin)"),
+                        ),
                 )
                 .subcommand(
                     Command::new("resolve-conflict")
                         .about("Resolve an agreement v2 branch conflict with an explicit mutation")
-                        .arg(Arg::new("base").long("base").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("previous").long("previous").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("side").long("side").required(true).value_parser(value_parser!(String)))
-                        .arg(Arg::new("mutation").short('m').long("mutation").required(true).value_parser(value_parser!(String))),
+                        .arg(
+                            Arg::new("base")
+                                .long("base")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Common ancestor agreement (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("previous")
+                                .long("previous")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Branch you are keeping/rebasing onto (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("side")
+                                .long("side-branch")
+                                .alias("side")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Divergent branch whose changes are being reconciled; \
+                                       recorded as a link on the resolution (JSON, path, or '-' for stdin). \
+                                       Alias: --side"),
+                        )
+                        .arg(
+                            Arg::new("mutation")
+                                .short('m')
+                                .long("mutation")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Explicit resolving mutation (JSON or path to JSON)"),
+                        ),
                 )
         )
         .subcommand(
@@ -624,7 +710,11 @@ pub fn build_cli() -> Command {
                     Arg::new("profile")
                         .long("profile")
                         .default_value("core")
-                        .help("Tool profile: 'core' (default, core tools) or 'full' (all tools)"),
+                        .help(
+                            "Tool profile: 'core' (default; document, trust, search, key, w3c tools) or \
+                             'full' (adds agreement, a2a, and attestation tools). Agreement v2 tools are \
+                             only registered under 'full' (or JACS_MCP_PROFILE=full).",
+                        ),
                 )
                 .subcommand(
                     Command::new("install")

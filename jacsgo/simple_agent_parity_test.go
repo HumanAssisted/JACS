@@ -126,21 +126,6 @@ func skipIfLibraryMissing(t *testing.T) {
 	}
 }
 
-// ephemeral creates an ephemeral JacsSimpleAgent with the given algorithm.
-func ephemeral(t *testing.T, algo string) *JacsSimpleAgent {
-	t.Helper()
-	agent, info, err := EphemeralSimpleAgent(&algo)
-	if err != nil {
-		t.Fatalf("EphemeralSimpleAgent(%q) failed: %v", algo, err)
-	}
-	if agent == nil {
-		t.Fatalf("EphemeralSimpleAgent(%q) returned nil agent", algo)
-	}
-	t.Cleanup(func() { agent.Close() })
-	_ = info
-	return agent
-}
-
 // =============================================================================
 // 1. Structural parity: signed documents have required fields
 // =============================================================================
@@ -151,7 +136,7 @@ func TestParitySignedDocumentStructure(t *testing.T) {
 
 	for _, algo := range fixtures.Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			for _, input := range fixtures.SignMessageInputs {
 				t.Run(input.Name, func(t *testing.T) {
@@ -202,7 +187,7 @@ func TestParitySignVerifyRoundtrip(t *testing.T) {
 
 	for _, algo := range fixtures.Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			for _, input := range fixtures.SignMessageInputs {
 				t.Run(input.Name, func(t *testing.T) {
@@ -234,7 +219,7 @@ func TestParitySignRawBytes(t *testing.T) {
 
 	for _, algo := range fixtures.Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			for _, input := range fixtures.SignRawBytesInputs {
 				t.Run(input.Name, func(t *testing.T) {
@@ -278,7 +263,7 @@ func TestParityIdentityMethods(t *testing.T) {
 
 	for _, algo := range loadParityFixtures(t).Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			t.Run("GetAgentID", func(t *testing.T) {
 				agentID, err := agent.GetAgentID()
@@ -388,7 +373,7 @@ func TestParityIdentityMethods(t *testing.T) {
 
 func TestParityVerifyRejectsInvalidJSON(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 
 	result, err := agent.Verify("not-valid-json{{{")
 	// Either an error return or valid=false is acceptable.
@@ -399,7 +384,7 @@ func TestParityVerifyRejectsInvalidJSON(t *testing.T) {
 
 func TestParityVerifyRejectsTamperedDocument(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 
 	signed, err := agent.SignMessage(map[string]interface{}{"original": true})
 	if err != nil {
@@ -433,7 +418,7 @@ func TestParityVerifyRejectsTamperedDocument(t *testing.T) {
 
 func TestParitySignMessageRejectsInvalidJSON(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 
 	// SignMessage takes interface{}, so we cannot directly pass invalid JSON.
 	// However, we can pass a value that, when marshaled to JSON and sent to Rust,
@@ -447,7 +432,7 @@ func TestParitySignMessageRejectsInvalidJSON(t *testing.T) {
 
 func TestParityVerifyByIDRejectsBadFormat(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 
 	result, err := agent.VerifyByID("not-a-valid-id")
 	// Either an error or valid=false is acceptable.
@@ -458,7 +443,7 @@ func TestParityVerifyByIDRejectsBadFormat(t *testing.T) {
 
 func TestParityVerifyWithKeyRejectsInvalidBase64(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 
 	signed, err := agent.SignMessage(map[string]interface{}{"test": 1})
 	if err != nil {
@@ -482,7 +467,7 @@ func TestParitySignFile(t *testing.T) {
 
 	for _, algo := range fixtures.Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			tmpDir := canonicalTempDir(t)
 			filePath := filepath.Join(tmpDir, "parity_test_file.txt")
@@ -529,7 +514,7 @@ func TestParityVerificationResultStructure(t *testing.T) {
 
 	for _, algo := range fixtures.Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			signed, err := agent.SignMessage(map[string]interface{}{"structure_test": true})
 			if err != nil {
@@ -571,7 +556,7 @@ func TestParityVerifyWithKey(t *testing.T) {
 
 	for _, algo := range fixtures.Algorithms {
 		t.Run(algo, func(t *testing.T) {
-			agent := ephemeral(t, algo)
+			agent := newEphemeralAgent(t, algo)
 
 			keyB64, err := agent.GetPublicKeyBase64()
 			if err != nil {
@@ -606,8 +591,8 @@ func TestParityCrossAlgorithmStructure(t *testing.T) {
 		t.Skip("need at least 2 algorithms for cross-algorithm test")
 	}
 
-	edAgent := ephemeral(t, "ed25519")
-	pqAgent := ephemeral(t, "pq2025")
+	edAgent := newEphemeralAgent(t, "ed25519")
+	pqAgent := newEphemeralAgent(t, "pq2025")
 	input := fixtures.SignMessageInputs[0]
 
 	edSigned, err := edAgent.SignMessage(input.Data)
@@ -712,7 +697,7 @@ func TestParityCreateWithParams(t *testing.T) {
 
 func TestParitySignedDocumentGoFields(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	agent := newEphemeralAgent(t, "ed25519")
 
 	signed, err := agent.SignMessage(map[string]interface{}{"field_check": true})
 	if err != nil {

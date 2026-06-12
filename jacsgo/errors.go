@@ -40,6 +40,16 @@ var (
 	// typed "missing_signature" status, not this sentinel.
 	// See PRD docs/prds/PROVENANCE_EXPANSION_PRD.md §4.1.2 (Q2 + C1).
 	ErrMissingSignature = errors.New("no JACS signature found")
+
+	// errAgentClosed is returned by JacsAgent methods invoked after Close().
+	// The message string is part of the FFI binding's observable behavior and
+	// must not change.
+	errAgentClosed = errors.New("JacsAgent is closed")
+
+	// errSimpleAgentClosed is returned by JacsSimpleAgent methods invoked after
+	// Close(). The message string is part of the observable behavior and must
+	// not change.
+	errSimpleAgentClosed = errors.New("JacsSimpleAgent is closed")
 )
 
 // SimpleError wraps an error with additional context.

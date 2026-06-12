@@ -323,6 +323,69 @@ Sign the agreement section of a document with the current agent's cryptographic 
 jacs document sign-agreement [OPTIONS]
 ```
 
+### `jacs agreement-v2`
+
+Standalone agreement v2 documents are the recommended consent workflow. Each is a self-contained, cryptographically signed `jacsType: "agreement"` artifact — terms, parties, signature policy (quorum, required roles), an optional transcript, links, controllers, and owners — with its own content hash and version chain. Running `jacs agreement-v2` with no subcommand prints help and exits non-zero.
+
+Typical order: **create → sign → verify**. Use `apply` to evolve an agreement via a typed mutation; use the branch commands when two agents diverge from the same prior version.
+
+#### `jacs agreement-v2 create`
+Create a standalone agreement v2 document from a `CreateAgreementV2` JSON input.
+
+```bash
+jacs agreement-v2 create --input <CreateAgreementV2 JSON | path | ->
+```
+
+#### `jacs agreement-v2 sign`
+Add this agent's signature as a `signer`, `witness`, or `notary`.
+
+```bash
+jacs agreement-v2 sign --agreement <JSON | path | -> [--role signer|witness|notary]
+```
+
+`--role` defaults to `signer`.
+
+#### `jacs agreement-v2 verify`
+Recompute the agreement and transcript hashes and re-check quorum, roles, status, and every signature. Exits non-zero when the agreement is invalid.
+
+```bash
+jacs agreement-v2 verify --agreement <JSON | path | ->
+```
+
+#### `jacs agreement-v2 apply`
+Apply a typed mutation (`appendTranscript`, `updateTerms`, `setStatus`, `addLink`, `setParties`, `setPolicy`, `setOwners`) and emit a successor version. Mutation fields are camelCase.
+
+```bash
+jacs agreement-v2 apply --agreement <JSON | path | -> --mutation <mutation JSON | path>
+```
+
+#### `jacs agreement-v2 detect-conflict`
+Report whether two successor versions of `--base` are transcript-only (auto-mergeable) or conflict on consent-scope fields.
+
+```bash
+jacs agreement-v2 detect-conflict --base <common ancestor> --left <branch> --right <branch>
+```
+
+#### `jacs agreement-v2 merge-transcript`
+Auto-merge two transcript-only branches of `--base` into one successor version.
+
+```bash
+jacs agreement-v2 merge-transcript --base <common ancestor> --left <branch> --right <branch>
+```
+
+#### `jacs agreement-v2 resolve-conflict`
+Resolve a consent-scope conflict by rebasing an explicit mutation onto `--previous`; the divergent `--side-branch` is recorded as a link on the result.
+
+```bash
+jacs agreement-v2 resolve-conflict \
+  --base <common ancestor> \
+  --previous <branch you keep> \
+  --side-branch <divergent branch> \
+  --mutation <resolving mutation JSON | path>
+```
+
+`--side-branch` replaces the older `--side` flag; `--side` still works as a hidden alias for backward compatibility.
+
 ## Provenance Commands
 
 The provenance commands sign and verify content **in place** — text files keep a YAML-bodied signature block at the end of the file, images carry the signature in a metadata chunk. See the [Inline Text Signatures](../guides/inline-text-signing.md) and [Image and Media Signatures](../guides/media-signing.md) guides for the full feature set.

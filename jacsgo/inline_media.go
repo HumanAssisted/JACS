@@ -26,7 +26,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"unsafe"
 )
 
 // =============================================================================
@@ -84,13 +83,14 @@ func (a *JacsSimpleAgent) callPathOpts(
 	filePath string,
 	optsJsonStr string,
 ) (string, error) {
-	cPath := C.CString(filePath)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath := cString(filePath)
+	defer freePath()
 
 	var cOpts *C.char
 	if optsJsonStr != "" {
-		cOpts = C.CString(optsJsonStr)
-		defer C.free(unsafe.Pointer(cOpts))
+		var freeOpts func()
+		cOpts, freeOpts = cString(optsJsonStr)
+		defer freeOpts()
 	}
 
 	result := c(a.handle, cPath, cOpts)
@@ -209,16 +209,17 @@ func (a *JacsSimpleAgent) SignImage(inputPath, outputPath string, opts *SignImag
 		wire["formatHint"] = o.Format
 	}
 
-	cIn := C.CString(inputPath)
-	defer C.free(unsafe.Pointer(cIn))
-	cOut := C.CString(outputPath)
-	defer C.free(unsafe.Pointer(cOut))
+	cIn, freeIn := cString(inputPath)
+	defer freeIn()
+	cOut, freeOut := cString(outputPath)
+	defer freeOut()
 
 	optsStr := optsJSON(wire)
 	var cOpts *C.char
 	if optsStr != "" {
-		cOpts = C.CString(optsStr)
-		defer C.free(unsafe.Pointer(cOpts))
+		var freeOpts func()
+		cOpts, freeOpts = cString(optsStr)
+		defer freeOpts()
 	}
 
 	result := C.jacs_agent_sign_image(a.handle, cIn, cOut, cOpts)

@@ -56,6 +56,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
@@ -67,6 +68,17 @@ type JACSError struct {
 
 func (e JACSError) Error() string {
 	return fmt.Sprintf("JACS error %d: %s", e.Code, e.Message)
+}
+
+// goStringResult collapses the common `*C.char` success tail: on a nil
+// result it returns errIfNil (preserving each caller's fixed error
+// message); otherwise it frees the C string and returns its Go copy.
+func goStringResult(result *C.char, errIfNil error) (string, error) {
+	if result == nil {
+		return "", errIfNil
+	}
+	defer C.jacs_free_string(result)
+	return C.GoString(result), nil
 }
 
 // Config represents JACS configuration options
@@ -91,6 +103,7 @@ type Config struct {
 // JacsAgent represents a JACS agent instance with independent state.
 // Multiple JacsAgent instances can be used concurrently.
 type JacsAgent struct {
+	mu     sync.RWMutex
 	handle C.JacsAgentHandle
 }
 
@@ -107,6 +120,8 @@ func NewJacsAgent() (*JacsAgent, error) {
 // Close releases the resources associated with this JacsAgent.
 // After Close, the JacsAgent must not be used.
 func (a *JacsAgent) Close() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.handle != nil {
 		C.jacs_agent_free(a.handle)
 		a.handle = nil
@@ -115,12 +130,14 @@ func (a *JacsAgent) Close() {
 
 // Load initializes this agent with the given configuration file.
 func (a *JacsAgent) Load(configPath string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return errors.New("JacsAgent is closed")
+		return errAgentClosed
 	}
 
-	cPath := C.CString(configPath)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath := cString(configPath)
+	defer freePath()
 
 	result := C.jacs_agent_load(a.handle, cPath)
 	if result != 0 {
@@ -131,36 +148,34 @@ func (a *JacsAgent) Load(configPath string) error {
 
 // SignString signs a string using this agent's private key.
 func (a *JacsAgent) SignString(data string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cData := C.CString(data)
-	defer C.free(unsafe.Pointer(cData))
+	cData, freeData := cString(data)
+	defer freeData()
 
-	result := C.jacs_agent_sign_string(a.handle, cData)
-	if result == nil {
-		return "", errors.New("failed to sign string")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_sign_string(a.handle, cData), errors.New("failed to sign string"))
 }
 
 // VerifyString verifies a string signature using this agent.
 func (a *JacsAgent) VerifyString(data, signatureBase64 string, publicKey []byte, publicKeyEncType string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return errors.New("JacsAgent is closed")
+		return errAgentClosed
 	}
 
-	cData := C.CString(data)
-	defer C.free(unsafe.Pointer(cData))
+	cData, freeData := cString(data)
+	defer freeData()
 
-	cSig := C.CString(signatureBase64)
-	defer C.free(unsafe.Pointer(cSig))
+	cSig, freeSig := cString(signatureBase64)
+	defer freeSig()
 
-	cEncType := C.CString(publicKeyEncType)
-	defer C.free(unsafe.Pointer(cEncType))
+	cEncType, freeEncType := cString(publicKeyEncType)
+	defer freeEncType()
 
 	var cPubKey *C.uint8_t
 	if len(publicKey) > 0 {
@@ -176,8 +191,10 @@ func (a *JacsAgent) VerifyString(data, signatureBase64 string, publicKey []byte,
 
 // SignRequest signs a request payload (wraps in a JACS document).
 func (a *JacsAgent) SignRequest(payload interface{}) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -185,26 +202,22 @@ func (a *JacsAgent) SignRequest(payload interface{}) (string, error) {
 		return "", err
 	}
 
-	cPayload := C.CString(string(payloadJSON))
-	defer C.free(unsafe.Pointer(cPayload))
+	cPayload, freePayload := cString(string(payloadJSON))
+	defer freePayload()
 
-	result := C.jacs_agent_sign_request(a.handle, cPayload)
-	if result == nil {
-		return "", errors.New("failed to sign request")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_sign_request(a.handle, cPayload), errors.New("failed to sign request"))
 }
 
 // VerifyResponse verifies a response payload.
 func (a *JacsAgent) VerifyResponse(documentString string) (map[string]interface{}, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return nil, errors.New("JacsAgent is closed")
+		return nil, errAgentClosed
 	}
 
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	result := C.jacs_agent_verify_response(a.handle, cDoc)
 	if result == nil {
@@ -224,102 +237,76 @@ func (a *JacsAgent) VerifyResponse(documentString string) (map[string]interface{
 
 // CreateAgreement creates an agreement for a document.
 func (a *JacsAgent) CreateAgreement(documentString string, agentIDs []string, question, context, agreementFieldname *string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	agentIDsJSON, err := json.Marshal(agentIDs)
 	if err != nil {
 		return "", err
 	}
-	cAgentIDs := C.CString(string(agentIDsJSON))
-	defer C.free(unsafe.Pointer(cAgentIDs))
+	cAgentIDs, freeAgentIDs := cString(string(agentIDsJSON))
+	defer freeAgentIDs()
 
-	var cQuestion, cContext, cFieldname *C.char
-	if question != nil {
-		cQuestion = C.CString(*question)
-		defer C.free(unsafe.Pointer(cQuestion))
-	}
-	if context != nil {
-		cContext = C.CString(*context)
-		defer C.free(unsafe.Pointer(cContext))
-	}
-	if agreementFieldname != nil {
-		cFieldname = C.CString(*agreementFieldname)
-		defer C.free(unsafe.Pointer(cFieldname))
-	}
+	cQuestion, freeQuestion := cStringOpt(question)
+	defer freeQuestion()
+	cContext, freeContext := cStringOpt(context)
+	defer freeContext()
+	cFieldname, freeFieldname := cStringOpt(agreementFieldname)
+	defer freeFieldname()
 
-	result := C.jacs_agent_create_agreement(a.handle, cDoc, cAgentIDs, cQuestion, cContext, cFieldname)
-	if result == nil {
-		return "", errors.New("failed to create agreement")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_create_agreement(a.handle, cDoc, cAgentIDs, cQuestion, cContext, cFieldname), errors.New("failed to create agreement"))
 }
 
 // SignAgreement signs an agreement.
 func (a *JacsAgent) SignAgreement(documentString string, agreementFieldname *string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cFieldname *C.char
-	if agreementFieldname != nil {
-		cFieldname = C.CString(*agreementFieldname)
-		defer C.free(unsafe.Pointer(cFieldname))
-	}
+	cFieldname, freeFieldname := cStringOpt(agreementFieldname)
+	defer freeFieldname()
 
-	result := C.jacs_agent_sign_agreement(a.handle, cDoc, cFieldname)
-	if result == nil {
-		return "", errors.New("failed to sign agreement")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_sign_agreement(a.handle, cDoc, cFieldname), errors.New("failed to sign agreement"))
 }
 
 // CheckAgreement checks an agreement.
 func (a *JacsAgent) CheckAgreement(documentString string, agreementFieldname *string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cFieldname *C.char
-	if agreementFieldname != nil {
-		cFieldname = C.CString(*agreementFieldname)
-		defer C.free(unsafe.Pointer(cFieldname))
-	}
+	cFieldname, freeFieldname := cStringOpt(agreementFieldname)
+	defer freeFieldname()
 
-	result := C.jacs_agent_check_agreement(a.handle, cDoc, cFieldname)
-	if result == nil {
-		return "", errors.New("failed to check agreement")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_check_agreement(a.handle, cDoc, cFieldname), errors.New("failed to check agreement"))
 }
 
 // VerifyAgent verifies an agent's signature and hash.
 func (a *JacsAgent) VerifyAgent(agentFile *string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return errors.New("JacsAgent is closed")
+		return errAgentClosed
 	}
 
-	var cFile *C.char
-	if agentFile != nil {
-		cFile = C.CString(*agentFile)
-		defer C.free(unsafe.Pointer(cFile))
-	}
+	cFile, freeFile := cStringOpt(agentFile)
+	defer freeFile()
 
 	result := C.jacs_agent_verify_agent(a.handle, cFile)
 	if result != 0 {
@@ -330,26 +317,21 @@ func (a *JacsAgent) VerifyAgent(agentFile *string) error {
 
 // CreateDocument creates a new JACS document.
 func (a *JacsAgent) CreateDocument(documentString string, customSchema, outputFilename *string, noSave bool, attachments *string, embed *bool) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cSchema, cOutput, cAttach *C.char
-	if customSchema != nil {
-		cSchema = C.CString(*customSchema)
-		defer C.free(unsafe.Pointer(cSchema))
-	}
-	if outputFilename != nil {
-		cOutput = C.CString(*outputFilename)
-		defer C.free(unsafe.Pointer(cOutput))
-	}
-	if attachments != nil {
-		cAttach = C.CString(*attachments)
-		defer C.free(unsafe.Pointer(cAttach))
-	}
+	cSchema, freeSchema := cStringOpt(customSchema)
+	defer freeSchema()
+	cOutput, freeOutput := cStringOpt(outputFilename)
+	defer freeOutput()
+	cAttach, freeAttach := cStringOpt(attachments)
+	defer freeAttach()
 
 	noSaveVal := C.int(0)
 	if noSave {
@@ -365,23 +347,19 @@ func (a *JacsAgent) CreateDocument(documentString string, customSchema, outputFi
 		}
 	}
 
-	result := C.jacs_agent_create_document(a.handle, cDoc, cSchema, cOutput, noSaveVal, cAttach, embedVal)
-	if result == nil {
-		return "", errors.New("failed to create document")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_create_document(a.handle, cDoc, cSchema, cOutput, noSaveVal, cAttach, embedVal), errors.New("failed to create document"))
 }
 
 // VerifyDocument verifies a document's hash and signature.
 func (a *JacsAgent) VerifyDocument(documentString string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return errors.New("JacsAgent is closed")
+		return errAgentClosed
 	}
 
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	result := C.jacs_agent_verify_document(a.handle, cDoc)
 	if result != 0 {
@@ -392,12 +370,14 @@ func (a *JacsAgent) VerifyDocument(documentString string) error {
 
 // VerifyDocumentById verifies a document by its storage ID ("uuid:version" format).
 func (a *JacsAgent) VerifyDocumentById(documentID string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return errors.New("JacsAgent is closed")
+		return errAgentClosed
 	}
 
-	cDocID := C.CString(documentID)
-	defer C.free(unsafe.Pointer(cDocID))
+	cDocID, freeDocID := cString(documentID)
+	defer freeDocID()
 
 	result := C.jacs_agent_verify_document_by_id(a.handle, cDocID)
 	if result != 0 {
@@ -408,15 +388,17 @@ func (a *JacsAgent) VerifyDocumentById(documentID string) error {
 
 // ReencryptKey re-encrypts the agent's private key with a new password.
 func (a *JacsAgent) ReencryptKey(oldPassword, newPassword string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return errors.New("JacsAgent is closed")
+		return errAgentClosed
 	}
 
-	cOldPw := C.CString(oldPassword)
-	defer C.free(unsafe.Pointer(cOldPw))
+	cOldPw, freeOldPw := cString(oldPassword)
+	defer freeOldPw()
 
-	cNewPw := C.CString(newPassword)
-	defer C.free(unsafe.Pointer(cNewPw))
+	cNewPw, freeNewPw := cString(newPassword)
+	defer freeNewPw()
 
 	result := C.jacs_agent_reencrypt_key(a.handle, cOldPw, cNewPw)
 	if result != 0 {
@@ -427,32 +409,24 @@ func (a *JacsAgent) ReencryptKey(oldPassword, newPassword string) error {
 
 // GetJSON returns the agent's JSON representation.
 func (a *JacsAgent) GetJSON() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	result := C.jacs_agent_get_json(a.handle)
-	if result == nil {
-		return "", errors.New("failed to get agent JSON (agent may not be loaded)")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_get_json(a.handle), errors.New("failed to get agent JSON (agent may not be loaded)"))
 }
 
 // GetPublicKeyPEM returns the agent's public key in PEM format.
 func (a *JacsAgent) GetPublicKeyPEM() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	result := C.jacs_agent_get_public_key_pem(a.handle)
-	if result == nil {
-		return "", errors.New("failed to get public key PEM")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_get_public_key_pem(a.handle), errors.New("failed to get public key PEM"))
 }
 
 // CreateAttestation creates a signed attestation document.
@@ -460,20 +434,16 @@ func (a *JacsAgent) GetPublicKeyPEM() (string, error) {
 // Returns the signed attestation document as a JSON string.
 // Requires the library to be built with the attestation feature.
 func (a *JacsAgent) CreateAttestation(paramsJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cParams := C.CString(paramsJSON)
-	defer C.free(unsafe.Pointer(cParams))
+	cParams, freeParams := cString(paramsJSON)
+	defer freeParams()
 
-	result := C.jacs_agent_create_attestation(a.handle, cParams)
-	if result == nil {
-		return "", errors.New("failed to create attestation (feature may not be available)")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_create_attestation(a.handle, cParams), errors.New("failed to create attestation (feature may not be available)"))
 }
 
 // VerifyAttestation verifies an attestation document.
@@ -482,25 +452,21 @@ func (a *JacsAgent) CreateAttestation(paramsJSON string) (string, error) {
 // If full is false, performs local-tier verification (signature + hash only).
 // Returns the verification result as a JSON string.
 func (a *JacsAgent) VerifyAttestation(documentKey string, full bool) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cKey := C.CString(documentKey)
-	defer C.free(unsafe.Pointer(cKey))
+	cKey, freeKey := cString(documentKey)
+	defer freeKey()
 
 	fullVal := C.int(0)
 	if full {
 		fullVal = 1
 	}
 
-	result := C.jacs_agent_verify_attestation(a.handle, cKey, fullVal)
-	if result == nil {
-		return "", errors.New("failed to verify attestation (feature may not be available)")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_verify_attestation(a.handle, cKey, fullVal), errors.New("failed to verify attestation (feature may not be available)"))
 }
 
 // LiftToAttestation lifts an existing signed document into an attestation with additional claims.
@@ -508,23 +474,19 @@ func (a *JacsAgent) VerifyAttestation(documentKey string, full bool) (string, er
 // claimsJSON is a JSON array of claim objects.
 // Returns the new attestation document as a JSON string.
 func (a *JacsAgent) LiftToAttestation(signedDocJSON, claimsJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(signedDocJSON)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(signedDocJSON)
+	defer freeDoc()
 
-	cClaims := C.CString(claimsJSON)
-	defer C.free(unsafe.Pointer(cClaims))
+	cClaims, freeClaims := cString(claimsJSON)
+	defer freeClaims()
 
-	result := C.jacs_agent_lift_to_attestation(a.handle, cDoc, cClaims)
-	if result == nil {
-		return "", errors.New("failed to lift to attestation (feature may not be available)")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_lift_to_attestation(a.handle, cDoc, cClaims), errors.New("failed to lift to attestation (feature may not be available)"))
 }
 
 // ExportAttestationDSSE exports an attestation as a DSSE (Dead Simple Signing Envelope)
@@ -532,20 +494,16 @@ func (a *JacsAgent) LiftToAttestation(signedDocJSON, claimsJSON string) (string,
 // attestationJSON is the attestation document JSON string.
 // Returns the DSSE envelope as a JSON string.
 func (a *JacsAgent) ExportAttestationDSSE(attestationJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cAtt := C.CString(attestationJSON)
-	defer C.free(unsafe.Pointer(cAtt))
+	cAtt, freeAtt := cString(attestationJSON)
+	defer freeAtt()
 
-	result := C.jacs_agent_export_attestation_dsse(a.handle, cAtt)
-	if result == nil {
-		return "", errors.New("failed to export attestation DSSE (feature may not be available)")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_export_attestation_dsse(a.handle, cAtt), errors.New("failed to export attestation DSSE (feature may not be available)"))
 }
 
 // ============================================================================
@@ -554,101 +512,81 @@ func (a *JacsAgent) ExportAttestationDSSE(attestationJSON string) (string, error
 
 // ExportAgentCard exports an A2A Agent Card for this agent.
 func (a *JacsAgent) ExportAgentCard() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	result := C.jacs_agent_export_agent_card(a.handle)
-	if result == nil {
-		return "", errors.New("failed to export agent card")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_export_agent_card(a.handle), errors.New("failed to export agent card"))
 }
 
 // SignA2AArtifact wraps an artifact with a JACS signature for A2A exchange.
 func (a *JacsAgent) SignA2AArtifact(artifactJSON string, artifactType string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cArtifact := C.CString(artifactJSON)
-	defer C.free(unsafe.Pointer(cArtifact))
+	cArtifact, freeArtifact := cString(artifactJSON)
+	defer freeArtifact()
 
-	cType := C.CString(artifactType)
-	defer C.free(unsafe.Pointer(cType))
+	cType, freeType := cString(artifactType)
+	defer freeType()
 
-	result := C.jacs_agent_sign_a2a_artifact(a.handle, cArtifact, cType)
-	if result == nil {
-		return "", errors.New("failed to sign A2A artifact")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_sign_a2a_artifact(a.handle, cArtifact, cType), errors.New("failed to sign A2A artifact"))
 }
 
 // VerifyA2AArtifact verifies a JACS-wrapped A2A artifact (crypto-only).
 func (a *JacsAgent) VerifyA2AArtifact(wrappedJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cWrapped := C.CString(wrappedJSON)
-	defer C.free(unsafe.Pointer(cWrapped))
+	cWrapped, freeWrapped := cString(wrappedJSON)
+	defer freeWrapped()
 
-	result := C.jacs_agent_verify_a2a_artifact(a.handle, cWrapped)
-	if result == nil {
-		return "", errors.New("failed to verify A2A artifact")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_verify_a2a_artifact(a.handle, cWrapped), errors.New("failed to verify A2A artifact"))
 }
 
 // VerifyA2AArtifactWithPolicy verifies a JACS-wrapped artifact with trust policy.
 func (a *JacsAgent) VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cWrapped := C.CString(wrappedJSON)
-	defer C.free(unsafe.Pointer(cWrapped))
+	cWrapped, freeWrapped := cString(wrappedJSON)
+	defer freeWrapped()
 
-	cCard := C.CString(agentCardJSON)
-	defer C.free(unsafe.Pointer(cCard))
+	cCard, freeCard := cString(agentCardJSON)
+	defer freeCard()
 
-	cPolicy := C.CString(policy)
-	defer C.free(unsafe.Pointer(cPolicy))
+	cPolicy, freePolicy := cString(policy)
+	defer freePolicy()
 
-	result := C.jacs_agent_verify_a2a_artifact_with_policy(a.handle, cWrapped, cCard, cPolicy)
-	if result == nil {
-		return "", errors.New("failed to verify A2A artifact with policy")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_verify_a2a_artifact_with_policy(a.handle, cWrapped, cCard, cPolicy), errors.New("failed to verify A2A artifact with policy"))
 }
 
 // AssessA2AAgent assesses an agent's trustworthiness against a trust policy.
 func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cCard := C.CString(agentCardJSON)
-	defer C.free(unsafe.Pointer(cCard))
+	cCard, freeCard := cString(agentCardJSON)
+	defer freeCard()
 
-	cPolicy := C.CString(policy)
-	defer C.free(unsafe.Pointer(cPolicy))
+	cPolicy, freePolicy := cString(policy)
+	defer freePolicy()
 
-	result := C.jacs_agent_assess_a2a_agent(a.handle, cCard, cPolicy)
-	if result == nil {
-		return "", errors.New("failed to assess A2A agent")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_assess_a2a_agent(a.handle, cCard, cPolicy), errors.New("failed to assess A2A agent"))
 }
 
 // ============================================================================
@@ -658,112 +596,88 @@ func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error)
 // BuildAuthHeader builds an Authorization header value for this agent.
 // Returns the header value string (e.g. for use in HTTP Authorization headers).
 func (a *JacsAgent) BuildAuthHeader() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	result := C.jacs_agent_build_auth_header(a.handle)
-	if result == nil {
-		return "", errors.New("failed to build auth header")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_build_auth_header(a.handle), errors.New("failed to build auth header"))
 }
 
 // CanonicalizeJson canonicalizes a JSON string using RFC 8785 (JCS).
 // Returns the canonicalized JSON string.
 func (a *JacsAgent) CanonicalizeJson(jsonStr string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cJSON := C.CString(jsonStr)
-	defer C.free(unsafe.Pointer(cJSON))
+	cJSON, freeJSON := cString(jsonStr)
+	defer freeJSON()
 
-	result := C.jacs_agent_canonicalize_json(a.handle, cJSON)
-	if result == nil {
-		return "", errors.New("failed to canonicalize JSON")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_canonicalize_json(a.handle, cJSON), errors.New("failed to canonicalize JSON"))
 }
 
 // SignResponse signs a response payload (wraps in a JACS document via the protocol layer).
 // payloadJson is the JSON string of the payload to sign.
 // Returns the signed response as a JSON string.
 func (a *JacsAgent) SignResponse(payloadJson string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cPayload := C.CString(payloadJson)
-	defer C.free(unsafe.Pointer(cPayload))
+	cPayload, freePayload := cString(payloadJson)
+	defer freePayload()
 
-	result := C.jacs_agent_sign_response(a.handle, cPayload)
-	if result == nil {
-		return "", errors.New("failed to sign response")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_sign_response(a.handle, cPayload), errors.New("failed to sign response"))
 }
 
 // GenerateVerifyLink generates a verification link for a signed document.
 // EncodeVerifyPayload encodes a document as URL-safe base64 (no padding) for verification.
 func (a *JacsAgent) EncodeVerifyPayload(document string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(document)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(document)
+	defer freeDoc()
 
-	result := C.jacs_agent_encode_verify_payload(a.handle, cDoc)
-	if result == nil {
-		return "", errors.New("failed to encode verify payload")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_encode_verify_payload(a.handle, cDoc), errors.New("failed to encode verify payload"))
 }
 
 // DecodeVerifyPayload decodes a URL-safe base64 verification payload back to the original document.
 func (a *JacsAgent) DecodeVerifyPayload(encoded string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cEncoded := C.CString(encoded)
-	defer C.free(unsafe.Pointer(cEncoded))
+	cEncoded, freeEncoded := cString(encoded)
+	defer freeEncoded()
 
-	result := C.jacs_agent_decode_verify_payload(a.handle, cEncoded)
-	if result == nil {
-		return "", errors.New("failed to decode verify payload")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_decode_verify_payload(a.handle, cEncoded), errors.New("failed to decode verify payload"))
 }
 
 // ExtractDocumentId extracts the document ID from a JACS-signed document.
 // Checks jacsDocumentId, document_id, id in priority order.
 func (a *JacsAgent) ExtractDocumentId(document string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cDoc := C.CString(document)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(document)
+	defer freeDoc()
 
-	result := C.jacs_agent_extract_document_id(a.handle, cDoc)
-	if result == nil {
-		return "", errors.New("failed to extract document ID")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_extract_document_id(a.handle, cDoc), errors.New("failed to extract document ID"))
 }
 
 // UnwrapSignedEvent unwraps and verifies a signed event using the agent and server keys.
@@ -771,23 +685,19 @@ func (a *JacsAgent) ExtractDocumentId(document string) (string, error) {
 // serverKeysJson is the server public keys JSON string.
 // Returns the unwrapped event payload as a JSON string.
 func (a *JacsAgent) UnwrapSignedEvent(eventJson, serverKeysJson string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
-		return "", errors.New("JacsAgent is closed")
+		return "", errAgentClosed
 	}
 
-	cEvent := C.CString(eventJson)
-	defer C.free(unsafe.Pointer(cEvent))
+	cEvent, freeEvent := cString(eventJson)
+	defer freeEvent()
 
-	cKeys := C.CString(serverKeysJson)
-	defer C.free(unsafe.Pointer(cKeys))
+	cKeys, freeKeys := cString(serverKeysJson)
+	defer freeKeys()
 
-	result := C.jacs_agent_unwrap_signed_event(a.handle, cEvent, cKeys)
-	if result == nil {
-		return "", errors.New("failed to unwrap signed event")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_agent_unwrap_signed_event(a.handle, cEvent, cKeys), errors.New("failed to unwrap signed event"))
 }
 
 // Helper function to get error messages for JacsAgent methods
@@ -915,8 +825,8 @@ func getAgentErrorMessage(code int, operation string) string {
 // LegacyLoad initializes JACS with the given configuration file (legacy C API).
 // Deprecated: Use NewJacsAgent() and agent.Load() instead, or the simple API Load(configPath *string).
 func LegacyLoad(configPath string) error {
-	cPath := C.CString(configPath)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath := cString(configPath)
+	defer freePath()
 
 	result := C.jacs_load(cPath)
 	if result != 0 {
@@ -927,42 +837,30 @@ func LegacyLoad(configPath string) error {
 
 // SignString signs a string using the loaded JACS agent
 func SignString(data string) (string, error) {
-	cData := C.CString(data)
-	defer C.free(unsafe.Pointer(cData))
+	cData, freeData := cString(data)
+	defer freeData()
 
-	result := C.jacs_sign_string(cData)
-	if result == nil {
-		return "", errors.New("failed to sign string")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_sign_string(cData), errors.New("failed to sign string"))
 }
 
 // HashString hashes a string using JACS hashing
 func HashString(data string) (string, error) {
-	cData := C.CString(data)
-	defer C.free(unsafe.Pointer(cData))
+	cData, freeData := cString(data)
+	defer freeData()
 
-	result := C.jacs_hash_string(cData)
-	if result == nil {
-		return "", errors.New("failed to hash string")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_hash_string(cData), errors.New("failed to hash string"))
 }
 
 // VerifyString verifies a string signature
 func VerifyString(data, signatureBase64 string, publicKey []byte, publicKeyEncType string) error {
-	cData := C.CString(data)
-	defer C.free(unsafe.Pointer(cData))
+	cData, freeData := cString(data)
+	defer freeData()
 
-	cSig := C.CString(signatureBase64)
-	defer C.free(unsafe.Pointer(cSig))
+	cSig, freeSig := cString(signatureBase64)
+	defer freeSig()
 
-	cEncType := C.CString(publicKeyEncType)
-	defer C.free(unsafe.Pointer(cEncType))
+	cEncType, freeEncType := cString(publicKeyEncType)
+	defer freeEncType()
 
 	var cPubKey *C.uint8_t
 	if len(publicKey) > 0 {
@@ -978,121 +876,71 @@ func VerifyString(data, signatureBase64 string, publicKey []byte, publicKeyEncTy
 
 // SignAgent signs an external agent
 func SignAgent(agentString string, publicKey []byte, publicKeyEncType string) (string, error) {
-	cAgent := C.CString(agentString)
-	defer C.free(unsafe.Pointer(cAgent))
+	cAgent, freeAgent := cString(agentString)
+	defer freeAgent()
 
-	cEncType := C.CString(publicKeyEncType)
-	defer C.free(unsafe.Pointer(cEncType))
+	cEncType, freeEncType := cString(publicKeyEncType)
+	defer freeEncType()
 
 	var cPubKey *C.uint8_t
 	if len(publicKey) > 0 {
 		cPubKey = (*C.uint8_t)(unsafe.Pointer(&publicKey[0]))
 	}
 
-	result := C.jacs_sign_agent(cAgent, cPubKey, C.size_t(len(publicKey)), cEncType)
-	if result == nil {
-		return "", errors.New("failed to sign agent")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_sign_agent(cAgent, cPubKey, C.size_t(len(publicKey)), cEncType), errors.New("failed to sign agent"))
 }
 
 // CreateConfig creates a new JACS configuration
 func CreateConfig(config Config) (string, error) {
 	// Convert Go pointers to C strings
-	var cUseSec, cDataDir, cKeyDir, cPrivKeyFile, cPubKeyFile, cKeyAlg, cPrivKeyPass, cAgentID, cDefStorage *C.char
+	cUseSec, freeUseSec := cStringOpt(config.UseSecurity)
+	defer freeUseSec()
+	cDataDir, freeDataDir := cStringOpt(config.DataDirectory)
+	defer freeDataDir()
+	cKeyDir, freeKeyDir := cStringOpt(config.KeyDirectory)
+	defer freeKeyDir()
+	cPrivKeyFile, freePrivKeyFile := cStringOpt(config.AgentPrivateKeyFile)
+	defer freePrivKeyFile()
+	cPubKeyFile, freePubKeyFile := cStringOpt(config.AgentPublicKeyFile)
+	defer freePubKeyFile()
+	cKeyAlg, freeKeyAlg := cStringOpt(config.AgentKeyAlgorithm)
+	defer freeKeyAlg()
+	cPrivKeyPass, freePrivKeyPass := cStringOpt(config.PrivateKeyPassword)
+	defer freePrivKeyPass()
+	cAgentID, freeAgentID := cStringOpt(config.AgentIDAndVersion)
+	defer freeAgentID()
+	cDefStorage, freeDefStorage := cStringOpt(config.DefaultStorage)
+	defer freeDefStorage()
 
-	if config.UseSecurity != nil {
-		cUseSec = C.CString(*config.UseSecurity)
-		defer C.free(unsafe.Pointer(cUseSec))
-	}
-	if config.DataDirectory != nil {
-		cDataDir = C.CString(*config.DataDirectory)
-		defer C.free(unsafe.Pointer(cDataDir))
-	}
-	if config.KeyDirectory != nil {
-		cKeyDir = C.CString(*config.KeyDirectory)
-		defer C.free(unsafe.Pointer(cKeyDir))
-	}
-	if config.AgentPrivateKeyFile != nil {
-		cPrivKeyFile = C.CString(*config.AgentPrivateKeyFile)
-		defer C.free(unsafe.Pointer(cPrivKeyFile))
-	}
-	if config.AgentPublicKeyFile != nil {
-		cPubKeyFile = C.CString(*config.AgentPublicKeyFile)
-		defer C.free(unsafe.Pointer(cPubKeyFile))
-	}
-	if config.AgentKeyAlgorithm != nil {
-		cKeyAlg = C.CString(*config.AgentKeyAlgorithm)
-		defer C.free(unsafe.Pointer(cKeyAlg))
-	}
-	if config.PrivateKeyPassword != nil {
-		cPrivKeyPass = C.CString(*config.PrivateKeyPassword)
-		defer C.free(unsafe.Pointer(cPrivKeyPass))
-	}
-	if config.AgentIDAndVersion != nil {
-		cAgentID = C.CString(*config.AgentIDAndVersion)
-		defer C.free(unsafe.Pointer(cAgentID))
-	}
-	if config.DefaultStorage != nil {
-		cDefStorage = C.CString(*config.DefaultStorage)
-		defer C.free(unsafe.Pointer(cDefStorage))
-	}
-
-	result := C.jacs_create_config(cUseSec, cDataDir, cKeyDir, cPrivKeyFile, cPubKeyFile, cKeyAlg, cPrivKeyPass, cAgentID, cDefStorage)
-	if result == nil {
-		return "", errors.New("failed to create config")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_create_config(cUseSec, cDataDir, cKeyDir, cPrivKeyFile, cPubKeyFile, cKeyAlg, cPrivKeyPass, cAgentID, cDefStorage), errors.New("failed to create config"))
 }
 
 // CreateAgent creates a JACS agent programmatically and returns its metadata as JSON.
 func CreateAgent(name, password string, algorithm, dataDirectory, keyDirectory, configPath, agentType, description, domain, defaultStorage *string) (string, error) {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
+	cName, freeName := cString(name)
+	defer freeName()
 
-	cPassword := C.CString(password)
-	defer C.free(unsafe.Pointer(cPassword))
+	cPassword, freePassword := cString(password)
+	defer freePassword()
 
-	var cAlgorithm, cDataDir, cKeyDir, cConfigPath, cAgentType, cDescription, cDomain, cDefaultStorage *C.char
+	cAlgorithm, freeAlgorithm := cStringOpt(algorithm)
+	defer freeAlgorithm()
+	cDataDir, freeDataDir := cStringOpt(dataDirectory)
+	defer freeDataDir()
+	cKeyDir, freeKeyDir := cStringOpt(keyDirectory)
+	defer freeKeyDir()
+	cConfigPath, freeConfigPath := cStringOpt(configPath)
+	defer freeConfigPath()
+	cAgentType, freeAgentType := cStringOpt(agentType)
+	defer freeAgentType()
+	cDescription, freeDescription := cStringOpt(description)
+	defer freeDescription()
+	cDomain, freeDomain := cStringOpt(domain)
+	defer freeDomain()
+	cDefaultStorage, freeDefaultStorage := cStringOpt(defaultStorage)
+	defer freeDefaultStorage()
 
-	if algorithm != nil {
-		cAlgorithm = C.CString(*algorithm)
-		defer C.free(unsafe.Pointer(cAlgorithm))
-	}
-	if dataDirectory != nil {
-		cDataDir = C.CString(*dataDirectory)
-		defer C.free(unsafe.Pointer(cDataDir))
-	}
-	if keyDirectory != nil {
-		cKeyDir = C.CString(*keyDirectory)
-		defer C.free(unsafe.Pointer(cKeyDir))
-	}
-	if configPath != nil {
-		cConfigPath = C.CString(*configPath)
-		defer C.free(unsafe.Pointer(cConfigPath))
-	}
-	if agentType != nil {
-		cAgentType = C.CString(*agentType)
-		defer C.free(unsafe.Pointer(cAgentType))
-	}
-	if description != nil {
-		cDescription = C.CString(*description)
-		defer C.free(unsafe.Pointer(cDescription))
-	}
-	if domain != nil {
-		cDomain = C.CString(*domain)
-		defer C.free(unsafe.Pointer(cDomain))
-	}
-	if defaultStorage != nil {
-		cDefaultStorage = C.CString(*defaultStorage)
-		defer C.free(unsafe.Pointer(cDefaultStorage))
-	}
-
-	result := C.jacs_create_agent(
+	return goStringResult(C.jacs_create_agent(
 		cName,
 		cPassword,
 		cAlgorithm,
@@ -1103,22 +951,13 @@ func CreateAgent(name, password string, algorithm, dataDirectory, keyDirectory, 
 		cDescription,
 		cDomain,
 		cDefaultStorage,
-	)
-	if result == nil {
-		return "", errors.New("failed to create agent")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	), errors.New("failed to create agent"))
 }
 
 // VerifyAgent verifies an agent's signature and hash
 func VerifyAgent(agentFile *string) error {
-	var cFile *C.char
-	if agentFile != nil {
-		cFile = C.CString(*agentFile)
-		defer C.free(unsafe.Pointer(cFile))
-	}
+	cFile, freeFile := cStringOpt(agentFile)
+	defer freeFile()
 
 	result := C.jacs_verify_agent(cFile)
 	if result != 0 {
@@ -1129,22 +968,16 @@ func VerifyAgent(agentFile *string) error {
 
 // UpdateAgent updates the current agent
 func UpdateAgent(newAgentString string) (string, error) {
-	cAgent := C.CString(newAgentString)
-	defer C.free(unsafe.Pointer(cAgent))
+	cAgent, freeAgent := cString(newAgentString)
+	defer freeAgent()
 
-	result := C.jacs_update_agent(cAgent)
-	if result == nil {
-		return "", errors.New("failed to update agent")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_update_agent(cAgent), errors.New("failed to update agent"))
 }
 
 // VerifyDocument verifies a document's hash and signature
 func VerifyDocument(documentString string) error {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	result := C.jacs_verify_document(cDoc)
 	if result != 0 {
@@ -1155,11 +988,11 @@ func VerifyDocument(documentString string) error {
 
 // UpdateDocument updates an existing document
 func UpdateDocument(documentKey, newDocumentString string, attachments []string, embed *bool) (string, error) {
-	cKey := C.CString(documentKey)
-	defer C.free(unsafe.Pointer(cKey))
+	cKey, freeKey := cString(documentKey)
+	defer freeKey()
 
-	cDoc := C.CString(newDocumentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(newDocumentString)
+	defer freeDoc()
 
 	var cAttach *C.char
 	if len(attachments) > 0 {
@@ -1167,8 +1000,9 @@ func UpdateDocument(documentKey, newDocumentString string, attachments []string,
 		if err != nil {
 			return "", err
 		}
-		cAttach = C.CString(string(attachJSON))
-		defer C.free(unsafe.Pointer(cAttach))
+		var freeAttach func()
+		cAttach, freeAttach = cString(string(attachJSON))
+		defer freeAttach()
 	}
 
 	embedVal := C.int(0)
@@ -1180,33 +1014,20 @@ func UpdateDocument(documentKey, newDocumentString string, attachments []string,
 		}
 	}
 
-	result := C.jacs_update_document(cKey, cDoc, cAttach, embedVal)
-	if result == nil {
-		return "", errors.New("failed to update document")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_update_document(cKey, cDoc, cAttach, embedVal), errors.New("failed to update document"))
 }
 
 // CreateDocument creates a new JACS document
 func CreateDocument(documentString string, customSchema, outputFilename *string, noSave bool, attachments *string, embed *bool) (string, error) {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cSchema, cOutput, cAttach *C.char
-	if customSchema != nil {
-		cSchema = C.CString(*customSchema)
-		defer C.free(unsafe.Pointer(cSchema))
-	}
-	if outputFilename != nil {
-		cOutput = C.CString(*outputFilename)
-		defer C.free(unsafe.Pointer(cOutput))
-	}
-	if attachments != nil {
-		cAttach = C.CString(*attachments)
-		defer C.free(unsafe.Pointer(cAttach))
-	}
+	cSchema, freeSchema := cStringOpt(customSchema)
+	defer freeSchema()
+	cOutput, freeOutput := cStringOpt(outputFilename)
+	defer freeOutput()
+	cAttach, freeAttach := cStringOpt(attachments)
+	defer freeAttach()
 
 	noSaveVal := C.int(0)
 	if noSave {
@@ -1222,88 +1043,51 @@ func CreateDocument(documentString string, customSchema, outputFilename *string,
 		}
 	}
 
-	result := C.jacs_create_document(cDoc, cSchema, cOutput, noSaveVal, cAttach, embedVal)
-	if result == nil {
-		return "", errors.New("failed to create document")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_create_document(cDoc, cSchema, cOutput, noSaveVal, cAttach, embedVal), errors.New("failed to create document"))
 }
 
 // CreateAgreement creates an agreement for a document
 func CreateAgreement(documentString string, agentIDs []string, question, context, agreementFieldname *string) (string, error) {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	agentIDsJSON, err := json.Marshal(agentIDs)
 	if err != nil {
 		return "", err
 	}
-	cAgentIDs := C.CString(string(agentIDsJSON))
-	defer C.free(unsafe.Pointer(cAgentIDs))
+	cAgentIDs, freeAgentIDs := cString(string(agentIDsJSON))
+	defer freeAgentIDs()
 
-	var cQuestion, cContext, cFieldname *C.char
-	if question != nil {
-		cQuestion = C.CString(*question)
-		defer C.free(unsafe.Pointer(cQuestion))
-	}
-	if context != nil {
-		cContext = C.CString(*context)
-		defer C.free(unsafe.Pointer(cContext))
-	}
-	if agreementFieldname != nil {
-		cFieldname = C.CString(*agreementFieldname)
-		defer C.free(unsafe.Pointer(cFieldname))
-	}
+	cQuestion, freeQuestion := cStringOpt(question)
+	defer freeQuestion()
+	cContext, freeContext := cStringOpt(context)
+	defer freeContext()
+	cFieldname, freeFieldname := cStringOpt(agreementFieldname)
+	defer freeFieldname()
 
-	result := C.jacs_create_agreement(cDoc, cAgentIDs, cQuestion, cContext, cFieldname)
-	if result == nil {
-		return "", errors.New("failed to create agreement")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_create_agreement(cDoc, cAgentIDs, cQuestion, cContext, cFieldname), errors.New("failed to create agreement"))
 }
 
 // SignAgreement signs an agreement
 func SignAgreement(documentString string, agreementFieldname *string) (string, error) {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cFieldname *C.char
-	if agreementFieldname != nil {
-		cFieldname = C.CString(*agreementFieldname)
-		defer C.free(unsafe.Pointer(cFieldname))
-	}
+	cFieldname, freeFieldname := cStringOpt(agreementFieldname)
+	defer freeFieldname()
 
-	result := C.jacs_sign_agreement(cDoc, cFieldname)
-	if result == nil {
-		return "", errors.New("failed to sign agreement")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_sign_agreement(cDoc, cFieldname), errors.New("failed to sign agreement"))
 }
 
 // CheckAgreement checks an agreement
 func CheckAgreement(documentString string, agreementFieldname *string) (string, error) {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cFieldname *C.char
-	if agreementFieldname != nil {
-		cFieldname = C.CString(*agreementFieldname)
-		defer C.free(unsafe.Pointer(cFieldname))
-	}
+	cFieldname, freeFieldname := cStringOpt(agreementFieldname)
+	defer freeFieldname()
 
-	result := C.jacs_check_agreement(cDoc, cFieldname)
-	if result == nil {
-		return "", errors.New("failed to check agreement")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_check_agreement(cDoc, cFieldname), errors.New("failed to check agreement"))
 }
 
 // SignRequest signs a request payload (for MCP)
@@ -1313,22 +1097,16 @@ func SignRequest(payload interface{}) (string, error) {
 		return "", err
 	}
 
-	cPayload := C.CString(string(payloadJSON))
-	defer C.free(unsafe.Pointer(cPayload))
+	cPayload, freePayload := cString(string(payloadJSON))
+	defer freePayload()
 
-	result := C.jacs_sign_request(cPayload)
-	if result == nil {
-		return "", errors.New("failed to sign request")
-	}
-	defer C.jacs_free_string(result)
-
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_sign_request(cPayload), errors.New("failed to sign request"))
 }
 
 // VerifyResponse verifies a response (for MCP)
 func VerifyResponse(documentString string) (map[string]interface{}, error) {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	result := C.jacs_verify_response(cDoc)
 	if result == nil {
@@ -1348,8 +1126,8 @@ func VerifyResponse(documentString string) (map[string]interface{}, error) {
 
 // VerifyResponseWithAgentID verifies a response and returns the agent ID (for MCP)
 func VerifyResponseWithAgentID(documentString string) (payload map[string]interface{}, agentID string, err error) {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
 	var cAgentID *C.char
 	result := C.jacs_verify_response_with_agent_id(cDoc, &cAgentID)
@@ -1374,14 +1152,11 @@ func VerifyResponseWithAgentID(documentString string) (payload map[string]interf
 
 // VerifySignature verifies a signature on a document
 func VerifySignature(documentString string, signatureField *string) error {
-	cDoc := C.CString(documentString)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(documentString)
+	defer freeDoc()
 
-	var cField *C.char
-	if signatureField != nil {
-		cField = C.CString(*signatureField)
-		defer C.free(unsafe.Pointer(cField))
-	}
+	cField, freeField := cStringOpt(signatureField)
+	defer freeField()
 
 	result := C.jacs_verify_signature(cDoc, cField)
 	if result != 0 {
@@ -1479,20 +1254,23 @@ func getErrorMessage(code int, operation string) string {
 // Optional keyResolution, dataDirectory, keyDirectory may be empty to use defaults.
 // Returns a VerificationResult; does not require Load() to have been called.
 func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyDirectory string) (*VerificationResult, error) {
-	cDoc := C.CString(signedDocument)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(signedDocument)
+	defer freeDoc()
 	var cKR, cDD, cKD *C.char
 	if keyResolution != "" {
-		cKR = C.CString(keyResolution)
-		defer C.free(unsafe.Pointer(cKR))
+		var freeKR func()
+		cKR, freeKR = cString(keyResolution)
+		defer freeKR()
 	}
 	if dataDirectory != "" {
-		cDD = C.CString(dataDirectory)
-		defer C.free(unsafe.Pointer(cDD))
+		var freeDD func()
+		cDD, freeDD = cString(dataDirectory)
+		defer freeDD()
 	}
 	if keyDirectory != "" {
-		cKD = C.CString(keyDirectory)
-		defer C.free(unsafe.Pointer(cKD))
+		var freeKD func()
+		cKD, freeKD = cString(keyDirectory)
+		defer freeKD()
 	}
 	result := C.jacs_verify_document_standalone(cDoc, cKR, cDD, cKD)
 	if result == nil {
@@ -1515,13 +1293,9 @@ func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyD
 func RunAudit(configPath string, recentN int) (string, error) {
 	var cConfigPath *C.char
 	if configPath != "" {
-		cConfigPath = C.CString(configPath)
-		defer C.free(unsafe.Pointer(cConfigPath))
+		var freeConfigPath func()
+		cConfigPath, freeConfigPath = cString(configPath)
+		defer freeConfigPath()
 	}
-	result := C.jacs_audit(cConfigPath, C.int(recentN))
-	if result == nil {
-		return "", errors.New("audit failed")
-	}
-	defer C.jacs_free_string(result)
-	return C.GoString(result), nil
+	return goStringResult(C.jacs_audit(cConfigPath, C.int(recentN)), errors.New("audit failed"))
 }
