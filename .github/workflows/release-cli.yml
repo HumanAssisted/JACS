@@ -94,6 +94,11 @@ jobs:
             $_ -eq "$prefix/README.md" -or
             $_ -eq "$prefix/LICENSE" -or
             $_ -eq "$prefix/binding-core/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-core/Cargo.toml" -or
+            $_ -like "$prefix/jacs-core/src/*" -or
+            $_ -like "$prefix/jacs-core/schemas/*" -or
+            $_ -eq "$prefix/jacs-wasm/Cargo.toml" -or
+            $_ -like "$prefix/jacs-wasm/src/*" -or
             $_ -eq "$prefix/jacs/Cargo.toml" -or
             $_ -eq "$prefix/jacs/README.md" -or
             $_ -eq "$prefix/jacs/LICENSE" -or
