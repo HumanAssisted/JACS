@@ -445,7 +445,7 @@ pub fn apply_with_agent(
 
     if let AgreementV2Mutation::SetSignaturePolicy { signature_policy } = &mutation
         && signature_policy_past_point_of_reliance(&current.value)
-        && signature_policy_is_weaker(&current.value, signature_policy, &current.value)
+        && signature_policy_is_weaker(&current.value, signature_policy)
     {
         return Err(JacsError::DocumentError(
             "signaturePolicy cannot be loosened after proposal or signatures (consent-scope quorum); create a superseding agreement instead"
@@ -851,23 +851,13 @@ pub fn resolve_branch_conflict_with_agent(
 }
 
 pub fn compute_agreement_hash(document: &Value) -> Result<String, JacsError> {
-    let mut scope = Map::new();
-    for field in CONSENT_HASH_FIELDS {
-        if let Some(value) = document.get(field) {
-            scope.insert((*field).to_string(), value.clone());
-        }
-    }
-    let canonical = canonicalize_json(&Value::Object(scope))?;
-    Ok(hash_string(&canonical))
+    // Single-sourced in jacs-core so the native and portable/wasm engines can
+    // never produce divergent consent hashes (the canonical signed seam).
+    jacs_core::agreements::v2::compute_agreement_hash(document).map_err(JacsError::from)
 }
 
 pub fn compute_transcript_hash(document: &Value) -> Result<String, JacsError> {
-    let transcript = document
-        .get("transcript")
-        .cloned()
-        .unwrap_or_else(|| Value::Array(Vec::new()));
-    let canonical = canonicalize_json(&transcript)?;
-    Ok(hash_string(&canonical))
+    jacs_core::agreements::v2::compute_transcript_hash(document).map_err(JacsError::from)
 }
 
 /// Reject oversized raw agreement JSON before it is parsed/processed, reusing
@@ -2512,88 +2502,11 @@ fn policy_count(document: &Value, field: &str) -> usize {
 }
 
 fn signature_policy_past_point_of_reliance(document: &Value) -> bool {
-    if matches!(
-        document.get("status").and_then(Value::as_str),
-        Some("proposed" | "partially_signed")
-    ) {
-        return true;
-    }
-
-    let has_signatures = document
-        .get("agreementSignatures")
-        .and_then(Value::as_array)
-        .map(|signatures| !signatures.is_empty())
-        .unwrap_or(false);
-    let has_previous_versions = document
-        .get("allPreviousVersions")
-        .and_then(Value::as_array)
-        .map(|versions| !versions.is_empty())
-        .unwrap_or(false);
-
-    has_signatures || has_previous_versions
+    jacs_core::agreements::v2::signature_policy_past_point_of_reliance(document)
 }
 
-fn signature_policy_is_weaker(
-    old_doc: &Value,
-    new_policy: &Value,
-    current_doc_for_signer_total: &Value,
-) -> bool {
-    let (signer_total, _, _) = party_role_totals(current_doc_for_signer_total);
-    let mut new_doc = current_doc_for_signer_total.clone();
-    new_doc["signaturePolicy"] = new_policy.clone();
-
-    let old_party_quorum = party_quorum_required(old_doc, signer_total);
-    let new_party_quorum = party_quorum_required(&new_doc, signer_total);
-    if new_party_quorum < old_party_quorum {
-        return true;
-    }
-    if policy_count(&new_doc, "witnessRequired") < policy_count(old_doc, "witnessRequired") {
-        return true;
-    }
-    if policy_count(&new_doc, "notaryRequired") < policy_count(old_doc, "notaryRequired") {
-        return true;
-    }
-
-    let strength_rank = |document: &Value| {
-        document
-            .get("signaturePolicy")
-            .and_then(|policy| policy.get("minimumStrength"))
-            .and_then(Value::as_str)
-            .and_then(|strength| {
-                MINIMUM_STRENGTHS
-                    .iter()
-                    .position(|allowed| *allowed == strength)
-                    .map(|index| index as isize)
-            })
-            .unwrap_or(-1)
-    };
-    if strength_rank(&new_doc) < strength_rank(old_doc) {
-        return true;
-    }
-
-    let algorithm_set = |document: &Value| {
-        document
-            .get("signaturePolicy")
-            .and_then(|policy| policy.get("requiredAlgorithms"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(ToString::to_string)
-            .collect::<HashSet<_>>()
-    };
-    let old_algorithms = algorithm_set(old_doc);
-    if !old_algorithms.is_empty() {
-        let new_algorithms = algorithm_set(&new_doc);
-        if new_algorithms.is_empty()
-            || (old_algorithms.is_subset(&new_algorithms)
-                && new_algorithms.len() > old_algorithms.len())
-        {
-            return true;
-        }
-    }
-
-    false
+fn signature_policy_is_weaker(current_doc: &Value, new_policy: &Value) -> bool {
+    jacs_core::agreements::v2::signature_policy_is_weaker(current_doc, new_policy)
 }
 
 fn party_quorum_required(document: &Value, signer_total: usize) -> usize {
@@ -2930,7 +2843,7 @@ mod differential_parity {
         for doc in &corpus() {
             for cand in &candidates {
                 assert_eq!(
-                    super::signature_policy_is_weaker(doc, cand, doc),
+                    super::signature_policy_is_weaker(doc, cand),
                     core_v2::signature_policy_is_weaker(doc, cand),
                     "signature_policy_is_weaker mismatch\n  doc={doc}\n  candidate={cand}"
                 );
