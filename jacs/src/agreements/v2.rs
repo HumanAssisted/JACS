@@ -2556,19 +2556,24 @@ fn agreement_expired(document: &Value) -> bool {
 mod differential_parity {
     //! Differential parity between the two Agreement v2 engines.
     //!
-    //! The native engine here (`jacs::agreements::v2`) and the portable engine
-    //! (`jacs_core::agreements::v2`) carry parallel implementations of the pure
-    //! agreement *policy* functions: status recomputation, consent / transcript
-    //! hashing, and the signature-policy guards. A document signed under one
-    //! engine may be judged under the other (native signs, WASM/browser
-    //! verifies, and vice versa), so the two implementations MUST agree
+    //! A document signed under one engine may be judged under the other
+    //! (native signs, WASM/browser verifies, and vice versa), so the pure
+    //! agreement *policy* functions — status recomputation, consent /
+    //! transcript hashing, and the signature-policy guards — MUST agree
     //! byte-for-byte on every valid agreement. This test pins that agreement
-    //! across a broad generated corpus so the implementations cannot silently
-    //! drift apart, and it is the safety net for de-duplicating these helpers
-    //! onto a single jacs-core source. The corpus is restricted to *valid*
-    //! agreements (signatures only from listed parties with matching roles),
-    //! which is the input contract both engines enforce upstream of these pure
-    //! functions.
+    //! across a broad generated corpus.
+    //!
+    //! It was written against two parallel implementations and used as the
+    //! safety net for single-sourcing them: the hashing and policy-guard
+    //! helpers in this module now delegate to `jacs_core::agreements::v2`, so
+    //! for those the assertions guard against a divergent native
+    //! reimplementation ever being reintroduced. `recompute_status` remains a
+    //! genuinely independent native implementation (merging it would drag
+    //! agent-coupled scaffolding across crates), so for it this test is the
+    //! live cross-engine equivalence proof. The corpus is restricted to
+    //! *valid* agreements (signatures only from listed parties with matching
+    //! roles), which is the input contract both engines enforce upstream of
+    //! these pure functions.
     use jacs_core::agreements::v2 as core_v2;
     use serde_json::{Map, Value, json};
 

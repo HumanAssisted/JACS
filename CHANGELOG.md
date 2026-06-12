@@ -52,6 +52,7 @@ Agreement v2 developer experience:
 - CLI/MCP agreement-v2 commands and tools are now discoverable (help on bare invocation, `--side-branch` with a `--side` alias, LLM-usable tool descriptions, legacy-v1 labels) and documented in the CLI reference.
 - The getting-started multi-agent walkthrough is runnable, and `jacs.simple` exposes module-level Agreement v2 helpers for parity with the Node bindings.
 - The Agreement v2 test suites (binding-core, jacs-wasm) now run in CI, with added stdin, notary-role, and WASM declaration-drift coverage.
+- The pure agreement-policy helpers (consent/transcript hashing, signature-policy loosening guards) are single-sourced in `jacs-core` with the native engine delegating to them, and a differential parity test runs ~9k generated agreements through both engines' policy functions so the native and portable/WASM engines cannot silently drift.
 
 ### Dependencies
 
