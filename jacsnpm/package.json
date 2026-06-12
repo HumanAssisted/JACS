@@ -82,7 +82,7 @@
     }
   },
   "bin": {
-    "jacs-cli": "./bin/jacs-cli.js"
+    "jacs-cli": "bin/jacs-cli.js"
   },
   "scripts": {
     "postinstall": "node scripts/install-cli.js || true",
@@ -179,7 +179,7 @@
   "homepage": "https://github.com/HumanAssisted/JACS",
   "repository": {
     "type": "git",
-    "url": "https://github.com/HumanAssisted/JACS.git"
+    "url": "git+https://github.com/HumanAssisted/JACS.git"
   },
   "files": [
     "index.js",

@@ -65,14 +65,15 @@ jobs:
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-core $VERSION already published, skipping"
           else
-            cd jacs-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::jacs-core $VERSION already exists on crates.io (exit 101), continuing"
+            set -o pipefail
+            if ! (cd jacs-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-core.log); then
+              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-core.log; then
+                echo "::warning::jacs-core $VERSION already exists on crates.io, continuing"
               else
-                exit $EXIT_CODE
+                echo "::error::publishing jacs-core $VERSION failed (real error, not already-exists)"
+                exit 1
               fi
-            }
+            fi
           fi
 
       - name: Wait for jacs-core to appear on crates.io
@@ -96,14 +97,15 @@ jobs:
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-media $VERSION already published, skipping"
           else
-            cd jacs-media && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::jacs-media $VERSION already exists on crates.io (exit 101), continuing"
+            set -o pipefail
+            if ! (cd jacs-media && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-media.log); then
+              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-media.log; then
+                echo "::warning::jacs-media $VERSION already exists on crates.io, continuing"
               else
-                exit $EXIT_CODE
+                echo "::error::publishing jacs-media $VERSION failed (real error, not already-exists)"
+                exit 1
               fi
-            }
+            fi
           fi
 
       - name: Wait for jacs-media to appear on crates.io
@@ -127,14 +129,15 @@ jobs:
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs $VERSION already published, skipping"
           else
-            cd jacs && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::jacs $VERSION already exists on crates.io (exit 101), continuing"
+            set -o pipefail
+            if ! (cd jacs && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs.log); then
+              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs.log; then
+                echo "::warning::jacs $VERSION already exists on crates.io, continuing"
               else
-                exit $EXIT_CODE
+                echo "::error::publishing jacs $VERSION failed (real error, not already-exists)"
+                exit 1
               fi
-            }
+            fi
           fi
 
       - name: Wait for jacs to appear on crates.io
@@ -158,14 +161,15 @@ jobs:
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-binding-core $VERSION already published, skipping"
           else
-            cd binding-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::jacs-binding-core $VERSION already exists on crates.io (exit 101), continuing"
+            set -o pipefail
+            if ! (cd binding-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-binding-core.log); then
+              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-binding-core.log; then
+                echo "::warning::jacs-binding-core $VERSION already exists on crates.io, continuing"
               else
-                exit $EXIT_CODE
+                echo "::error::publishing jacs-binding-core $VERSION failed (real error, not already-exists)"
+                exit 1
               fi
-            }
+            fi
           fi
 
       - name: Wait for jacs-binding-core to appear on crates.io
@@ -189,14 +193,15 @@ jobs:
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-mcp $VERSION already published, skipping"
           else
-            cd jacs-mcp && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::jacs-mcp $VERSION already exists on crates.io (exit 101), continuing"
+            set -o pipefail
+            if ! (cd jacs-mcp && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-mcp.log); then
+              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-mcp.log; then
+                echo "::warning::jacs-mcp $VERSION already exists on crates.io, continuing"
               else
-                exit $EXIT_CODE
+                echo "::error::publishing jacs-mcp $VERSION failed (real error, not already-exists)"
+                exit 1
               fi
-            }
+            fi
           fi
 
       - name: Wait for jacs-mcp to appear on crates.io
@@ -220,12 +225,13 @@ jobs:
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-cli $VERSION already published, skipping"
           else
-            cd jacs-cli && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::jacs-cli $VERSION already exists on crates.io (exit 101), continuing"
+            set -o pipefail
+            if ! (cd jacs-cli && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-cli.log); then
+              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-cli.log; then
+                echo "::warning::jacs-cli $VERSION already exists on crates.io, continuing"
               else
-                exit $EXIT_CODE
+                echo "::error::publishing jacs-cli $VERSION failed (real error, not already-exists)"
+                exit 1
               fi
-            }
+            fi
           fi

@@ -24,6 +24,7 @@ include = [
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/agreement/v2/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
+    "schemas/conflict/v1/conflict.schema.json",
     "schemas/a2a-verification-result.schema.json",
     "schemas/jacs.config.schema.json",
     "Cargo.toml",
