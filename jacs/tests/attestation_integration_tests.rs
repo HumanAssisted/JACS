@@ -219,16 +219,20 @@ fn attestation_tampered_body_verify_fails() {
     let mut tampered = doc.value.clone();
     tampered["attestation"]["claims"][0]["value"] = json!(false);
 
-    // Store the tampered document
+    // Store the tampered document. Stored versions are immutable
+    // (insert-ignore on existing keys), so the original must be evicted
+    // first for the tampered write to land.
     let tampered_doc = jacs::agent::document::JACSDocument {
         id: doc.id.clone(),
         version: doc.version.clone(),
         value: tampered,
         jacs_type: doc.jacs_type.clone(),
     };
+    let key = format!("{}:{}", doc.id, doc.version);
+    use jacs::storage::StorageDocumentTraits as _;
+    agent.storage_ref().remove_document(&key).unwrap();
     agent.store_jacs_document(&tampered_doc.value).unwrap();
 
-    let key = format!("{}:{}", doc.id, doc.version);
     let result = agent
         .verify_attestation_local_impl(&key)
         .expect("verify should not error");
@@ -253,15 +257,19 @@ fn attestation_tampered_signature_verify_fails() {
         sig["signature"] = json!("TAMPERED_SIGNATURE_VALUE");
     }
 
+    // Stored versions are immutable (insert-ignore on existing keys), so
+    // the original must be evicted first for the tampered write to land.
     let tampered_doc = jacs::agent::document::JACSDocument {
         id: doc.id.clone(),
         version: doc.version.clone(),
         value: tampered,
         jacs_type: doc.jacs_type.clone(),
     };
+    let key = format!("{}:{}", doc.id, doc.version);
+    use jacs::storage::StorageDocumentTraits as _;
+    agent.storage_ref().remove_document(&key).unwrap();
     agent.store_jacs_document(&tampered_doc.value).unwrap();
 
-    let key = format!("{}:{}", doc.id, doc.version);
     let result = agent
         .verify_attestation_local_impl(&key)
         .expect("verify should not error");
