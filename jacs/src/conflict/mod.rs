@@ -83,9 +83,9 @@ pub fn create(agent: &SimpleAgent, mut body: Value) -> Result<SignedDocument, Ja
 
     let doc = inner.store_jacs_document(&instance)?;
     info!(
-        event = "conflict_created",
+        action = "create",
         jacs_type = "conflict",
-        document_id = %doc.id,
+        doc_id = %doc.id,
         version = %doc.version,
         "Conflict document created"
     );
@@ -236,10 +236,19 @@ pub fn check_readiness(doc: &Value) -> ReadinessReport {
         });
     }
 
-    ReadinessReport {
+    let report = ReadinessReport {
         ready: blockers.is_empty(),
         blockers,
+    };
+    if !report.ready {
+        info!(
+            conflict_readiness = "not_ready",
+            jacs_type = "conflict",
+            blockers = report.blockers.len(),
+            "Conflict readiness check returned blockers"
+        );
     }
+    report
 }
 
 /// Check structural consistency across conflict document versions.
@@ -325,9 +334,9 @@ pub fn update(
 
     let doc = emit_successor(&mut inner, &current.value, next)?;
     info!(
-        event = "conflict_updated",
+        action = "update",
         jacs_type = "conflict",
-        document_id = %doc.id,
+        doc_id = %doc.id,
         version = %doc.version,
         "Conflict document updated"
     );
