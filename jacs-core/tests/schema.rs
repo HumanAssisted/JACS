@@ -14,6 +14,7 @@ const EXPECTED_KEYS: &[&str] = &[
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/agreement/v2/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
+    "schemas/conflict/v1/conflict.schema.json",
 ];
 
 #[test]
@@ -60,6 +61,10 @@ fn schema_short_name_returns_expected_slot_for_known_id() {
         (
             "https://hai.ai/schemas/attestation/v1/attestation.schema.json",
             "attestation",
+        ),
+        (
+            "https://hai.ai/schemas/conflict/v1/conflict.schema.json",
+            "conflict",
         ),
         ("document", "document"),
     ];

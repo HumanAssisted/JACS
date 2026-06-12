@@ -12,6 +12,8 @@
 
 * [Config](./jacs.md "Jacs Configuration File") – `https://hai.ai/schemas/jacs.config.schema.json`
 
+* [Conflict](./conflict.md "A standalone JACS conflict document for signed, versioned tracking of participant positions, divergences, phases, and resolving agreement links") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json`
+
 * [File](./files.md "General data about unstructured content not in JACS") – `https://hai.ai/schemas/components/files/v1/files.schema.json`
 
 * [Header](./header.md "The basis for a JACS document") – `https://hai.ai/schemas/header/v1/header.schema.json`
@@ -120,6 +122,16 @@
 
 * [Untitled object in Config](./jacs-properties-observability-properties-tracing-properties-resource-properties-attributes.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/tracing/properties/resource/properties/attributes`
 
+* [Untitled object in Conflict](./conflict-allof-1.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1`
+
+* [Untitled object in Conflict](./conflict-definitions-participant.md "A participant in a conflict") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/participant`
+
+* [Untitled object in Conflict](./conflict-definitions-position.md "A participant statement in the conflict belief structure") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/position`
+
+* [Untitled object in Conflict](./conflict-definitions-divergence.md "A typed divergence between participant positions") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/divergence`
+
+* [Untitled object in Conflict](./conflict-definitions-jacsdocumentref.md "Verifiable reference to a specific signed JACS document version") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/jacsDocumentRef`
+
 * [Untitled object in Header](./header-properties-jacsvisibility-oneof-1.md) – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVisibility/oneOf/1`
 
 ### Arrays
@@ -147,6 +159,18 @@
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-evidence.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/evidence`
 
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-derivation-properties-inputs.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/derivation/properties/inputs`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-participants.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/participants`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-positions.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/positions`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-divergences.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/divergences`
+
+* [Untitled array in Conflict](./conflict-definitions-divergence-properties-participantpositions.md "Position ids participating in this divergence") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/divergence/properties/participantPositions`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-linkedagreements.md "JACS document references to agreements that resolve part of this conflict") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/linkedAgreements`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-allpreviousversions.md "Append-only list of every prior jacsVersion of this conflict document, in chronological order") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/allPreviousVersions`
 
 * [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 

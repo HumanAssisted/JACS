@@ -1,0 +1,298 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/conflict/v1/conflict.schema.json",
+  "title": "Conflict",
+  "description": "A standalone JACS conflict document for signed, versioned tracking of participant positions, divergences, phases, and resolving agreement links. The JACS header owns document identity, versioning, authorship signatures, hashes, files, and visibility. The conflict body owns the belief structure. allPreviousVersions is an append-only ledger of every prior jacsVersion; header jacsPreviousVersion gives the immediate parent.",
+  "allOf": [
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "jacsType": {
+          "type": "string",
+          "const": "conflict",
+          "hai": "agent"
+        },
+        "jacsLevel": {
+          "type": "string",
+          "const": "artifact",
+          "hai": "meta"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "hai": "agent"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "hai": "agent"
+        },
+        "participants": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/participant"
+          },
+          "hai": "base"
+        },
+        "positions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/position"
+          },
+          "hai": "base"
+        },
+        "divergences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/divergence"
+          },
+          "hai": "base"
+        },
+        "phase": {
+          "$ref": "#/definitions/phase"
+        },
+        "linkedAgreements": {
+          "type": "array",
+          "description": "JACS document references to agreements that resolve part of this conflict.",
+          "items": {
+            "$ref": "#/definitions/jacsDocumentRef"
+          },
+          "hai": "base"
+        },
+        "allPreviousVersions": {
+          "type": "array",
+          "description": "Append-only list of every prior jacsVersion of this conflict document, in chronological order. Header jacsPreviousVersion is the immediate parent; this list is the full chain back to the original version. Append-only is enforced operationally.",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hai": "meta"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "participants",
+        "positions",
+        "divergences",
+        "phase"
+      ]
+    }
+  ],
+  "definitions": {
+    "participant": {
+      "type": "object",
+      "description": "A participant in a conflict. Party-role participants hold positions. Mediator, notary, and observer roles are listed without becoming parties.",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "agent"
+        },
+        "agentVersion": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "meta"
+        },
+        "agentType": {
+          "type": "string",
+          "enum": [
+            "human",
+            "human-org",
+            "hybrid",
+            "ai"
+          ],
+          "hai": "agent"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 256,
+          "hai": "agent"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "party",
+            "mediator",
+            "notary",
+            "observer"
+          ],
+          "hai": "base"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "agentId",
+        "agentType",
+        "role"
+      ]
+    },
+    "position": {
+      "type": "object",
+      "description": "A participant statement in the conflict belief structure. confirmed=true requires a reference to a signed JACS document containing the party confirmation.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "hai": "base"
+        },
+        "participantId": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "base"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "hai": "agent"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "resource",
+            "action",
+            "request",
+            "need",
+            "identity"
+          ],
+          "hai": "base"
+        },
+        "statedAt": {
+          "type": "string",
+          "format": "date-time",
+          "hai": "meta"
+        },
+        "confirmed": {
+          "type": "boolean",
+          "hai": "base"
+        },
+        "confirmationRef": {
+          "$ref": "#/definitions/jacsDocumentRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "participantId",
+        "statement",
+        "kind",
+        "statedAt",
+        "confirmed"
+      ],
+      "if": {
+        "properties": {
+          "confirmed": {
+            "const": true
+          }
+        },
+        "required": [
+          "confirmed"
+        ]
+      },
+      "then": {
+        "required": [
+          "confirmationRef"
+        ]
+      }
+    },
+    "divergence": {
+      "type": "object",
+      "description": "A typed divergence between participant positions.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "hai": "base"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "resource",
+            "factual",
+            "identity_safety",
+            "framing"
+          ],
+          "hai": "base"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "hai": "agent"
+        },
+        "participantPositions": {
+          "type": "array",
+          "description": "Position ids participating in this divergence.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hai": "base"
+        },
+        "zeroSum": {
+          "type": "boolean",
+          "hai": "base"
+        },
+        "phase": {
+          "$ref": "#/definitions/phase"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "summary",
+        "participantPositions",
+        "zeroSum",
+        "phase"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "surfacing",
+        "contested",
+        "exploring",
+        "converging",
+        "resolved",
+        "stalemate",
+        "escalated"
+      ],
+      "hai": "base"
+    },
+    "jacsDocumentRef": {
+      "type": "object",
+      "description": "Verifiable reference to a specific signed JACS document version.",
+      "properties": {
+        "jacsId": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "base"
+        },
+        "jacsVersion": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "base"
+        },
+        "jacsSha256": {
+          "type": "string",
+          "minLength": 1,
+          "hai": "base"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "jacsId",
+        "jacsVersion",
+        "jacsSha256"
+      ]
+    }
+  }
+}
