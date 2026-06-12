@@ -125,7 +125,9 @@ def test_agreement_v2_terms_conflict_requires_explicit_resolution():
     right_doc = json.loads(right)
 
     assert resolved["terms"] == _terms("resolved")
-    assert resolved["links"][0] == {
-        "jacsId": right_doc["jacsId"],
-        "jacsVersion": right_doc["jacsVersion"],
-    }
+    # Resolution links also carry jacsSha256 (content-hash binding of the
+    # resolved branch), so assert the identity fields as a subset.
+    link = resolved["links"][0]
+    assert link["jacsId"] == right_doc["jacsId"]
+    assert link["jacsVersion"] == right_doc["jacsVersion"]
+    assert isinstance(link["jacsSha256"], str) and len(link["jacsSha256"]) == 64

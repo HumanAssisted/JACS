@@ -114,9 +114,12 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const rightDoc = JSON.parse(right);
 
     expect(resolved.terms).to.equal(FIXTURE.terms_conflict.resolved);
-    expect(resolved.links[0]).to.deep.equal({
+    // Resolution links also carry jacsSha256 (content-hash binding of the
+    // resolved branch), so assert the identity fields as a subset.
+    expect(resolved.links[0]).to.include({
       jacsId: rightDoc.jacsId,
       jacsVersion: rightDoc.jacsVersion,
     });
+    expect(resolved.links[0].jacsSha256).to.be.a('string').and.have.length(64);
   });
 });
