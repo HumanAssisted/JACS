@@ -865,7 +865,8 @@ pub mod v2 {
         Ok(())
     }
 
-    fn compute_agreement_hash(doc: &Value) -> Result<String, CoreError> {
+    #[doc(hidden)]
+    pub fn compute_agreement_hash(doc: &Value) -> Result<String, CoreError> {
         let mut scoped = Map::new();
         for field in CONSENT_HASH_FIELDS {
             if let Some(value) = doc.get(*field) {
@@ -876,7 +877,8 @@ pub mod v2 {
         Ok(sha256_hex(canonical.as_bytes()))
     }
 
-    fn compute_transcript_hash(doc: &Value) -> Result<String, CoreError> {
+    #[doc(hidden)]
+    pub fn compute_transcript_hash(doc: &Value) -> Result<String, CoreError> {
         let transcript = doc.get("transcript").cloned().unwrap_or_else(|| json!([]));
         let canonical = canonicalize_json_try(&transcript)?;
         Ok(sha256_hex(canonical.as_bytes()))
@@ -911,7 +913,8 @@ pub mod v2 {
     /// Mirrors native `signature_policy_past_point_of_reliance`: once an agreement
     /// is proposed/partially-signed, carries signatures, or has prior versions, its
     /// signature policy may no longer be loosened.
-    fn signature_policy_past_point_of_reliance(doc: &Value) -> bool {
+    #[doc(hidden)]
+    pub fn signature_policy_past_point_of_reliance(doc: &Value) -> bool {
         if matches!(
             doc.get("status").and_then(Value::as_str),
             Some("proposed" | "partially_signed")
@@ -935,7 +938,8 @@ pub mod v2 {
     /// would weaken the consent quorum relative to the current document's policy
     /// (lower party quorum, fewer required witnesses/notaries, weaker minimum
     /// strength, or a broadened requiredAlgorithms allow-list).
-    fn signature_policy_is_weaker(current_doc: &Value, new_policy: &Value) -> bool {
+    #[doc(hidden)]
+    pub fn signature_policy_is_weaker(current_doc: &Value, new_policy: &Value) -> bool {
         let mut new_doc = current_doc.clone();
         new_doc["signaturePolicy"] = new_policy.clone();
 
@@ -1043,7 +1047,8 @@ pub mod v2 {
         Ok(())
     }
 
-    fn recompute_status(doc: &Value) -> String {
+    #[doc(hidden)]
+    pub fn recompute_status(doc: &Value) -> String {
         let current = doc.get("status").and_then(Value::as_str).unwrap_or("draft");
         if matches!(current, "disputed" | "superseded" | "terminated") {
             return current.to_string();

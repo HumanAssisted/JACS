@@ -2638,3 +2638,303 @@ fn agreement_expired(document: &Value) -> bool {
         .map(|deadline| deadline < time_utils::now_timestamp())
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod differential_parity {
+    //! Differential parity between the two Agreement v2 engines.
+    //!
+    //! The native engine here (`jacs::agreements::v2`) and the portable engine
+    //! (`jacs_core::agreements::v2`) carry parallel implementations of the pure
+    //! agreement *policy* functions: status recomputation, consent / transcript
+    //! hashing, and the signature-policy guards. A document signed under one
+    //! engine may be judged under the other (native signs, WASM/browser
+    //! verifies, and vice versa), so the two implementations MUST agree
+    //! byte-for-byte on every valid agreement. This test pins that agreement
+    //! across a broad generated corpus so the implementations cannot silently
+    //! drift apart, and it is the safety net for de-duplicating these helpers
+    //! onto a single jacs-core source. The corpus is restricted to *valid*
+    //! agreements (signatures only from listed parties with matching roles),
+    //! which is the input contract both engines enforce upstream of these pure
+    //! functions.
+    use jacs_core::agreements::v2 as core_v2;
+    use serde_json::{Map, Value, json};
+
+    const PAST: &str = "2000-01-01T00:00:00Z";
+    const FUTURE: &str = "2999-01-01T00:00:00Z";
+
+    fn party(id: &str, role: &str) -> Value {
+        json!({
+            "agentId": id,
+            "agentVersion": "00000000-0000-0000-0000-000000000001",
+            "agentType": "ai",
+            "role": role,
+        })
+    }
+
+    fn signature(agent_id: &str, role: &str) -> Value {
+        json!({
+            "role": role,
+            "signature": { "agentID": agent_id },
+        })
+    }
+
+    fn policy(
+        party_quorum: Option<Value>,
+        witness_required: u64,
+        notary_required: u64,
+        minimum_strength: Option<&str>,
+        required_algorithms: Option<Vec<&str>>,
+        timeout: Option<&str>,
+    ) -> Value {
+        let mut p = Map::new();
+        if let Some(q) = party_quorum {
+            p.insert("partyQuorum".into(), q);
+        }
+        p.insert("witnessRequired".into(), json!(witness_required));
+        p.insert("notaryRequired".into(), json!(notary_required));
+        if let Some(s) = minimum_strength {
+            p.insert("minimumStrength".into(), json!(s));
+        }
+        if let Some(a) = required_algorithms {
+            p.insert("requiredAlgorithms".into(), json!(a));
+        }
+        if let Some(t) = timeout {
+            p.insert("timeout".into(), json!(t));
+        }
+        Value::Object(p)
+    }
+
+    /// A broad, deterministic corpus of valid agreement documents. Primary axes
+    /// (party shape, quorum policy, signature progress, status, expiry) are
+    /// enumerated exhaustively; secondary axes (strength, algorithms, timeout,
+    /// effectiveFrom, transcript, prior versions, witness/notary signing) are
+    /// rotated by a running index so every combination is exercised somewhere
+    /// without a full cartesian explosion.
+    fn corpus() -> Vec<Value> {
+        // Includes numeric quorums at, above, and well above the signer count
+        // (3, 5) so the "no clamp to signer total" arithmetic both engines share
+        // is exercised on the over-quorum path.
+        let pq_opts: [Option<Value>; 6] = [
+            None,
+            Some(json!("majority")),
+            Some(json!(1)),
+            Some(json!(2)),
+            Some(json!(3)),
+            Some(json!(5)),
+        ];
+        let strengths = [None, Some("classical"), Some("post-quantum")];
+        let algs: [Option<Vec<&str>>; 3] = [
+            None,
+            Some(vec!["ring-Ed25519"]),
+            Some(vec!["ring-Ed25519", "pq2025"]),
+        ];
+        let timeouts = [None, Some(PAST), Some(FUTURE)];
+        let efroms = [None, Some(PAST)];
+        let transcripts = [0usize, 1, 2];
+        let prevs = [0usize, 1];
+        let statuses = ["draft", "proposed", "partially_signed", "final"];
+        let expiries = [None, Some(PAST), Some(FUTURE)];
+
+        let mut out = Vec::new();
+        let mut idx = 0usize;
+
+        for s in 1..=3usize {
+            for w in 0..=1usize {
+                for n in 0..=1usize {
+                    let mut parties = Vec::new();
+                    let mut signer_ids = Vec::new();
+                    for i in 0..s {
+                        let id = format!("agent-s{i}");
+                        parties.push(party(&id, "signer"));
+                        signer_ids.push(id);
+                    }
+                    let mut witness_ids = Vec::new();
+                    for i in 0..w {
+                        let id = format!("agent-w{i}");
+                        parties.push(party(&id, "witness"));
+                        witness_ids.push(id);
+                    }
+                    let mut notary_ids = Vec::new();
+                    for i in 0..n {
+                        let id = format!("agent-n{i}");
+                        parties.push(party(&id, "notary"));
+                        notary_ids.push(id);
+                    }
+
+                    let signed_signer_opts = {
+                        let mut v = vec![0usize, 1usize, s];
+                        v.sort_unstable();
+                        v.dedup();
+                        v
+                    };
+
+                    for party_quorum in &pq_opts {
+                        for witness_required in 0..=1u64 {
+                            for notary_required in 0..=1u64 {
+                                for &signed_signers in &signed_signer_opts {
+                                    for &status in &statuses {
+                                        for &expires in &expiries {
+                                            idx += 1;
+                                            let minimum_strength = strengths[idx % 3];
+                                            let required_algorithms = algs[(idx / 3) % 3].clone();
+                                            let timeout = timeouts[(idx / 9) % 3];
+                                            let efrom = efroms[(idx / 27) % 2];
+                                            let n_trans = transcripts[(idx / 54) % 3];
+                                            let n_prev = prevs[(idx / 108) % 2];
+                                            let sign_witnesses = (idx / 2).is_multiple_of(2);
+                                            let sign_notaries = (idx / 4).is_multiple_of(2);
+                                            // Signatures carry an `agentId:version`
+                                            // suffix while parties stay bare, so the
+                                            // `normalize_agent_id` (split-on-`:`) path
+                                            // both engines use to match a signature to
+                                            // its party is exercised.
+                                            let suffix_sig_ids = (idx / 8).is_multiple_of(2);
+                                            // A second entry from the first signer (a
+                                            // different version of the same agent) must
+                                            // de-duplicate to one signer in BOTH engines.
+                                            let duplicate_signer_sig = (idx / 16).is_multiple_of(2);
+                                            let sig_id = |id: &str, tag: &str| -> String {
+                                                if suffix_sig_ids {
+                                                    format!("{id}:{tag}")
+                                                } else {
+                                                    id.to_string()
+                                                }
+                                            };
+
+                                            let pol = policy(
+                                                party_quorum.clone(),
+                                                witness_required,
+                                                notary_required,
+                                                minimum_strength,
+                                                required_algorithms,
+                                                timeout,
+                                            );
+
+                                            let mut sigs = Vec::new();
+                                            for id in signer_ids.iter().take(signed_signers) {
+                                                sigs.push(signature(&sig_id(id, "v1"), "signer"));
+                                            }
+                                            if duplicate_signer_sig && signed_signers > 0 {
+                                                sigs.push(signature(
+                                                    &sig_id(&signer_ids[0], "v2"),
+                                                    "signer",
+                                                ));
+                                            }
+                                            if sign_witnesses {
+                                                for id in &witness_ids {
+                                                    sigs.push(signature(
+                                                        &sig_id(id, "v1"),
+                                                        "witness",
+                                                    ));
+                                                }
+                                            }
+                                            if sign_notaries {
+                                                for id in &notary_ids {
+                                                    sigs.push(signature(
+                                                        &sig_id(id, "v1"),
+                                                        "notary",
+                                                    ));
+                                                }
+                                            }
+
+                                            let mut doc = Map::new();
+                                            doc.insert(
+                                                "title".into(),
+                                                json!(format!("Agreement {idx}")),
+                                            );
+                                            doc.insert("description".into(), json!("d"));
+                                            doc.insert("terms".into(), json!("the terms"));
+                                            doc.insert("termsFormat".into(), json!("text/plain"));
+                                            if let Some(ef) = efrom {
+                                                doc.insert("effectiveFrom".into(), json!(ef));
+                                            }
+                                            if let Some(ex) = expires {
+                                                doc.insert("expiresAt".into(), json!(ex));
+                                            }
+                                            doc.insert("parties".into(), json!(parties));
+                                            doc.insert("signaturePolicy".into(), pol);
+                                            doc.insert("agreementSignatures".into(), json!(sigs));
+                                            doc.insert("status".into(), json!(status));
+                                            let trans: Vec<Value> = (0..n_trans)
+                                                .map(|t| json!({"seq": t, "note": format!("entry {t}")}))
+                                                .collect();
+                                            doc.insert("transcript".into(), json!(trans));
+                                            let prev: Vec<Value> = (0..n_prev)
+                                                .map(|p| json!({"jacsId": "prev", "jacsVersion": format!("v{p}")}))
+                                                .collect();
+                                            doc.insert("allPreviousVersions".into(), json!(prev));
+
+                                            out.push(Value::Object(doc));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Candidate replacement signature policies, spanning weaker / equal /
+    /// stronger relative to a corpus document, to exercise every branch of the
+    /// quorum-loosening guard.
+    fn candidate_policies() -> Vec<Value> {
+        vec![
+            policy(None, 0, 0, None, None, None),
+            policy(Some(json!("majority")), 0, 0, None, None, None),
+            policy(Some(json!(1)), 0, 0, None, None, None),
+            policy(Some(json!(2)), 1, 1, None, None, None),
+            policy(None, 1, 0, None, None, None),
+            policy(None, 0, 1, None, None, None),
+            policy(None, 0, 0, Some("classical"), None, None),
+            policy(None, 0, 0, Some("post-quantum"), None, None),
+            policy(None, 0, 0, None, Some(vec!["ring-Ed25519"]), None),
+            policy(None, 0, 0, None, Some(vec!["ring-Ed25519", "pq2025"]), None),
+            policy(None, 0, 0, None, Some(vec![]), None),
+        ]
+    }
+
+    #[test]
+    fn engines_agree_on_status_and_hashes() {
+        let corpus = corpus();
+        assert!(corpus.len() > 1000, "corpus too small: {}", corpus.len());
+        for doc in &corpus {
+            assert_eq!(
+                super::recompute_status(doc),
+                core_v2::recompute_status(doc),
+                "recompute_status mismatch for {doc}"
+            );
+            assert_eq!(
+                super::compute_agreement_hash(doc).unwrap(),
+                core_v2::compute_agreement_hash(doc).unwrap(),
+                "compute_agreement_hash mismatch for {doc}"
+            );
+            assert_eq!(
+                super::compute_transcript_hash(doc).unwrap(),
+                core_v2::compute_transcript_hash(doc).unwrap(),
+                "compute_transcript_hash mismatch for {doc}"
+            );
+            assert_eq!(
+                super::signature_policy_past_point_of_reliance(doc),
+                core_v2::signature_policy_past_point_of_reliance(doc),
+                "signature_policy_past_point_of_reliance mismatch for {doc}"
+            );
+        }
+    }
+
+    #[test]
+    fn engines_agree_on_policy_weakening() {
+        let candidates = candidate_policies();
+        for doc in &corpus() {
+            for cand in &candidates {
+                assert_eq!(
+                    super::signature_policy_is_weaker(doc, cand, doc),
+                    core_v2::signature_policy_is_weaker(doc, cand),
+                    "signature_policy_is_weaker mismatch\n  doc={doc}\n  candidate={cand}"
+                );
+            }
+        }
+    }
+}
