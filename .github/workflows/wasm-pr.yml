@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Pinned toolchain matches `release-wasm.yml`. `rust-version =
       # 1.93` in `jacs-wasm/Cargo.toml` requires this.
