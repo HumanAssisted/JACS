@@ -1364,7 +1364,7 @@ CDEF
         use serial_test::serial;
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_resolve_keys_base_url_defaults_to_hai_root() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1377,7 +1377,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_resolve_keys_base_url_prefers_jacs_over_hai_alias() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1471,7 +1471,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_fetch_public_key_invalid_url() {
             // Set an invalid base URL to test error handling
             // Disable retries for faster test execution
@@ -1510,7 +1510,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_fetch_public_key_default_url() {
             // Verify default URL is used when env var is not set
             // Disable retries for faster test execution
@@ -1545,7 +1545,7 @@ CDEF
         }
 
         #[test]
-        #[serial(keys_fetch_env)]
+        #[serial(jacs_env)]
         fn test_fetch_public_key_retries_env_var() {
             // Test that JACS_KEY_FETCH_RETRIES is respected
             // SAFETY: This test is run in isolation

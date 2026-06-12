@@ -189,6 +189,9 @@ agreements = []
 # Attestation (zero new deps)
 attestation = []
 
+# Conflict documents (zero new deps)
+conflict = []
+
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []
 
