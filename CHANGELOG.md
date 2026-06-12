@@ -56,6 +56,8 @@ Agreement v2 developer experience:
 
 ### Dependencies
 
+- **Rust advisories (cargo-deny).** `getset` 0.1.6 → 0.1.7, dropping the unmaintained `proc-macro-error2` (RUSTSEC-2026-0173); `pyo3` 0.24.2 → 0.29.0 in jacspy, fixing RUSTSEC-2026-0176 (out-of-bounds read in `PyList`/`PyTuple` iterator `nth`/`nth_back`) and RUSTSEC-2026-0177 (missing `Sync` bound on `PyCFunction::new_closure`; jacspy does not call `new_closure` directly). The pyo3 bump migrated jacspy off removed 0.2x APIs (`PyObject` → `Py<PyAny>`, `downcast` → `cast`, `with_gil` → `attach`, `allow_threads` → `detach`, `prepare_freethreaded_python` → `Python::initialize`, inline `#[pyfn]` → `#[pyfunction]`).
+
 Resolved the open Dependabot alerts across the Python and Node binding manifests. The published `jacs` wheel declares no runtime dependencies (`dependencies = []`); every advisory was in a transitive dev/optional-extra dependency or an example lockfile, not in the shipped library.
 
 - **Python (`jacspy/uv.lock`).** Added patched-version floors to `[tool.uv] constraint-dependencies` in `jacspy/pyproject.toml` and re-resolved the lock: idna ≥3.15, urllib3 ≥2.7.0, requests ≥2.33.0, pillow ≥12.2.0, langchain-core ≥1.3.3, langsmith ≥0.8.0, langgraph ≥1.0.10, authlib ≥1.6.12, PyJWT ≥2.12.0, python-multipart ≥0.0.27, python-dotenv ≥1.2.2, uv ≥0.11.6. The re-resolution also dropped `diskcache` (no patched release) from the tree.

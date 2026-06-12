@@ -73,7 +73,8 @@ env_logger = "0.11.8"
 futures-util = "0.3.31"
 referencing = "0.33.0"
 futures-executor = "0.3.31"
-getset = "0.1.5"
+# 0.1.7 floor: 0.1.6 pulled in unmaintained proc-macro-error2 (RUSTSEC-2026-0173)
+getset = "0.1.7"
 hex = "0.4"
 html5ever = "0.35"
 hickory-resolver = { version = "0.26.1", features = ["dnssec-ring"] }
