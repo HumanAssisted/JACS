@@ -16,7 +16,7 @@ A JACS attestation document that proves WHO did WHAT and WHY it should be truste
 
 all of
 
-* [Header](conflict-allof-header.md "check type definition")
+* [Header](attestation-allof-header.md "check type definition")
 
 # Attestation Properties
 

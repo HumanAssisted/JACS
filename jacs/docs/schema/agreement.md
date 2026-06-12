@@ -22,7 +22,7 @@ merged type ([Agreement](agreement.md))
 
 all of
 
-* [Header](conflict-allof-header.md "check type definition")
+* [Header](attestation-allof-header.md "check type definition")
 
 * [Untitled object in Agreement](agreement-allof-1.md "check type definition")
 
