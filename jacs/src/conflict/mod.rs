@@ -32,6 +32,18 @@ pub enum Mutation {
     AddDivergence(Value),
     ReplacePosition(Value),
     ReplaceDivergence(Value),
+    LinkAgreement(LinkedAgreementRef),
+}
+
+/// Verifiable reference to a resolving agreement, appended to
+/// `linkedAgreements` (schema `jacsDocumentRef`, closed object — unknown
+/// fields are rejected at the wire boundary).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkedAgreementRef {
+    pub jacs_id: String,
+    pub jacs_version: String,
+    pub jacs_sha256: String,
 }
 
 /// Deterministic readiness result for a conflict document.
@@ -383,6 +395,37 @@ fn apply_mutation(document: &mut Value, mutation: Mutation) -> Result<(), JacsEr
                 divergence,
             )?;
         }
+        Mutation::LinkAgreement(reference) => {
+            link_agreement_ref(document, reference)?;
+        }
+    }
+    Ok(())
+}
+
+fn link_agreement_ref(
+    document: &mut Value,
+    reference: LinkedAgreementRef,
+) -> Result<(), JacsError> {
+    if reference.jacs_id.trim().is_empty()
+        || reference.jacs_version.trim().is_empty()
+        || reference.jacs_sha256.trim().is_empty()
+    {
+        warn!(
+            result = "link_agreement_invalid_ref",
+            jacs_type = "conflict",
+            "Rejected linkAgreement mutation with blank jacsDocumentRef fields"
+        );
+        return Err(JacsError::ValidationError(
+            "link_agreement_invalid_ref: linkAgreement requires non-empty jacsId, jacsVersion, and jacsSha256".to_string(),
+        ));
+    }
+
+    let reference = serde_json::to_value(reference).map_err(|e| JacsError::Internal {
+        message: format!("Failed to serialize linked agreement reference: {e}"),
+    })?;
+    let links = array_mut(document, "linkedAgreements")?;
+    if !links.iter().any(|existing| existing == &reference) {
+        links.push(reference);
     }
     Ok(())
 }
@@ -589,7 +632,7 @@ fn required_str<'a>(document: &'a Value, field: &str) -> Result<&'a str, JacsErr
 
 #[cfg(test)]
 mod tests {
-    use super::{Mutation, check_consistency, check_readiness, create, update};
+    use super::{LinkedAgreementRef, Mutation, check_consistency, check_readiness, create, update};
     use crate::simple::{CreateAgentParams, SimpleAgent};
     use serde_json::{Value, json};
     use tempfile::TempDir;
@@ -1036,5 +1079,140 @@ mod tests {
         assert_eq!(after["positions"].as_array().unwrap().len(), 1);
         assert_eq!(after["positions"][0]["confirmed"].as_bool(), Some(false));
         assert!(after["positions"][0].get("confirmationRef").is_none());
+    }
+
+    fn agreement_ref() -> LinkedAgreementRef {
+        LinkedAgreementRef {
+            jacs_id: "018ff6c4-9a42-7dc0-8bf4-bb7f3e100201".to_string(),
+            jacs_version: "018ff6c4-9a42-7dc0-8bf4-bb7f3e100202".to_string(),
+            jacs_sha256: "resolving-agreement-hash".to_string(),
+        }
+    }
+
+    #[test]
+    fn update_links_agreement_as_signed_successor() {
+        let (agent, _tmp) = test_agent();
+        let signed = create(&agent, ready_body()).expect("create conflict");
+        let before = parse(&signed.raw);
+        let previous_version = before["jacsVersion"].as_str().unwrap().to_string();
+
+        let updated = update(
+            &agent,
+            &signed.raw,
+            Mutation::LinkAgreement(agreement_ref()),
+        )
+        .expect("link agreement");
+        let after = parse(&updated.raw);
+
+        assert_eq!(after["jacsId"], before["jacsId"]);
+        assert_eq!(
+            after["jacsPreviousVersion"].as_str(),
+            Some(previous_version.as_str())
+        );
+        assert!(
+            after["allPreviousVersions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|version| version.as_str() == Some(previous_version.as_str()))
+        );
+        assert_eq!(
+            after["linkedAgreements"],
+            json!([{
+                "jacsId": "018ff6c4-9a42-7dc0-8bf4-bb7f3e100201",
+                "jacsVersion": "018ff6c4-9a42-7dc0-8bf4-bb7f3e100202",
+                "jacsSha256": "resolving-agreement-hash"
+            }])
+        );
+
+        let verification = agent.verify(&updated.raw).expect("verify linked conflict");
+        assert!(
+            verification.valid,
+            "linked conflict signature should verify: {:?}",
+            verification.errors
+        );
+        let old_verification = agent.verify(&signed.raw).expect("verify prior version");
+        assert!(
+            old_verification.valid,
+            "prior version should still verify: {:?}",
+            old_verification.errors
+        );
+    }
+
+    #[test]
+    fn update_link_agreement_dedupes_existing_reference() {
+        let (agent, _tmp) = test_agent();
+        let signed = create(&agent, ready_body()).expect("create conflict");
+
+        let linked = update(
+            &agent,
+            &signed.raw,
+            Mutation::LinkAgreement(agreement_ref()),
+        )
+        .expect("first link");
+        let relinked = update(
+            &agent,
+            &linked.raw,
+            Mutation::LinkAgreement(agreement_ref()),
+        )
+        .expect("duplicate link is a no-op append");
+        let after = parse(&relinked.raw);
+
+        assert_eq!(
+            after["linkedAgreements"].as_array().unwrap().len(),
+            1,
+            "duplicate reference must not be appended twice"
+        );
+    }
+
+    #[test]
+    fn update_rejects_link_agreement_with_blank_ref_field() {
+        let (agent, tmp) = test_agent();
+        let signed = create(&agent, ready_body()).expect("create conflict");
+        let before_count = stored_document_count(&tmp);
+
+        let mut reference = agreement_ref();
+        reference.jacs_sha256 = "  ".to_string();
+        let err = update(&agent, &signed.raw, Mutation::LinkAgreement(reference))
+            .expect_err("blank jacsSha256 should fail");
+
+        assert!(
+            err.to_string().contains("link_agreement_invalid_ref"),
+            "expected typed link error, got {err}"
+        );
+        assert_eq!(
+            stored_document_count(&tmp),
+            before_count,
+            "rejected link should not write a new version"
+        );
+    }
+
+    #[test]
+    fn mutation_wire_format_parses_link_agreement() {
+        let mutation: Mutation = serde_json::from_value(json!({
+            "type": "linkAgreement",
+            "value": {
+                "jacsId": "018ff6c4-9a42-7dc0-8bf4-bb7f3e100201",
+                "jacsVersion": "018ff6c4-9a42-7dc0-8bf4-bb7f3e100202",
+                "jacsSha256": "resolving-agreement-hash"
+            }
+        }))
+        .expect("camelCase wire format parses");
+        assert!(matches!(mutation, Mutation::LinkAgreement(_)));
+
+        let err = serde_json::from_value::<Mutation>(json!({
+            "type": "linkAgreement",
+            "value": {
+                "jacsId": "018ff6c4-9a42-7dc0-8bf4-bb7f3e100201",
+                "jacsVersion": "018ff6c4-9a42-7dc0-8bf4-bb7f3e100202",
+                "jacsSha256": "resolving-agreement-hash",
+                "agreement_id": "extra-field"
+            }
+        }))
+        .expect_err("unknown fields must be rejected at the wire boundary");
+        assert!(
+            err.to_string().contains("agreement_id"),
+            "error should name the offending field, got {err}"
+        );
     }
 }
