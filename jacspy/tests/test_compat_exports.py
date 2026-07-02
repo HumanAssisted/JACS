@@ -89,6 +89,39 @@ def test_ap2_mandate_export_denied_without_scope(agent):
     )
 
 
+def test_ap2_mandate_export_succeeds_after_scope_grant(agent):
+    """Content export happy path: an explicit `ap2-mandate` grant via
+    issue_compat_binding unlocks export_ap2_mandate (Issue 003 parity)."""
+    # Denial is asserted FIRST on the same fresh agent, so the grant below
+    # is proven to be the thing that unlocks the export.
+    with pytest.raises(RuntimeError):
+        agent.export_ap2_mandate(json.dumps(SAMPLE_CHECKOUT))
+
+    # Grant identity + ap2-mandate content scope, PQ-root-signed.
+    binding = json.loads(
+        agent.issue_compat_binding(
+            ["jwks", "did", "a2a-agent-card", "w3c-agent-identity", "ap2-mandate"]
+        )
+    )
+    assert binding["jacsType"] == "compatibilityKeyBinding"
+    scopes = binding["compatibilityKeyBinding"]["scope"]
+    assert "ap2-mandate" in scopes, f"grant must include ap2-mandate, got: {scopes}"
+
+    export = json.loads(agent.export_ap2_mandate(json.dumps(SAMPLE_CHECKOUT)))
+    assert export["format"] == "ap2-mandate"
+    detached_jws = export["detachedJws"]
+    header_b64, payload, sig_b64 = detached_jws.split(".")
+    assert payload == "", "detached JWS must have an empty payload segment"
+    assert header_b64 and sig_b64, "detached JWS must carry header and signature"
+
+
+def test_issue_compat_binding_rejects_unknown_scope(agent):
+    """Scope validation: an unknown scope is a Validation error, not a grant."""
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.issue_compat_binding(["jwks", "not-a-real-scope"])
+    assert "scope" in str(excinfo.value).lower()
+
+
 @pytest.mark.skipif(
     not hasattr(SimpleAgent, "export_agreement_v2_as_vc"),
     reason="native extension built without the 'agreements' feature",

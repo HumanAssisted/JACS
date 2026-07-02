@@ -409,6 +409,75 @@ fn export_compatibility_jwks_missing_key_maps_to_key_not_found() {
 
 #[test]
 #[serial]
+fn issue_compat_binding_json_grants_content_scope_for_ap2_export() {
+    // P2 Task 003 / deep-review Issue 003: the binding grant surface is
+    // exposed through the wrapper so Python/Node/Go can satisfy the
+    // content-scope gate without shelling out to the CLI. This is the
+    // wrapper-level happy path for a content export: grant `ap2-mandate`
+    // explicitly (PQ root signs the binding), then the AP2 export SUCCEEDS.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-grant",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+    })
+    .to_string();
+
+    let (wrapper, _info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with eagerly minted compat key");
+
+    // An unknown scope in the array is a Validation failure on existing
+    // kinds (PRD §9.7 / NG10 — never a new ErrorKind variant).
+    let err = wrapper
+        .issue_compat_binding_json(r#"["jwks","not-a-scope"]"#, None)
+        .expect_err("unknown scope is a typed error");
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::Validation,
+        "unknown scope must map to Validation, got {:?}: {}",
+        err.kind,
+        err
+    );
+
+    // Explicit grant including the ap2-mandate content scope.
+    let binding_json = wrapper
+        .issue_compat_binding_json(
+            r#"["jwks","did","a2a-agent-card","w3c-agent-identity","ap2-mandate"]"#,
+            None,
+        )
+        .expect("explicit content-scope grant succeeds");
+    let binding: Value = serde_json::from_str(&binding_json).unwrap();
+    let scopes = binding["compatibilityKeyBinding"]["scope"]
+        .as_array()
+        .expect("binding document carries the granted scopes");
+    assert!(
+        scopes.iter().any(|s| s == "ap2-mandate"),
+        "granted binding must include ap2-mandate, got {scopes:?}"
+    );
+
+    // The content export now succeeds through the wrapper — the scope
+    // gate is satisfied without touching the CLI.
+    let checkout = r#"{"id":"c1","currency":"USD","line_items":[{"id":"li1"}],"totals":[{"type":"total","amount":100}]}"#;
+    let mandate_json = wrapper
+        .export_ap2_mandate_json(checkout)
+        .expect("AP2 mandate export succeeds after the explicit grant");
+    let mandate: Value = serde_json::from_str(&mandate_json).unwrap();
+    assert_eq!(mandate["format"], "ap2-mandate");
+    let detached = mandate["detachedJws"]
+        .as_str()
+        .expect("export carries the detached JWS");
+    let parts: Vec<&str> = detached.split('.').collect();
+    assert_eq!(parts.len(), 3, "detached compact serialization");
+    assert!(parts[1].is_empty(), "payload segment must be detached");
+}
+
+#[test]
+#[serial]
 fn rotate_keys_rejects_ed25519_selection() {
     let (wrapper, _tmp, _guard) = create_persistent_wrapper_for_rotation("rotate-wall-reject");
     for bad in ["ring-Ed25519", "ed25519"] {

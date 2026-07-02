@@ -82,4 +82,51 @@ describe('ES256 compatibility exports', function () {
     expect(() => agent.exportAp2Mandate(JSON.stringify(checkout)))
       .to.throw(/binding|scope/);
   });
+
+  it('issueCompatBinding grants ap2-mandate and exportAp2Mandate succeeds', function () {
+    // Happy path (P2 Task 003 / issue 003): granting the content scope via
+    // an explicit PQ-root-signed binding makes the content export usable
+    // from the Node binding. Uses a SEPARATE agent so the shared `agent`
+    // above stays ungranted for the denial assertion.
+    const grantedDir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-compat-granted-'))
+    );
+    try {
+      const params = {
+        name: 'compat-export-node-granted',
+        password: TEST_PASSWORD,
+        data_directory: path.join(grantedDir, 'jacs_data'),
+        key_directory: path.join(grantedDir, 'jacs_keys'),
+        config_path: path.join(grantedDir, 'jacs.config.json'),
+      };
+      const granted = bindings.JacsSimpleAgent.createWithParams(JSON.stringify(params));
+
+      const binding = JSON.parse(
+        granted.issueCompatBinding(['jwks', 'did', 'ap2-mandate'], null)
+      );
+      expect(binding.jacsSignature.signingAlgorithm).to.equal('pq2025');
+      expect(binding.compatibilityKeyBinding.scope)
+        .to.be.an('array')
+        .that.includes('ap2-mandate');
+
+      const checkout = {
+        id: 'c1',
+        currency: 'USD',
+        line_items: [{ id: 'li1' }],
+        totals: [{ type: 'total', amount: 100 }],
+      };
+      const mandate = JSON.parse(granted.exportAp2Mandate(JSON.stringify(checkout)));
+      expect(mandate.format).to.equal('ap2-mandate');
+      expect(mandate.detachedJws).to.be.a('string').and.not.empty;
+      // Detached JWS: protected..signature (empty payload segment).
+      expect(mandate.detachedJws).to.match(/^[A-Za-z0-9_-]+\.\.[A-Za-z0-9_-]+$/);
+    } finally {
+      fs.rmSync(grantedDir, { recursive: true, force: true });
+    }
+  });
+
+  it('issueCompatBinding rejects an unknown scope', function () {
+    expect(() => agent.issueCompatBinding(['not-a-scope'], null))
+      .to.throw(/scope/i);
+  });
 });

@@ -57,8 +57,9 @@ const NODE_NAME_MAP = {
   'to_html': 'toHtml',
   'from_html': 'fromHtml',
   'rotate_keys': 'rotateKeys',
-  // ES256 compatibility key + exports (P2 Tasks 002 / 004 / 004b).
+  // ES256 compatibility key + exports (P2 Tasks 002 / 003 / 004 / 004b).
   'add_compat_key_json': 'addCompatKey',
+  'issue_compat_binding_json': 'issueCompatBinding',
   'export_compatibility_jwks_json': 'exportCompatibilityJwks',
   'export_compatibility_key_binding_json': 'exportCompatibilityKeyBinding',
   'export_ap2_mandate_json': 'exportAp2Mandate',

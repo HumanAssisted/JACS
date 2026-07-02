@@ -97,6 +97,7 @@ char* jacs_simple_resolve_agreement_v2_branch_conflict(SimpleAgentHandle handle,
 // explicit `ap2-mandate` / `agreement-vc` binding scope. On failure they
 // return null with the message available via jacs_simple_last_error().
 char* jacs_simple_add_compat_key(SimpleAgentHandle handle);
+char* jacs_simple_issue_compat_binding(SimpleAgentHandle handle, const char* scopes_json, const char* expires_at);
 char* jacs_simple_export_compatibility_jwks(SimpleAgentHandle handle);
 char* jacs_simple_export_compatibility_key_binding(SimpleAgentHandle handle);
 char* jacs_simple_export_ap2_mandate(SimpleAgentHandle handle, const char* checkout_json);

@@ -95,6 +95,7 @@ PYTHON_NAME_MAP = {
     "resolve_agreement_v2_branch_conflict_json": "resolve_agreement_v2_branch_conflict",
     # ES256 compatibility key + ecosystem exports (P2 Tasks 002 / 004).
     "add_compat_key_json": "add_compat_key",
+    "issue_compat_binding_json": "issue_compat_binding",
     "export_compatibility_jwks_json": "export_compatibility_jwks",
     "export_compatibility_key_binding_json": "export_compatibility_key_binding",
     "export_ap2_mandate_json": "export_ap2_mandate",

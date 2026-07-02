@@ -106,6 +106,7 @@ var goNameMap = map[string]string{
 	// feature-gated in Rust (a2a / agreements) but included in the default
 	// Go native lib.
 	"add_compat_key_json":                   "AddCompatKey",
+	"issue_compat_binding_json":             "IssueCompatBinding",
 	"export_compatibility_jwks_json":        "ExportCompatibilityJwks",
 	"export_compatibility_key_binding_json": "ExportCompatibilityKeyBinding",
 	"export_ap2_mandate_json":               "ExportAp2Mandate",

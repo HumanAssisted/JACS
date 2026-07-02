@@ -166,6 +166,77 @@ func TestCompatAp2MandateRequiresBindingScope(t *testing.T) {
 	}
 }
 
+// TestCompatIssueBindingGrantsAp2MandateScope is the bindings-level happy
+// path for a content export (deep-review Issue 003): grant the `ap2-mandate`
+// scope explicitly via IssueCompatBinding (PQ root signs the binding), then
+// ExportAp2Mandate SUCCEEDS — no CLI shell-out required.
+func TestCompatIssueBindingGrantsAp2MandateScope(t *testing.T) {
+	agent := newCompatTestAgent(t)
+
+	// An unknown scope must be rejected, never silently granted.
+	if _, err := agent.IssueCompatBinding(`["jwks","not-a-scope"]`, ""); err == nil {
+		t.Fatal("IssueCompatBinding should reject an unknown scope")
+	}
+
+	// Explicit grant including the ap2-mandate content scope.
+	bindingJSON, err := agent.IssueCompatBinding(`["jwks","did","a2a-agent-card","w3c-agent-identity","ap2-mandate"]`, "")
+	if err != nil {
+		t.Fatalf("IssueCompatBinding failed: %v", err)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(bindingJSON), &doc); err != nil {
+		t.Fatalf("binding is not valid JSON: %v\n%s", err, bindingJSON)
+	}
+	binding, ok := doc["compatibilityKeyBinding"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("compatibilityKeyBinding should be an object, got %#v", doc["compatibilityKeyBinding"])
+	}
+	scopeList, ok := binding["scope"].([]interface{})
+	if !ok {
+		t.Fatalf("binding scope should be an array, got %#v", binding["scope"])
+	}
+	granted := false
+	for _, s := range scopeList {
+		if s == "ap2-mandate" {
+			granted = true
+		}
+	}
+	if !granted {
+		t.Fatalf("granted binding must include ap2-mandate, got %v", scopeList)
+	}
+	sig, ok := doc["jacsSignature"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("binding should carry a jacsSignature object, got %#v", doc["jacsSignature"])
+	}
+	if algo := sig["signingAlgorithm"]; algo != "pq2025" {
+		t.Errorf("binding signingAlgorithm should be pq2025, got %#v", algo)
+	}
+
+	// The content export now succeeds through the binding.
+	mandateJSON, err := agent.ExportAp2Mandate(sampleAp2Checkout)
+	if err != nil {
+		t.Fatalf("ExportAp2Mandate should succeed after granting ap2-mandate: %v", err)
+	}
+	var mandate map[string]interface{}
+	if err := json.Unmarshal([]byte(mandateJSON), &mandate); err != nil {
+		t.Fatalf("mandate is not valid JSON: %v\n%s", err, mandateJSON)
+	}
+	if format := mandate["format"]; format != "ap2-mandate" {
+		t.Errorf("mandate format should be ap2-mandate, got %#v", format)
+	}
+	detached, _ := mandate["detachedJws"].(string)
+	if detached == "" {
+		t.Fatal("mandate should carry a non-empty detachedJws")
+	}
+	parts := strings.Split(detached, ".")
+	if len(parts) != 3 {
+		t.Fatalf("detached JWS should be compact 3-part serialization, got %d parts", len(parts))
+	}
+	if parts[1] != "" {
+		t.Error("payload segment must be detached (empty)")
+	}
+}
+
 // TestCompatAddCompatKeyDuplicateFails verifies no silent re-mint: new
 // agents get the compat key eagerly, so an explicit AddCompatKey errors.
 func TestCompatAddCompatKeyDuplicateFails(t *testing.T) {

@@ -1554,6 +1554,41 @@ impl SimpleAgent {
         self.inner.add_compat_key_json().to_py()
     }
 
+    /// Issue (or re-issue) the PQ-root-signed compatibility key binding.
+    /// Content scopes (`ap2-mandate`, `agreement-vc`) are never auto-issued:
+    /// they require this explicit grant. This is also the re-issue path
+    /// after `rotate_keys`.
+    ///
+    /// Args:
+    ///     scopes: Optional list of scope strings (e.g.
+    ///         ["jwks", "did", "ap2-mandate"]). None grants the default
+    ///         identity scopes (jwks, did, a2a-agent-card,
+    ///         w3c-agent-identity). Unknown scopes are rejected.
+    ///     expires_at: Optional RFC 3339 expiry timestamp; invalid values
+    ///         are rejected at issuance.
+    ///
+    /// Returns:
+    ///     JSON string of the signed binding document
+    #[pyo3(signature = (scopes=None, expires_at=None))]
+    fn issue_compat_binding(
+        &self,
+        scopes: Option<Vec<String>>,
+        expires_at: Option<&str>,
+    ) -> PyResult<String> {
+        let scopes_json = match scopes {
+            Some(list) => serde_json::to_string(&list).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to serialize scopes: {}",
+                    e
+                ))
+            })?,
+            None => String::new(),
+        };
+        self.inner
+            .issue_compat_binding_json(&scopes_json, expires_at)
+            .to_py()
+    }
+
     /// Export the agent's compatibility JWKS (ES256 public key only — PQ
     /// material is never published here). Auto-issues the default identity
     /// binding on first use.

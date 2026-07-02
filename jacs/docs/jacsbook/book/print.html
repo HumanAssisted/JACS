@@ -15795,7 +15795,7 @@ jacs init --no-compat-key
 <pre><code class="language-bash">jacs agent add-compat-key [--config ./jacs.config.json]
 </code></pre>
 <h3 id="jacs-agent-issue-compat-binding"><a class="header" href="#jacs-agent-issue-compat-binding"><code>jacs agent issue-compat-binding</code></a></h3>
-<p>Issue (or re-issue) the PQ-root-signed compatibility key binding. Content scopes (<code>ap2-mandate</code>, <code>agreement-vc</code>) are never auto-issued — grant them here explicitly. This is also the re-issue path after <code>agent rotate-keys</code> (a binding signed by a previous root no longer authorizes exports).</p>
+<p>Issue (or re-issue) the PQ-root-signed compatibility key binding. Content scopes (<code>ap2-mandate</code>, <code>agreement-vc</code>) are never auto-issued — grant them here explicitly. This is also the re-issue path after <code>agent rotate-keys</code> (a binding signed by a previous root no longer authorizes exports). The same grant is available from language bindings as <code>issue_compat_binding_json(scopes_json, expires_at)</code> (scopes as a JSON array, e.g. <code>["jwks","did","ap2-mandate"]</code>), so Python/Node/Go callers can enable content exports without shelling out to the CLI.</p>
 <pre><code class="language-bash"># default: identity scopes only (jwks,did,a2a-agent-card,w3c-agent-identity)
 jacs agent issue-compat-binding
 

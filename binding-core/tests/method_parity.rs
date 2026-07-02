@@ -49,8 +49,9 @@ fn known_methods() -> Vec<&'static str> {
         "from_html",
         // Key management
         "rotate_keys",
-        // Ecosystem compatibility (P2 Tasks 002/004/004b)
+        // Ecosystem compatibility (P2 Tasks 002/003/004/004b)
         "add_compat_key_json",
+        "issue_compat_binding_json",
         "export_compatibility_jwks_json",
         "export_compatibility_key_binding_json",
         "export_ap2_mandate_json",
@@ -215,8 +216,8 @@ fn test_method_parity_fixture_count() {
 
     assert_eq!(
         flat_methods.len(),
-        42,
-        "SimpleAgentWrapper should have exactly 42 public methods. \
+        43,
+        "SimpleAgentWrapper should have exactly 43 public methods. \
          Found {}. If you added or removed a method, update the fixture.",
         flat_methods.len()
     );

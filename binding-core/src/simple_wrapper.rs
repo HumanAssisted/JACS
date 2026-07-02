@@ -596,6 +596,48 @@ impl SimpleAgentWrapper {
         serialize_json(&info, "compatibility key info")
     }
 
+    /// Issue (or re-issue) the PQ-root-signed compatibility key binding
+    /// (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
+    /// `agreement-vc`) are never auto-issued: they require this explicit
+    /// grant, and every grant is signed by the PQ root. This is also the
+    /// re-issue path after `rotate_keys` — a binding signed by a previous
+    /// root no longer authorizes exports.
+    ///
+    /// `scopes_json` accepts:
+    /// - `""` | `"null"` — grant the default identity scopes
+    ///   (`jwks`, `did`, `a2a-agent-card`, `w3c-agent-identity`).
+    /// - a JSON array of scope strings, e.g.
+    ///   `["jwks","did","ap2-mandate"]` — an unknown scope is a
+    ///   `Validation` error.
+    ///
+    /// `expires_at` is an optional RFC 3339 timestamp (invalid values are
+    /// rejected at issuance). Returns the binding document JSON.
+    pub fn issue_compat_binding_json(
+        &self,
+        scopes_json: &str,
+        expires_at: Option<&str>,
+    ) -> BindingResult<String> {
+        let trimmed = scopes_json.trim();
+        let scopes: Option<Vec<String>> = if trimmed.is_empty() || trimmed == "null" {
+            None
+        } else {
+            Some(serde_json::from_str(trimmed).map_err(|e| {
+                BindingCoreError::invalid_argument(format!(
+                    "issue_compat_binding scopes: expected a JSON array of scope strings: {}",
+                    e
+                ))
+            })?)
+        };
+        let scope_refs: Option<Vec<&str>> = scopes
+            .as_ref()
+            .map(|v| v.iter().map(|s| s.as_str()).collect());
+        let binding = self
+            .inner
+            .issue_compat_binding(scope_refs.as_deref(), expires_at)
+            .map_err(|e| map_compat_err(e, "Failed to issue compatibility key binding"))?;
+        serialize_json(&binding, "compatibility key binding")
+    }
+
     /// Export the agent's compatibility JWKS (ES256 public key only —
     /// PQ material is never published here). Gated by the `jwks` scope of
     /// the PQ-root-signed binding; auto-issues the default identity

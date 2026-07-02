@@ -18,7 +18,7 @@ import "C"
 // ecosystems. Identity exports (JWKS, key binding) auto-issue the default
 // identity binding; content exports (AP2 mandate, Agreement-v2 VC) require
 // the explicit `ap2-mandate` / `agreement-vc` scope granted via
-// `jacs agent issue-compat-binding`.
+// IssueCompatBinding (or `jacs agent issue-compat-binding` on the CLI).
 
 // AddCompatKey adds the ES256 ecosystem compatibility key to an EXISTING
 // agent (explicit migration; new agents get the key eagerly at creation).
@@ -31,6 +31,34 @@ func (a *JacsSimpleAgent) AddCompatKey() (string, error) {
 	return simpleStringResult(
 		C.jacs_simple_add_compat_key(a.handle),
 		"failed to add compatibility key",
+	)
+}
+
+// IssueCompatBinding issues (or re-issues) the PQ-root-signed compatibility
+// key binding (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
+// `agreement-vc`) are never auto-issued: they require this explicit grant,
+// and every grant is signed by the PQ root. This is also the re-issue path
+// after key rotation.
+//
+// scopesJSON is either "" (grant the default identity scopes) or a JSON
+// array of scope strings, e.g. `["jwks","did","ap2-mandate"]` — an unknown
+// scope is rejected. expiresAt is an optional RFC 3339 timestamp; "" means
+// no expiry. Returns the binding document JSON.
+func (a *JacsSimpleAgent) IssueCompatBinding(scopesJSON string, expiresAt string) (string, error) {
+	if a.handle == nil {
+		return "", errSimpleAgentClosed
+	}
+	cScopes, freeScopes := cString(scopesJSON)
+	defer freeScopes()
+	var expiresPtr *string
+	if expiresAt != "" {
+		expiresPtr = &expiresAt
+	}
+	cExpires, freeExpires := cStringOpt(expiresPtr)
+	defer freeExpires()
+	return simpleStringResult(
+		C.jacs_simple_issue_compat_binding(a.handle, cScopes, cExpires),
+		"failed to issue compatibility key binding",
 	)
 }
 

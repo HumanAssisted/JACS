@@ -1983,6 +1983,29 @@ impl JacsSimpleAgent {
         self.inner.add_compat_key_json().to_napi()
     }
 
+    /// Issue (or re-issue) the PQ-root-signed compatibility key binding
+    /// (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
+    /// `agreement-vc`) are never auto-issued: they require this explicit
+    /// grant, signed by the PQ root. Also the re-issue path after
+    /// rotateKeys(). `scopes` omitted/null grants the default identity
+    /// scopes; an unknown scope is a validation error. `expiresAt` is an
+    /// optional RFC 3339 timestamp. Returns the binding document JSON.
+    #[napi(js_name = "issueCompatBinding")]
+    pub fn issue_compat_binding(
+        &self,
+        scopes: Option<Vec<String>>,
+        expires_at: Option<String>,
+    ) -> Result<String> {
+        let scopes_json = match &scopes {
+            None => String::new(),
+            Some(list) => serde_json::to_string(list)
+                .map_err(|e| Error::from_reason(format!("Failed to serialize scopes: {}", e)))?,
+        };
+        self.inner
+            .issue_compat_binding_json(&scopes_json, expires_at.as_deref())
+            .to_napi()
+    }
+
     // =========================================================================
     // ES256 compatibility exports (P2 Task 004 / 004b)
     // =========================================================================

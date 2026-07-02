@@ -443,6 +443,16 @@ export declare class JacsSimpleAgent {
    */
   addCompatKey(): string
   /**
+   * Issue (or re-issue) the PQ-root-signed compatibility key binding
+   * (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
+   * `agreement-vc`) are never auto-issued: they require this explicit
+   * grant, signed by the PQ root. Also the re-issue path after
+   * rotateKeys(). `scopes` omitted/null grants the default identity
+   * scopes; an unknown scope is a validation error. `expiresAt` is an
+   * optional RFC 3339 timestamp. Returns the binding document JSON.
+   */
+  issueCompatBinding(scopes?: Array<string> | undefined | null, expiresAt?: string | undefined | null): string
+  /**
    * Export the agent's compatibility JWKS (ES256 public key only — PQ
    * material is never published here). Auto-issues the default identity
    * binding on first use. Returns a JSON string of the JWKS.

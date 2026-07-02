@@ -7,7 +7,7 @@
     "signing": ["sign_message_json", "sign_raw_bytes_base64", "sign_file_json"],
     "conversion": ["to_yaml", "from_yaml", "to_html", "from_html"],
     "key_management": ["rotate_keys"],
-    "compatibility": ["add_compat_key_json", "export_compatibility_jwks_json", "export_compatibility_key_binding_json", "export_ap2_mandate_json"],
+    "compatibility": ["add_compat_key_json", "issue_compat_binding_json", "export_compatibility_jwks_json", "export_compatibility_key_binding_json", "export_ap2_mandate_json"],
     "w3c": ["export_w3c_did", "export_w3c_did_document_json", "export_w3c_agent_description_json", "generate_w3c_well_known_json", "sign_w3c_request_json", "verify_w3c_request_json"],
     "inline_and_media": ["sign_text_file_json", "verify_text_file_json", "sign_image_json", "verify_image_json", "extract_media_signature_json"]
   },
@@ -35,6 +35,7 @@
     "export_w3c_did_document_json", "extract_media_signature_json", "from_agent",
     "from_html", "from_yaml", "generate_w3c_well_known_json", "get_agent_id",
     "get_public_key_base64", "get_public_key_pem", "inner_ref", "is_strict",
+    "issue_compat_binding_json",
     "key_id", "load", "load_with_info", "rotate_keys",
     "sign_file_json", "sign_image_json", "sign_message_json",
     "sign_raw_bytes_base64", "sign_text_file_json", "sign_w3c_request_json",

@@ -3021,6 +3021,36 @@ ffi_simple_getter!(
     "Add the ES256 ecosystem compatibility key to an EXISTING agent. Returns CompatKeyInfo JSON. Caller must free with jacs_free_string."
 );
 
+/// Issue (or re-issue) the PQ-root-signed compatibility key binding
+/// (P2 Task 003, FR11/FR24 — deep-review Issue 003 parity surface).
+/// `scopes_json` may be null or empty for the default identity scopes, or a
+/// JSON array of scope strings — the content scopes `ap2-mandate` /
+/// `agreement-vc` are only ever granted through this explicit call.
+/// `expires_at` is an optional RFC 3339 timestamp (null or empty = no
+/// expiry; invalid values are rejected at issuance). Returns the binding
+/// document JSON. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_issue_compat_binding(
+    handle: *const SimpleAgentHandle,
+    scopes_json: *const c_char,
+    expires_at: *const c_char,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        // Null scopes means "defaults" — the wrapper treats "" the same way.
+        let scopes = c_string_to_option(scopes_json).unwrap_or_default();
+        // Null OR empty expires_at means "no expiry".
+        let expires = c_string_to_option(expires_at).filter(|s| !s.trim().is_empty());
+        simple_string_result(
+            h.wrapper
+                .issue_compat_binding_json(&scopes, expires.as_deref()),
+        )
+    })
+}
+
 ffi_simple_getter!(
     jacs_simple_export_compatibility_jwks,
     export_compatibility_jwks_json,
