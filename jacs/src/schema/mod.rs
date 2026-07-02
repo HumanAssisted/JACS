@@ -212,6 +212,8 @@ pub struct Schema {
     agreementschema: Validator,
     #[cfg(feature = "attestation")]
     pub attestationschema: Validator,
+    /// used to validate ES256 compatibility-key binding documents (P2)
+    pub compatbindingschema: Validator,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -491,6 +493,10 @@ impl Schema {
         #[cfg(feature = "attestation")]
         let attestation_path = "schemas/attestation/v1/attestation.schema.json".to_string();
 
+        let compat_binding_path =
+            "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json"
+                .to_string();
+
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, JacsError> {
             DEFAULT_SCHEMA_STRINGS
@@ -507,6 +513,8 @@ impl Schema {
         #[cfg(feature = "attestation")]
         let attestationdata = get_schema(&attestation_path)?;
 
+        let compatbindingdata = get_schema(&compat_binding_path)?;
+
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
         let agreementschema_result: Value = serde_json::from_str(agreementdata)?;
@@ -515,6 +523,8 @@ impl Schema {
 
         #[cfg(feature = "attestation")]
         let attestationschema_result: Value = serde_json::from_str(attestationdata)?;
+
+        let compatbindingschema_result: Value = serde_json::from_str(compatbindingdata)?;
 
         let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
         let headerschema = build_validator(&headerchema_result, &header_path)?;
@@ -525,6 +535,9 @@ impl Schema {
         #[cfg(feature = "attestation")]
         let attestationschema = build_validator(&attestationschema_result, &attestation_path)?;
 
+        let compatbindingschema =
+            build_validator(&compatbindingschema_result, &compat_binding_path)?;
+
         Ok(Self {
             headerschema,
             headerversion: headerversion.to_string(),
@@ -534,7 +547,26 @@ impl Schema {
             agreementschema,
             #[cfg(feature = "attestation")]
             attestationschema,
+            compatbindingschema,
         })
+    }
+
+    /// Validate an ES256 compatibility-key binding document (P2 Task 003).
+    pub fn validate_compat_binding(&self, json: &str) -> Result<Value, JacsError> {
+        let value: Value = serde_json::from_str(json)
+            .map_err(|e| JacsError::SchemaError(format!("binding JSON parse failed: {e}")))?;
+        match self.compatbindingschema.validate(&value) {
+            Ok(_) => Ok(value),
+            Err(error) => {
+                let error_message = format_schema_validation_error(
+                    &error,
+                    "compatibility-key-binding.schema.json",
+                    &value,
+                );
+                error!("{}", error_message);
+                Err(JacsError::SchemaError(error_message))
+            }
+        }
     }
 
     /// basic check this conforms to a schema

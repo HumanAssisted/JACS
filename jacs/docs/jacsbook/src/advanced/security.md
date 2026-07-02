@@ -149,6 +149,29 @@ is_signature_valid = agent.verify_signature(doc_json)
 
 ## Key Management
 
+### Compatibility key binding (P2)
+
+An agent's ES256 `ecosystem_signing` key is authorized per-export by a
+**compatibility key binding**: a `compatibilityKeyBinding` JACS document
+signed by the **native (PQ) root**, persisted as one canonical-JSON file
+(`jacs_keys/jacs.compat-binding.json`). Lifecycle rules:
+
+- granting or widening a scope always requires the PQ root's signature —
+  the ES256 holder cannot self-escalate;
+- re-issue replaces the file (latest `issuedAt` wins; no version chains);
+- native key rotation supersedes the binding — verification fails with a
+  "re-issue" error until a new binding is signed by the current root;
+- an expired binding denies export; `expiresAt: null` is permitted in P2;
+- default issuance grants only the identity scopes (`jwks`, `did`,
+  `a2a-agent-card`, `w3c-agent-identity`); content scopes (`ap2-mandate`,
+  `agreement-vc`) require an explicit re-issue.
+
+Be precise about what this is: scope checks are a **locally enforced
+authorization policy** and an auditable delegation record for relying
+parties — not isolation. Both private keys live in the same directory
+under the same password; a compromised host is outside this model. The
+sound property is non-self-escalation via the PQ signature requirement.
+
 ### Key Generation
 
 JACS generates cryptographic key pairs during agent creation:

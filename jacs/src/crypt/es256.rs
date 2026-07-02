@@ -80,6 +80,25 @@ pub fn rfc7638_thumbprint_p256(sec1_uncompressed: &[u8]) -> Result<String, JacsE
     Ok(URL_SAFE_NO_PAD.encode(digest))
 }
 
+/// Derive the base64url JWK `x`/`y` coordinates from an ES256 SPKI PEM
+/// public key (as written to `jacs.ecosystem.public.pem`).
+pub fn jwk_xy_from_spki_pem(pem: &str) -> Result<(String, String), JacsError> {
+    use p256::pkcs8::DecodePublicKey;
+    let public = p256::PublicKey::from_public_key_pem(pem)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI PEM parse failed: {e}")))?;
+    let point = public.to_encoded_point(false);
+    let bytes = point.as_bytes();
+    if bytes.len() != 65 {
+        return Err(JacsError::CryptoError(
+            "unexpected SEC1 point length for P-256".to_string(),
+        ));
+    }
+    Ok((
+        URL_SAFE_NO_PAD.encode(&bytes[1..33]),
+        URL_SAFE_NO_PAD.encode(&bytes[33..65]),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

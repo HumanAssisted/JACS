@@ -15,6 +15,7 @@ const EXPECTED_KEYS: &[&str] = &[
     "schemas/agreement/v2/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
     "schemas/conflict/v1/conflict.schema.json",
+    "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json",
 ];
 
 #[test]

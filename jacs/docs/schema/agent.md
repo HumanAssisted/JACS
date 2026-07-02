@@ -16,6 +16,6 @@ merged type ([Agent](agent.md))
 
 all of
 
-* [Header](attestation-allof-header.md "check type definition")
+* [Header](compatibility-key-binding-allof-header.md "check type definition")
 
 * [Untitled object in Agent](agent-allof-1.md "check type definition")

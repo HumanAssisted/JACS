@@ -297,6 +297,27 @@ doc = agent.create_document(json.dumps({
 is_signature_valid = agent.verify_signature(doc_json)
 </code></pre>
 <h2 id="key-management"><a class="header" href="#key-management">Key Management</a></h2>
+<h3 id="compatibility-key-binding-p2"><a class="header" href="#compatibility-key-binding-p2">Compatibility key binding (P2)</a></h3>
+<p>An agent's ES256 <code>ecosystem_signing</code> key is authorized per-export by a
+<strong>compatibility key binding</strong>: a <code>compatibilityKeyBinding</code> JACS document
+signed by the <strong>native (PQ) root</strong>, persisted as one canonical-JSON file
+(<code>jacs_keys/jacs.compat-binding.json</code>). Lifecycle rules:</p>
+<ul>
+<li>granting or widening a scope always requires the PQ root's signature —
+the ES256 holder cannot self-escalate;</li>
+<li>re-issue replaces the file (latest <code>issuedAt</code> wins; no version chains);</li>
+<li>native key rotation supersedes the binding — verification fails with a
+"re-issue" error until a new binding is signed by the current root;</li>
+<li>an expired binding denies export; <code>expiresAt: null</code> is permitted in P2;</li>
+<li>default issuance grants only the identity scopes (<code>jwks</code>, <code>did</code>,
+<code>a2a-agent-card</code>, <code>w3c-agent-identity</code>); content scopes (<code>ap2-mandate</code>,
+<code>agreement-vc</code>) require an explicit re-issue.</li>
+</ul>
+<p>Be precise about what this is: scope checks are a <strong>locally enforced
+authorization policy</strong> and an auditable delegation record for relying
+parties — not isolation. Both private keys live in the same directory
+under the same password; a compromised host is outside this model. The
+sound property is non-self-escalation via the PQ signature requirement.</p>
 <h3 id="key-generation"><a class="header" href="#key-generation">Key Generation</a></h3>
 <p>JACS generates cryptographic key pairs during agent creation:</p>
 <pre><code class="language-bash"># Keys are created in the configured key directory

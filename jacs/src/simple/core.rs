@@ -1090,6 +1090,69 @@ impl SimpleAgent {
         )
     }
 
+    /// Issue (or re-issue) the PQ-root-signed compatibility key binding
+    /// (P2 Task 003). `scopes = None` grants the default identity scopes;
+    /// content scopes (`ap2-mandate`, `agreement-vc`) must be requested
+    /// explicitly — granting them always requires this PQ-root signature.
+    pub fn issue_compat_binding(
+        &self,
+        scopes: Option<&[&str]>,
+        expires_at: Option<&str>,
+    ) -> Result<serde_json::Value, JacsError> {
+        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        crate::compatibility::binding::issue_compat_binding(
+            &mut inner,
+            &key_directory,
+            scopes.unwrap_or(crate::compatibility::binding::DEFAULT_IDENTITY_SCOPES),
+            expires_at,
+        )
+    }
+
+    /// Load and verify the CURRENT compatibility binding. Returns the
+    /// binding document plus its verified scopes; errors if none exists
+    /// or verification fails (superseded root, tampered, expired).
+    pub fn compat_binding(&self) -> Result<(serde_json::Value, Vec<String>), JacsError> {
+        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        let binding = crate::compatibility::binding::load_compat_binding(&key_directory)?
+            .ok_or_else(|| {
+                JacsError::ValidationError(
+                    "no compatibility binding issued; call issue_compat_binding first".to_string(),
+                )
+            })?;
+        let verdict = crate::compatibility::binding::verify_compat_binding(
+            &mut inner,
+            &key_directory,
+            &binding,
+        )?;
+        if !verdict.valid {
+            return Err(JacsError::ValidationError(format!(
+                "compatibility binding invalid: {}",
+                verdict.reason
+            )));
+        }
+        Ok((binding, verdict.scopes))
+    }
+
     /// Describe the agent's ES256 ecosystem compatibility key. Typed
     /// key-not-found error (pointing at `add-compat-key`) when absent.
     pub fn ecosystem_key_info(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {

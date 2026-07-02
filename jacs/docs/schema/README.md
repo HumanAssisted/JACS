@@ -10,6 +10,8 @@
 
 * [Attestation](./attestation.md "A JACS attestation document that proves WHO did WHAT and WHY it should be trusted") – `https://hai.ai/schemas/attestation/v1/attestation.schema.json`
 
+* [Compatibility Key Binding](./compatibility-key-binding.md "PQ-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json`
+
 * [Config](./jacs.md "Jacs Configuration File") – `https://hai.ai/schemas/jacs.config.schema.json`
 
 * [File](./files.md "General data about unstructured content not in JACS") – `https://hai.ai/schemas/components/files/v1/files.schema.json`
@@ -80,6 +82,14 @@
 
 * [Untitled object in Attestation](./attestation-properties-attestation-properties-policycontext.md "Optional policy context") – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/policyContext`
 
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding.md) – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding`
+
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-rootkey.md "The native root that signs this binding") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/rootKey`
+
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-compatibilitykey.md "The ES256 ecosystem key being authorized") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/compatibilityKey`
+
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-compatibilitykey-properties-publicjwk.md) – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/compatibilityKey/properties/publicJwk`
+
 * [Untitled object in Config](./jacs-properties-observability.md "Observability configuration for logging, metrics, and tracing") – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability`
 
 * [Untitled object in Config](./jacs-properties-observability-properties-logs.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs`
@@ -147,6 +157,8 @@
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-evidence.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/evidence`
 
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-derivation-properties-inputs.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/derivation/properties/inputs`
+
+* [Untitled array in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-scope.md "Exports this key is authorized to produce") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/scope`
 
 * [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 

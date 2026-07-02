@@ -35,6 +35,7 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/agreement/v2/agreement.schema.json" => include_str!("../schemas/agreement/v2/agreement.schema.json"),
     "schemas/attestation/v1/attestation.schema.json" => include_str!("../schemas/attestation/v1/attestation.schema.json"),
     "schemas/conflict/v1/conflict.schema.json" => include_str!("../schemas/conflict/v1/conflict.schema.json"),
+    "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json" => include_str!("../schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json"),
 };
 
 /// Maps fully qualified `$id` URLs to short JACS document-type names
@@ -50,6 +51,7 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "document" => "document",
     "https://hai.ai/schemas/attestation/v1/attestation.schema.json" => "attestation",
     "https://hai.ai/schemas/conflict/v1/conflict.schema.json" => "conflict",
+    "https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json" => "compatibilityKeyBinding",
 };
 
 /// The embedded JACS config schema, used to validate `jacs.config.json`.

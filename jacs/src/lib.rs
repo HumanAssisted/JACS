@@ -56,6 +56,7 @@ use tracing::debug;
 pub mod a2a;
 pub mod agent;
 pub mod audit;
+pub mod compatibility;
 pub mod config;
 pub mod convert;
 pub mod crypt;
