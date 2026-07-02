@@ -7,3 +7,4 @@
 //! PQ-root-signed binding in [`binding`].
 
 pub mod binding;
+pub mod exports;

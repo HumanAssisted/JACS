@@ -1153,6 +1153,41 @@ impl SimpleAgent {
         Ok((binding, verdict.scopes))
     }
 
+    /// Export the compatibility JWKS (ES256 public key only; PQ material
+    /// is never published here). Gated by the `jwks` binding scope;
+    /// auto-issues the default identity binding on first use.
+    pub fn export_compatibility_jwks(&self) -> Result<serde_json::Value, JacsError> {
+        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        crate::compatibility::exports::export_compatibility_jwks(&mut inner, &key_directory)
+    }
+
+    /// Export the current (verified) compatibility key binding document.
+    /// Auto-issues the default identity binding on first use.
+    pub fn export_compatibility_key_binding(&self) -> Result<serde_json::Value, JacsError> {
+        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        crate::compatibility::exports::export_compatibility_key_binding(&mut inner, &key_directory)
+    }
+
     /// Describe the agent's ES256 ecosystem compatibility key. Typed
     /// key-not-found error (pointing at `add-compat-key`) when absent.
     pub fn ecosystem_key_info(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {

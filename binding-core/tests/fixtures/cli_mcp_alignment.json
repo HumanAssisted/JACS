@@ -271,6 +271,14 @@
     {
       "cli_command": "agent add-compat-key",
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agent export-jwks",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agent export-compat-binding",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     }
   ],
   "cli_only_feature_gated": [
@@ -364,11 +372,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 51,
+    "total_cli_commands": 53,
     "total_cli_feature_gated": 4,
     "total_mcp_tools": 42,
     "aligned_pairs": 32,
-    "cli_only_count": 19,
+    "cli_only_count": 21,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 11,
     "mcp_only_intentional": 5,

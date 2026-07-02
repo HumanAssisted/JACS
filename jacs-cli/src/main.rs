@@ -227,6 +227,49 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("  Public:    {}", compat.public_key_path);
                 println!("  Private:   {}", compat.private_key_path);
             }
+            Some(("export-jwks", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
+                    })?;
+                let jwks = agent
+                    .export_compatibility_jwks()
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to export JWKS: {}",
+                            e
+                        )))
+                    })?;
+                println!("{}", serde_json::to_string_pretty(&jwks)?);
+            }
+            Some(("export-compat-binding", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
+                    })?;
+                let binding =
+                    agent
+                        .export_compatibility_key_binding()
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to export compatibility binding: {}",
+                                e
+                            )))
+                        })?;
+                println!("{}", serde_json::to_string_pretty(&binding)?);
+            }
             Some(("verify", verify_matches)) => {
                 let _agentfile = verify_matches.get_one::<String>("agent-file");
                 let non_strict = *verify_matches.get_one::<bool>("no-dns").unwrap_or(&false);

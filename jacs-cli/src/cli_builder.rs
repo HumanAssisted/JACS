@@ -105,6 +105,26 @@ pub fn build_cli() -> Command {
                         ),
                 )
                 .subcommand(
+                    Command::new("export-jwks")
+                        .about("Export the compatibility JWKS (ES256 public key; PQ material is never published)")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("export-compat-binding")
+                        .about("Export the PQ-root-signed compatibility key binding (traces the ES256 key to the post-quantum root)")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
                     Command::new("verify")
                     .about(" verify an agent")
                     .arg(

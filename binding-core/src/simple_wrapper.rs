@@ -598,6 +598,33 @@ impl SimpleAgentWrapper {
         serialize_json(&info, "compatibility key info")
     }
 
+    /// Export the agent's compatibility JWKS (ES256 public key only —
+    /// PQ material is never published here). Gated by the `jwks` scope of
+    /// the PQ-root-signed binding; auto-issues the default identity
+    /// binding on first use (P2 Task 004).
+    pub fn export_compatibility_jwks_json(&self) -> BindingResult<String> {
+        let jwks = self.inner.export_compatibility_jwks().map_err(|e| {
+            BindingCoreError::new(
+                ErrorKind::Validation,
+                format!("Failed to export compatibility JWKS: {}", e),
+            )
+        })?;
+        serialize_json(&jwks, "compatibility JWKS")
+    }
+
+    /// Export the current (verified) PQ-root-signed compatibility key
+    /// binding document, so relying parties can trace the ES256 key back
+    /// to the post-quantum root (P2 Task 004).
+    pub fn export_compatibility_key_binding_json(&self) -> BindingResult<String> {
+        let binding = self.inner.export_compatibility_key_binding().map_err(|e| {
+            BindingCoreError::new(
+                ErrorKind::Validation,
+                format!("Failed to export compatibility key binding: {}", e),
+            )
+        })?;
+        serialize_json(&binding, "compatibility key binding")
+    }
+
     // =========================================================================
     // Inline text + media signature methods (Task 05 + Task 06, PRD §4.1, §4.2)
     // =========================================================================

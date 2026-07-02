@@ -58,6 +58,18 @@
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     },
     {
+      "path": "agent export-jwks",
+      "about": "Export the compatibility JWKS (ES256 public key; PQ material is never published)",
+      "mcp_tool": null,
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "path": "agent export-compat-binding",
+      "about": "Export the PQ-root-signed compatibility key binding (traces the ES256 key to the post-quantum root)",
+      "mcp_tool": null,
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
       "path": "agent keys-list",
       "about": "List active and archived key files",
       "mcp_tool": null,
