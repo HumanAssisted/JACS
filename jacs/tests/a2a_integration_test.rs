@@ -9,11 +9,12 @@ use jacs::crypt::hash::hash_public_key;
 use serde_json::json;
 
 fn create_test_agent() -> jacs::agent::Agent {
-    let mut agent = jacs::agent::Agent::ephemeral("ring-Ed25519").expect("create ephemeral agent");
+    // New agent creation is PQ-only; these tests are algorithm-agnostic.
+    let mut agent = jacs::agent::Agent::ephemeral("pq2025").expect("create ephemeral agent");
     let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
         .expect("create minimal agent json");
     agent
-        .create_agent_and_load(&agent_json, true, Some("ring-Ed25519"))
+        .create_agent_and_load(&agent_json, true, Some("pq2025"))
         .expect("initialize test agent");
     agent
 }
@@ -199,8 +200,16 @@ fn test_verify_foreign_wrapped_artifact_with_local_key_resolution() {
     // Ensure verifier has signer key material available in local trust store.
     let signer_public_key = signer.get_public_key().expect("signer public key");
     let signer_public_key_hash = hash_public_key(signer_public_key.clone());
+    let signer_algorithm = signer
+        .get_key_algorithm()
+        .cloned()
+        .expect("signer key algorithm");
     verifier
-        .fs_save_remote_public_key(&signer_public_key_hash, &signer_public_key, b"ring-Ed25519")
+        .fs_save_remote_public_key(
+            &signer_public_key_hash,
+            &signer_public_key,
+            signer_algorithm.as_bytes(),
+        )
         .expect("cache signer key in verifier trust store");
 
     let verification =

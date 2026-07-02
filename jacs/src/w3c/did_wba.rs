@@ -282,7 +282,9 @@ mod tests {
     use serde_json::json;
 
     fn test_agent() -> Agent {
-        let mut agent = Agent::ephemeral("ring-Ed25519").expect("ephemeral agent");
+        // Fixture hatch: these tests exercise the Ed25519 OKP JWK path
+        // (32-byte keys); public ephemeral creation is PQ-only.
+        let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures().expect("ephemeral agent");
         let doc = json!({
             "jacsAgentType": "ai",
             "name": "w3c-test",

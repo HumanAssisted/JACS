@@ -127,6 +127,42 @@ pub fn ensure_private_key_operation_allowed(
     Ok(())
 }
 
+/// Resolve the signing algorithm for a NEW agent: new creation is PQ-only.
+///
+/// Ed25519 requests are honored as `pq2025` with a WARN — existing
+/// Ed25519-rooted agents are unaffected (grandfathered): they continue to
+/// load and sign (see the `native_legacy_ed25519_sign` event) until they
+/// rotate, and rotation always migrates them to `pq2025`. Unknown
+/// algorithms are a typed error.
+///
+/// Lives in `crypt` (next to `ensure_private_key_operation_allowed`) so the
+/// low-level `Agent` creation paths and the `simple`/binding layers all
+/// apply the identical policy; re-exported as
+/// `jacs::simple::core::resolve_new_agent_algorithm` for binding layers.
+pub fn resolve_new_agent_algorithm(requested: &str) -> Result<String, JacsError> {
+    match requested {
+        "" | "pq2025" => Ok("pq2025".to_string()),
+        "ed25519" | "ring-Ed25519" => {
+            warn!(
+                event = "native_non_pq_sign_rejected",
+                requested_algorithm = requested,
+                "New agent creation is PQ-only; requested Ed25519 resolved to pq2025. \
+                 Existing Ed25519-rooted agents remain grandfathered until rotation."
+            );
+            crate::observability::metrics::increment_counter(
+                "jacs_native_non_pq_sign_rejected_total",
+                1,
+                None,
+            );
+            Ok("pq2025".to_string())
+        }
+        other => Err(JacsError::ConfigError(format!(
+            "Unsupported algorithm '{}' for new agent creation. New agents use pq2025.",
+            other
+        ))),
+    }
+}
+
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
 pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME";
 
@@ -292,10 +328,28 @@ impl Agent {
     /// Generate keys using a specific KeyStore implementation.
     /// For ephemeral agents, uses set_keys_raw (no AES encryption).
     /// For persistent agents, uses set_keys (AES-encrypts private key).
+    ///
+    /// Generating NEW key material is PQ-only (FR1): a config requesting
+    /// Ed25519 resolves to `pq2025` with a WARN and the config is updated
+    /// to match the keys actually minted. Loading EXISTING keys never goes
+    /// through here, so grandfathered Ed25519 agents are unaffected.
     pub fn generate_keys_with_store(&mut self, ks: &dyn KeyStore) -> Result<(), JacsError> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
-        let key_algorithm = config.get_key_algorithm()?;
-        ensure_private_key_operation_allowed(&key_algorithm, "key generation")?;
+        let requested_algorithm = config.get_key_algorithm()?;
+        ensure_private_key_operation_allowed(&requested_algorithm, "key generation")?;
+        let key_algorithm = if self.legacy_ed25519_keygen_allowed() {
+            // Fixture-only hatch (see Agent::allow_legacy_ed25519_keygen_for_fixtures).
+            requested_algorithm.clone()
+        } else {
+            resolve_new_agent_algorithm(&requested_algorithm)?
+        };
+        if key_algorithm != requested_algorithm
+            && let Some(cfg) = self.config.as_mut()
+        {
+            // Keep the config consistent with the keys actually minted so
+            // subsequent signing dispatches on the right algorithm.
+            cfg.set_key_algorithm(key_algorithm.clone())?;
+        }
         info!(algorithm = %key_algorithm, "Generating new keypair");
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),

@@ -169,8 +169,11 @@ test-jacs-cli:
 test-jacs-cross-language:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features "agreements a2a attestation" --test cross_language_tests --test a2a_cross_language_tests --test attestation_cross_lang_tests -- --nocapture
 
+# NOTE: `observability-convenience` was removed as a feature in v0.9.4 (the
+# convenience module is unconditional); listing it made cargo abort the whole
+# lane with "does not contain this feature", so every test here was dead in CI.
 test-jacs-observability:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features "observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features "otlp-logs otlp-metrics otlp-tracing agreements" --test observability_tests --test observability_oltp_meter --test compatibility_observability -- --nocapture
 
 test-jacs-mcp:
 	RUST_BACKTRACE=1 cargo test -p jacs-mcp --lib --tests --verbose

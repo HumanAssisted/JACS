@@ -16,7 +16,7 @@ PQ-root-signed binding that authorizes an ES256 ecosystem compatibility key for 
 
 all of
 
-* [Header](compatibility-key-binding-allof-header.md "check type definition")
+* [Header](conflict-allof-header.md "check type definition")
 
 # Compatibility Key Binding Properties
 

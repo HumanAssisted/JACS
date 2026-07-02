@@ -299,13 +299,14 @@ mod tests {
 
     /// Helper: create an ephemeral agent with keys for testing.
     fn make_test_agent() -> Agent {
-        let mut agent = Agent::ephemeral("ring-Ed25519").expect("Failed to create ephemeral agent");
+        // New agent creation is PQ-only; these tests are algorithm-agnostic.
+        let mut agent = Agent::ephemeral("pq2025").expect("Failed to create ephemeral agent");
 
         let agent_string = crate::create_minimal_blank_agent("ai".to_string(), None, None, None)
             .expect("Failed to create minimal agent JSON");
 
         agent
-            .create_agent_and_load(&agent_string, true, Some("ring-Ed25519"))
+            .create_agent_and_load(&agent_string, true, Some("pq2025"))
             .expect("Failed to create and load agent");
 
         agent

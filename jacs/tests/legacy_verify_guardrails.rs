@@ -246,23 +246,192 @@ fn new_native_es256_signing_is_unavailable() {
             "typed ConfigError expected for '{requested}', got {err:?}"
         );
 
-        // Low-level Agent::ephemeral defers to key generation, which hits
-        // the keystore wall: typed CryptoError naming the supported set.
-        let mut agent = Agent::ephemeral(requested).expect("construction alone allocates nothing");
-        let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
-            .expect("minimal agent template");
-        let err = agent
-            .create_agent_and_load(&agent_json, true, Some(requested))
-            .expect_err("low-level key generation must reject ES256");
+        // Low-level Agent::ephemeral hits the same creation resolver at
+        // construction time (FR1): typed ConfigError naming the policy —
+        // an ES256 agent can no longer even be constructed.
+        let err = Agent::ephemeral(requested)
+            .expect_err("low-level ephemeral construction must reject ES256");
         assert!(
-            matches!(err, JacsError::CryptoError(_)),
-            "typed CryptoError expected for '{requested}', got {err:?}"
+            matches!(err, JacsError::ConfigError(_)),
+            "typed ConfigError expected for '{requested}', got {err:?}"
         );
         assert!(
-            err.to_string().contains("Unsupported key algorithm"),
-            "error names the keystore wall for '{requested}': {err}"
+            err.to_string().contains("Unsupported algorithm") && err.to_string().contains("pq2025"),
+            "error names the creation policy for '{requested}': {err}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// 4b — the FR1 PQ-only wall also covers the low-level jacs-crate creation
+// paths (Issue 001): Agent::ephemeral and the create_keys branch of
+// create_agent_and_load resolve Ed25519 to pq2025 with a WARN, exactly like
+// SimpleAgent creation. Loading EXISTING Ed25519 agents stays grandfathered
+// (pinned by tests 1 + 2 above).
+// ---------------------------------------------------------------------------
+
+/// Shared in-memory writer so a thread-local fmt subscriber can capture the
+/// resolver's WARN output for assertion.
+#[derive(Clone, Default)]
+struct SharedLogBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for SharedLogBuf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("log buffer lock")
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for SharedLogBuf {
+    type Writer = SharedLogBuf;
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// Run `f` under a thread-local WARN-level subscriber; return captured logs.
+fn capture_warn_logs<T>(f: impl FnOnce() -> T) -> (String, T) {
+    let buf = SharedLogBuf::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_writer(buf.clone())
+        .with_ansi(false)
+        .finish();
+    let out = tracing::subscriber::with_default(subscriber, f);
+    let logs = String::from_utf8(buf.0.lock().expect("log buffer lock").clone())
+        .expect("captured logs are UTF-8");
+    (logs, out)
+}
+
+fn assert_non_pq_warn(logs: &str, context: &str) {
+    assert!(
+        logs.contains("native_non_pq_sign_rejected"),
+        "{context}: expected the native_non_pq_sign_rejected WARN, got logs: {logs}"
+    );
+    assert!(
+        logs.contains("WARN"),
+        "{context}: resolution must log at WARN level, got logs: {logs}"
+    );
+}
+
+#[test]
+fn agent_ephemeral_resolves_ed25519_to_pq2025() {
+    let (logs, (agent, instance)) = capture_warn_logs(|| {
+        // The low-level public path must NOT mint a new Ed25519 root: the
+        // request resolves to pq2025 (grandfathering applies only to
+        // EXISTING agents, never to new key generation).
+        let mut agent =
+            Agent::ephemeral("ring-Ed25519").expect("ephemeral must resolve, not error");
+        let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+            .expect("minimal agent template");
+        let instance = agent
+            .create_agent_and_load(&agent_json, true, Some("ring-Ed25519"))
+            .expect("create ephemeral agent");
+        (agent, instance)
+    });
+
+    assert_non_pq_warn(&logs, "Agent::ephemeral(\"ring-Ed25519\")");
+    assert_eq!(
+        instance["jacsSignature"]["signingAlgorithm"],
+        json!("pq2025"),
+        "new agent self-signature must be pq2025"
+    );
+    assert_eq!(
+        agent.get_key_algorithm().map(String::as_str),
+        Some("pq2025"),
+        "minted key algorithm must be pq2025"
+    );
+    assert_eq!(
+        agent
+            .config
+            .as_ref()
+            .expect("ephemeral agent has a config")
+            .get_key_algorithm()
+            .expect("config algorithm"),
+        "pq2025",
+        "agent config must carry the resolved algorithm"
+    );
+    use jacs::agent::boilerplate::BoilerPlate;
+    assert_eq!(
+        agent.get_public_key().expect("public key").len(),
+        jacs::crypt::constants::ML_DSA_87_PUBLIC_KEY_SIZE,
+        "public key must be ML-DSA-87 (pq2025) material, not Ed25519"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn create_agent_and_load_ignores_config_ed25519_for_new_keys() {
+    let _pw_guard = EnvVarGuard::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let root = tmp.path().canonicalize().expect("canonical temp dir");
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    fs::create_dir_all(data_dir.join("agent")).expect("create agent dir");
+    fs::create_dir_all(data_dir.join("public_keys")).expect("create public_keys dir");
+    fs::create_dir_all(&key_dir).expect("create key dir");
+
+    // A crates.io consumer's config explicitly requesting ring-Ed25519
+    // for a brand-NEW agent (the exact FR1 bypass scenario).
+    let config = jacs::config::Config::builder()
+        .key_algorithm("ring-Ed25519")
+        .data_directory(data_dir.to_str().expect("utf-8 path"))
+        .key_directory(key_dir.to_str().expect("utf-8 path"))
+        .default_storage("fs")
+        .build();
+    let mut agent = Agent::from_config(config, Some(TEST_PASSWORD)).expect("agent from config");
+    assert_eq!(
+        agent
+            .config
+            .as_ref()
+            .expect("config present")
+            .get_key_algorithm()
+            .expect("config algorithm"),
+        "ring-Ed25519",
+        "precondition: the config really requests Ed25519"
+    );
+
+    let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+        .expect("minimal agent template");
+    let (logs, instance) = capture_warn_logs(|| {
+        agent
+            .create_agent_and_load(&agent_json, true, None)
+            .expect("create agent with filesystem keys")
+    });
+
+    assert_non_pq_warn(&logs, "create_agent_and_load with ring-Ed25519 config");
+    assert_eq!(
+        instance["jacsSignature"]["signingAlgorithm"],
+        json!("pq2025"),
+        "new agent self-signature must be pq2025 despite the Ed25519 config"
+    );
+    assert_eq!(
+        agent.get_key_algorithm().map(String::as_str),
+        Some("pq2025"),
+        "minted key algorithm must be pq2025"
+    );
+    assert_eq!(
+        agent
+            .config
+            .as_ref()
+            .expect("config present")
+            .get_key_algorithm()
+            .expect("config algorithm"),
+        "pq2025",
+        "config must be updated to match the keys actually minted"
+    );
+    use jacs::agent::boilerplate::BoilerPlate;
+    assert_eq!(
+        agent.get_public_key().expect("public key").len(),
+        jacs::crypt::constants::ML_DSA_87_PUBLIC_KEY_SIZE,
+        "on-disk keypair must be ML-DSA-87 (pq2025) material, not Ed25519"
+    );
 }
 
 // ---------------------------------------------------------------------------

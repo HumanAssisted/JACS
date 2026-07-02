@@ -658,8 +658,10 @@ fn generated_agent_two_ed25519() -> Ed25519GeneratedFixture {
     static AGENT_TWO: OnceLock<Ed25519GeneratedFixture> = OnceLock::new();
     AGENT_TWO
         .get_or_init(|| {
-            let mut agent =
-                Agent::ephemeral("ring-Ed25519").expect("create generated Ed25519 fixture agent");
+            // Fixture hatch: minting NEW Ed25519 material is otherwise
+            // walled off (new key generation is PQ-only).
+            let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures()
+                .expect("create generated Ed25519 fixture agent");
             let agent_json = create_minimal_blank_agent(
                 "ai".to_string(),
                 Some("Agent Two".to_string()),
@@ -697,7 +699,10 @@ fn generated_agent_two_ed25519() -> Ed25519GeneratedFixture {
 #[cfg(test)]
 pub fn load_test_agent_two_ed25519() -> Agent {
     let generated = generated_agent_two_ed25519();
-    let mut agent = Agent::ephemeral("ring-Ed25519").expect("create Ed25519 test agent");
+    // Fixture hatch: the agent must carry a ring-Ed25519 config to match
+    // the generated Ed25519 key material set below.
+    let mut agent =
+        Agent::ephemeral_legacy_ed25519_for_fixtures().expect("create Ed25519 test agent");
     agent.set_keys_raw(generated.private_key, generated.public_key, "ring-Ed25519");
     agent
         .load(&generated.agent_json)

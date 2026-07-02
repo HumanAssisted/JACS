@@ -369,4 +369,12 @@ fn export_agreement_v2_as_vc_json_requires_agreement_feature() {
         msg.contains("jacsType"),
         "error names the typed agreement boundary: {msg}"
     );
+    // PRD §9.7 (Issue 012): typed input rejection stays Validation — only
+    // a missing compatibility key maps to KeyNotFound.
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::Validation,
+        "non-agreement VC input must map to Validation, got {:?}",
+        err.kind
+    );
 }

@@ -492,114 +492,297 @@ fn agreement_vc_export_logs_format_agreement_vc() {
 }
 
 // ---------------------------------------------------------------------------
-// PRD §9.8 counters (file-destination pattern from observability_tests.rs;
-// counters are compiled in only with the otlp-metrics feature)
+// PRD §9.8 counters (compiled in only with the otlp-metrics feature).
+//
+// Each test installs a FRESH `SdkMeterProvider` backed by a `ManualReader`
+// as the OTel global. Unlike the tracing global subscriber, the global
+// meter provider can be replaced at any time, and `increment_counter`
+// resolves it on every call — so counts always start at zero per test and
+// a missing increment is a hard assertion failure (no "recorder already
+// set" escape hatch).
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "otlp-metrics")]
 mod counters {
     use super::*;
-    use jacs::observability::{
-        LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-        init_observability,
+    use opentelemetry_sdk::error::OTelSdkResult;
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData, ResourceMetrics};
+    use opentelemetry_sdk::metrics::reader::MetricReader;
+    use opentelemetry_sdk::metrics::{
+        InstrumentKind, ManualReader, Pipeline, SdkMeterProvider, Temporality,
     };
+    use std::sync::Weak;
+    use std::time::Duration;
 
-    fn file_metrics_config(path: &std::path::Path) -> ObservabilityConfig {
-        ObservabilityConfig {
-            logs: LogConfig {
-                enabled: false,
-                level: "info".to_string(),
-                destination: LogDestination::Null,
-                headers: None,
-            },
-            metrics: MetricsConfig {
-                enabled: true,
-                destination: MetricsDestination::File {
-                    path: path.to_string_lossy().to_string(),
-                },
-                export_interval_seconds: Some(1),
-                headers: None,
-            },
-            tracing: None,
+    /// Cloneable handle around a [`ManualReader`]: one clone registers
+    /// with the meter provider, the other stays with the test to collect.
+    #[derive(Clone, Debug)]
+    struct SharedReader(Arc<ManualReader>);
+
+    impl MetricReader for SharedReader {
+        fn register_pipeline(&self, pipeline: Weak<Pipeline>) {
+            self.0.register_pipeline(pipeline)
+        }
+
+        fn collect(&self, rm: &mut ResourceMetrics) -> OTelSdkResult {
+            self.0.collect(rm)
+        }
+
+        fn force_flush(&self) -> OTelSdkResult {
+            self.0.force_flush()
+        }
+
+        fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
+            self.0.shutdown_with_timeout(timeout)
+        }
+
+        fn temporality(&self, kind: InstrumentKind) -> Temporality {
+            self.0.temporality(kind)
         }
     }
 
+    /// Replace the global meter provider with a fresh manual-reader one
+    /// and return the collect handle.
+    fn install_metrics_reader() -> SharedReader {
+        let reader = SharedReader(Arc::new(ManualReader::builder().build()));
+        let provider = SdkMeterProvider::builder()
+            .with_reader(reader.clone())
+            .build();
+        opentelemetry::global::set_meter_provider(provider);
+        reader
+    }
+
+    /// Sum of every u64 counter data point named `name` whose attributes
+    /// contain ALL of the `labels` pairs. Fails the test if collection
+    /// fails or the metric is not a u64 sum.
+    fn counter_value(reader: &SharedReader, name: &str, labels: &[(&str, &str)]) -> u64 {
+        let mut rm = ResourceMetrics::default();
+        reader
+            .collect(&mut rm)
+            .expect("collect metrics from the manual reader");
+        rm.scope_metrics()
+            .flat_map(|scope| scope.metrics())
+            .filter(|metric| metric.name() == name)
+            .map(|metric| match metric.data() {
+                AggregatedMetrics::U64(MetricData::Sum(sum)) => sum
+                    .data_points()
+                    .filter(|point| {
+                        labels.iter().all(|(key, value)| {
+                            point.attributes().any(|attribute| {
+                                attribute.key.as_str() == *key && attribute.value.as_str() == *value
+                            })
+                        })
+                    })
+                    .map(|point| point.value())
+                    .sum::<u64>(),
+                other => panic!("counter '{name}' must be a u64 sum, got: {other:?}"),
+            })
+            .sum()
+    }
+
     /// A successful export increments
-    /// `jacs_compatibility_export_total{format}` (same call site as the
-    /// `ecosystem_export_generated` event).
+    /// `jacs_compatibility_export_total{format="jwks"}` exactly once
+    /// (same call site as the `ecosystem_export_generated` event).
     #[test]
     #[serial(jacs_env, cwd_env)]
     fn compatibility_export_increments_format_counter() {
         let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        jacs::observability::force_reset_for_tests();
-
-        let metrics_dir = tempfile::tempdir().expect("metrics temp dir");
-        let metrics_file = metrics_dir.path().join("compat_export_metrics.txt");
-        let init_result = init_observability(file_metrics_config(&metrics_file));
-        assert!(init_result.is_ok(), "metrics init: {:?}", init_result.err());
-
         let (agent, _tmp, _guard) = setup_agent("obs-counter-export");
+        let reader = install_metrics_reader();
+
         agent
             .export_compatibility_jwks()
-            .expect("export JWKS increments the counter");
+            .expect("export JWKS (auto-issues the identity binding)");
 
-        // Wait for the periodic exporter to flush.
-        std::thread::sleep(std::time::Duration::from_millis(2000));
-
-        if metrics_file.exists() {
-            let content = std::fs::read_to_string(&metrics_file).unwrap_or_default();
-            assert!(
-                content.contains("jacs_compatibility_export_total"),
-                "metrics file should contain jacs_compatibility_export_total. Content: {content}"
-            );
-        } else {
-            // Global recorder already installed by an earlier test in this
-            // process (known tracing/otel global-state limitation, same
-            // tolerance as observability_tests.rs); the counter call path
-            // executed without panic and init succeeded.
-            println!(
-                "Metrics file not created (global recorder already set); \
-                 counter path executed without panic"
-            );
-        }
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_total",
+                &[("format", "jwks")]
+            ),
+            1,
+            "JWKS export must increment jacs_compatibility_export_total{{format=\"jwks\"}} once"
+        );
     }
 
     /// A scope denial increments
-    /// `jacs_content_export_scope_denied_total{format}` with the format
-    /// derived from the requested scope.
+    /// `jacs_content_export_scope_denied_total{format}` (format derived
+    /// from the requested scope) AND the export-error counter with the
+    /// fixed `scope_denied` reason.
     #[test]
     #[serial(jacs_env, cwd_env)]
     fn scope_denied_increments_counter() {
         let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        jacs::observability::force_reset_for_tests();
-
-        let metrics_dir = tempfile::tempdir().expect("metrics temp dir");
-        let metrics_file = metrics_dir.path().join("scope_denied_metrics.txt");
-        let init_result = init_observability(file_metrics_config(&metrics_file));
-        assert!(init_result.is_ok(), "metrics init: {:?}", init_result.err());
-
         let (agent, _tmp, _guard) = setup_agent("obs-counter-denied");
         agent
             .issue_compat_binding(None, None)
             .expect("issue default identity binding");
+        let reader = install_metrics_reader();
+
         agent
             .export_ap2_mandate(&sample_checkout().to_string())
             .expect_err("content export without scope must be denied");
 
-        std::thread::sleep(std::time::Duration::from_millis(2000));
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_content_export_scope_denied_total",
+                &[("format", "ap2-mandate")],
+            ),
+            1,
+            "scope denial must increment \
+             jacs_content_export_scope_denied_total{{format=\"ap2-mandate\"}} once"
+        );
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_error_total",
+                &[("format", "ap2-mandate"), ("reason", "scope_denied")],
+            ),
+            1,
+            "scope denial must increment jacs_compatibility_export_error_total \
+             with format=\"ap2-mandate\", reason=\"scope_denied\""
+        );
+    }
 
-        if metrics_file.exists() {
-            let content = std::fs::read_to_string(&metrics_file).unwrap_or_default();
-            assert!(
-                content.contains("jacs_content_export_scope_denied_total"),
-                "metrics file should contain jacs_content_export_scope_denied_total. \
-                 Content: {content}"
-            );
-        } else {
-            println!(
-                "Metrics file not created (global recorder already set); \
-                 counter path executed without panic"
-            );
-        }
+    /// A structurally invalid checkout — with the `ap2-mandate` scope
+    /// GRANTED, so the scope gate is not what fails — increments
+    /// `jacs_compatibility_export_error_total{format,reason="invalid_input"}`
+    /// and never the success counter.
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn export_error_invalid_input_increments_counter() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _guard) = setup_agent("obs-counter-export-error");
+        grant_scopes(&agent, "ap2-mandate");
+        let reader = install_metrics_reader();
+
+        agent
+            .export_ap2_mandate(&json!({"id": "checkout_bad"}).to_string())
+            .expect_err("checkout missing required AP2 fields must be rejected");
+
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_error_total",
+                &[("format", "ap2-mandate"), ("reason", "invalid_input")],
+            ),
+            1,
+            "invalid checkout must increment jacs_compatibility_export_error_total \
+             with format=\"ap2-mandate\", reason=\"invalid_input\""
+        );
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_total",
+                &[("format", "ap2-mandate")],
+            ),
+            0,
+            "a failed export must never increment the success counter"
+        );
+    }
+
+    /// An expired binding increments
+    /// `jacs_compatibility_binding_verify_failed_total{reason="expired"}`
+    /// (fixed low-cardinality reason, same call site as the WARN event).
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn binding_verify_failed_increments_reason_counter() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _guard) = setup_agent("obs-counter-binding-verify");
+        agent
+            .issue_compat_binding(Some(&["jwks", "did"]), Some("2020-01-01T00:00:00Z"))
+            .expect("issue expired binding");
+        let reader = install_metrics_reader();
+
+        agent
+            .compat_binding()
+            .expect_err("expired binding must fail verification");
+
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_binding_verify_failed_total",
+                &[("reason", "expired")],
+            ),
+            1,
+            "expired binding must increment \
+             jacs_compatibility_binding_verify_failed_total{{reason=\"expired\"}} once"
+        );
+    }
+
+    /// Requesting Ed25519 on a PUBLIC creation path increments
+    /// `jacs_native_non_pq_sign_rejected_total` (creation still succeeds,
+    /// resolved to pq2025 — the counter tracks rejected requests).
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn non_pq_sign_rejected_increments_counter() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard) = enter_temp_cwd();
+        let _ = &tmp;
+        let reader = install_metrics_reader();
+
+        let params = CreateAgentParams::builder()
+            .name("obs-counter-nonpq")
+            .password(TEST_PASSWORD)
+            .algorithm("ring-Ed25519")
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .build();
+        let (_agent, info) =
+            SimpleAgent::create_with_params(params).expect("creation resolves to pq2025");
+        assert!(
+            !info.algorithm.contains("Ed25519"),
+            "public creation must not produce an Ed25519 root, got {}",
+            info.algorithm
+        );
+
+        assert_eq!(
+            counter_value(&reader, "jacs_native_non_pq_sign_rejected_total", &[]),
+            1,
+            "requesting ring-Ed25519 on the public creation path must increment \
+             jacs_native_non_pq_sign_rejected_total once"
+        );
+    }
+
+    /// A grandfathered Ed25519 agent signing natively increments
+    /// `jacs_native_legacy_ed25519_sign_total` (fleet-drift signal, same
+    /// call site as the `native_legacy_ed25519_sign` WARN).
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn legacy_ed25519_sign_increments_counter() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard) = enter_temp_cwd();
+        let _ = &tmp;
+        let params = CreateAgentParams::builder()
+            .name("obs-counter-legacy")
+            .password(TEST_PASSWORD)
+            .algorithm("ring-Ed25519")
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .build();
+        let (agent, info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
+            .expect("legacy fixture agent");
+        assert!(
+            info.algorithm.contains("Ed25519"),
+            "fixture builder must produce a genuine Ed25519 root, got {}",
+            info.algorithm
+        );
+
+        // Install AFTER creation so the agent's self-signature during
+        // bootstrap is not counted — only the sign under test.
+        let reader = install_metrics_reader();
+        agent
+            .sign_message(&json!({"legacy": true}))
+            .expect("grandfathered Ed25519 sign must still succeed");
+
+        assert_eq!(
+            counter_value(&reader, "jacs_native_legacy_ed25519_sign_total", &[]),
+            1,
+            "a grandfathered Ed25519 native sign must increment \
+             jacs_native_legacy_ed25519_sign_total once"
+        );
     }
 }

@@ -350,6 +350,10 @@ pub struct Agent {
     /// returns this immediately without touching env/jenv. Enables safe concurrent
     /// multi-agent usage.
     password: Option<String>,
+    /// LEGACY / TEST-ONLY: allow minting NEW Ed25519 key material for
+    /// grandfathered-agent fixtures. New key generation is otherwise PQ-only
+    /// (FR1); see `allow_legacy_ed25519_keygen_for_fixtures`.
+    legacy_ed25519_keygen_for_fixtures: bool,
     /// Evidence adapters for attestation (gated behind `attestation` feature).
     #[cfg(feature = "attestation")]
     pub adapters: Vec<Box<dyn crate::attestation::adapters::EvidenceAdapter>>,
@@ -414,6 +418,7 @@ impl Agent {
             dns_required: None,
             key_paths,
             password: None,
+            legacy_ed25519_keygen_for_fixtures: false,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         })
@@ -487,6 +492,7 @@ impl Agent {
             dns_required: None,
             key_paths: None,
             password: password.map(String::from),
+            legacy_ed25519_keygen_for_fixtures: false,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         };
@@ -650,7 +656,30 @@ impl Agent {
 
     /// Create an ephemeral agent with in-memory keys and storage.
     /// No config file, no directories, no environment variables needed.
+    ///
+    /// New agent creation is PQ-only (FR1): a requested Ed25519 algorithm
+    /// resolves to `pq2025` with a WARN (`native_non_pq_sign_rejected`),
+    /// unknown algorithms are a typed error. Loading and verifying EXISTING
+    /// Ed25519 material is unaffected (grandfathered).
     pub fn ephemeral(algorithm: &str) -> Result<Self, JacsError> {
+        let algorithm = crate::crypt::resolve_new_agent_algorithm(algorithm)?;
+        Self::ephemeral_unresolved(&algorithm, false)
+    }
+
+    /// LEGACY / TEST-ONLY: build a genuine Ed25519 ephemeral agent for
+    /// grandfathered-agent fixtures. Public ephemeral creation is PQ-only;
+    /// this hatch skips the resolver. `#[doc(hidden)]` like the
+    /// `SimpleAgent` fixture hatches — not part of the supported API and
+    /// never exposed through bindings/CLI/MCP.
+    #[doc(hidden)]
+    pub fn ephemeral_legacy_ed25519_for_fixtures() -> Result<Self, JacsError> {
+        Self::ephemeral_unresolved("ring-Ed25519", true)
+    }
+
+    fn ephemeral_unresolved(
+        algorithm: &str,
+        legacy_ed25519_keygen_for_fixtures: bool,
+    ) -> Result<Self, JacsError> {
         let config = Config::builder()
             .key_algorithm(algorithm)
             .default_storage("memory")
@@ -676,9 +705,25 @@ impl Agent {
             dns_required: None,
             key_paths: None,
             password: None,
+            legacy_ed25519_keygen_for_fixtures,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         })
+    }
+
+    /// LEGACY / TEST-ONLY: allow this agent to mint NEW Ed25519 key material
+    /// for grandfathered-agent fixtures (mirrors the `SimpleAgent`
+    /// `create_legacy_ed25519_agent_for_fixtures` hatch). New key generation
+    /// is otherwise PQ-only (FR1). Not part of the supported API and never
+    /// exposed through bindings/CLI/MCP.
+    #[doc(hidden)]
+    pub fn allow_legacy_ed25519_keygen_for_fixtures(&mut self) {
+        self.legacy_ed25519_keygen_for_fixtures = true;
+    }
+
+    /// True when the fixture-only Ed25519 key-generation hatch is enabled.
+    pub(crate) fn legacy_ed25519_keygen_allowed(&self) -> bool {
+        self.legacy_ed25519_keygen_for_fixtures
     }
 
     /// Returns true if this is an ephemeral (in-memory) agent.
@@ -2647,10 +2692,26 @@ impl Agent {
             if let Some(ref ks) = self.key_store {
                 // Ephemeral: use the in-memory key store
                 // Clone the Box<dyn KeyStore> reference data we need before mutable borrow
-                let algo = {
+                //
+                // Generating NEW key material is PQ-only (FR1): a config
+                // requesting Ed25519 resolves to pq2025 with a WARN. Only the
+                // fixture-only hatch skips the resolver.
+                let requested = {
                     let config = self.config.as_ref().ok_or("Agent config not initialized")?;
                     config.get_key_algorithm()?
                 };
+                let algo = if self.legacy_ed25519_keygen_for_fixtures {
+                    requested.clone()
+                } else {
+                    crate::crypt::resolve_new_agent_algorithm(&requested)?
+                };
+                if algo != requested
+                    && let Some(cfg) = self.config.as_mut()
+                {
+                    // Keep the config consistent with the keys actually
+                    // minted so subsequent signing dispatches correctly.
+                    cfg.set_key_algorithm(algo.clone())?;
+                }
                 let spec = KeySpec {
                     algorithm: algo.clone(),
                     key_id: None,
@@ -2658,6 +2719,8 @@ impl Agent {
                 let (private_key, public_key) = ks.generate(&spec)?;
                 self.set_keys_raw(private_key, public_key, &algo);
             } else {
+                // Filesystem path: generate_keys() -> generate_keys_with_store
+                // applies the same PQ-only resolution for NEW keys.
                 self.generate_keys()?;
             }
         }
@@ -3071,6 +3134,7 @@ impl AgentBuilder {
             dns_required: self.dns_required,
             key_paths,
             password: None,
+            legacy_ed25519_keygen_for_fixtures: false,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         };
@@ -3418,7 +3482,7 @@ mod ephemeral_tests {
 
     #[test]
     fn test_ephemeral_creates_without_config_file() {
-        let agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let agent = Agent::ephemeral("pq2025").unwrap();
         assert!(agent.is_ephemeral());
         assert!(agent.config.is_some());
         // No files should be created — config is in-memory
@@ -3427,15 +3491,15 @@ mod ephemeral_tests {
     #[test]
     fn test_ephemeral_creates_without_env_vars() {
         // No JACS_KEY_DIRECTORY or JACS_PRIVATE_KEY_PASSWORD needed
-        let agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let agent = Agent::ephemeral("pq2025").unwrap();
         assert!(agent.is_ephemeral());
     }
 
     #[test]
     fn test_ephemeral_create_agent_and_load() {
-        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
-        let result = agent.create_agent_and_load(&json, true, Some("ring-Ed25519"));
+        let result = agent.create_agent_and_load(&json, true, Some("pq2025"));
         assert!(
             result.is_ok(),
             "create_agent_and_load failed: {:?}",
@@ -3451,10 +3515,10 @@ mod ephemeral_tests {
     fn test_ephemeral_sign_and_verify_round_trip() {
         use crate::agent::document::DocumentTraits;
 
-        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
         agent
-            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .create_agent_and_load(&json, true, Some("pq2025"))
             .unwrap();
 
         // Sign a document
@@ -3484,10 +3548,10 @@ mod ephemeral_tests {
 
     #[test]
     fn test_ephemeral_agent_is_ready() {
-        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
         agent
-            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .create_agent_and_load(&json, true, Some("pq2025"))
             .unwrap();
         assert!(
             agent.ready(),
@@ -3501,10 +3565,10 @@ mod ephemeral_tests {
         let _ = std::fs::remove_dir_all(&temp);
         std::fs::create_dir_all(&temp).unwrap();
 
-        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
         agent
-            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .create_agent_and_load(&json, true, Some("pq2025"))
             .unwrap();
 
         // Temp dir should still be empty
@@ -3546,10 +3610,10 @@ mod ephemeral_tests {
     }
 
     fn ready_ephemeral_agent() -> Agent {
-        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
         agent
-            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .create_agent_and_load(&json, true, Some("pq2025"))
             .unwrap();
         agent
     }
@@ -3728,7 +3792,7 @@ mod ephemeral_tests {
     // output (panic backtraces, downstream {:?} logging).
     #[test]
     fn agent_debug_redacts_password_sec3() {
-        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let mut agent = Agent::ephemeral("pq2025").unwrap();
         agent.set_password(Some("AgentSecretPw123!".to_string()));
         let dbg = format!("{:?}", agent);
         assert!(

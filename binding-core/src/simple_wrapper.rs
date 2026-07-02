@@ -587,14 +587,12 @@ impl SimpleAgentWrapper {
     /// paths). Errors if the key already exists (no silent re-mint;
     /// ES256 key rotation is out of P2 scope) or the agent is ephemeral.
     pub fn add_compat_key_json(&self) -> BindingResult<String> {
-        let info = self.inner.add_compat_key().map_err(|e| {
-            // No new ErrorKind (P2 NG10): duplicate/ephemeral guard failures
-            // are validation errors on existing categories.
-            BindingCoreError::new(
-                ErrorKind::Validation,
-                format!("Failed to add compatibility key: {}", e),
-            )
-        })?;
+        // PRD §9.7 mapping via map_compat_err: duplicate/ephemeral guard
+        // failures are Validation; a missing key is KeyNotFound.
+        let info = self
+            .inner
+            .add_compat_key()
+            .map_err(|e| map_compat_err(e, "Failed to add compatibility key"))?;
         serialize_json(&info, "compatibility key info")
     }
 
@@ -603,12 +601,10 @@ impl SimpleAgentWrapper {
     /// the PQ-root-signed binding; auto-issues the default identity
     /// binding on first use (P2 Task 004).
     pub fn export_compatibility_jwks_json(&self) -> BindingResult<String> {
-        let jwks = self.inner.export_compatibility_jwks().map_err(|e| {
-            BindingCoreError::new(
-                ErrorKind::Validation,
-                format!("Failed to export compatibility JWKS: {}", e),
-            )
-        })?;
+        let jwks = self
+            .inner
+            .export_compatibility_jwks()
+            .map_err(|e| map_compat_err(e, "Failed to export compatibility JWKS"))?;
         serialize_json(&jwks, "compatibility JWKS")
     }
 
@@ -616,12 +612,10 @@ impl SimpleAgentWrapper {
     /// (P2 Task 004-B; typ "JOSE", binding referenced by content hash).
     #[cfg(feature = "a2a")]
     pub fn export_a2a_agent_card_json(&self) -> BindingResult<String> {
-        let card = self.inner.export_a2a_agent_card().map_err(|e| {
-            BindingCoreError::new(
-                ErrorKind::Validation,
-                format!("Failed to export A2A agent card: {}", e),
-            )
-        })?;
+        let card = self
+            .inner
+            .export_a2a_agent_card()
+            .map_err(|e| map_compat_err(e, "Failed to export A2A agent card"))?;
         serialize_json(&card, "A2A agent card")
     }
 
@@ -629,12 +623,10 @@ impl SimpleAgentWrapper {
     /// binding document, so relying parties can trace the ES256 key back
     /// to the post-quantum root (P2 Task 004).
     pub fn export_compatibility_key_binding_json(&self) -> BindingResult<String> {
-        let binding = self.inner.export_compatibility_key_binding().map_err(|e| {
-            BindingCoreError::new(
-                ErrorKind::Validation,
-                format!("Failed to export compatibility key binding: {}", e),
-            )
-        })?;
+        let binding = self
+            .inner
+            .export_compatibility_key_binding()
+            .map_err(|e| map_compat_err(e, "Failed to export compatibility key binding"))?;
         serialize_json(&binding, "compatibility key binding")
     }
 
@@ -648,12 +640,7 @@ impl SimpleAgentWrapper {
         let vc = self
             .inner
             .export_agreement_v2_as_vc(agreement_json)
-            .map_err(|e| {
-                BindingCoreError::new(
-                    ErrorKind::Validation,
-                    format!("Failed to export Agreement-v2 VC: {}", e),
-                )
-            })?;
+            .map_err(|e| map_compat_err(e, "Failed to export Agreement-v2 VC"))?;
         serialize_json(&vc, "Agreement-v2 VC export")
     }
 
@@ -663,12 +650,10 @@ impl SimpleAgentWrapper {
     /// and gated by the explicit `ap2-mandate` binding scope (content
     /// exports never auto-issue a binding).
     pub fn export_ap2_mandate_json(&self, checkout_json: &str) -> BindingResult<String> {
-        let mandate = self.inner.export_ap2_mandate(checkout_json).map_err(|e| {
-            BindingCoreError::new(
-                ErrorKind::Validation,
-                format!("Failed to export AP2 mandate: {}", e),
-            )
-        })?;
+        let mandate = self
+            .inner
+            .export_ap2_mandate(checkout_json)
+            .map_err(|e| map_compat_err(e, "Failed to export AP2 mandate"))?;
         serialize_json(&mandate, "AP2 mandate export")
     }
 
@@ -789,6 +774,20 @@ impl SimpleAgentWrapper {
 // =============================================================================
 // Option parsing helpers
 // =============================================================================
+
+/// Error mapping for the compatibility-key surface (PRD §9.7): a missing
+/// ES256 ecosystem key is `ErrorKind::KeyNotFound` so callers across
+/// Python/Node/Go can distinguish "run add-compat-key" from bad input.
+/// Every other failure (scope denial, duplicate/ephemeral guards, typed
+/// input rejection) stays `ErrorKind::Validation` on existing kinds —
+/// no new ErrorKind variants (P2 NG10).
+fn map_compat_err(e: jacs::error::JacsError, context: &str) -> BindingCoreError {
+    let kind = match e {
+        jacs::error::JacsError::KeyNotFound { .. } => ErrorKind::KeyNotFound,
+        _ => ErrorKind::Validation,
+    };
+    BindingCoreError::new(kind, format!("{}: {}", context, e))
+}
 
 fn map_jacs_err(e: jacs::error::JacsError, op: &str) -> BindingCoreError {
     use jacs::error::JacsError;

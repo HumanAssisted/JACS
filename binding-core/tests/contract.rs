@@ -358,6 +358,53 @@ fn add_compat_key_json_migrates_existing_agent() {
         .add_compat_key_json()
         .expect_err("duplicate migration is a typed error");
     assert!(err.to_string().contains("already") || err.to_string().contains("exists"));
+    // PRD §9.7: the duplicate guard is a validation failure on existing
+    // kinds — never KeyNotFound (the key exists) and never a new variant.
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::Validation,
+        "duplicate compat key must map to Validation, got {:?}",
+        err.kind
+    );
+}
+
+#[test]
+#[serial]
+fn export_compatibility_jwks_missing_key_maps_to_key_not_found() {
+    // PRD §9.7 (Issue 012): a missing ES256 compatibility key surfaces as
+    // ErrorKind::KeyNotFound across the binding surface, so Python/Node/Go
+    // callers can distinguish "run add-compat-key" from bad input.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-missing-key",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+        "no_compat_key": true,
+    })
+    .to_string();
+
+    let (wrapper, _info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with opt-out");
+
+    let err = wrapper
+        .export_compatibility_jwks_json()
+        .expect_err("agent without compat key cannot export JWKS");
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::KeyNotFound,
+        "missing compat key must map to KeyNotFound, got {:?}: {}",
+        err.kind,
+        err
+    );
+    assert!(
+        err.to_string().contains("add-compat-key") || err.to_string().contains("add_compat_key"),
+        "error should steer to the explicit migration command, got: {err}"
+    );
 }
 
 #[test]

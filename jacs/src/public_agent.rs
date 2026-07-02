@@ -113,7 +113,10 @@ mod tests {
 
     #[test]
     fn projection_extracts_public_agent_metadata() {
-        let mut agent = Agent::ephemeral("ring-Ed25519").expect("ephemeral agent");
+        // Fixture hatch: the projection assertions below pin the
+        // grandfathered ring-Ed25519 algorithm; public ephemeral creation
+        // is PQ-only.
+        let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures().expect("ephemeral agent");
         let agent_doc = json!({
             "jacsAgentType": "ai",
             "name": "projection-test",

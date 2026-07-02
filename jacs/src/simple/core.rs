@@ -21,37 +21,11 @@ use tracing::{debug, info, warn};
 
 /// Resolve the signing algorithm for a NEW agent: new creation is PQ-only.
 ///
-/// Ed25519 requests are honored as `pq2025` with a WARN — existing
-/// Ed25519-rooted agents are unaffected (grandfathered): they continue to
-/// load and sign (see the `native_legacy_ed25519_sign` event) until they
-/// rotate, and rotation always migrates them to `pq2025`. Unknown
-/// algorithms are a typed error.
-///
-/// Public so binding layers (`jacs-binding-core`) apply the identical
-/// policy on their own creation paths.
-pub fn resolve_new_agent_algorithm(requested: &str) -> Result<String, JacsError> {
-    match requested {
-        "" | "pq2025" => Ok("pq2025".to_string()),
-        "ed25519" | "ring-Ed25519" => {
-            warn!(
-                event = "native_non_pq_sign_rejected",
-                requested_algorithm = requested,
-                "New agent creation is PQ-only; requested Ed25519 resolved to pq2025. \
-                 Existing Ed25519-rooted agents remain grandfathered until rotation."
-            );
-            crate::observability::metrics::increment_counter(
-                "jacs_native_non_pq_sign_rejected_total",
-                1,
-                None,
-            );
-            Ok("pq2025".to_string())
-        }
-        other => Err(JacsError::ConfigError(format!(
-            "Unsupported algorithm '{}' for new agent creation. New agents use pq2025.",
-            other
-        ))),
-    }
-}
+/// The policy now lives in [`crate::crypt::resolve_new_agent_algorithm`] so
+/// the low-level `Agent` creation paths apply it too; re-exported here for
+/// the binding layers (`jacs-binding-core`) that consume it via
+/// `jacs::simple::core`.
+pub use crate::crypt::resolve_new_agent_algorithm;
 
 use super::types::*;
 
@@ -683,6 +657,12 @@ impl SimpleAgent {
 
         // Create the agent and set agent-scoped fields
         let mut agent = crate::get_empty_agent();
+        if allow_legacy_ed25519 {
+            // Fixture-only path: NEW key generation is otherwise PQ-only,
+            // so the Agent-level hatch must be enabled for the Ed25519
+            // fixture builder to mint genuine Ed25519 keys.
+            agent.allow_legacy_ed25519_keygen_for_fixtures();
+        }
         agent.set_key_paths(key_paths.clone());
         agent.set_password(Some(password.clone()));
 
@@ -1047,7 +1027,7 @@ impl SimpleAgent {
         // New agent creation is PQ-only: Ed25519 requests resolve to pq2025
         // with a WARN, unknown algorithms are a typed error.
         let algo = resolve_new_agent_algorithm(algorithm.unwrap_or(""))?;
-        Self::ephemeral_with_algo(&algo)
+        Self::ephemeral_with_algo(&algo, false)
     }
 
     /// LEGACY / TEST-ONLY: build a genuine Ed25519 ephemeral agent for
@@ -1057,7 +1037,7 @@ impl SimpleAgent {
     /// supported API and never exposed through bindings/CLI/MCP.
     #[doc(hidden)]
     pub fn ephemeral_legacy_ed25519_for_fixtures() -> Result<(Self, AgentInfo), JacsError> {
-        Self::ephemeral_with_algo("ring-Ed25519")
+        Self::ephemeral_with_algo("ring-Ed25519", true)
     }
 
     /// Explicit migration: add the ES256 `ecosystem_signing` compatibility
@@ -1270,10 +1250,20 @@ impl SimpleAgent {
         crate::keystore::compat::ecosystem_key_info(&key_directory)
     }
 
-    fn ephemeral_with_algo(algo: &str) -> Result<(Self, AgentInfo), JacsError> {
+    fn ephemeral_with_algo(
+        algo: &str,
+        legacy_ed25519_fixture: bool,
+    ) -> Result<(Self, AgentInfo), JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
 
-        let mut agent = Agent::ephemeral(algo).map_err(|e| JacsError::Internal {
+        // The fixture hatch uses the matching Agent-level hatch: the public
+        // Agent::ephemeral path resolves Ed25519 to pq2025 (FR1).
+        let mut agent = if legacy_ed25519_fixture {
+            Agent::ephemeral_legacy_ed25519_for_fixtures()
+        } else {
+            Agent::ephemeral(algo)
+        }
+        .map_err(|e| JacsError::Internal {
             message: format!("Failed to create ephemeral agent: {}", e),
         })?;
 

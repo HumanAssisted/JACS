@@ -49,8 +49,8 @@ fn known_methods() -> Vec<&'static str> {
         "from_html",
         // Key management
         "rotate_keys",
+        // Ecosystem compatibility (P2 Tasks 002/004/004b)
         "add_compat_key_json",
-        // Ecosystem compatibility exports (P2 Tasks 004/004b)
         "export_compatibility_jwks_json",
         "export_compatibility_key_binding_json",
         "export_ap2_mandate_json",
