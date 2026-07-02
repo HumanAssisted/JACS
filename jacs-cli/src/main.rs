@@ -33,6 +33,19 @@ use std::process;
 // install/download functions removed — MCP is now built into the CLI
 // build_cli moved to src/cli_builder.rs (re-exported by lib.rs)
 
+/// Load the `SimpleAgent` for subcommands that take an optional `--config`
+/// path — the ONE place the CLI's load-failure wrapping lives.
+fn load_simple_agent(
+    config_path: Option<&str>,
+) -> Result<jacs::simple::SimpleAgent, Box<dyn Error>> {
+    jacs::simple::SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+        Box::new(std::io::Error::other(format!(
+            "Failed to load agent: {}",
+            e
+        )))
+    })
+}
+
 fn read_json_arg(raw: &str) -> Result<String, Box<dyn Error>> {
     if raw == "-" {
         let mut buf = String::new();
@@ -235,16 +248,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 handle_agent_create_opts(filename, create_keys, no_compat_key)?;
             }
             Some(("add-compat-key", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
                 let compat = agent.add_compat_key().map_err(|e| -> Box<dyn Error> {
                     Box::new(std::io::Error::other(format!(
                         "Failed to add compatibility key: {}",
@@ -259,16 +264,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("  Private:   {}", compat.private_key_path);
             }
             Some(("export-jwks", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
                 let jwks = agent
                     .export_compatibility_jwks()
                     .map_err(|e| -> Box<dyn Error> {
@@ -280,16 +277,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("{}", serde_json::to_string_pretty(&jwks)?);
             }
             Some(("export-compat-binding", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
                 let binding =
                     agent
                         .export_compatibility_key_binding()
@@ -302,16 +291,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("{}", serde_json::to_string_pretty(&binding)?);
             }
             Some(("issue-compat-binding", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
                 let scope_values: Option<Vec<&str>> = sub_m
                     .get_many::<String>("scopes")
                     .map(|vals| vals.map(|s| s.as_str()).collect());
@@ -453,18 +434,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Some(("rotate-keys", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
                 let algorithm = sub_m.get_one::<String>("algorithm").map(|s| s.as_str());
 
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
 
                 let result = jacs::simple::advanced::rotate(&agent, algorithm).map_err(
                     |e| -> Box<dyn Error> {
@@ -855,17 +828,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 print_json_pretty(&doc.value)?;
             }
             Some(("export-vc", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
                 let vc =
                     agent
                         .export_agreement_v2_as_vc(&agreement)
@@ -890,15 +855,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         Some(("key", key_matches)) => match key_matches.subcommand() {
             Some(("reencrypt", _reencrypt_matches)) => {
                 use jacs::crypt::aes_encrypt::password_requirements;
-                use jacs::simple::SimpleAgent;
 
                 // Load the agent first to find the key file
-                let agent = SimpleAgent::load(None, None).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::other(format!(
-                        "Failed to load agent: {}",
-                        e
-                    )))
-                })?;
+                let agent = load_simple_agent(None)?;
 
                 println!("Re-encrypting private key.\n");
 
@@ -996,17 +955,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         }
         Some(("ap2", ap2_matches)) => match ap2_matches.subcommand() {
             Some(("export-mandate", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let checkout_json = read_json_arg(sub_m.get_one::<String>("input").unwrap())?;
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
                 let mandate =
                     agent
                         .export_ap2_mandate(&checkout_json)

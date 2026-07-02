@@ -113,15 +113,11 @@ fn es256_entries_if_authorized(
             None => return Ok(None),
         };
 
-    let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
-        JacsError::FileReadFailed {
-            path: compat.public_key_path.clone(),
-            reason: e.to_string(),
-        }
-    })?;
+    // One PEM read feeds both encodings (JWK x/y + Multikey).
+    let public_pem = compat.read_public_pem()?;
     let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
     let multibase = crate::crypt::es256::multikey_from_spki_pem(&public_pem)?;
-    let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
+    let binding_hash = crate::compatibility::binding::binding_hash(&binding);
 
     let jwk_id = format!("{}#{}", parts.did, compat.kid);
     let mk_id = format!("{}#{}-multikey", parts.did, compat.kid);
@@ -130,14 +126,7 @@ fn es256_entries_if_authorized(
         "id": jwk_id,
         "type": "JsonWebKey",
         "controller": parts.did,
-        "publicKeyJwk": {
-            "kty": "EC",
-            "crv": "P-256",
-            "x": x,
-            "y": y,
-            "alg": "ES256",
-            "kid": compat.kid
-        }
+        "publicKeyJwk": crate::crypt::es256::public_jwk(&x, &y, Some(&compat.kid))
     });
     let multikey_entry = json!({
         "id": mk_id,

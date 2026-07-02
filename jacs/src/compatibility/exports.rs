@@ -8,7 +8,6 @@
 //! exports (Tasks 004b/004c) never auto-issue.
 
 use crate::agent::Agent;
-use crate::agent::SHA256_FIELDNAME;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::error::JacsError;
 use serde_json::{Value, json};
@@ -21,11 +20,13 @@ fn require_identity_scope(
     key_directory: &str,
     scope: &str,
 ) -> Result<Value, JacsError> {
-    if super::binding::load_compat_binding(key_directory)?.is_none() {
+    let binding = match super::binding::load_compat_binding(key_directory)? {
+        Some(binding) => binding,
         // Auto-issue needs the ES256 key on disk; a fresh agent without
         // one fails HERE with `KeyNotFound` — record the documented
         // `reason="missing_key"` error counter under the requested format.
-        super::binding::issue_compat_binding_ctx(
+        // Issuance returns the persisted binding, so no disk re-load.
+        None => super::binding::issue_compat_binding_ctx(
             agent,
             key_directory,
             super::binding::DEFAULT_IDENTITY_SCOPES,
@@ -36,9 +37,9 @@ fn require_identity_scope(
             if matches!(e, JacsError::KeyNotFound { .. }) {
                 super::record_export_error(scope, "missing_key");
             }
-        })?;
-    }
-    super::binding::require_scope(agent, key_directory, scope)
+        })?,
+    };
+    super::binding::require_scope_on(agent, key_directory, scope, binding)
 }
 
 /// Export the agent's compatibility JWKS: a JWK Set holding the ES256
@@ -51,31 +52,17 @@ pub fn export_compatibility_jwks(
     key_directory: &str,
 ) -> Result<Value, JacsError> {
     let binding = require_identity_scope(agent, key_directory, "jwks")?;
-    let binding_hash = binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
+    let binding_hash = super::binding::binding_hash(&binding);
 
     // The scope gate above already verified the key exists (missing keys
     // fail inside `require_identity_scope` and count there); this re-read
     // just fetches the descriptor.
     let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
-    let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
-        JacsError::FileReadFailed {
-            path: compat.public_key_path.clone(),
-            reason: e.to_string(),
-        }
-    })?;
-    let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
+    let (x, y) = compat.public_jwk_xy()?;
 
-    let jwks = json!({
-        "keys": [{
-            "kty": "EC",
-            "crv": "P-256",
-            "x": x,
-            "y": y,
-            "kid": compat.kid,
-            "use": "sig",
-            "alg": "ES256"
-        }]
-    });
+    let mut key = crate::crypt::es256::public_jwk(&x, &y, Some(&compat.kid));
+    key["use"] = json!("sig");
+    let jwks = json!({ "keys": [key] });
 
     info!(
         event = "ecosystem_export_generated",
@@ -101,7 +88,7 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let binding = require_identity_scope(agent, key_directory, "a2a-agent-card")?;
-    let binding_hash = binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
+    let binding_hash = super::binding::binding_hash(&binding);
     // Missing keys fail (and count) inside the scope gate above.
     let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
 
@@ -139,15 +126,8 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
     let signing_input = format!("{}.{}", header_b64, payload_b64);
 
     // Decrypt the ES256 private key with the agent password; the plaintext
-    // PKCS#8 DER lives only in this zeroizing buffer.
-    let password = agent.resolve_password()?;
-    let encrypted =
-        std::fs::read(&compat.private_key_path).map_err(|e| JacsError::FileReadFailed {
-            path: compat.private_key_path.clone(),
-            reason: e.to_string(),
-        })?;
-    let private_der =
-        crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(&encrypted, &password)?;
+    // PKCS#8 DER lives only in the returned zeroizing buffer.
+    let private_der = super::decrypt_ecosystem_private_key(agent, &compat)?;
     let signature =
         crate::crypt::es256::sign_es256_jose(private_der.as_slice(), signing_input.as_bytes())?;
     let jws = format!(
@@ -180,18 +160,17 @@ pub fn export_compatibility_key_binding(
     key_directory: &str,
 ) -> Result<Value, JacsError> {
     // The binding itself is the artifact — gate on the broadest identity
-    // scope semantics by verifying the binding outright.
-    if super::binding::load_compat_binding(key_directory)?.is_none() {
-        super::binding::issue_compat_binding(
+    // scope semantics by verifying the binding outright. Issuance returns
+    // the persisted binding, so no disk re-load.
+    let binding = match super::binding::load_compat_binding(key_directory)? {
+        Some(binding) => binding,
+        None => super::binding::issue_compat_binding(
             agent,
             key_directory,
             super::binding::DEFAULT_IDENTITY_SCOPES,
             None,
-        )?;
-    }
-    let binding = super::binding::load_compat_binding(key_directory)?.ok_or_else(|| {
-        JacsError::ValidationError("binding issuance failed to persist".to_string())
-    })?;
+        )?,
+    };
     let verdict = super::binding::verify_compat_binding(agent, key_directory, &binding)?;
     if !verdict.valid {
         return Err(JacsError::ValidationError(format!(
@@ -207,7 +186,7 @@ pub fn export_compatibility_key_binding(
     // (no event name, no export counters).
     info!(
         jacs_id = %agent.get_id().unwrap_or_default(),
-        binding_hash = %binding[SHA256_FIELDNAME].as_str().unwrap_or(""),
+        binding_hash = %super::binding::binding_hash(&binding),
         "compatibility key binding exported"
     );
     Ok(binding)

@@ -320,9 +320,28 @@ pub fn handle_config_create() -> Result<(), JacsError> {
     Ok(())
 }
 
+/// Private options bundle for [`handle_agent_create_inner`]. The four
+/// public wrappers below keep their positional signatures — two of them
+/// (`handle_agent_create`, `handle_agent_create_auto`) are re-exported by
+/// `binding-core/src/lib.rs` and must not change shape.
+#[derive(Default)]
+struct AgentCreateOpts {
+    create_keys: bool,
+    /// When true, set the new agent ID in `jacs.config.json` without prompting.
+    auto_update_config: bool,
+    /// P2 `--no-compat-key` opt-out of the eager ES256 ecosystem key.
+    no_compat_key: bool,
+}
+
 // Function to handle the 'agent create' logic
 pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, false, false)
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            ..Default::default()
+        },
+    )
 }
 
 /// Like `handle_agent_create` but with the P2 `--no-compat-key` opt-out.
@@ -331,7 +350,14 @@ pub fn handle_agent_create_opts(
     create_keys: bool,
     no_compat_key: bool,
 ) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, false, no_compat_key)
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            no_compat_key,
+            ..Default::default()
+        },
+    )
 }
 
 /// Like `handle_agent_create` but when `auto_update_config` is true, automatically
@@ -341,7 +367,14 @@ pub fn handle_agent_create_auto(
     create_keys: bool,
     auto_update_config: bool,
 ) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, auto_update_config, false)
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            auto_update_config,
+            ..Default::default()
+        },
+    )
 }
 
 /// Like `handle_agent_create_auto` but with the P2 `--no-compat-key` opt-out.
@@ -351,14 +384,23 @@ pub fn handle_agent_create_auto_opts(
     auto_update_config: bool,
     no_compat_key: bool,
 ) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, auto_update_config, no_compat_key)
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            auto_update_config,
+            no_compat_key,
+        },
+    )
 }
 
 fn handle_agent_create_inner(
     filename: Option<&String>,
-    create_keys: bool,
-    auto_update_config: bool,
-    no_compat_key: bool,
+    AgentCreateOpts {
+        create_keys,
+        auto_update_config,
+        no_compat_key,
+    }: AgentCreateOpts,
 ) -> Result<(), JacsError> {
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
     let config_path_str = "jacs.config.json";
@@ -516,8 +558,12 @@ fn handle_agent_create_inner(
         let key_directory = agent
             .config
             .as_ref()
-            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
-            .unwrap_or_else(|| "./jacs_keys".to_string());
+            .and_then(|c| c.jacs_key_directory().clone())
+            .unwrap_or_else(|| {
+                crate::paths::local_keys_dir()
+                    .to_string_lossy()
+                    .into_owned()
+            });
         let native_algorithm = agent
             .config
             .as_ref()

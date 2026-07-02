@@ -88,20 +88,50 @@ pub(crate) fn generate_es256_keypair() -> Result<Es256Keypair, JacsError> {
     })
 }
 
+/// Split a SEC1 uncompressed P-256 point (65 bytes, `0x04` prefix) into
+/// base64url JWK `x`/`y` coordinates — the ONE place the SEC1 slicing
+/// lives (thumbprint, SPKI-PEM derivation, and the A2A JWK export all
+/// delegate here).
+pub(crate) fn jwk_xy_from_sec1(sec1_uncompressed: &[u8]) -> Result<(String, String), JacsError> {
+    if sec1_uncompressed.len() != 65 || sec1_uncompressed[0] != 0x04 {
+        return Err(JacsError::CryptoError(format!(
+            "expected a 65-byte SEC1 uncompressed P-256 point (0x04 prefix), got {} bytes",
+            sec1_uncompressed.len()
+        )));
+    }
+    Ok((
+        URL_SAFE_NO_PAD.encode(&sec1_uncompressed[1..33]),
+        URL_SAFE_NO_PAD.encode(&sec1_uncompressed[33..65]),
+    ))
+}
+
+/// The single authority for the P-256 public JWK shape used across the
+/// ecosystem exports (JWKS entries, DID `publicKeyJwk`, the binding's
+/// `publicJwk`). Base members are pinned to `kty: EC` / `crv: P-256`;
+/// passing a `kid` adds the JOSE identity members (`kid` + `alg: ES256`)
+/// that the identity exports carry. serde_json maps are key-sorted, so
+/// member insertion order never shows up in serialized output.
+pub(crate) fn public_jwk(x: &str, y: &str, kid: Option<&str>) -> serde_json::Value {
+    let mut jwk = serde_json::json!({
+        "kty": "EC",
+        "crv": "P-256",
+        "x": x,
+        "y": y
+    });
+    if let Some(kid) = kid {
+        jwk["kid"] = serde_json::json!(kid);
+        jwk["alg"] = serde_json::json!("ES256");
+    }
+    jwk
+}
+
 /// RFC 7638 JWK thumbprint for a P-256 key from its SEC1 uncompressed point.
 ///
 /// Required members for EC keys, lexicographic order, no whitespace:
 /// `{"crv":"P-256","kty":"EC","x":"<b64url>","y":"<b64url>"}` → SHA-256 →
 /// base64url (no padding).
 pub fn rfc7638_thumbprint_p256(sec1_uncompressed: &[u8]) -> Result<String, JacsError> {
-    if sec1_uncompressed.len() != 65 || sec1_uncompressed[0] != 0x04 {
-        return Err(JacsError::CryptoError(
-            "ES256 thumbprint requires a SEC1 uncompressed point (65 bytes, 0x04 prefix)"
-                .to_string(),
-        ));
-    }
-    let x = URL_SAFE_NO_PAD.encode(&sec1_uncompressed[1..33]);
-    let y = URL_SAFE_NO_PAD.encode(&sec1_uncompressed[33..65]);
+    let (x, y) = jwk_xy_from_sec1(sec1_uncompressed)?;
     let canonical = format!(r#"{{"crv":"P-256","kty":"EC","x":"{x}","y":"{y}"}}"#);
     let digest = Sha256::digest(canonical.as_bytes());
     Ok(URL_SAFE_NO_PAD.encode(digest))
@@ -167,16 +197,7 @@ pub fn jwk_xy_from_spki_pem(pem: &str) -> Result<(String, String), JacsError> {
     let public = p256::PublicKey::from_public_key_pem(pem)
         .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI PEM parse failed: {e}")))?;
     let point = public.to_encoded_point(false);
-    let bytes = point.as_bytes();
-    if bytes.len() != 65 {
-        return Err(JacsError::CryptoError(
-            "unexpected SEC1 point length for P-256".to_string(),
-        ));
-    }
-    Ok((
-        URL_SAFE_NO_PAD.encode(&bytes[1..33]),
-        URL_SAFE_NO_PAD.encode(&bytes[33..65]),
-    ))
+    jwk_xy_from_sec1(point.as_bytes())
 }
 
 #[cfg(test)]

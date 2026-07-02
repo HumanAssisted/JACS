@@ -16,7 +16,7 @@ use crate::schema::utils::{ValueExt, check_document_size};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use tracing::{debug, info, warn};
 
 /// Resolve the signing algorithm for a NEW agent: new creation is PQ-only.
@@ -205,11 +205,14 @@ pub fn build_loaded_agent_info(
         .ok_or(JacsError::AgentNotLoaded)?;
     let config = agent.config.as_ref();
 
+    let default_keys_dir = crate::paths::local_keys_dir()
+        .to_string_lossy()
+        .into_owned();
     let key_directory = resolve_config_relative_path(
         &resolved_config_path,
         config
             .and_then(|cfg| cfg.jacs_key_directory().as_deref())
-            .unwrap_or("./jacs_keys"),
+            .unwrap_or(&default_keys_dir),
     );
     let data_directory = resolve_config_relative_path(
         &resolved_config_path,
@@ -1039,6 +1042,27 @@ impl SimpleAgent {
         Self::ephemeral_with_algo("ring-Ed25519", true)
     }
 
+    /// Shared preamble of the compatibility-surface methods below: lock
+    /// the inner agent and resolve its configured key directory
+    /// (defaulting to [`crate::paths::local_keys_dir`]).
+    fn locked_with_key_dir(&self) -> Result<(MutexGuard<'_, Agent>, String), JacsError> {
+        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .clone()
+            .unwrap_or_else(|| {
+                crate::paths::local_keys_dir()
+                    .to_string_lossy()
+                    .into_owned()
+            });
+        Ok((inner, key_directory))
+    }
+
     /// Explicit migration: add the ES256 `ecosystem_signing` compatibility
     /// key to an EXISTING agent (P2 Task 002). Loading never mints key
     /// material; this is the only way a pre-existing agent gains the
@@ -1046,9 +1070,7 @@ impl SimpleAgent {
     /// ES256 key rotation is out of P2 scope) or if the agent is
     /// ephemeral (compat keys are disk artifacts).
     pub fn add_compat_key(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {
-        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
+        let (inner, key_directory) = self.locked_with_key_dir()?;
         if inner.is_ephemeral() {
             return Err(JacsError::ValidationError(
                 "ephemeral agents are memory-only; the ecosystem compatibility key is a disk \
@@ -1057,11 +1079,6 @@ impl SimpleAgent {
             ));
         }
         let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
-        let key_directory = config
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
         let native_algorithm = config.get_key_algorithm()?;
         let password = inner.resolve_password()?;
         let native_public_key = inner.get_public_key()?;
@@ -1083,17 +1100,7 @@ impl SimpleAgent {
         scopes: Option<&[&str]>,
         expires_at: Option<&str>,
     ) -> Result<serde_json::Value, JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (mut inner, key_directory) = self.locked_with_key_dir()?;
         crate::compatibility::binding::issue_compat_binding(
             &mut inner,
             &key_directory,
@@ -1106,17 +1113,7 @@ impl SimpleAgent {
     /// binding document plus its verified scopes; errors if none exists
     /// or verification fails (superseded root, tampered, expired).
     pub fn compat_binding(&self) -> Result<(serde_json::Value, Vec<String>), JacsError> {
-        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (inner, key_directory) = self.locked_with_key_dir()?;
         let binding = crate::compatibility::binding::load_compat_binding(&key_directory)?
             .ok_or_else(|| {
                 JacsError::ValidationError(
@@ -1138,17 +1135,7 @@ impl SimpleAgent {
     /// is never published here). Gated by the `jwks` binding scope;
     /// auto-issues the default identity binding on first use.
     pub fn export_compatibility_jwks(&self) -> Result<serde_json::Value, JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (mut inner, key_directory) = self.locked_with_key_dir()?;
         crate::compatibility::exports::export_compatibility_jwks(&mut inner, &key_directory)
     }
 
@@ -1157,17 +1144,7 @@ impl SimpleAgent {
     /// the `a2a-agent-card` binding scope.
     #[cfg(feature = "a2a")]
     pub fn export_a2a_agent_card(&self) -> Result<serde_json::Value, JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (mut inner, key_directory) = self.locked_with_key_dir()?;
         crate::compatibility::exports::export_a2a_agent_card(&mut inner, &key_directory)
     }
 
@@ -1176,17 +1153,7 @@ impl SimpleAgent {
     /// `compatibility::ap2::AP2_SPEC_REVISION`). Requires the explicit
     /// `ap2-mandate` binding scope — content exports never auto-issue.
     pub fn export_ap2_mandate(&self, checkout_json: &str) -> Result<serde_json::Value, JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (mut inner, key_directory) = self.locked_with_key_dir()?;
         crate::compatibility::ap2::export_ap2_mandate(&mut inner, &key_directory, checkout_json)
     }
 
@@ -1199,17 +1166,7 @@ impl SimpleAgent {
         &self,
         agreement_json: &str,
     ) -> Result<serde_json::Value, JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (mut inner, key_directory) = self.locked_with_key_dir()?;
         crate::compatibility::vc::export_agreement_v2_as_vc(
             &mut inner,
             &key_directory,
@@ -1220,32 +1177,14 @@ impl SimpleAgent {
     /// Export the current (verified) compatibility key binding document.
     /// Auto-issues the default identity binding on first use.
     pub fn export_compatibility_key_binding(&self) -> Result<serde_json::Value, JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let key_directory = inner
-            .config
-            .as_ref()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (mut inner, key_directory) = self.locked_with_key_dir()?;
         crate::compatibility::exports::export_compatibility_key_binding(&mut inner, &key_directory)
     }
 
     /// Describe the agent's ES256 ecosystem compatibility key. Typed
     /// key-not-found error (pointing at `add-compat-key`) when absent.
     pub fn ecosystem_key_info(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {
-        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
-        let key_directory = config
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string();
+        let (_inner, key_directory) = self.locked_with_key_dir()?;
         crate::keystore::compat::ecosystem_key_info(&key_directory)
     }
 

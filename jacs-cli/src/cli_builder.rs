@@ -131,14 +131,12 @@ pub fn build_cli() -> Command {
                             Arg::new("scopes")
                                 .long("scopes")
                                 .value_delimiter(',')
-                                .value_parser([
-                                    "jwks",
-                                    "did",
-                                    "a2a-agent-card",
-                                    "w3c-agent-identity",
-                                    "ap2-mandate",
-                                    "agreement-vc",
-                                ])
+                                // The library's scope list is the single
+                                // authority: a scope added to ALL_SCOPES is
+                                // CLI-reachable without a retyped literal.
+                                .value_parser(clap::builder::PossibleValuesParser::new(
+                                    jacs::compatibility::binding::ALL_SCOPES.iter().copied(),
+                                ))
                                 .help("Comma-separated binding scopes (defaults to the identity scopes: jwks,did,a2a-agent-card,w3c-agent-identity)"),
                         )
                         .arg(

@@ -385,3 +385,221 @@ fn identity_export_does_not_add_projections_to_native_documents() {
     let verification = agent.verify(&signed.raw).expect("verify");
     assert!(verification.valid, "{:?}", verification.errors);
 }
+
+// ---------------------------------------------------------------------------
+// Issue 020 — keyring corruption must degrade LOUDLY (WARN), never silently.
+//
+// Minimal in-memory log capture (same technique as
+// compatibility_observability.rs; local so this file stays self-contained).
+// ---------------------------------------------------------------------------
+
+struct CapturedEvent {
+    level: tracing::Level,
+    fields: Vec<(String, String)>,
+}
+
+struct CaptureLayer {
+    events: std::sync::Arc<Mutex<Vec<CapturedEvent>>>,
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let mut fields = Vec::new();
+        struct Visitor<'a>(&'a mut Vec<(String, String)>);
+        impl tracing::field::Visit for Visitor<'_> {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                self.0
+                    .push((field.name().to_string(), format!("{:?}", value)));
+            }
+            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                self.0.push((field.name().to_string(), value.to_string()));
+            }
+        }
+        event.record(&mut Visitor(&mut fields));
+        if let Ok(mut events) = self.events.lock() {
+            events.push(CapturedEvent {
+                level: *event.metadata().level(),
+                fields,
+            });
+        }
+    }
+}
+
+fn with_captured_logs<F: FnOnce()>(f: F) -> Vec<CapturedEvent> {
+    use tracing_subscriber::layer::SubscriberExt;
+    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
+    let layer = CaptureLayer {
+        events: events.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(layer);
+    tracing::subscriber::with_default(subscriber, f);
+    std::sync::Arc::try_unwrap(events)
+        .unwrap_or_else(|_| panic!("events arc should be unique"))
+        .into_inner()
+        .expect("events mutex not poisoned")
+}
+
+fn events_named<'a>(events: &'a [CapturedEvent], name: &str) -> Vec<&'a CapturedEvent> {
+    events
+        .iter()
+        .filter(|e| e.fields.iter().any(|(k, v)| k == "event" && v == name))
+        .collect()
+}
+
+fn field<'a>(event: &'a CapturedEvent, name: &str) -> Option<&'a str> {
+    event
+        .fields
+        .iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.as_str())
+}
+
+/// Corrupted `jacs.keyring.json`: the DID export still succeeds (a corrupt
+/// keyring must not take down DID serving) but degrades to its pre-P2
+/// native-only shape WITH a `compatibility_key_unreadable` WARN — the
+/// operator can tell "keyring corrupted" from "compat key never
+/// configured" (issue 020).
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn did_export_on_corrupt_keyring_degrades_natively_with_warn() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("did-corrupt-keyring");
+
+    // Authorized state first: the DID document is compat-enriched.
+    agent.issue_compat_binding(None, None).expect("issue");
+    let enriched = jacs::simple::w3c::export_w3c_did_document(&agent, Some("https://example.com"))
+        .expect("did doc");
+    assert_eq!(enriched["verificationMethod"].as_array().unwrap().len(), 3);
+
+    // Corrupt the keyring metadata (unparseable JSON).
+    std::fs::write("./jacs_keys/jacs.keyring.json", "{ not json !!!").expect("corrupt keyring");
+
+    let mut doc = None;
+    let events = with_captured_logs(|| {
+        doc = Some(
+            jacs::simple::w3c::export_w3c_did_document(&agent, Some("https://example.com"))
+                .expect("corrupt keyring must not fail the DID export"),
+        );
+    });
+    let doc = doc.unwrap();
+    assert_eq!(
+        doc["verificationMethod"].as_array().unwrap().len(),
+        1,
+        "degrades to the native-only shape"
+    );
+    assert!(doc["jacs"].get("compatKid").is_none());
+
+    let warns = events_named(&events, "compatibility_key_unreadable");
+    assert!(
+        !warns.is_empty(),
+        "corrupt keyring must emit compatibility_key_unreadable, got events: {:?}",
+        events.iter().map(|e| &e.fields).collect::<Vec<_>>()
+    );
+    assert_eq!(warns[0].level, tracing::Level::WARN, "must be WARN");
+    assert!(!field(warns[0], "jacs_id").unwrap_or("").is_empty());
+    assert_eq!(field(warns[0], "requested_export"), Some("did"));
+    assert!(
+        field(warns[0], "reason")
+            .unwrap_or("")
+            .contains("keyring metadata parse failed"),
+        "reason names the keyring parse failure: {:?}",
+        field(warns[0], "reason")
+    );
+    // The quiet never-configured event must NOT fire for corruption.
+    assert!(events_named(&events, "compatibility_key_missing").is_empty());
+}
+
+/// Ecosystem key files deleted but the keyring still records the
+/// `ecosystem_signing` role: same loud-degradation path — native-only DID
+/// document plus the `compatibility_key_unreadable` WARN (issue 020).
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn did_export_with_keyring_entry_but_missing_key_files_warns() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("did-missing-key-files");
+
+    agent.issue_compat_binding(None, None).expect("issue");
+    std::fs::remove_file("./jacs_keys/jacs.ecosystem.private.pem.enc").expect("rm private");
+    std::fs::remove_file("./jacs_keys/jacs.ecosystem.public.pem").expect("rm public");
+    assert!(
+        std::path::Path::new("./jacs_keys/jacs.keyring.json").exists(),
+        "keyring metadata stays behind"
+    );
+
+    let mut doc = None;
+    let events = with_captured_logs(|| {
+        doc = Some(
+            jacs::simple::w3c::export_w3c_did_document(&agent, Some("https://example.com"))
+                .expect("missing key files must not fail the DID export"),
+        );
+    });
+    let doc = doc.unwrap();
+    assert_eq!(
+        doc["verificationMethod"].as_array().unwrap().len(),
+        1,
+        "degrades to the native-only shape"
+    );
+
+    let warns = events_named(&events, "compatibility_key_unreadable");
+    assert!(
+        !warns.is_empty(),
+        "keyring/key-file mismatch must emit compatibility_key_unreadable"
+    );
+    assert_eq!(warns[0].level, tracing::Level::WARN);
+    assert!(
+        field(warns[0], "reason")
+            .unwrap_or("")
+            .contains("key file is missing"),
+        "reason names the missing key file: {:?}",
+        field(warns[0], "reason")
+    );
+}
+
+/// A fresh agent that NEVER configured a compat key keeps the quiet
+/// fallback: native-only DID document with no WARN at all — the
+/// pre-migration state is not an operator incident (issue 020).
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn did_export_without_compat_key_stays_quiet() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+    std::env::set_current_dir(&tmp_root).expect("cd to temp dir");
+    let _guard = CwdGuard { saved: saved_cwd };
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    }
+    let params = CreateAgentParams::builder()
+        .name("did-no-compat-key")
+        .password(TEST_PASSWORD)
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .no_compat_key(true)
+        .build();
+    let (agent, _info) = SimpleAgent::create_with_params(params).expect("create agent");
+
+    let mut doc = None;
+    let events = with_captured_logs(|| {
+        doc = Some(
+            jacs::simple::w3c::export_w3c_did_document(&agent, Some("https://example.com"))
+                .expect("did doc"),
+        );
+    });
+    let doc = doc.unwrap();
+    assert_eq!(doc["verificationMethod"].as_array().unwrap().len(), 1);
+
+    assert!(
+        events_named(&events, "compatibility_key_unreadable").is_empty(),
+        "never-configured compat key must stay quiet (no unreadable WARN)"
+    );
+    assert!(
+        events_named(&events, "compatibility_key_missing").is_empty(),
+        "never-configured compat key must stay quiet (no missing-key WARN)"
+    );
+}

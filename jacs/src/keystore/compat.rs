@@ -139,6 +139,22 @@ pub struct CompatKeyInfo {
     pub private_key_path: String,
 }
 
+impl CompatKeyInfo {
+    /// Read the on-disk SPKI PEM public key (typed file-read error).
+    pub(crate) fn read_public_pem(&self) -> Result<String, JacsError> {
+        std::fs::read_to_string(&self.public_key_path).map_err(|e| JacsError::FileReadFailed {
+            path: self.public_key_path.clone(),
+            reason: e.to_string(),
+        })
+    }
+
+    /// Base64url JWK `x`/`y` coordinates of the on-disk ES256 public key —
+    /// the shared read-PEM + derive step of the binding and export paths.
+    pub(crate) fn public_jwk_xy(&self) -> Result<(String, String), JacsError> {
+        crate::crypt::es256::jwk_xy_from_spki_pem(&self.read_public_pem()?)
+    }
+}
+
 /// Create the ES256 `ecosystem_signing` key for an agent: generate, encrypt
 /// with the agent's password (existing AES-256-GCM + Argon2id envelope),
 /// write both key files (`create_new` + 0600 private, 0644 public), and
@@ -225,14 +241,52 @@ pub fn ecosystem_key_info(key_directory: &str) -> Result<CompatKeyInfo, JacsErro
 
 /// Quiet existence probe: `Some` when the ES256 compat key exists and its
 /// keyring entry parses, `None` otherwise — no `compatibility_key_missing`
-/// WARN and no typed error. For metadata/enrichment paths (agent load,
-/// gate-and-enrich identity views) where a missing key is not a failed
-/// export attempt.
+/// WARN and no typed error. For metadata paths (agent load) where a
+/// missing key is not a failed export attempt and a corrupt keyring must
+/// not fail the load.
 pub(crate) fn try_ecosystem_key_info(key_directory: &str) -> Option<CompatKeyInfo> {
-    if !std::path::Path::new(&ecosystem_private_key_path(key_directory)).exists() {
-        return None;
+    probe_ecosystem_key_info(key_directory).ok().flatten()
+}
+
+/// Enrichment probe (issue 020): distinguishes "compat key never
+/// configured" from "compat key state unreadable/inconsistent" so
+/// gate-and-enrich callers can degrade quietly on the former and WARN on
+/// the latter. Emits no events itself.
+///
+/// - `Ok(Some(info))` — key file present and its keyring entry parses.
+/// - `Ok(None)` — never configured: no key file AND no `ecosystem_signing`
+///   keyring entry (pre-migration agent; not an error).
+/// - `Err(_)` — the keyring is corrupt/unreadable, or the keyring and the
+///   key file disagree (entry without file, file without entry).
+pub(crate) fn probe_ecosystem_key_info(
+    key_directory: &str,
+) -> Result<Option<CompatKeyInfo>, JacsError> {
+    let priv_path = ecosystem_private_key_path(key_directory);
+    let priv_exists = std::path::Path::new(&priv_path).exists();
+    // A corrupt/unreadable keyring is never the quiet pre-migration state.
+    let keyring = read_keyring(key_directory)?;
+    let entry = keyring
+        .keys
+        .iter()
+        .find(|k| k.role == "ecosystem_signing")
+        .cloned();
+    match (entry, priv_exists) {
+        (None, false) => Ok(None),
+        (Some(entry), true) => Ok(Some(CompatKeyInfo {
+            role: entry.role,
+            algorithm: entry.algorithm,
+            kid: entry.kid,
+            public_key_path: ecosystem_public_key_path(key_directory),
+            private_key_path: priv_path,
+        })),
+        (Some(_), false) => Err(JacsError::ValidationError(format!(
+            "keyring metadata records an ecosystem_signing key but the key file is missing \
+             ({priv_path})"
+        ))),
+        (None, true) => Err(JacsError::ValidationError(format!(
+            "ecosystem key file exists ({priv_path}) but keyring metadata is missing its entry"
+        ))),
     }
-    ecosystem_key_info(key_directory).ok()
 }
 
 /// Same as [`ecosystem_key_info`], with caller context threaded into the

@@ -58,6 +58,14 @@ fn binding_path(key_directory: &str) -> String {
     )
 }
 
+/// The binding's `jacsSha256` content hash ("" when absent) — the ONE
+/// extraction of the reference exporters stamp into ecosystem artifacts.
+/// Safe sugar: `verify_compat_binding` recomputes and authenticates the
+/// hash before any exporter trusts it (issue 023).
+pub(crate) fn binding_hash(binding: &Value) -> String {
+    binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string()
+}
+
 /// Issue (or re-issue) the compatibility key binding, signed by the
 /// agent's native root. Persists to the key directory, replacing any
 /// prior binding (latest `issuedAt` wins).
@@ -107,13 +115,7 @@ pub(crate) fn issue_compat_binding_ctx(
         Some(&agent_id),
         requested_export,
     )?;
-    let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
-        JacsError::FileReadFailed {
-            path: compat.public_key_path.clone(),
-            reason: e.to_string(),
-        }
-    })?;
-    let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
+    let (x, y) = compat.public_jwk_xy()?;
 
     let native_algorithm = {
         let config = agent.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
@@ -133,7 +135,9 @@ pub(crate) fn issue_compat_binding_ctx(
             "compatibilityKey": {
                 "algorithm": "ES256",
                 "kid": compat.kid,
-                "publicJwk": { "kty": "EC", "crv": "P-256", "x": x, "y": y }
+                // Bare key-material JWK (no kid/alg): the binding pins the
+                // curve point; JOSE identity members live on the exports.
+                "publicJwk": crate::crypt::es256::public_jwk(&x, &y, None)
             },
             "scope": scopes,
             "issuedAt": issued_at.clone(),
@@ -180,7 +184,7 @@ pub(crate) fn issue_compat_binding_ctx(
         event = "compatibility_binding_created",
         jacs_id = %agent_id,
         kid = %compat.kid,
-        binding_hash = %instance[SHA256_FIELDNAME].as_str().unwrap_or(""),
+        binding_hash = %binding_hash(&instance),
         scopes = ?scopes,
         "compatibility key binding issued"
     );
@@ -285,7 +289,6 @@ pub(crate) fn verify_compat_binding_ctx(
     //    and pin the signing key hash to the agent's current public key.
     let current_public_key = agent.get_public_key()?;
     let current_kid = crate::crypt::hash::hash_public_key(&current_public_key);
-    let current_public_key = current_public_key.clone();
     let sig_hash = binding[DOCUMENT_AGENT_SIGNATURE_FIELDNAME]["publicKeyHash"]
         .as_str()
         .unwrap_or("");
@@ -350,13 +353,7 @@ pub(crate) fn verify_compat_binding_ctx(
             "binding compatibilityKey.kid does not match the ecosystem key".to_string(),
         );
     }
-    let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
-        JacsError::FileReadFailed {
-            path: compat.public_key_path.clone(),
-            reason: e.to_string(),
-        }
-    })?;
-    let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
+    let (x, y) = compat.public_jwk_xy()?;
     if body["compatibilityKey"]["publicJwk"]["x"].as_str() != Some(x.as_str())
         || body["compatibilityKey"]["publicJwk"]["y"].as_str() != Some(y.as_str())
     {
@@ -448,6 +445,18 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
             "no compatibility binding issued; run issue_compat_binding before exporting '{scope}'"
         ))
     })?;
+    require_scope_on(agent, key_directory, scope, binding)
+}
+
+/// [`require_scope`] for a binding the caller already holds (fresh from
+/// an auto-issue) — skips the disk re-load; verification and scope gating
+/// are identical.
+pub(crate) fn require_scope_on(
+    agent: &Agent,
+    key_directory: &str,
+    scope: &str,
+    binding: Value,
+) -> Result<Value, JacsError> {
     // A missing/deleted ES256 key surfaces as `KeyNotFound` inside
     // verification (step 4) — this gate knows the requested format, so the
     // documented `reason="missing_key"` counter increments here.
@@ -470,7 +479,7 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
             jacs_id = %agent.get_id().unwrap_or_default(),
             format = %scope,
             required_scope = %scope,
-            binding_hash = %binding[SHA256_FIELDNAME].as_str().unwrap_or(""),
+            binding_hash = %binding_hash(&binding),
             "export denied: scope not granted by the PQ-root-signed binding"
         );
         super::record_export_error(scope, "scope_denied");
@@ -493,26 +502,45 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
 /// pre-P2 (native-only) shape instead of failing — the DID document and
 /// the W3C agent description. Returns `Some((compat, binding))` only when
 /// the agent has an ES256 compat key AND the CURRENT binding verifies AND
-/// grants `scope`. A missing key or absent binding is not a failed export
-/// attempt here, so the probe is quiet: no `compatibility_key_missing`
-/// WARN, no export-error counter. An INVALID binding still WARNs and
-/// counts through [`verify_compat_binding`] — a bad trust artifact is
-/// always operator-visible.
+/// grants `scope`. A NEVER-CONFIGURED key or absent binding is not a
+/// failed export attempt here, so the probe is quiet: no
+/// `compatibility_key_missing` WARN, no export-error counter. But a
+/// corrupt keyring / missing key file (issue 020) is not that quiet
+/// state: the export still degrades to its native-only shape, with a
+/// `compatibility_key_unreadable` WARN (log event only, no counter) so
+/// the operator can tell "never migrated" from "keyring corrupted". An
+/// INVALID binding still WARNs and counts through
+/// [`verify_compat_binding`] — a bad trust artifact is always
+/// operator-visible.
 pub(crate) fn compat_enrichment_if_authorized(
     agent: &Agent,
     scope: &str,
 ) -> Result<Option<(crate::keystore::compat::CompatKeyInfo, Value)>, JacsError> {
     let key_directory = match agent.config.as_ref() {
-        Some(config) => config
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string(),
+        Some(config) => config.jacs_key_directory().clone().unwrap_or_else(|| {
+            crate::paths::local_keys_dir()
+                .to_string_lossy()
+                .into_owned()
+        }),
         None => return Ok(None),
     };
-    let compat = match crate::keystore::compat::try_ecosystem_key_info(&key_directory) {
-        Some(c) => c,
-        None => return Ok(None),
+    let compat = match crate::keystore::compat::probe_ecosystem_key_info(&key_directory) {
+        Ok(Some(c)) => c,
+        Ok(None) => return Ok(None),
+        Err(e) => {
+            warn!(
+                event = "compatibility_key_unreadable",
+                jacs_id = %agent.get_id().unwrap_or_default(),
+                requested_export = %scope,
+                key_directory = %key_directory,
+                reason = %e,
+                hint = "inspect jacs.keyring.json and the jacs.ecosystem.* key files in the \
+                        key directory",
+                "ES256 compatibility key state is unreadable; export degrades to its \
+                 native-only shape"
+            );
+            return Ok(None);
+        }
     };
     let binding = match load_compat_binding(&key_directory)? {
         Some(b) => b,

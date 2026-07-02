@@ -46,7 +46,8 @@ fn a2a_sign_jws_still_rejects_es256() {
         let err = sign_jws(payload, &es_keys.a2a_private_key, alg, "kid-es")
             .expect_err("ES256 JWS signing must stay unavailable");
         assert!(
-            err.to_string().contains("ECDSA JWS signing"),
+            err.to_string()
+                .contains("ES256 JWS signing is not available through this generic API"),
             "sign_jws('{alg}') names the ES256 wall: {err}"
         );
     }

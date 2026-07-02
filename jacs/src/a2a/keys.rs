@@ -7,6 +7,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::info;
 
+/// The deliberate FR25 wall (P2 §9.6): ES256 signing IS implemented, but
+/// never through this generic caller-chosen-algorithm JWS API — only the
+/// named, scope-checked exporters may produce ES256 signatures.
+const ES256_JWS_WALL: &str = "ES256 JWS signing is not available through this generic API; \
+     use the named exporters (A2A agent card, AP2 mandate, Agreement-v2 VC)";
+
 /// JWK (JSON Web Key) structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Jwk {
@@ -56,7 +62,10 @@ pub fn create_jwk_keys(
     // Delegates to the compatibility ES256 module — the STUB CARVE-OUT is
     // deliberate: only key generation and JWK export delegate; the ES256
     // arms of sign_jws / verify_jws below keep returning errors (FR25 —
-    // no generic caller-chosen-algorithm ES256 signing surface).
+    // no generic caller-chosen-algorithm ES256 signing surface). That
+    // also means the ES256 PRIVATE halves minted here have NO consumer in
+    // this module: callers can only export the public half as a JWK, by
+    // design.
     let es256_pair = || -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         let mut kp = crate::crypt::es256::generate_es256_keypair()?;
         // MOVE (not copy) the plaintext DER out of its `Zeroizing` wrapper:
@@ -131,12 +140,7 @@ pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Jac
 /// point (65 bytes: 0x04 || x || y). P2 Task 004-B stub carve-out: JWK
 /// EXPORT delegates to real code; ES256 signing in `sign_jws` does not.
 pub fn export_es256_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsError> {
-    if public_key.len() != 65 || public_key[0] != 0x04 {
-        return Err(JacsError::CryptoError(format!(
-            "ES256 public key must be a 65-byte SEC1 uncompressed point, got {} bytes",
-            public_key.len()
-        )));
-    }
+    let (x, y) = crate::crypt::es256::jwk_xy_from_sec1(public_key)?;
     Ok(Jwk {
         kty: "EC".to_string(),
         kid: key_id.to_string(),
@@ -144,8 +148,8 @@ pub fn export_es256_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsE
         use_: "sig".to_string(),
         n: None,
         e: None,
-        x: Some(general_purpose::URL_SAFE_NO_PAD.encode(&public_key[1..33])),
-        y: Some(general_purpose::URL_SAFE_NO_PAD.encode(&public_key[33..65])),
+        x: Some(x),
+        y: Some(y),
         crv: Some("P-256".to_string()),
     })
 }
@@ -178,11 +182,13 @@ pub fn sign_jws(
 ) -> Result<String, JacsError> {
     crate::crypt::ensure_private_key_operation_allowed(algorithm, "A2A JWS signing")?;
 
-    // Create JWS header
+    // Create JWS header. The ES256 arms are a deliberate FR25 wall, not a
+    // missing feature: ES256 signing exists but is only reachable through
+    // the named, scope-checked exporters.
     let header = json!({
         "alg": match algorithm {
             "ring-Ed25519" => "EdDSA",
-            "ecdsa" | "es256" => return Err(JacsError::CryptoError("ECDSA JWS signing is not yet implemented in this build".to_string())),
+            "ecdsa" | "es256" => return Err(JacsError::CryptoError(ES256_JWS_WALL.to_string())),
             _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm))),
         },
         "typ": "JWT",
@@ -204,9 +210,9 @@ pub fn sign_jws(
             general_purpose::STANDARD.decode(&sig_b64)?
         }
         "ecdsa" | "es256" => {
-            return Err(JacsError::CryptoError(
-                "ECDSA JWS signing is not yet implemented in this build".to_string(),
-            ));
+            // Unreachable in practice (the header match above already
+            // returned), kept so both arms state the same FR25 wall.
+            return Err(JacsError::CryptoError(ES256_JWS_WALL.to_string()));
         }
         _ => {
             return Err(JacsError::CryptoError(format!(

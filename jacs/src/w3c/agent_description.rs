@@ -1,4 +1,4 @@
-use crate::agent::{Agent, SHA256_FIELDNAME};
+use crate::agent::Agent;
 use crate::error::JacsError;
 use crate::public_agent::PublicAgentProjection;
 use crate::w3c::did_wba::{W3cDidOptions, parts_for_projection};
@@ -28,7 +28,7 @@ pub(crate) fn export_agent_description_for_agent(
     if let Some((compat, binding)) =
         crate::compatibility::binding::compat_enrichment_if_authorized(agent, "w3c-agent-identity")?
     {
-        let binding_hash = binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
+        let binding_hash = crate::compatibility::binding::binding_hash(&binding);
         description["jacs"]["compatKid"] = json!(compat.kid);
         description["jacs"]["compatBindingHash"] = json!(binding_hash);
         info!(

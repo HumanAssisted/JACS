@@ -104,7 +104,7 @@ pub fn export_agreement_v2_as_vc(
 
     // Content scope: require_scope directly — no auto-issue path.
     let binding = super::binding::require_scope(agent, key_directory, "agreement-vc")?;
-    let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
+    let binding_hash = super::binding::binding_hash(&binding);
     // Missing keys fail (and count as `missing_key`) inside `require_scope`.
     let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
 
@@ -138,15 +138,8 @@ pub fn export_agreement_v2_as_vc(
     });
 
     // Decrypt the ES256 private key; plaintext PKCS#8 DER lives only in
-    // this zeroizing buffer for the duration of the signing call.
-    let password = agent.resolve_password()?;
-    let encrypted =
-        std::fs::read(&compat.private_key_path).map_err(|e| JacsError::FileReadFailed {
-            path: compat.private_key_path.clone(),
-            reason: e.to_string(),
-        })?;
-    let private_der =
-        crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(&encrypted, &password)?;
+    // the returned zeroizing buffer for the duration of the signing call.
+    let private_der = super::decrypt_ecosystem_private_key(agent, &compat)?;
     let proof = build_ecdsa_jcs_2019_proof(
         private_der.as_slice(),
         &verification_method,

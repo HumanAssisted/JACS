@@ -14,6 +14,24 @@ pub mod exports;
 #[cfg(feature = "agreements")]
 pub mod vc;
 
+/// Decrypt the ES256 ecosystem private key with the agent's password.
+/// The plaintext PKCS#8 DER lives ONLY in the returned zeroizing buffer —
+/// the one place the signing exporters' decrypt sequence (and its
+/// zeroization guarantee) is written down.
+pub(crate) fn decrypt_ecosystem_private_key(
+    agent: &crate::agent::Agent,
+    compat: &crate::keystore::compat::CompatKeyInfo,
+) -> Result<crate::crypt::aes_encrypt::ZeroizingVec, crate::error::JacsError> {
+    let password = agent.resolve_password()?;
+    let encrypted = std::fs::read(&compat.private_key_path).map_err(|e| {
+        crate::error::JacsError::FileReadFailed {
+            path: compat.private_key_path.clone(),
+            reason: e.to_string(),
+        }
+    })?;
+    crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(&encrypted, &password)
+}
+
 /// PRD §9.8 counter: one successful ecosystem export, labeled by format.
 /// Called unconditionally next to each `ecosystem_export_generated` event
 /// (cheap no-op unless the `otlp-metrics` feature is enabled). `format`
