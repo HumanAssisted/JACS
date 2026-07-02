@@ -1206,6 +1206,33 @@ impl SimpleAgent {
         crate::compatibility::ap2::export_ap2_mandate(&mut inner, &key_directory, checkout_json)
     }
 
+    /// Export an Agreement-v2 JSON document as a Verifiable Credential
+    /// with an `ecdsa-jcs-2019` Data Integrity proof (Multikey
+    /// verification method). Requires the explicit `agreement-vc`
+    /// binding scope — content exports never auto-issue.
+    #[cfg(feature = "agreements")]
+    pub fn export_agreement_v2_as_vc(
+        &self,
+        agreement_json: &str,
+    ) -> Result<serde_json::Value, JacsError> {
+        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        crate::compatibility::vc::export_agreement_v2_as_vc(
+            &mut inner,
+            &key_directory,
+            agreement_json,
+        )
+    }
+
     /// Export the current (verified) compatibility key binding document.
     /// Auto-issues the default identity binding on first use.
     pub fn export_compatibility_key_binding(&self) -> Result<serde_json::Value, JacsError> {

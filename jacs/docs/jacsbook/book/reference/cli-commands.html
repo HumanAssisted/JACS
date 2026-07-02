@@ -311,6 +311,12 @@ jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-ident
 # optional expiry (RFC 3339)
 jacs agent issue-compat-binding --expires-at 2027-01-01T00:00:00Z
 </code></pre>
+<h2 id="agreement-vc-export"><a class="header" href="#agreement-vc-export">Agreement VC Export</a></h2>
+<h3 id="jacs-agreement-v2-export-vc"><a class="header" href="#jacs-agreement-v2-export-vc"><code>jacs agreement-v2 export-vc</code></a></h3>
+<p>Export an Agreement-v2 document as a W3C Verifiable Credential with an <code>ecdsa-jcs-2019</code> Data Integrity proof (W3C vc-di-ecdsa, Multikey verification method). Requires the <code>agreement-vc</code> binding scope. The native agreement is unchanged; incoming VC verification is out of scope.</p>
+<pre><code class="language-bash">jacs agreement-v2 export-vc --agreement agreement.json   # file path
+cat agreement.json | jacs agreement-v2 export-vc --agreement -  # stdin
+</code></pre>
 <h2 id="ap2-commands"><a class="header" href="#ap2-commands">AP2 Commands</a></h2>
 <h3 id="jacs-ap2-export-mandate"><a class="header" href="#jacs-ap2-export-mandate"><code>jacs ap2 export-mandate</code></a></h3>
 <p>Export the AP2 merchant-authorization mandate for a UCP checkout as a detached ES256 JWS (UCP AP2-Mandates extension, rev 2026-01-23). Requires the <code>ap2-mandate</code> binding scope. Input is validated against the named ap2-mandate schema; user-side AP2 Checkout Mandates (SD-JWT-VC) are out of scope. See <a href="../integrations/ap2.html">AP2 Mandate Export</a>.</p>

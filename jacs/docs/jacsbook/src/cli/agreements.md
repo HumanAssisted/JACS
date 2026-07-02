@@ -78,6 +78,18 @@ jacs document check-agreement -f ./document-with-agreement.json
 
 These commands manage a `jacsAgreement` sidecar on an arbitrary document. Use them for simple countersignature metadata. Use `agreement-v2` for new product workflows.
 
+## Exporting as a Verifiable Credential
+
+```bash
+jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,agreement-vc
+jacs agreement-v2 export-vc --agreement agreement.json   # JSON, path, or '-' for stdin
+```
+
+Emits the agreement as a W3C VC with an `ecdsa-jcs-2019` Data Integrity proof
+signed by the ES256 compatibility key. Requires the `agreement-vc` binding
+scope; the native agreement is unchanged. Incoming VC verification is out of
+scope in P2.
+
 ## See Also
 
 - [Agreement v2 Developer Guide](../guides/agreement-v2.md)

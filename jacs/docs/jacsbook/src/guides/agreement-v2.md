@@ -267,6 +267,36 @@ For the full v2 walkthrough, see the [Workflow](#workflow), [Python](#python), [
 
 The fixture `binding-core/tests/fixtures/agreement_v2_scenarios.json` is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.
 
+## Exporting an Agreement as a Verifiable Credential
+
+`jacs agreement-v2 export-vc` (or `SimpleAgent::export_agreement_v2_as_vc` /
+`export_agreement_v2_as_vc_json` in the bindings) projects an Agreement-v2
+document into a W3C Verifiable Credential 2.0 carrying an `ecdsa-jcs-2019`
+Data Integrity proof, signed with the agent's ES256 compatibility key:
+
+```bash
+# the agreement-vc content scope is never auto-issued — grant it first
+jacs agent issue-compat-binding \
+  --scopes jwks,did,a2a-agent-card,w3c-agent-identity,agreement-vc
+
+jacs agreement-v2 export-vc --agreement agreement.json > vc_export.json
+```
+
+The VC's `@context` is `["https://www.w3.org/ns/credentials/v2",
+"https://hai.ai/ns/credentials/jacs-agreement/v1"]`, its `type` is
+`["VerifiableCredential", "JacsAgreementCredential"]`, and
+`credentialSubject.jacsAgreementV2` embeds the agreement verbatim. The proof's
+`verificationMethod` references the **Multikey** entry of the agent's DID
+document (conformant `ecdsa-jcs-2019` verifiers reject JWK-typed methods).
+The export is a derived view: the native agreement's bytes, `jacsSignature`
+(pq2025), and verification are unchanged.
+
+A stock Data Integrity verifier can check the proof classically — see
+`scripts/smoke/verify_di_vc.mjs`. That proves possession of the ES256 key
+only; tracing the credential to the agent's post-quantum root requires the
+PQ-signed compatibility key binding (`jacs agent export-compat-binding`).
+Verifying incoming VCs is out of scope for JACS in P2.
+
 ## Troubleshooting
 
 - `report.valid` is false with a signature error: the verifier could not resolve a signer's key. Confirm all agents share a `data_directory`, or that the signer published a reachable public key.

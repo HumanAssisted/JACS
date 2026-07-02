@@ -1204,7 +1204,10 @@ fn signature_entries(document: &Value) -> impl Iterator<Item = &Value> {
         .flatten()
 }
 
-fn assert_agreement_v2(document: &Value) -> Result<(), JacsError> {
+/// Typed Agreement-v2 boundary: `jacsType == "agreement"` plus the
+/// structural and schema invariants. `pub(crate)` so the compatibility
+/// VC exporter (Task 004c) validates its input through the same gate.
+pub(crate) fn assert_agreement_v2(document: &Value) -> Result<(), JacsError> {
     let jacs_type = required_str(document, "jacsType")?;
     if jacs_type != "agreement" {
         return Err(JacsError::DocumentMalformed {

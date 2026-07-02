@@ -1925,6 +1925,13 @@ jacs document sign-agreement -f ./document-with-agreement.json
 jacs document check-agreement -f ./document-with-agreement.json
 </code></pre>
 <p>Use the legacy sidecar only when you need "these agents approved this existing payload." Use Agreement v2 when you need standalone terms, lifecycle, transcript evidence, notary signatures, branch handling, or portable SDK parity.</p>
+<h2 id="exporting-as-a-verifiable-credential"><a class="header" href="#exporting-as-a-verifiable-credential">Exporting as a Verifiable Credential</a></h2>
+<p>With the <code>agreements</code> feature, <code>SimpleAgent::export_agreement_v2_as_vc(agreement_json)</code>
+projects an Agreement-v2 document into a VC 2.0 credential with an
+<code>ecdsa-jcs-2019</code> Data Integrity proof (ES256 compatibility key, Multikey
+verification method). It requires the <code>agreement-vc</code> binding scope — content
+scopes are never auto-issued — and never mutates the native agreement. See the
+<a href="rust/../guides/agreement-v2.html">Agreement v2 Developer Guide</a> for the full flow.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="rust/../guides/agreement-v2.html">Agreement v2 Developer Guide</a></li>
@@ -11974,6 +11981,29 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 </tbody></table>
 </div>
 <p>The fixture <code>binding-core/tests/fixtures/agreement_v2_scenarios.json</code> is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.</p>
+<h2 id="exporting-an-agreement-as-a-verifiable-credential"><a class="header" href="#exporting-an-agreement-as-a-verifiable-credential">Exporting an Agreement as a Verifiable Credential</a></h2>
+<p><code>jacs agreement-v2 export-vc</code> (or <code>SimpleAgent::export_agreement_v2_as_vc</code> /
+<code>export_agreement_v2_as_vc_json</code> in the bindings) projects an Agreement-v2
+document into a W3C Verifiable Credential 2.0 carrying an <code>ecdsa-jcs-2019</code>
+Data Integrity proof, signed with the agent's ES256 compatibility key:</p>
+<pre><code class="language-bash"># the agreement-vc content scope is never auto-issued — grant it first
+jacs agent issue-compat-binding \
+  --scopes jwks,did,a2a-agent-card,w3c-agent-identity,agreement-vc
+
+jacs agreement-v2 export-vc --agreement agreement.json &gt; vc_export.json
+</code></pre>
+<p>The VC's <code>@context</code> is <code>["https://www.w3.org/ns/credentials/v2", "https://hai.ai/ns/credentials/jacs-agreement/v1"]</code>, its <code>type</code> is
+<code>["VerifiableCredential", "JacsAgreementCredential"]</code>, and
+<code>credentialSubject.jacsAgreementV2</code> embeds the agreement verbatim. The proof's
+<code>verificationMethod</code> references the <strong>Multikey</strong> entry of the agent's DID
+document (conformant <code>ecdsa-jcs-2019</code> verifiers reject JWK-typed methods).
+The export is a derived view: the native agreement's bytes, <code>jacsSignature</code>
+(pq2025), and verification are unchanged.</p>
+<p>A stock Data Integrity verifier can check the proof classically — see
+<code>scripts/smoke/verify_di_vc.mjs</code>. That proves possession of the ES256 key
+only; tracing the credential to the agent's post-quantum root requires the
+PQ-signed compatibility key binding (<code>jacs agent export-compat-binding</code>).
+Verifying incoming VCs is out of scope for JACS in P2.</p>
 <h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
 <ul>
 <li><code>report.valid</code> is false with a signature error: the verifier could not resolve a signer's key. Confirm all agents share a <code>data_directory</code>, or that the signer published a reachable public key.</li>
@@ -15655,6 +15685,12 @@ jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-ident
 
 # optional expiry (RFC 3339)
 jacs agent issue-compat-binding --expires-at 2027-01-01T00:00:00Z
+</code></pre>
+<h2 id="agreement-vc-export"><a class="header" href="#agreement-vc-export">Agreement VC Export</a></h2>
+<h3 id="jacs-agreement-v2-export-vc"><a class="header" href="#jacs-agreement-v2-export-vc"><code>jacs agreement-v2 export-vc</code></a></h3>
+<p>Export an Agreement-v2 document as a W3C Verifiable Credential with an <code>ecdsa-jcs-2019</code> Data Integrity proof (W3C vc-di-ecdsa, Multikey verification method). Requires the <code>agreement-vc</code> binding scope. The native agreement is unchanged; incoming VC verification is out of scope.</p>
+<pre><code class="language-bash">jacs agreement-v2 export-vc --agreement agreement.json   # file path
+cat agreement.json | jacs agreement-v2 export-vc --agreement -  # stdin
 </code></pre>
 <h2 id="ap2-commands"><a class="header" href="#ap2-commands">AP2 Commands</a></h2>
 <h3 id="jacs-ap2-export-mandate"><a class="header" href="#jacs-ap2-export-mandate"><code>jacs ap2 export-mandate</code></a></h3>

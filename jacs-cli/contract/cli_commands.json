@@ -172,6 +172,12 @@
       "mcp_excluded_reason": null
     },
     {
+      "path": "agreement-v2 export-vc",
+      "about": "Export an agreement v2 document as a W3C Verifiable Credential with an ecdsa-jcs-2019 Data Integrity proof (requires the agreement-vc binding scope)",
+      "mcp_tool": null,
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
       "path": "key reencrypt",
       "about": "Re-encrypt the private key with a new password",
       "mcp_tool": "jacs_reencrypt_key",

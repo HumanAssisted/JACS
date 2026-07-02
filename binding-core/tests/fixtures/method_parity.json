@@ -22,7 +22,8 @@
       "verify_agreement_v2_json",
       "detect_agreement_v2_branch_conflict_json",
       "merge_agreement_v2_transcript_branches_json",
-      "resolve_agreement_v2_branch_conflict_json"
+      "resolve_agreement_v2_branch_conflict_json",
+      "export_agreement_v2_as_vc_json"
     ]
   },
   "all_methods_flat": [

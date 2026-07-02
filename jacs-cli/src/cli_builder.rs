@@ -760,6 +760,23 @@ pub fn build_cli() -> Command {
                                 .help("Explicit resolving mutation (JSON or path to JSON)"),
                         ),
                 )
+                .subcommand(
+                    Command::new("export-vc")
+                        .about("Export an agreement v2 document as a W3C Verifiable Credential with an ecdsa-jcs-2019 Data Integrity proof (requires the agreement-vc binding scope)")
+                        .arg(
+                            Arg::new("agreement")
+                                .long("agreement")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Agreement v2 document (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
         )
         .subcommand(
             Command::new("key")

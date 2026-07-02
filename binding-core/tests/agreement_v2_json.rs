@@ -340,3 +340,33 @@ fn doc_version(document_json: &str) -> String {
         .expect("jacsVersion")
         .to_string()
 }
+
+/// P2 Task 004c: `export_agreement_v2_as_vc_json` is compiled only with
+/// the `agreements` feature (this file's cfg) — the method resolving at
+/// all IS the feature-gate assertion. Behavior: ephemeral agents carry
+/// no ecosystem key or binding, so the `agreement-vc` content scope
+/// denies (content exports are never auto-issued), and non-agreement
+/// input is rejected at the typed boundary before any signing.
+#[test]
+fn export_agreement_v2_as_vc_json_requires_agreement_feature() {
+    let (wrapper, agent_id) = ephemeral_agent();
+    let agreement = create_agreement(&wrapper, &agent_id);
+
+    let err = wrapper
+        .export_agreement_v2_as_vc_json(&agreement)
+        .expect_err("ephemeral agent has no binding/compat key -> denied");
+    let msg = format!("{err:?}").to_lowercase();
+    assert!(
+        msg.contains("binding") || msg.contains("not loaded") || msg.contains("compat"),
+        "error names the missing authorization chain: {msg}"
+    );
+
+    let err = wrapper
+        .export_agreement_v2_as_vc_json("{\"foo\": \"bar\"}")
+        .expect_err("non-agreement input must be rejected");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("jacsType"),
+        "error names the typed agreement boundary: {msg}"
+    );
+}

@@ -177,6 +177,16 @@ jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-ident
 jacs agent issue-compat-binding --expires-at 2027-01-01T00:00:00Z
 ```
 
+## Agreement VC Export
+
+### `jacs agreement-v2 export-vc`
+Export an Agreement-v2 document as a W3C Verifiable Credential with an `ecdsa-jcs-2019` Data Integrity proof (W3C vc-di-ecdsa, Multikey verification method). Requires the `agreement-vc` binding scope. The native agreement is unchanged; incoming VC verification is out of scope.
+
+```bash
+jacs agreement-v2 export-vc --agreement agreement.json   # file path
+cat agreement.json | jacs agreement-v2 export-vc --agreement -  # stdin
+```
+
 ## AP2 Commands
 
 ### `jacs ap2 export-mandate`

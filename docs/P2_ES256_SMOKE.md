@@ -96,7 +96,9 @@ Expected:
 
 ```bash
 cargo test -p jacs --test agreement_v2_vc_export --features agreements -- --nocapture
-cargo test -p jacs-binding-core --test agreement_v2_json -- --nocapture export_vc
+cargo test -p jacs --features agreements --lib compatibility::vc -- --nocapture   # byte-exact W3C vc-di-ecdsa vector KAT
+cargo test -p jacs-binding-core --features agreements --test agreement_v2_json -- --nocapture export_vc
+cargo test -p jacs-cli --test cli_agreement_v2 -- --nocapture export_vc
 # feature-gate guard: vc.rs must not leak into default features
 RUSTFLAGS="-D warnings" cargo check -p jacs
 RUSTFLAGS="-D warnings" cargo check -p jacs --features agreements

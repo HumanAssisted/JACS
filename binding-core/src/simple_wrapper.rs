@@ -638,6 +638,25 @@ impl SimpleAgentWrapper {
         serialize_json(&binding, "compatibility key binding")
     }
 
+    /// Export an Agreement-v2 JSON document as a Verifiable Credential
+    /// with an `ecdsa-jcs-2019` Data Integrity proof (P2 Task 004c,
+    /// FR16). Takes agreement JSON, never a document id; gated by the
+    /// explicit `agreement-vc` binding scope (content exports never
+    /// auto-issue a binding).
+    #[cfg(feature = "agreements")]
+    pub fn export_agreement_v2_as_vc_json(&self, agreement_json: &str) -> BindingResult<String> {
+        let vc = self
+            .inner
+            .export_agreement_v2_as_vc(agreement_json)
+            .map_err(|e| {
+                BindingCoreError::new(
+                    ErrorKind::Validation,
+                    format!("Failed to export Agreement-v2 VC: {}", e),
+                )
+            })?;
+        serialize_json(&vc, "Agreement-v2 VC export")
+    }
+
     /// Export the AP2 merchant-authorization mandate for a UCP checkout
     /// as a detached ES256 JWS (P2 Task 004b, FR15). Typed input only —
     /// the checkout is validated against the named ap2-mandate schema —

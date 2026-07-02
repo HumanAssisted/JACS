@@ -33,11 +33,14 @@ W3C/JWKS/A2A interop — skip it with `--no-compat-key` on `init` or
 
 Ecosystem exports are gated by a PQ-root-signed binding:
 `jacs agent issue-compat-binding --scopes ...` grants scopes (content
-scopes like `ap2-mandate` are never auto-issued), and
+scopes like `ap2-mandate` and `agreement-vc` are never auto-issued).
 `jacs ap2 export-mandate --input <JSON, path, or - for stdin>` emits an
-AP2 merchant-authorization mandate as a detached ES256 JWS. The ES256
-signature verifies with stock JOSE tooling; PQ-root trust additionally
-requires the binding (`jacs agent export-compat-binding`).
+AP2 merchant-authorization mandate as a detached ES256 JWS, and
+`jacs agreement-v2 export-vc --agreement <...>` emits an Agreement-v2
+document as a W3C Verifiable Credential with an `ecdsa-jcs-2019` Data
+Integrity proof. Both verify with stock tooling classically; PQ-root
+trust additionally requires the binding
+(`jacs agent export-compat-binding`).
 
 ## Provenance commands
 

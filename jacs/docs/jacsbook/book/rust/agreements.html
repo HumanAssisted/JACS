@@ -264,6 +264,13 @@ jacs document sign-agreement -f ./document-with-agreement.json
 jacs document check-agreement -f ./document-with-agreement.json
 </code></pre>
 <p>Use the legacy sidecar only when you need "these agents approved this existing payload." Use Agreement v2 when you need standalone terms, lifecycle, transcript evidence, notary signatures, branch handling, or portable SDK parity.</p>
+<h2 id="exporting-as-a-verifiable-credential"><a class="header" href="#exporting-as-a-verifiable-credential">Exporting as a Verifiable Credential</a></h2>
+<p>With the <code>agreements</code> feature, <code>SimpleAgent::export_agreement_v2_as_vc(agreement_json)</code>
+projects an Agreement-v2 document into a VC 2.0 credential with an
+<code>ecdsa-jcs-2019</code> Data Integrity proof (ES256 compatibility key, Multikey
+verification method). It requires the <code>agreement-vc</code> binding scope — content
+scopes are never auto-issued — and never mutates the native agreement. See the
+<a href="../guides/agreement-v2.html">Agreement v2 Developer Guide</a> for the full flow.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../guides/agreement-v2.html">Agreement v2 Developer Guide</a></li>

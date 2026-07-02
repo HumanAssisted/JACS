@@ -823,6 +823,29 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )?;
                 print_json_pretty(&doc.value)?;
             }
+            Some(("export-vc", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
+                    })?;
+                let vc =
+                    agent
+                        .export_agreement_v2_as_vc(&agreement)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to export Agreement-v2 VC: {}",
+                                e
+                            )))
+                        })?;
+                println!("{}", serde_json::to_string_pretty(&vc)?);
+            }
             _ => {
                 eprintln!("No agreement-v2 subcommand given. Run `jacs agreement-v2 --help`.");
                 process::exit(2);

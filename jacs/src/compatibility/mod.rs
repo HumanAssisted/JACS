@@ -9,3 +9,7 @@
 pub mod ap2;
 pub mod binding;
 pub mod exports;
+// References crate::agreements::v2 — compiled only with the feature so
+// default-feature `-D warnings` builds stay clean (P2 Task 004c).
+#[cfg(feature = "agreements")]
+pub mod vc;

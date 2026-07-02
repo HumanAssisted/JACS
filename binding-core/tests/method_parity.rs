@@ -101,6 +101,7 @@ fn known_agreement_v2_methods() -> Vec<&'static str> {
         "detect_agreement_v2_branch_conflict_json",
         "merge_agreement_v2_transcript_branches_json",
         "resolve_agreement_v2_branch_conflict_json",
+        "export_agreement_v2_as_vc_json",
     ];
     methods.sort();
     methods

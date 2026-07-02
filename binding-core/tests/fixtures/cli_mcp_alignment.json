@@ -287,6 +287,10 @@
     {
       "cli_command": "agent issue-compat-binding",
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agreement-v2 export-vc",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     }
   ],
   "cli_only_feature_gated": [
@@ -380,11 +384,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 55,
+    "total_cli_commands": 56,
     "total_cli_feature_gated": 4,
     "total_mcp_tools": 42,
     "aligned_pairs": 32,
-    "cli_only_count": 23,
+    "cli_only_count": 24,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 11,
     "mcp_only_intentional": 5,

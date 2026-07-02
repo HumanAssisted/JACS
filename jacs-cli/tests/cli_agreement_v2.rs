@@ -583,3 +583,63 @@ fn agreement_v2_cli_notary_role_signs_and_verifies() {
     );
     assert_eq!(report["valid"], expected()["verify"]["valid"]);
 }
+
+/// P2 Task 004c: `jacs agreement-v2 export-vc` emits the agreement as a
+/// VC with an ecdsa-jcs-2019 Data Integrity proof. The agreement-vc
+/// content scope is never auto-issued — the flow requires an explicit
+/// `jacs agent issue-compat-binding --scopes ...,agreement-vc` first.
+#[test]
+fn agreement_v2_export_vc_command_outputs_vc() {
+    let dir = TempDir::new().expect("tmpdir");
+    bootstrap_agent(&dir);
+    let agent_id = configured_agent_id(&dir);
+
+    let input_path = write_json(&dir, "agreement-input.json", &base_input(&agent_id));
+    let created =
+        output_json_with_paths(&dir, &["agreement-v2", "create", "--input"], &[&input_path]);
+    let created_path = write_json(&dir, "created.json", &created);
+
+    // Without the content scope: denied (no binding auto-issue).
+    cmd()
+        .current_dir(dir.path())
+        .args([
+            "agreement-v2",
+            "export-vc",
+            "--agreement",
+            created_path.to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .failure();
+
+    cmd()
+        .current_dir(dir.path())
+        .args([
+            "agent",
+            "issue-compat-binding",
+            "--scopes",
+            "jwks,did,a2a-agent-card,w3c-agent-identity,agreement-vc",
+        ])
+        .assert()
+        .success();
+
+    let export = output_json_with_paths(
+        &dir,
+        &["agreement-v2", "export-vc", "--agreement"],
+        &[&created_path],
+    );
+    assert_eq!(export["format"], "agreement-vc");
+    let vc = &export["vc"];
+    assert_eq!(vc["type"][0], "VerifiableCredential");
+    assert_eq!(vc["proof"]["type"], "DataIntegrityProof");
+    assert_eq!(vc["proof"]["cryptosuite"], "ecdsa-jcs-2019");
+    assert!(
+        vc["proof"]["proofValue"]
+            .as_str()
+            .expect("proofValue")
+            .starts_with('z')
+    );
+    assert_eq!(
+        vc["credentialSubject"]["jacsAgreementV2"], created,
+        "agreement embedded verbatim"
+    );
+}
