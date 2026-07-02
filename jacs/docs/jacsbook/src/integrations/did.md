@@ -2,6 +2,8 @@
 
 This chapter describes an integration pattern. JACS ships a lightweight `did:wba` export surface (`jacs w3c did`, `jacs w3c did-document`, and the W3C MCP tools) but no general-purpose DID resolver or full DID method toolchain.
 
+The DID domain comes from `--domain` at agent creation (stamped into the config as `jacs_agent_domain`); override it per-export with `--origin`.
+
 You can still use JACS in DID-oriented architectures without requiring a blockchain or ledger.
 
 ## Core Position

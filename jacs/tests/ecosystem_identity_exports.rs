@@ -603,3 +603,123 @@ fn did_export_without_compat_key_stays_quiet() {
         "never-configured compat key must stay quiet (no missing-key WARN)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// DID-origin fix — an agent's DID origin defaults to https://<domain>
+// stamped at creation; exports that fall back to jacs.localhost WARN.
+// ---------------------------------------------------------------------------
+
+/// An agent created WITH a domain exports a DID whose origin is
+/// `https://<domain>` — no per-export `--origin` needed. The domain is
+/// persisted in the config (`jacs_agent_domain`) with DNS TXT enforcement
+/// left opt-in, so offline verification keeps working.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn create_with_domain_stamps_did_origin_without_warn() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+    std::env::set_current_dir(&tmp_root).expect("cd to temp dir");
+    let _guard = CwdGuard { saved: saved_cwd };
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    }
+    let params = CreateAgentParams::builder()
+        .name("did-origin-from-domain")
+        .password(TEST_PASSWORD)
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .domain("agents.example.com")
+        .build();
+    let (agent, info) = SimpleAgent::create_with_params(params).expect("create agent");
+    assert_eq!(info.domain, "agents.example.com");
+
+    // The creation domain is stamped into the persisted config...
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read config"))
+            .expect("config json");
+    assert_eq!(config["jacs_agent_domain"], "agents.example.com");
+    // ...with DNS TXT enforcement left opt-in (record not published yet).
+    assert_eq!(config["jacs_dns_validate"], false);
+    assert_eq!(config["jacs_dns_required"], false);
+
+    // The DID origin defaults to https://<domain>: no origin option passed.
+    let mut did = None;
+    let events = with_captured_logs(|| {
+        did = Some(jacs::simple::w3c::export_w3c_did_identifier(&agent).expect("did"));
+    });
+    let did = did.unwrap();
+    assert!(
+        did.starts_with("did:wba:agents.example.com:agent:"),
+        "DID must embed the creation domain, got {did}"
+    );
+    assert!(
+        events_named(&events, "did_origin_fallback").is_empty(),
+        "domain-stamped agent must not warn about origin fallback"
+    );
+
+    // Stamping the domain must not break offline verification: the DNS TXT
+    // record is not published, so verify_self must still pass.
+    let result = agent
+        .verify_self()
+        .expect("verify_self with stamped domain");
+    assert!(
+        result.valid,
+        "domain-stamped agent must verify offline: {:?}",
+        result.errors
+    );
+}
+
+/// Without a domain the export still works (jacs.localhost default) and
+/// emits exactly ONE `did_origin_fallback` WARN per export call — including
+/// well-known generation, which nests three documents.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn did_export_without_domain_warns_once_and_keeps_localhost() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("did-origin-fallback");
+
+    let mut did = None;
+    let events = with_captured_logs(|| {
+        did = Some(jacs::simple::w3c::export_w3c_did_identifier(&agent).expect("did"));
+    });
+    let did = did.unwrap();
+    assert!(
+        did.starts_with("did:wba:jacs.localhost:agent:"),
+        "domainless agents keep the localhost default, got {did}"
+    );
+
+    let warns = events_named(&events, "did_origin_fallback");
+    assert_eq!(warns.len(), 1, "exactly one fallback WARN per export call");
+    assert_eq!(warns[0].level, tracing::Level::WARN, "must be WARN");
+    assert!(
+        !field(warns[0], "jacs_id").unwrap_or("").is_empty(),
+        "fallback WARN carries the jacs_id"
+    );
+
+    // Well-known generation resolves the origin once for its three nested
+    // documents: still exactly ONE warn.
+    let events = with_captured_logs(|| {
+        jacs::simple::w3c::generate_w3c_well_known(&agent, None).expect("well-known");
+    });
+    assert_eq!(
+        events_named(&events, "did_origin_fallback").len(),
+        1,
+        "well-known must warn once, not once per nested export"
+    );
+
+    // An explicit per-export origin suppresses the fallback WARN entirely.
+    let events = with_captured_logs(|| {
+        jacs::simple::w3c::export_w3c_did_identifier_with_origin(
+            &agent,
+            Some("https://override.example.com"),
+        )
+        .expect("did with origin");
+    });
+    assert!(
+        events_named(&events, "did_origin_fallback").is_empty(),
+        "explicit --origin must not warn"
+    );
+}

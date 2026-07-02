@@ -765,6 +765,31 @@ impl SimpleAgent {
                 obj.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
             }
 
+            // DID-origin fix: stamp the creation domain when the existing
+            // config has none (an existing domain wins, consistent with the
+            // field checks above). See the fresh-config branch below for why
+            // DNS enforcement stays opt-in.
+            if !params.domain.is_empty() {
+                let existing_domain = existing
+                    .get("jacs_agent_domain")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                match existing_domain.as_deref() {
+                    Some(existing_domain) if existing_domain != params.domain => warn!(
+                        "Config 'jacs_agent_domain' differs: existing='{}', param='{}'. Keeping existing value.",
+                        existing_domain, params.domain
+                    ),
+                    Some(_) => {}
+                    None => {
+                        if let Some(obj) = existing.as_object_mut() {
+                            obj.insert("jacs_agent_domain".to_string(), json!(params.domain));
+                            obj.entry("jacs_dns_validate").or_insert(json!(false));
+                            obj.entry("jacs_dns_required").or_insert(json!(false));
+                        }
+                    }
+                }
+            }
+
             // If the config already has a jacsSignature, use update_config to
             // bump the version; otherwise sign_config creates the initial signature.
             let signed_config = if existing.get("jacsSignature").is_some() {
@@ -819,6 +844,18 @@ impl SimpleAgent {
                 "jacs_default_storage".to_string(),
                 json!(params.default_storage),
             );
+            // DID-origin fix: stamp the creation domain into the config so
+            // DID/W3C exports derive `https://<domain>` as the default origin
+            // (PublicAgentProjection reads `jacs_agent_domain` as fallback).
+            // DNS TXT enforcement stays opt-in: the record emitted at
+            // creation must be published before it can validate, so
+            // verification keeps using the embedded fingerprint until the
+            // operator flips `jacs_dns_validate` to true.
+            if !params.domain.is_empty() {
+                config_map.insert("jacs_agent_domain".to_string(), json!(params.domain));
+                config_map.insert("jacs_dns_validate".to_string(), json!(false));
+                config_map.insert("jacs_dns_required".to_string(), json!(false));
+            }
             config_map.insert(
                 "jacs_agent_private_key_filename".to_string(),
                 json!(DEFAULT_PRIVATE_KEY_FILENAME),

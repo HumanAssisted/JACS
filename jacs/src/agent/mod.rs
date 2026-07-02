@@ -1799,10 +1799,19 @@ impl Agent {
                 (true, true, true)
             }
             _ => {
-                // Unverified or missing claim: use existing defaults (presence of domain)
-                let validate = self.dns_validate_enabled.unwrap_or(domain_present);
+                // Unverified or missing claim: explicit setters win, then the
+                // persisted config's DNS policy (`jacs_dns_validate` /
+                // `jacs_dns_required`, e.g. stamped alongside the creation
+                // domain), then the existing default (presence of domain).
+                let validate = self
+                    .dns_validate_enabled
+                    .or_else(|| self.config.as_ref().and_then(|c| *c.jacs_dns_validate()))
+                    .unwrap_or(domain_present);
                 let strict = self.dns_strict;
-                let required = self.dns_required.unwrap_or(domain_present);
+                let required = self
+                    .dns_required
+                    .or_else(|| self.config.as_ref().and_then(|c| *c.jacs_dns_required()))
+                    .unwrap_or(domain_present);
                 (validate, strict, required)
             }
         };

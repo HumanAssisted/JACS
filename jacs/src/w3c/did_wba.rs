@@ -4,7 +4,7 @@ use crate::public_agent::PublicAgentProjection;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -188,7 +188,19 @@ pub(crate) fn resolve_origin(
         .origin
         .as_deref()
         .or(projection.origin.as_deref())
-        .unwrap_or("https://jacs.localhost");
+        .unwrap_or_else(|| {
+            // Each export entry point resolves the origin exactly once
+            // (generate_w3c_well_known_documents passes the resolved origin
+            // to its nested exports), so this fires once per export call.
+            warn!(
+                event = "did_origin_fallback",
+                jacs_id = %projection.jacs_id,
+                "DID origin fell back to the default 'https://jacs.localhost'; \
+                 set --domain at agent creation (stamps jacs_agent_domain in the \
+                 config) or pass --origin at export"
+            );
+            "https://jacs.localhost"
+        });
     let trimmed = candidate.trim().trim_end_matches('/');
     let origin = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         trimmed.to_string()
