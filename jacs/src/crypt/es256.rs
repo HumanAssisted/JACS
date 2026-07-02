@@ -80,6 +80,62 @@ pub fn rfc7638_thumbprint_p256(sec1_uncompressed: &[u8]) -> Result<String, JacsE
     Ok(URL_SAFE_NO_PAD.encode(digest))
 }
 
+/// Multibase/Multikey encoding of a P-256 public key from its SPKI PEM:
+/// multicodec `p256-pub` (varint 0x80 0x24) + 33-byte compressed SEC1
+/// point, base58btc with the `z` prefix. This is the `publicKeyMultibase`
+/// form required by `Multikey` verification methods — the type
+/// `ecdsa-jcs-2019` Data Integrity verifiers resolve.
+pub fn multikey_from_spki_pem(pem: &str) -> Result<String, JacsError> {
+    use p256::pkcs8::DecodePublicKey;
+    let public = p256::PublicKey::from_public_key_pem(pem)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI PEM parse failed: {e}")))?;
+    let compressed = public.to_encoded_point(true);
+    let mut bytes = vec![0x80u8, 0x24u8]; // varint multicodec p256-pub (0x1200)
+    bytes.extend_from_slice(compressed.as_bytes());
+    Ok(format!("z{}", bs58::encode(bytes).into_string()))
+}
+
+/// Sign `signing_input` with the (decrypted, PKCS#8 DER) ES256 private
+/// key, returning the JOSE signature form: fixed-width 64-byte `r || s`.
+///
+/// `pub(crate)` on purpose (P2 FR25): raw ES256 signing is never public
+/// API — only named, scope-checked exporters (A2A card, AP2 mandate,
+/// Agreement-v2-as-VC) reach it. There is no arbitrary-document +
+/// caller-chosen-algorithm surface.
+// Until Task 004b (AP2 mandate) lands, the only caller is the a2a-gated
+// card exporter — allow dead_code in default-feature builds only.
+#[cfg_attr(not(feature = "a2a"), allow(dead_code))]
+pub(crate) fn sign_es256_jose(
+    private_pkcs8_der: &[u8],
+    signing_input: &[u8],
+) -> Result<Vec<u8>, JacsError> {
+    use p256::ecdsa::signature::Signer;
+    use p256::pkcs8::DecodePrivateKey;
+    let signing_key = p256::ecdsa::SigningKey::from_pkcs8_der(private_pkcs8_der)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 PKCS#8 private parse failed: {e}")))?;
+    let signature: p256::ecdsa::Signature = signing_key.sign(signing_input);
+    Ok(signature.to_bytes().to_vec())
+}
+
+/// Verify a JOSE-form (64-byte `r || s`) ES256 signature against a SPKI
+/// PEM public key. Used by exporter tests and JACS-side re-verification;
+/// never reachable from native document verification.
+pub fn verify_es256_jose(
+    public_spki_pem: &str,
+    signing_input: &[u8],
+    signature_rs: &[u8],
+) -> Result<(), JacsError> {
+    use p256::ecdsa::signature::Verifier;
+    use p256::pkcs8::DecodePublicKey;
+    let verifying_key = p256::ecdsa::VerifyingKey::from_public_key_pem(public_spki_pem)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI PEM parse failed: {e}")))?;
+    let signature = p256::ecdsa::Signature::from_slice(signature_rs)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 signature parse failed: {e}")))?;
+    verifying_key
+        .verify(signing_input, &signature)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 verification failed: {e}")))
+}
+
 /// Derive the base64url JWK `x`/`y` coordinates from an ES256 SPKI PEM
 /// public key (as written to `jacs.ecosystem.public.pem`).
 pub fn jwk_xy_from_spki_pem(pem: &str) -> Result<(String, String), JacsError> {

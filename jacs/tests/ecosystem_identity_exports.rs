@@ -161,6 +161,112 @@ fn binding_export_returns_verified_pq_signed_document() {
 
 #[test]
 #[serial(jacs_env, cwd_env)]
+fn did_document_lists_es256_as_jsonwebkey_and_multikey_when_authorized() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("did-dual-vm");
+
+    // Without a binding: the DID document keeps its pre-P2 native-only shape.
+    let doc_before =
+        jacs::simple::w3c::export_w3c_did_document(&agent, Some("https://example.com"))
+            .expect("did doc");
+    assert_eq!(
+        doc_before["verificationMethod"].as_array().unwrap().len(),
+        1,
+        "no compat entries without an authorized binding"
+    );
+
+    // Issue the default identity binding (grants `did`): the ES256 key now
+    // appears TWICE for the same key — JsonWebKey (publicKeyJwk) for JOSE
+    // consumers and Multikey (publicKeyMultibase) for ecdsa-jcs-2019
+    // Data Integrity verifiers.
+    agent.issue_compat_binding(None, None).expect("issue");
+    let doc = jacs::simple::w3c::export_w3c_did_document(&agent, Some("https://example.com"))
+        .expect("did doc");
+    let vms = doc["verificationMethod"].as_array().unwrap();
+    assert_eq!(vms.len(), 3, "native + JsonWebKey + Multikey");
+
+    let jwk_entry = vms
+        .iter()
+        .find(|v| v["type"] == "JsonWebKey")
+        .expect("JsonWebKey entry (NOT legacy JsonWebKey2020 for the compat key)");
+    assert_eq!(jwk_entry["publicKeyJwk"]["kty"], "EC");
+    assert_eq!(jwk_entry["publicKeyJwk"]["crv"], "P-256");
+    assert_eq!(jwk_entry["publicKeyJwk"]["alg"], "ES256");
+
+    let mk_entry = vms
+        .iter()
+        .find(|v| v["type"] == "Multikey")
+        .expect("Multikey entry");
+    let multibase = mk_entry["publicKeyMultibase"].as_str().unwrap();
+    assert!(multibase.starts_with('z'), "multibase base58btc prefix");
+    assert!(
+        multibase.starts_with("zDn"),
+        "P-256 multicodec prefix encodes to zDn..., got {multibase}"
+    );
+
+    // The jacs block references the binding BY CONTENT HASH — never a URL.
+    let binding_ref = doc["jacs"]["compatBindingHash"].as_str().unwrap();
+    assert!(!binding_ref.is_empty());
+    assert!(
+        !binding_ref.contains("://"),
+        "reference is a hash, not a URL"
+    );
+    // Both compat entries are usable for assertions (VC proofs).
+    let assertions = doc["assertionMethod"].as_array().unwrap();
+    assert!(assertions.len() >= 3);
+}
+
+#[cfg(feature = "a2a")]
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn a2a_agent_card_uses_bound_es256_key() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("a2a-card-es256");
+
+    let card = agent.export_a2a_agent_card().expect("export card");
+
+    // Card carries the ES256 JWS with the pinned JOSE header.
+    let sig = &card["signatures"][0];
+    let jws = sig["jws"].as_str().expect("jws");
+    let parts: Vec<&str> = jws.split('.').collect();
+    assert_eq!(parts.len(), 3, "compact JWS");
+    use base64::Engine as _;
+    let header: Value = serde_json::from_slice(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[0])
+            .expect("header b64"),
+    )
+    .expect("header json");
+    assert_eq!(header["alg"], "ES256");
+    assert_eq!(header["typ"], "JOSE", "typ is JOSE, not JWT (FR14)");
+    let compat = agent.ecosystem_key_info().expect("key info");
+    assert_eq!(header["kid"].as_str().unwrap(), compat.kid);
+
+    // Binding referenced by content hash in card metadata.
+    assert_eq!(
+        card["metadata"]["jacsCompatKid"].as_str().unwrap(),
+        compat.kid
+    );
+    assert!(
+        !card["metadata"]["jacsCompatBindingHash"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
+
+    // The ES256 signature verifies against the exported JWKS key —
+    // i.e. a stock JOSE verifier with the JWKS can check this card.
+    let public_pem = std::fs::read_to_string("./jacs_keys/jacs.ecosystem.public.pem").expect("pem");
+    let signing_input = format!("{}.{}", parts[0], parts[1]);
+    let sig_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[2])
+        .expect("sig b64");
+    jacs::crypt::es256::verify_es256_jose(&public_pem, signing_input.as_bytes(), &sig_bytes)
+        .expect("ES256 card signature verifies");
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
 fn identity_export_does_not_add_projections_to_native_documents() {
     let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let (agent, _tmp, _guard) = setup_agent("export-no-projections");

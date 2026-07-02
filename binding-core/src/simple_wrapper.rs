@@ -612,6 +612,19 @@ impl SimpleAgentWrapper {
         serialize_json(&jwks, "compatibility JWKS")
     }
 
+    /// Export the A2A agent card signed with the ES256 compatibility key
+    /// (P2 Task 004-B; typ "JOSE", binding referenced by content hash).
+    #[cfg(feature = "a2a")]
+    pub fn export_a2a_agent_card_json(&self) -> BindingResult<String> {
+        let card = self.inner.export_a2a_agent_card().map_err(|e| {
+            BindingCoreError::new(
+                ErrorKind::Validation,
+                format!("Failed to export A2A agent card: {}", e),
+            )
+        })?;
+        serialize_json(&card, "A2A agent card")
+    }
+
     /// Export the current (verified) PQ-root-signed compatibility key
     /// binding document, so relying parties can trace the ES256 key back
     /// to the post-quantum root (P2 Task 004).

@@ -51,15 +51,22 @@ pub fn create_jwk_keys(
         jacs_alg, a2a_alg
     );
 
+    // ES256 keygen helper (P2 Task 004-B): private = PKCS#8 DER, public =
+    // SEC1 uncompressed point (65 bytes) so JWK x/y export can slice it.
+    // Delegates to the compatibility ES256 module — the STUB CARVE-OUT is
+    // deliberate: only key generation and JWK export delegate; the ES256
+    // arms of sign_jws / verify_jws below keep returning errors (FR25 —
+    // no generic caller-chosen-algorithm ES256 signing surface).
+    let es256_pair = || -> Result<(Vec<u8>, Vec<u8>), JacsError> {
+        let kp = crate::crypt::es256::generate_es256_keypair()?;
+        Ok((kp.private_pkcs8_der, kp.public_sec1_uncompressed))
+    };
+
     // Generate keys directly in memory without file persistence
     let (jacs_private, jacs_public) = match jacs_alg {
         "pq2025" => crate::crypt::pq2025::generate_keys()?,
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        "ecdsa" | "es256" => {
-            return Err(JacsError::CryptoError(
-                "ECDSA key generation for A2A is not yet implemented in this build".to_string(),
-            ));
-        }
+        "ecdsa" | "es256" => es256_pair()?,
         _ => {
             return Err(JacsError::CryptoError(format!(
                 "Unsupported JACS algorithm: {}",
@@ -70,11 +77,7 @@ pub fn create_jwk_keys(
 
     let (a2a_private, a2a_public) = match a2a_alg {
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        "ecdsa" | "es256" => {
-            return Err(JacsError::CryptoError(
-                "ECDSA key generation for A2A is not yet implemented in this build".to_string(),
-            ));
-        }
+        "ecdsa" | "es256" => es256_pair()?,
         _ => {
             return Err(JacsError::CryptoError(format!(
                 "Unsupported A2A algorithm: {}",
@@ -118,13 +121,34 @@ pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Jac
     })
 }
 
+/// Export an ES256 (P-256) public key as JWK from its SEC1 uncompressed
+/// point (65 bytes: 0x04 || x || y). P2 Task 004-B stub carve-out: JWK
+/// EXPORT delegates to real code; ES256 signing in `sign_jws` does not.
+pub fn export_es256_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsError> {
+    if public_key.len() != 65 || public_key[0] != 0x04 {
+        return Err(JacsError::CryptoError(format!(
+            "ES256 public key must be a 65-byte SEC1 uncompressed point, got {} bytes",
+            public_key.len()
+        )));
+    }
+    Ok(Jwk {
+        kty: "EC".to_string(),
+        kid: key_id.to_string(),
+        alg: "ES256".to_string(),
+        use_: "sig".to_string(),
+        n: None,
+        e: None,
+        x: Some(general_purpose::URL_SAFE_NO_PAD.encode(&public_key[1..33])),
+        y: Some(general_purpose::URL_SAFE_NO_PAD.encode(&public_key[33..65])),
+        crv: Some("P-256".to_string()),
+    })
+}
+
 /// Export a public key as JWK based on algorithm
 pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result<Jwk, JacsError> {
     match algorithm {
         "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
-        "ecdsa" | "es256" => Err(JacsError::CryptoError(
-            "ECDSA JWK export is not yet implemented in this build".to_string(),
-        )),
+        "ecdsa" | "es256" => export_es256_as_jwk(public_key, key_id),
         _ => Err(JacsError::CryptoError(format!(
             "Cannot export {} key as JWK",
             algorithm

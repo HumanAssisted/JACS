@@ -38,20 +38,46 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
     let parts = parts_for_projection(&projection, &options)?;
     let verification_method = verification_method_for_projection(&projection, &parts);
 
+    let mut verification_methods = vec![verification_method];
+    let mut authentication = vec![json!(parts.verification_method)];
+    let mut assertion_method = vec![json!(parts.verification_method)];
+    let mut jacs_block = json!({
+        "jacsId": projection.jacs_id,
+        "jacsVersion": projection.jacs_version,
+        "jacsLookupId": projection.jacs_lookup_id,
+        "publicKeyHash": projection.public_key_hash,
+        "keyAlgorithm": projection.key_algorithm
+    });
+
+    // P2 Task 004-B: when the agent has an ES256 compatibility key AND a
+    // valid PQ-root-signed binding granting the `did` scope, the DID
+    // document additionally lists the compat key TWICE for the same key:
+    // a `JsonWebKey` entry (publicKeyJwk, JOSE consumers — not the legacy
+    // JsonWebKey2020) and a `Multikey` entry (publicKeyMultibase — the
+    // type `ecdsa-jcs-2019` Data Integrity verifiers require). The `jacs`
+    // block carries the binding reference AS A CONTENT HASH — never a
+    // URL; P2 defines no resolution protocol (NG8).
+    if let Some(compat_entries) = es256_entries_if_authorized(agent, &parts)? {
+        let (jwk_entry, multikey_entry, kid, binding_hash) = compat_entries;
+        let jwk_id = jwk_entry["id"].as_str().unwrap_or("").to_string();
+        let mk_id = multikey_entry["id"].as_str().unwrap_or("").to_string();
+        verification_methods.push(jwk_entry);
+        verification_methods.push(multikey_entry);
+        authentication.push(json!(jwk_id));
+        assertion_method.push(json!(jwk_id));
+        assertion_method.push(json!(mk_id));
+        jacs_block["compatKid"] = json!(kid);
+        jacs_block["compatBindingHash"] = json!(binding_hash);
+    }
+
     Ok(json!({
         "@context": [
             "https://www.w3.org/ns/did/v1"
         ],
         "id": parts.did,
-        "verificationMethod": [
-            verification_method
-        ],
-        "authentication": [
-            parts.verification_method
-        ],
-        "assertionMethod": [
-            parts.verification_method
-        ],
+        "verificationMethod": verification_methods,
+        "authentication": authentication,
+        "assertionMethod": assertion_method,
         "service": [
             {
                 "id": format!("{}#agent-desc", parts.did),
@@ -59,14 +85,74 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
                 "serviceEndpoint": format!("{}{}", parts.origin, parts.agent_description_path)
             }
         ],
-        "jacs": {
-            "jacsId": projection.jacs_id,
-            "jacsVersion": projection.jacs_version,
-            "jacsLookupId": projection.jacs_lookup_id,
-            "publicKeyHash": projection.public_key_hash,
-            "keyAlgorithm": projection.key_algorithm
-        }
+        "jacs": jacs_block
     }))
+}
+
+/// Build the two ES256 verification-method entries when (and only when)
+/// a valid binding grants the `did` scope. Returns None when the agent
+/// has no compat key, no binding, an invalid binding, or no `did` scope —
+/// the DID document then keeps its pre-P2 (native-only) shape.
+fn es256_entries_if_authorized(
+    agent: &Agent,
+    parts: &W3cDidParts,
+) -> Result<Option<(Value, Value, String, String)>, JacsError> {
+    let key_directory = match agent.config.as_ref() {
+        Some(config) => config
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string(),
+        None => return Ok(None),
+    };
+    let compat = match crate::keystore::compat::ecosystem_key_info(&key_directory) {
+        Ok(c) => c,
+        Err(_) => return Ok(None),
+    };
+    let binding = match crate::compatibility::binding::load_compat_binding(&key_directory)? {
+        Some(b) => b,
+        None => return Ok(None),
+    };
+    let verdict =
+        crate::compatibility::binding::verify_compat_binding(agent, &key_directory, &binding)?;
+    if !verdict.valid || !verdict.scopes.iter().any(|s| s == "did") {
+        return Ok(None);
+    }
+
+    let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
+        JacsError::FileReadFailed {
+            path: compat.public_key_path.clone(),
+            reason: e.to_string(),
+        }
+    })?;
+    let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
+    let multibase = crate::crypt::es256::multikey_from_spki_pem(&public_pem)?;
+    let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
+
+    let jwk_id = format!("{}#{}", parts.did, compat.kid);
+    let mk_id = format!("{}#{}-multikey", parts.did, compat.kid);
+
+    let jwk_entry = json!({
+        "id": jwk_id,
+        "type": "JsonWebKey",
+        "controller": parts.did,
+        "publicKeyJwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": x,
+            "y": y,
+            "alg": "ES256",
+            "kid": compat.kid
+        }
+    });
+    let multikey_entry = json!({
+        "id": mk_id,
+        "type": "Multikey",
+        "controller": parts.did,
+        "publicKeyMultibase": multibase
+    });
+
+    Ok(Some((jwk_entry, multikey_entry, compat.kid, binding_hash)))
 }
 
 pub(crate) fn parts_for_projection(

@@ -71,6 +71,25 @@ fn known_methods() -> Vec<&'static str> {
     methods
 }
 
+#[cfg(feature = "a2a")]
+fn known_a2a_methods() -> Vec<&'static str> {
+    vec!["export_a2a_agent_card_json"]
+}
+
+#[cfg(feature = "a2a")]
+#[test]
+fn test_a2a_methods_match_fixture() {
+    let fixture = load_method_parity_fixture();
+    let fixture_methods: Vec<String> = fixture["feature_gated_methods"]["a2a"]
+        .as_array()
+        .expect("feature_gated_methods.a2a should be an array")
+        .iter()
+        .map(|v| v.as_str().expect("method name").to_string())
+        .collect();
+    let known: Vec<String> = known_a2a_methods().iter().map(|s| s.to_string()).collect();
+    assert_eq!(fixture_methods, known, "a2a feature-gated methods drifted");
+}
+
 #[cfg(feature = "agreements")]
 fn known_agreement_v2_methods() -> Vec<&'static str> {
     let mut methods = vec![

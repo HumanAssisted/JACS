@@ -12,6 +12,9 @@
     "inline_and_media": ["sign_text_file_json", "verify_text_file_json", "sign_image_json", "verify_image_json", "extract_media_signature_json"]
   },
   "feature_gated_methods": {
+    "a2a": [
+      "export_a2a_agent_card_json"
+    ],
     "agreements": [
       "create_agreement_v2_json",
       "apply_agreement_v2_json",

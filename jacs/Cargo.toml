@@ -145,6 +145,9 @@ fips204 = "0.4.6"
 # RustCrypto stack per the PRD buy/build note: never used for native JACS
 # signing, and `ring` stays out of portable core paths.
 p256 = { version = "0.13", features = ["pkcs8", "pem"] }
+# base58btc for Multikey (publicKeyMultibase) encoding of the ES256 key —
+# already in the tree transitively.
+bs58 = "0.5"
 # rand_core 0.6 (with OsRng) for p256 keygen — the workspace `rand` is 0.9,
 # whose rng traits p256 0.13 does not accept.
 rand_core = { version = "0.6", features = ["getrandom"] }

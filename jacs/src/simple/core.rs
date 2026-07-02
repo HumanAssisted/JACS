@@ -1122,7 +1122,7 @@ impl SimpleAgent {
     /// binding document plus its verified scopes; errors if none exists
     /// or verification fails (superseded root, tampered, expired).
     pub fn compat_binding(&self) -> Result<(serde_json::Value, Vec<String>), JacsError> {
-        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
         let key_directory = inner
@@ -1139,11 +1139,8 @@ impl SimpleAgent {
                     "no compatibility binding issued; call issue_compat_binding first".to_string(),
                 )
             })?;
-        let verdict = crate::compatibility::binding::verify_compat_binding(
-            &mut inner,
-            &key_directory,
-            &binding,
-        )?;
+        let verdict =
+            crate::compatibility::binding::verify_compat_binding(&inner, &key_directory, &binding)?;
         if !verdict.valid {
             return Err(JacsError::ValidationError(format!(
                 "compatibility binding invalid: {}",
@@ -1169,6 +1166,25 @@ impl SimpleAgent {
             .unwrap_or("./jacs_keys")
             .to_string();
         crate::compatibility::exports::export_compatibility_jwks(&mut inner, &key_directory)
+    }
+
+    /// Export the A2A agent card signed with the ES256 compatibility key
+    /// (typ "JOSE" header, binding referenced by content hash). Gated by
+    /// the `a2a-agent-card` binding scope.
+    #[cfg(feature = "a2a")]
+    pub fn export_a2a_agent_card(&self) -> Result<serde_json::Value, JacsError> {
+        let mut inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let key_directory = inner
+            .config
+            .as_ref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        crate::compatibility::exports::export_a2a_agent_card(&mut inner, &key_directory)
     }
 
     /// Export the current (verified) compatibility key binding document.

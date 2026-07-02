@@ -171,7 +171,7 @@ pub struct BindingVerification {
 /// rotated-away root is superseded), ES256 key material matches the
 /// on-disk ecosystem key, and not expired.
 pub fn verify_compat_binding(
-    agent: &mut Agent,
+    agent: &Agent,
     key_directory: &str,
     binding: &Value,
 ) -> Result<BindingVerification, JacsError> {
@@ -270,11 +270,7 @@ pub fn verify_compat_binding(
 
 /// Authorization gate used by exporters: the CURRENT binding must verify
 /// and include `scope`. Returns the verified binding on success.
-pub fn require_scope(
-    agent: &mut Agent,
-    key_directory: &str,
-    scope: &str,
-) -> Result<Value, JacsError> {
+pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<Value, JacsError> {
     let binding = load_compat_binding(key_directory)?.ok_or_else(|| {
         JacsError::ValidationError(format!(
             "no compatibility binding issued; run issue_compat_binding before exporting '{scope}'"

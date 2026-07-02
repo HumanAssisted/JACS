@@ -2926,6 +2926,7 @@ dependencies = [
  "argon2",
  "assert_cmd",
  "base64",
+ "bs58",
  "chrono",
  "color-eyre",
  "criterion",
