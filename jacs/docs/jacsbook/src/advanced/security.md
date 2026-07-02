@@ -172,6 +172,23 @@ parties — not isolation. Both private keys live in the same directory
 under the same password; a compromised host is outside this model. The
 sound property is non-self-escalation via the PQ signature requirement.
 
+### Targeted content exports (P2)
+
+Content exporters (the AP2 mandate export, the Agreement-v2-as-VC
+export) sign **ecosystem artifacts** with the ES256 compatibility key
+through purpose-built, schema-pinned paths — there is no generic
+"sign this document with algorithm X" API. Two properties matter here:
+
+- **Classical verification is not PQ trust.** A stock JOSE/Data
+  Integrity verifier can check the ES256 signature with nothing but the
+  public key; that proves possession of the compatibility key, not the
+  agent's post-quantum identity. Tracing the export to the PQ root
+  additionally requires verifying the PQ-signed compatibility key
+  binding (`jacs agent export-compat-binding`).
+- **Native documents are never mutated.** Exports are derived views;
+  the native `jacsSignature` stays `pq2025` and the source document's
+  bytes and verification are unchanged after every export.
+
 ### Key Generation
 
 JACS generates cryptographic key pairs during agent creation:

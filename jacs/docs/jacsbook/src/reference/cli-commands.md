@@ -163,6 +163,31 @@ Add the ES256 `ecosystem_signing` compatibility key to an existing agent (explic
 jacs agent add-compat-key [--config ./jacs.config.json]
 ```
 
+### `jacs agent issue-compat-binding`
+Issue (or re-issue) the PQ-root-signed compatibility key binding. Content scopes (`ap2-mandate`, `agreement-vc`) are never auto-issued — grant them here explicitly. This is also the re-issue path after `agent rotate-keys` (a binding signed by a previous root no longer authorizes exports).
+
+```bash
+# default: identity scopes only (jwks,did,a2a-agent-card,w3c-agent-identity)
+jacs agent issue-compat-binding
+
+# grant a content scope explicitly
+jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate
+
+# optional expiry (RFC 3339)
+jacs agent issue-compat-binding --expires-at 2027-01-01T00:00:00Z
+```
+
+## AP2 Commands
+
+### `jacs ap2 export-mandate`
+Export the AP2 merchant-authorization mandate for a UCP checkout as a detached ES256 JWS (UCP AP2-Mandates extension, rev 2026-01-23). Requires the `ap2-mandate` binding scope. Input is validated against the named ap2-mandate schema; user-side AP2 Checkout Mandates (SD-JWT-VC) are out of scope. See [AP2 Mandate Export](../integrations/ap2.md).
+
+```bash
+jacs ap2 export-mandate --input checkout.json          # file path
+jacs ap2 export-mandate --input '{"id":"c1", ... }'    # inline JSON
+cat checkout.json | jacs ap2 export-mandate --input -  # stdin
+```
+
 ## Document Commands
 
 The `jacs document` command provides comprehensive document management capabilities.

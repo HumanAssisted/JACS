@@ -70,6 +70,12 @@
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     },
     {
+      "path": "agent issue-compat-binding",
+      "about": "Issue (or re-issue) the PQ-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command",
+      "mcp_tool": null,
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
       "path": "agent keys-list",
       "about": "List active and archived key files",
       "mcp_tool": null,
@@ -206,6 +212,12 @@
       "about": "Create/load agent and start serving A2A endpoints",
       "mcp_tool": null,
       "mcp_excluded_reason": "Combined create-and-serve convenience; orchestration command not suitable for MCP"
+    },
+    {
+      "path": "ap2 export-mandate",
+      "about": "Export the AP2 merchant-authorization mandate for a UCP checkout as a detached ES256 JWS (requires the ap2-mandate binding scope)",
+      "mcp_tool": null,
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     },
     {
       "path": "w3c did",

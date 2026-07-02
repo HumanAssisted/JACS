@@ -102,9 +102,6 @@ pub fn multikey_from_spki_pem(pem: &str) -> Result<String, JacsError> {
 /// API — only named, scope-checked exporters (A2A card, AP2 mandate,
 /// Agreement-v2-as-VC) reach it. There is no arbitrary-document +
 /// caller-chosen-algorithm surface.
-// Until Task 004b (AP2 mandate) lands, the only caller is the a2a-gated
-// card exporter — allow dead_code in default-feature builds only.
-#[cfg_attr(not(feature = "a2a"), allow(dead_code))]
 pub(crate) fn sign_es256_jose(
     private_pkcs8_der: &[u8],
     signing_input: &[u8],

@@ -125,6 +125,36 @@ pub fn build_cli() -> Command {
                         ),
                 )
                 .subcommand(
+                    Command::new("issue-compat-binding")
+                        .about("Issue (or re-issue) the PQ-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command")
+                        .arg(
+                            Arg::new("scopes")
+                                .long("scopes")
+                                .value_delimiter(',')
+                                .value_parser([
+                                    "jwks",
+                                    "did",
+                                    "a2a-agent-card",
+                                    "w3c-agent-identity",
+                                    "ap2-mandate",
+                                    "agreement-vc",
+                                ])
+                                .help("Comma-separated binding scopes (defaults to the identity scopes: jwks,did,a2a-agent-card,w3c-agent-identity)"),
+                        )
+                        .arg(
+                            Arg::new("expires-at")
+                                .long("expires-at")
+                                .value_parser(value_parser!(String))
+                                .help("Optional RFC 3339 expiry; omitted means no expiry"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
                     Command::new("verify")
                     .about(" verify an agent")
                     .arg(
@@ -761,6 +791,27 @@ pub fn build_cli() -> Command {
                     Command::new("run")
                         .about("Deprecated: use `jacs mcp` directly")
                         .hide(true)
+                ),
+        )
+        .subcommand(
+            Command::new("ap2")
+                .about("AP2 (Agent Payments Protocol) compatibility exports")
+                .subcommand(
+                    Command::new("export-mandate")
+                        .about("Export the AP2 merchant-authorization mandate for a UCP checkout as a detached ES256 JWS (requires the ap2-mandate binding scope)")
+                        .arg(
+                            Arg::new("input")
+                                .long("input")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Checkout input: inline JSON, a file path, or '-' for stdin"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
                 ),
         )
         .subcommand(

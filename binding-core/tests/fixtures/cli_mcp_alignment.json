@@ -233,6 +233,10 @@
       "mcp_excluded_reason": "Combined create-and-serve convenience; orchestration command not suitable for MCP"
     },
     {
+      "cli_command": "ap2 export-mandate",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
       "cli_command": "document extract",
       "mcp_excluded_reason": "Extracts embedded content from JACS documents; could be an MCP tool in the future"
     },
@@ -278,6 +282,10 @@
     },
     {
       "cli_command": "agent export-compat-binding",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agent issue-compat-binding",
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     }
   ],
@@ -372,11 +380,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 53,
+    "total_cli_commands": 55,
     "total_cli_feature_gated": 4,
     "total_mcp_tools": 42,
     "aligned_pairs": 32,
-    "cli_only_count": 21,
+    "cli_only_count": 23,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 11,
     "mcp_only_intentional": 5,

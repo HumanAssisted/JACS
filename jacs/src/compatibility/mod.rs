@@ -6,5 +6,6 @@
 //! ES256 `ecosystem_signing` key is authorized per-export by the
 //! PQ-root-signed binding in [`binding`].
 
+pub mod ap2;
 pub mod binding;
 pub mod exports;

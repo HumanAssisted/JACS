@@ -79,6 +79,8 @@ Expected:
 
 ```bash
 cargo test -p jacs --test ap2_mandate_export -- --nocapture
+cargo test -p jacs --lib compatibility::ap2 -- --nocapture   # byte-exact KAT (fixed key)
+cargo test -p jacs-cli --test cli_ap2_mandate -- --nocapture
 ```
 
 Expected:
@@ -173,12 +175,16 @@ jacs agent export-compat-binding > /tmp/p2_binding.json
 # migration path: an existing (pre-P2 / --no-compat-key) agent gains the key only explicitly
 jacs agent add-compat-key
 
+# content scopes are NEVER auto-issued: grant them explicitly (PQ root signs)
+jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate,agreement-vc
+
 # content exports (CLI-only in P2; stdin form works like the rest of the agreement-v2 group)
-jacs ap2 export-mandate --input ./fixtures/ap2_mandate_sample.json > /tmp/p2_mandate.jws
+jacs ap2 export-mandate --input ./fixtures/ap2_mandate_sample.json > /tmp/p2_mandate_export.json
 cat ./fixtures/agreement_v2_sample.json | jacs agreement-v2 export-vc --agreement - > /tmp/p2_agreement_vc.json
 
 # external verification — stock tooling, no JACS installed
-node scripts/smoke/verify_ap2_jws.mjs /tmp/p2_mandate.jws /tmp/p2_jwks.json   # stock `jose` verifier accepts the detached ES256 JWS
+# (run from a directory where `npm install jose canonicalize` has been done)
+node scripts/smoke/verify_ap2_jws.mjs /tmp/p2_mandate_export.json /tmp/p2_jwks.json   # stock `jose` verifier accepts the detached ES256 JWS
 # independent Data Integrity check of the agreement VC (ecdsa-jcs-2019, Multikey verification method)
 node scripts/smoke/verify_di_vc.mjs /tmp/p2_agreement_vc.json
 

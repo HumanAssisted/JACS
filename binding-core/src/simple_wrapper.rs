@@ -638,6 +638,21 @@ impl SimpleAgentWrapper {
         serialize_json(&binding, "compatibility key binding")
     }
 
+    /// Export the AP2 merchant-authorization mandate for a UCP checkout
+    /// as a detached ES256 JWS (P2 Task 004b, FR15). Typed input only —
+    /// the checkout is validated against the named ap2-mandate schema —
+    /// and gated by the explicit `ap2-mandate` binding scope (content
+    /// exports never auto-issue a binding).
+    pub fn export_ap2_mandate_json(&self, checkout_json: &str) -> BindingResult<String> {
+        let mandate = self.inner.export_ap2_mandate(checkout_json).map_err(|e| {
+            BindingCoreError::new(
+                ErrorKind::Validation,
+                format!("Failed to export AP2 mandate: {}", e),
+            )
+        })?;
+        serialize_json(&mandate, "AP2 mandate export")
+    }
+
     // =========================================================================
     // Inline text + media signature methods (Task 05 + Task 06, PRD §4.1, §4.2)
     // =========================================================================

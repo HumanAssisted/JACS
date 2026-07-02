@@ -4,6 +4,8 @@
 
 * [A2A Verification Result](./a2a-verification-result.md "Cross-language schema for A2A artifact verification results") – `https://hai.ai/schemas/a2a-verification-result.schema.json`
 
+* [AP2 Mandate Input (UCP checkout)](./ap2-mandate.md "Typed input boundary for the JACS AP2 merchant-authorization exporter (UCP AP2-Mandates extension, revision 2026-01-23)") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json`
+
 * [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent.schema.json`
 
 * [Agreement](./agreement.md "A standalone JACS agreement document for verifiable consent to terms") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json`
@@ -37,6 +39,12 @@
 * [Untitled object in A2A Verification Result](./a2a-verification-result-definitions-trustassessment.md "Result of assessing a remote agent's trustworthiness") – `https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment`
 
 * [Untitled object in A2A Verification Result](./a2a-verification-result-definitions-parentverificationresult.md "Result of verifying a parent signature in a chain of custody") – `https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/ParentVerificationResult`
+
+* [Untitled object in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-line_items-items.md) – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/line_items/items`
+
+* [Untitled object in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-totals-items.md) – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/totals/items`
+
+* [Untitled object in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-ap2.md "AP2-Mandates extension block") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/ap2`
 
 * [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
 
@@ -135,6 +143,10 @@
 ### Arrays
 
 * [Untitled array in A2A Verification Result](./a2a-verification-result-properties-parentverificationresults.md "Individual verification results for each parent signature") – `https://hai.ai/schemas/a2a-verification-result.schema.json#/properties/parentVerificationResults`
+
+* [Untitled array in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-line_items.md "Items being authorized") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/line_items`
+
+* [Untitled array in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-totals.md "Checkout totals (subtotal, tax, total, ") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/totals`
 
 * [Untitled array in Agreement](./agreement-allof-1-properties-parties.md) – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/parties`
 

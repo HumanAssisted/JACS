@@ -270,6 +270,31 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         })?;
                 println!("{}", serde_json::to_string_pretty(&binding)?);
             }
+            Some(("issue-compat-binding", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
+                    })?;
+                let scope_values: Option<Vec<&str>> = sub_m
+                    .get_many::<String>("scopes")
+                    .map(|vals| vals.map(|s| s.as_str()).collect());
+                let expires_at = sub_m.get_one::<String>("expires-at").map(|s| s.as_str());
+                let binding = agent
+                    .issue_compat_binding(scope_values.as_deref(), expires_at)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to issue compatibility binding: {}",
+                            e
+                        )))
+                    })?;
+                println!("{}", serde_json::to_string_pretty(&binding)?);
+            }
             Some(("verify", verify_matches)) => {
                 let _agentfile = verify_matches.get_one::<String>("agent-file");
                 let non_strict = *verify_matches.get_one::<bool>("no-dns").unwrap_or(&false);
@@ -914,6 +939,37 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             );
             process::exit(1);
         }
+        Some(("ap2", ap2_matches)) => match ap2_matches.subcommand() {
+            Some(("export-mandate", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let checkout_json = read_json_arg(sub_m.get_one::<String>("input").unwrap())?;
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
+                    })?;
+                let mandate =
+                    agent
+                        .export_ap2_mandate(&checkout_json)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to export AP2 mandate: {}",
+                                e
+                            )))
+                        })?;
+                println!("{}", serde_json::to_string_pretty(&mandate)?);
+            }
+            _ => {
+                eprintln!(
+                    "Unknown ap2 command. Try: jacs ap2 export-mandate --input <JSON, path, or - for stdin>"
+                );
+                process::exit(1);
+            }
+        },
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
             Some(("assess", assess_matches)) => {
                 use jacs::a2a::AgentCard;
