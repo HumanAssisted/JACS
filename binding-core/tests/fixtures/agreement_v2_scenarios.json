@@ -36,7 +36,7 @@
       "partyQuorum": "all",
       "witnessRequired": 0,
       "notaryRequired": 0,
-      "requiredAlgorithms": ["ring-Ed25519"],
+      "requiredAlgorithms": ["ring-Ed25519", "pq2025"],
       "minimumStrength": "classical"
     }
   },

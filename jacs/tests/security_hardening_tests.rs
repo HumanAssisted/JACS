@@ -148,12 +148,16 @@ mod elliptic_curve_private_key_operations {
     use jacs::simple::SimpleAgent;
 
     #[test]
-    fn creates_ed25519_ephemeral_agent() {
+    fn ed25519_ephemeral_request_resolves_pq2025() {
+        // P2 Task 001: new agent creation is PQ-only; the ed25519 request
+        // resolves to pq2025. (Raw Ed25519 keygen coverage lives in
+        // creates_ed25519_keystore_key below — the keystore layer is where
+        // grandfathered agents' keys still exercise Ed25519.)
         let (agent, info) =
-            SimpleAgent::ephemeral(Some("ed25519")).expect("Ed25519 ephemeral should be supported");
-        assert!(info.algorithm.contains("Ed25519"));
+            SimpleAgent::ephemeral(Some("ed25519")).expect("ed25519 request resolves");
+        assert!(info.algorithm.contains("pq2025"));
         let signed = agent
-            .sign_message(&serde_json::json!({"curve": "ed25519"}))
+            .sign_message(&serde_json::json!({"curve": "resolved"}))
             .expect("sign");
         assert!(agent.verify(&signed.raw).expect("verify").valid);
     }
@@ -324,7 +328,9 @@ mod signature_v2_binding {
             let (agent, mut value) = signed_doc();
             match pointer {
                 "/jacsSignature/signingAlgorithm" => {
-                    value["jacsSignature"]["signingAlgorithm"] = json!("pq2025")
+                    // The doc is pq2025-signed (creation is PQ-only), so the
+                    // tampered value must be the OTHER native algorithm.
+                    value["jacsSignature"]["signingAlgorithm"] = json!("ring-Ed25519")
                 }
                 "/jacsSignature/publicKeyHash" => {
                     value["jacsSignature"]["publicKeyHash"] = json!("00")

@@ -2082,6 +2082,18 @@ impl Agent {
             )
         })?;
         let signing_algorithm = config.get_key_algorithm()?;
+        if signing_algorithm == "ring-Ed25519" {
+            // Grandfathered pre-P2 agent: new creation and all rotations are
+            // PQ-only, but existing Ed25519-rooted agents keep signing so
+            // pinned downstream consumers see no silent break. Operators
+            // watch this event to track fleet drift; the fix is rotation
+            // (which always migrates to pq2025).
+            warn!(
+                event = "native_legacy_ed25519_sign",
+                agent_id = %agent_id,
+                "Grandfathered Ed25519 agent produced a native signature; rotate to pq2025"
+            );
+        }
 
         let serialized_fields = to_value(&accepted_fields)?;
         let public_key = self.get_public_key()?;
@@ -2339,15 +2351,25 @@ impl Agent {
             }
         };
 
-        // Determine key algorithm (with override support)
+        // Determine key algorithm — rotation ALWAYS resolves to pq2025.
+        // Rotation is the designated Ed25519→PQ migration path for
+        // grandfathered agents; rotating to a non-PQ algorithm is a typed
+        // error and the old keep-current-algorithm fallback is gone.
         let key_algorithm = match algorithm_override {
             Some(algo) => {
-                // Validate the algorithm against the known set
                 match algo {
-                    "ring-Ed25519" | "pq2025" => {}
+                    "pq2025" => {}
+                    "ring-Ed25519" | "ed25519" => {
+                        return Err(format!(
+                            "Key rotation always resolves to pq2025; rotating to '{}' is not \
+                             supported. Ed25519-rooted agents migrate to pq2025 on rotation.",
+                            algo
+                        )
+                        .into());
+                    }
                     other => {
                         return Err(format!(
-                            "Invalid algorithm '{}'. Supported: ring-Ed25519, pq2025",
+                            "Invalid algorithm '{}'. Key rotation always resolves to pq2025.",
                             other
                         )
                         .into());
@@ -2355,7 +2377,7 @@ impl Agent {
                 }
                 algo.to_string()
             }
-            None => old_algorithm.clone(),
+            None => "pq2025".to_string(),
         };
         crate::crypt::ensure_private_key_operation_allowed(&key_algorithm, "key rotation")?;
 
@@ -2410,10 +2432,12 @@ impl Agent {
             self.set_keys(new_private_key, new_public_key.clone(), &key_algorithm)?;
         }
 
-        // Update config's algorithm in memory if override was provided
-        if algorithm_override.is_some()
-            && let Some(ref mut config) = self.config
-        {
+        // Update config's algorithm in memory unconditionally: rotation
+        // always resolves to pq2025 (including no-argument rotation of a
+        // grandfathered Ed25519 agent), so the in-memory config must follow
+        // the new key or post-rotation signing would parse the new key with
+        // the old algorithm.
+        if let Some(ref mut config) = self.config {
             config.set_key_algorithm(key_algorithm.clone())?;
         }
 

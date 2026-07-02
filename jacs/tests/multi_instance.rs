@@ -13,8 +13,11 @@ use std::thread;
 /// and can each sign independently.
 #[test]
 fn test_two_simple_agents_different_configs() {
-    let (agent_a, info_a) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A (ed25519)");
+    // Genuine mixed algorithms need the legacy hatch: public ephemeral
+    // creation is PQ-only (P2 Task 001), so agent A is a grandfathered
+    // Ed25519 fixture and agent B is a normal pq2025 agent.
+    let (agent_a, info_a) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("Failed to create agent A (legacy ed25519)");
     let (agent_b, info_b) =
         SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create agent B (pq2025)");
 
@@ -182,8 +185,9 @@ fn test_cross_verification_strict_returns_error() {
 /// Multiple agents can sign different content types concurrently.
 #[test]
 fn test_concurrent_different_algorithms() {
-    let (agent_ed, _) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create ed25519 agent");
+    // Mixed algorithms: grandfathered Ed25519 fixture + normal pq2025 agent.
+    let (agent_ed, _) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("Failed to create legacy ed25519 agent");
     let (agent_pq, _) =
         SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create pq2025 agent");
 

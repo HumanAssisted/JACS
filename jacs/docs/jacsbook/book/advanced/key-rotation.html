@@ -191,6 +191,23 @@
 <li>Transition to post-quantum cryptography when needed</li>
 <li>Algorithm upgrades without breaking existing signatures</li>
 </ul>
+<h3 id="migrating-ed25519-agents-to-pq2025"><a class="header" href="#migrating-ed25519-agents-to-pq2025">Migrating Ed25519 Agents to pq2025</a></h3>
+<p><strong>Rotation always resolves to <code>pq2025</code></strong> — it is the designated migration path
+for grandfathered Ed25519 agents:</p>
+<pre><code class="language-bash">jacs agent rotate-keys
+</code></pre>
+<ul>
+<li>A grandfathered Ed25519 agent that rotates (with or without an <code>--algorithm</code>
+argument) gets a <code>pq2025</code> root; the config is stamped <code>pq2025</code>; the
+transition proof is signed by the old Ed25519 key, so the migration is
+cryptographically authorized by the previous root.</li>
+<li>Rotating <strong>to</strong> Ed25519 (or any non-PQ algorithm) is a typed error.</li>
+<li>Until it rotates, a grandfathered agent keeps signing with Ed25519 and each
+native signature logs a WARN <code>native_legacy_ed25519_sign</code> so operators can
+track fleet drift.</li>
+<li>Documents signed by the old Ed25519 key remain verifiable after migration
+(see Cross-Algorithm Verification in the Algorithm Selection Guide).</li>
+</ul>
 <h3 id="compliance-requirements"><a class="header" href="#compliance-requirements">Compliance Requirements</a></h3>
 <p>Many security standards require periodic key rotation:</p>
 <ul>

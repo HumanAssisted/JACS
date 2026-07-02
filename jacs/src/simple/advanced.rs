@@ -254,12 +254,19 @@ pub fn rotate_with_mutex(
     })?;
     let old_key_hash = hash_public_key(&old_public_key);
 
-    // Resolve algorithm
+    // Resolve algorithm — rotation ALWAYS resolves to pq2025: it is the
+    // designated Ed25519→PQ migration path. An explicit non-PQ argument is
+    // a typed error, and the old config fallback is gone so a grandfathered
+    // Ed25519 agent's no-argument rotation migrates to PQ instead of
+    // silently re-minting Ed25519.
     let effective_algorithm = match algorithm {
-        Some(algo) => algo.to_string(),
-        None => {
-            let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
-            config.get_key_algorithm()?
+        None | Some("pq2025") => "pq2025".to_string(),
+        Some(other) => {
+            return Err(JacsError::ConfigError(format!(
+                "Key rotation always resolves to pq2025; rotating to '{}' is not supported. \
+                 Ed25519-rooted agents migrate to pq2025 on rotation.",
+                other
+            )));
         }
     };
 
@@ -284,12 +291,11 @@ pub fn rotate_with_mutex(
     };
 
     // 2. Delegate to Agent::rotate_self() (archives keys, generates new, signs, verifies)
-    let (new_version, new_public_key, new_doc) =
-        inner
-            .rotate_self(algorithm)
-            .map_err(|e| JacsError::Internal {
-                message: format!("Key rotation failed: {}", e),
-            })?;
+    let (new_version, new_public_key, new_doc) = inner
+        .rotate_self(Some(effective_algorithm.as_str()))
+        .map_err(|e| JacsError::Internal {
+            message: format!("Key rotation failed: {}", e),
+        })?;
 
     // 2a. Advance journal to keys_rotated
     if let Some(ref mut j) = journal {
@@ -328,10 +334,9 @@ pub fn rotate_with_mutex(
                 obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
             }
 
-            // If algorithm was overridden, update the config field
-            if algorithm.is_some()
-                && let Some(obj) = config_value.as_object_mut()
-            {
+            // Rotation always lands on pq2025 — stamp the config so a
+            // grandfathered Ed25519 agent is fully migrated by rotation.
+            if let Some(obj) = config_value.as_object_mut() {
                 obj.insert(
                     "jacs_agent_key_algorithm".to_string(),
                     json!(effective_algorithm),
@@ -787,18 +792,15 @@ pub fn quickstart(
     // Resolve password from env var, OS keychain, or fail with helpful message.
     let password = crate::crypt::aes_encrypt::resolve_private_key_password(None, None)?;
 
-    // Use create_with_params for full control
-    let algo = match algorithm.unwrap_or("pq2025") {
-        "ed25519" => "ring-Ed25519",
-        "pq2025" => "pq2025",
-        other => other,
-    };
-    crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
+    // Use create_with_params for full control. New agent creation is
+    // PQ-only; Ed25519 requests resolve to pq2025 with a WARN.
+    let algo = crate::simple::core::resolve_new_agent_algorithm(algorithm.unwrap_or(""))?;
+    crate::crypt::ensure_private_key_operation_allowed(&algo, "key generation")?;
 
     let params = CreateAgentParams {
         name: name.to_string(),
         password: password.clone(),
-        algorithm: algo.to_string(),
+        algorithm: algo.clone(),
         config_path: config.to_string(),
         description: description.unwrap_or("").to_string(),
         domain: domain.to_string(),

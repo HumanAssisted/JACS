@@ -7,8 +7,12 @@ use std::fs;
 #[serial]
 fn a2a_trust_warns_that_agent_cards_are_unverified_bookmarks() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
-    let trust_dir = temp_dir.path().join("trust-store");
-    let card_path = temp_dir.path().join("agent-card.json");
+    // Canonicalize: on macOS the tempdir lives under /var -> /private/var (a
+    // symlink), and the hardened trust-store writer refuses symlinked parent
+    // components. The canonical path exercises the same behavior portably.
+    let temp_root = temp_dir.path().canonicalize().expect("canonical tempdir");
+    let trust_dir = temp_root.join("trust-store");
+    let card_path = temp_root.join("agent-card.json");
 
     let card_json = serde_json::json!({
         "name": "bookmark-only-agent",

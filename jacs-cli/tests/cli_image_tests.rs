@@ -160,11 +160,11 @@ fn sign_image_webp_exit_zero() {
 fn sign_image_robust_flag_round_trip() {
     let dir = fresh_tmpdir();
     bootstrap_agent(&dir, "ed25519");
-    // Robust mode embeds the JACS signed-document JSON via LSB. Need a
-    // sufficiently large image — 256x256 RGBA = 65536 pixels = ~32 KiB
-    // theoretical capacity (4 bits per pixel after LSB), enough for the
-    // ~2 KiB JACS signed-document payload.
-    let in_path = write_fixture(&dir, "in.png", &make_png(256, 256));
+    // Robust mode embeds the JACS signed-document JSON via LSB. Capacity is
+    // width*height bits (one LSB per pixel in the target channel): 512x512
+    // gives 32 KiB, needed because the pq2025 default signature payload is
+    // ~10 KiB base64url (256x256 = 8 KiB was enough only for Ed25519).
+    let in_path = write_fixture(&dir, "in.png", &make_png(512, 512));
     let out_path = dir.path().join("out.png");
 
     cmd()
@@ -371,9 +371,9 @@ fn extract_media_signature_raw_payload_prints_base64url() {
 fn extract_media_signature_robust_recovers_lsb_payload() {
     let dir = fresh_tmpdir();
     bootstrap_agent(&dir, "ed25519");
-    // Robust mode needs a sufficiently large image — 256x256 RGBA is enough
-    // for the ~2 KiB JACS signed-document payload.
-    let in_path = write_fixture(&dir, "in.png", &make_png(256, 256));
+    // Robust mode needs a sufficiently large image — 512x512 (32 KiB LSB
+    // capacity) covers the ~10 KiB pq2025 signed-document payload.
+    let in_path = write_fixture(&dir, "in.png", &make_png(512, 512));
     let signed_path = dir.path().join("signed.png");
 
     cmd()

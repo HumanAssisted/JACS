@@ -656,3 +656,57 @@ mod attestation_tracing {
         assert_has_field(ev, "evidence_count");
     }
 }
+
+// =============================================================================
+// P2 Task 001 — grandfathered Ed25519 signing emits the deprecation WARN.
+//
+// New agent creation and all rotations are PQ-only, but an existing
+// Ed25519-rooted agent keeps signing (no silent break for pinned
+// downstream consumers). Every such native signature emits
+// `native_legacy_ed25519_sign` at WARN so operators can watch fleet
+// drift; the fix is rotation, which always migrates to pq2025.
+// =============================================================================
+
+#[test]
+#[serial]
+fn test_grandfathered_ed25519_sign_warns() {
+    let _password = PasswordEnvGuard::set();
+    let _scope = ScopedTempCwd::enter("jacs_structlog_grandfather");
+
+    // Build a grandfathered fixture agent via the legacy/test-only escape
+    // hatch (public creation paths are PQ-only and resolve ed25519 away).
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name("legacy-ed25519-grandfather")
+        .password(TEST_PASSWORD)
+        .algorithm("ring-Ed25519")
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .build();
+    let (agent, info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
+        .expect("legacy fixture agent");
+    assert!(
+        info.algorithm.contains("Ed25519"),
+        "fixture builder must produce a genuine Ed25519 root, got {}",
+        info.algorithm
+    );
+
+    let events = with_captured_logs(|| {
+        let _ = agent
+            .sign_message(&json!({"legacy": true}))
+            .expect("grandfathered Ed25519 sign must still succeed");
+    });
+
+    let warns = events_with_name(&events, "native_legacy_ed25519_sign");
+    assert!(
+        !warns.is_empty(),
+        "grandfathered Ed25519 sign must emit native_legacy_ed25519_sign. All events: {:?}",
+        events.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        warns[0].level,
+        Level::WARN,
+        "native_legacy_ed25519_sign must be WARN, not DEBUG"
+    );
+    assert_has_field(warns[0], "agent_id");
+}

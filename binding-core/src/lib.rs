@@ -1804,12 +1804,12 @@ impl AgentWrapper {
     /// lives entirely in memory. Returns a JSON string with agent info
     /// (agent_id, name, version, algorithm). Default algorithm is `pq2025`.
     pub fn ephemeral(&self, algorithm: Option<&str>) -> BindingResult<String> {
-        // Map user-friendly names to internal algorithm strings
-        let algo = match algorithm.unwrap_or("pq2025") {
-            "ed25519" => "ring-Ed25519",
-            "pq2025" => "pq2025",
-            other => other,
-        };
+        // New agent creation is PQ-only: Ed25519 requests resolve to pq2025
+        // with a WARN, unknown algorithms are a typed error (same policy as
+        // jacs::simple creation paths).
+        let algo = jacs::simple::core::resolve_new_agent_algorithm(algorithm.unwrap_or(""))
+            .map_err(|e| BindingCoreError::invalid_argument(e.to_string()))?;
+        let algo = algo.as_str();
 
         let mut agent = Agent::ephemeral(algo).map_err(|e| {
             BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e))

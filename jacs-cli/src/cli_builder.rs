@@ -149,8 +149,8 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("algorithm")
                                 .long("algorithm")
-                                .value_parser(["ring-Ed25519", "pq2025"])
-                                .help("Signing algorithm for the new keys (defaults to current)"),
+                                .value_parser(["pq2025"])
+                                .help("Signing algorithm for the new keys (rotation always resolves to pq2025; Ed25519-rooted agents migrate to pq2025 on rotation)"),
                         )
                         .arg(
                             Arg::new("config")

@@ -189,7 +189,7 @@ fn sign_image_default_not_robust() {
 fn sign_image_robust_modifies_pixels() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
-    let in_bytes = make_fixture_png(256, 256);
+    let in_bytes = make_fixture_png(512, 512);
     let in_path = write_fixture(&dir, "in.png", &in_bytes);
     let out_path = dir.path().join("out.png");
     sign_image(
@@ -604,8 +604,10 @@ fn extract_media_signature_no_signature_returns_none() {
 fn extract_media_signature_with_robust_recovers_lsb_payload_png() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
-    // 256x256 chosen to match existing robust-mode tests' capacity headroom.
-    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    // 512x512: LSB capacity is width*height bits (32 KiB here) — the pq2025
+    // default signature payload (~10 KiB base64url) needs more than the
+    // 8 KiB a 256x256 image offers.
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(512, 512));
     let out_path = dir.path().join("signed.png");
     sign_image(
         &agent,
@@ -669,7 +671,7 @@ fn extract_media_signature_with_robust_recovers_lsb_payload_png() {
 #[test]
 fn extract_media_signature_with_robust_jpeg_threads_through_to_lsb_scanner() {
     let dir = TempDir::new().unwrap();
-    let unsigned = make_fixture_jpeg(256, 256);
+    let unsigned = make_fixture_jpeg(512, 512);
     // Embed a small LSB payload directly via jacs-media (bypassing the full
     // JACS signature wrapper) so we can deterministically verify that the
     // scan_robust flag reaches the LSB extraction layer.
@@ -762,7 +764,7 @@ fn sign_image_robust_webp_unsupported() {
 fn sign_image_robust_png_round_trip_hash_matches() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
-    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(512, 512));
     let out_path = dir.path().join("out.png");
     sign_image(
         &agent,
@@ -1064,7 +1066,7 @@ fn sign_image_embeds_full_jacs_document_metadata() {
 fn robust_lsb_payload_extracts_to_verifiable_jacs_document() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
-    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(512, 512));
     let out_path = dir.path().join("out.png");
 
     sign_image(
@@ -1350,7 +1352,7 @@ fn sign_image_format_hint_jpeg_alias_is_accepted() {
 fn sign_image_robust_claim_declares_lsb_only_channel() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
-    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(512, 512));
     let out_path = dir.path().join("out.png");
     let _ = sign_image(
         &agent,
@@ -1390,7 +1392,7 @@ fn sign_image_robust_claim_declares_lsb_only_channel() {
 fn verify_image_robust_lsb_corruption_post_sign_rejects() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
-    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(512, 512));
     let out_path = dir.path().join("out.png");
     sign_image(
         &agent,
@@ -1406,7 +1408,7 @@ fn verify_image_robust_lsb_corruption_post_sign_rejects() {
     // Corrupt the LSB payload by re-encoding the image bytes from a brand-new
     // RgbaImage (no LSB payload). This simulates a metadata-strip pipeline that
     // also re-encodes pixels.
-    let stripped = make_fixture_png(256, 256);
+    let stripped = make_fixture_png(512, 512);
     fs::write(&out_path, &stripped).unwrap();
 
     // Verify now fails — either MissingSignature (no LSB payload found at all)
@@ -1437,7 +1439,7 @@ fn sign_image_robust_pixel_hash_diverges_from_content_hash() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();
     // 256x256 RGBA — capacity for full payload.
-    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(512, 512));
     let out_path = dir.path().join("out.png");
     let _ = sign_image(
         &agent,

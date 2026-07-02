@@ -67,10 +67,13 @@ fn assert_same_path(actual: &Value, expected: &Path) {
 // =============================================================================
 
 fn create_ephemeral_wrapper() -> AgentWrapper {
+    // New agent creation is PQ-only (P2 Task 001): the "ed25519" request
+    // resolves to pq2025 with a WARN. The helper keeps the historical call
+    // shape to prove the alias path still succeeds.
     let wrapper = AgentWrapper::new();
     wrapper
         .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed");
+        .expect("ephemeral(ed25519) should succeed (resolved to pq2025)");
     wrapper
 }
 
@@ -218,18 +221,116 @@ fn test_create_agent_pq2025() {
     );
 }
 
+// =============================================================================
+// P2 Task 001 — new agent creation is PQ-only; rotation always resolves to
+// pq2025. Existing Ed25519-rooted agents are grandfathered (load-and-sign),
+// which is covered by jacs/tests/config_signing_integration.rs.
+// =============================================================================
+
 #[test]
-fn test_create_agent_ed25519_alias_succeeds() {
+fn new_public_agent_creation_rejects_ed25519_algorithm_selection() {
+    // "Rejects" = the selection is not honored: an Ed25519 request resolves
+    // to pq2025 (with a WARN) rather than minting a new Ed25519 root.
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
         .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed");
+        .expect("ephemeral(ed25519) resolves instead of erroring");
     let info: Value = serde_json::from_str(&info_json).unwrap();
     assert!(
-        info["algorithm"].as_str().unwrap_or("").contains("Ed25519"),
-        "ed25519 alias should select ring-Ed25519, got: {}",
+        info["algorithm"].as_str().unwrap_or("").contains("pq2025"),
+        "ed25519 request must resolve to pq2025 for NEW agents, got: {}",
         info["algorithm"]
     );
+}
+
+#[test]
+fn new_public_agent_creation_rejects_es256_algorithm_selection() {
+    // ES256 is an ecosystem compatibility key, never a native signing
+    // algorithm — creation requests are a typed error.
+    let wrapper = AgentWrapper::new();
+    for bad in ["es256", "ES256", "ring-ES256"] {
+        let err = wrapper
+            .ephemeral(Some(bad))
+            .expect_err("es256 creation must be rejected");
+        assert!(
+            err.to_string().contains("pq2025"),
+            "error should steer to pq2025, got: {err}"
+        );
+    }
+}
+
+fn create_persistent_wrapper_for_rotation(
+    name: &str,
+) -> (AgentWrapper, tempfile::TempDir, CwdGuard) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+    let config_path = tmp_path.join("jacs.config.json");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name(name)
+        .password("TestP@ss123!#")
+        .data_directory(tmp_path.join("jacs_data").to_str().unwrap())
+        .key_directory(tmp_path.join("jacs_keys").to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .domain("rotation-wall.example.com")
+        .build();
+    let (_agent, _info) =
+        jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
+
+    let guard = CwdGuard::change_to(&tmp_path);
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+    }
+    let wrapper = AgentWrapper::new();
+    wrapper
+        .load_with_info(config_path.to_string_lossy().to_string())
+        .expect("load should succeed");
+    (wrapper, tmp, guard)
+}
+
+#[test]
+#[serial]
+fn rotate_keys_rejects_ed25519_selection() {
+    let (wrapper, _tmp, _guard) = create_persistent_wrapper_for_rotation("rotate-wall-reject");
+    for bad in ["ring-Ed25519", "ed25519"] {
+        let err = wrapper
+            .rotate_keys(Some(bad))
+            .expect_err("rotation to Ed25519 must be a typed error");
+        assert!(
+            err.to_string().contains("pq2025"),
+            "rotation error should steer to pq2025, got: {err}"
+        );
+    }
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+}
+
+#[test]
+#[serial]
+fn rotate_keys_defaults_to_pq2025() {
+    let (wrapper, _tmp, _guard) = create_persistent_wrapper_for_rotation("rotate-wall-default");
+    let result_json = wrapper
+        .rotate_keys(None)
+        .expect("no-argument rotation succeeds and resolves to pq2025");
+    let result: Value = serde_json::from_str(&result_json).expect("rotation result JSON");
+    assert!(
+        result.get("new_version").is_some(),
+        "rotation result should carry new_version"
+    );
+    // The config on disk must be stamped pq2025 after rotation (rotation is
+    // the Ed25519->PQ migration path; it never re-mints from config).
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read config"))
+            .expect("parse config");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("pq2025"),
+        "rotation must stamp the config algorithm to pq2025"
+    );
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
 }
 
 // =============================================================================

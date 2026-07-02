@@ -18,6 +18,26 @@ Cryptographic algorithms evolve. Key rotation enables:
 - Transition to post-quantum cryptography when needed
 - Algorithm upgrades without breaking existing signatures
 
+### Migrating Ed25519 Agents to pq2025
+
+**Rotation always resolves to `pq2025`** — it is the designated migration path
+for grandfathered Ed25519 agents:
+
+```bash
+jacs agent rotate-keys
+```
+
+- A grandfathered Ed25519 agent that rotates (with or without an `--algorithm`
+  argument) gets a `pq2025` root; the config is stamped `pq2025`; the
+  transition proof is signed by the old Ed25519 key, so the migration is
+  cryptographically authorized by the previous root.
+- Rotating **to** Ed25519 (or any non-PQ algorithm) is a typed error.
+- Until it rotates, a grandfathered agent keeps signing with Ed25519 and each
+  native signature logs a WARN `native_legacy_ed25519_sign` so operators can
+  track fleet drift.
+- Documents signed by the old Ed25519 key remain verifiable after migration
+  (see Cross-Algorithm Verification in the Algorithm Selection Guide).
+
 ### Compliance Requirements
 
 Many security standards require periodic key rotation:

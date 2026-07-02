@@ -1002,7 +1002,10 @@ mod tests {
     }
 
     fn make_ed25519_agent() -> SimpleAgent {
-        SimpleAgent::ephemeral(Some("ring-Ed25519"))
+        // Genuine Ed25519 signer for mixed-algorithm coverage: public
+        // ephemeral creation is PQ-only, so use the crate-internal legacy
+        // fixture hatch (grandfathered agents still sign Ed25519).
+        SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
             .expect("ephemeral agent")
             .0
     }

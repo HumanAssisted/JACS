@@ -240,16 +240,18 @@ fn test_create_with_params_refuses_dangling_symlink_config_path() {
 
 #[test]
 #[serial]
-fn test_create_with_params_ed25519() {
+fn test_create_with_params_ed25519_resolves_pq2025() {
+    // P2 Task 001: new agent creation is PQ-only — an ed25519 request
+    // resolves to pq2025 (with a WARN) rather than minting an Ed25519 root.
     let tmp = TempDir::new().unwrap();
     let (agent, info) = persistent_agent_in(&tmp, "ed25519");
     assert!(
-        info.algorithm.contains("ed25519") || info.algorithm.contains("Ed25519"),
-        "algorithm should be ed25519 variant, got: {}",
+        info.algorithm.contains("pq2025"),
+        "new-agent ed25519 request must resolve to pq2025, got: {}",
         info.algorithm
     );
-    let signed = agent.sign_message(&json!({"algo": "ed25519"}));
-    assert!(signed.is_ok(), "ed25519 agent should sign successfully");
+    let signed = agent.sign_message(&json!({"algo": "resolved"}));
+    assert!(signed.is_ok(), "resolved agent should sign successfully");
 }
 
 #[cfg(feature = "pq-tests")]
@@ -381,28 +383,28 @@ fn test_ephemeral_default_algorithm() {
 }
 
 #[test]
-fn test_ephemeral_ed25519() {
+fn test_ephemeral_ed25519_request_resolves_pq2025() {
+    // P2 Task 001: ephemeral creation is PQ-only like every creation path.
     let (agent, info) = ephemeral_ed25519();
     assert!(!info.agent_id.is_empty());
     assert!(
-        info.algorithm.contains("Ed25519") || info.algorithm.contains("ed25519"),
-        "ed25519 ephemeral should use ed25519, got: {}",
+        info.algorithm.contains("pq2025"),
+        "ephemeral ed25519 request must resolve to pq2025, got: {}",
         info.algorithm
     );
-    let signed = agent.sign_message(&json!({"ed25519": true}));
+    let signed = agent.sign_message(&json!({"resolved": true}));
     assert!(signed.is_ok());
 }
 
 #[test]
-fn test_ephemeral_ed25519_signs_and_verifies() {
-    let (agent, info) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
+fn test_ephemeral_ed25519_request_signs_and_verifies() {
+    let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).expect("ed25519 request resolves");
     assert!(
-        info.algorithm.contains("Ed25519"),
-        "ed25519 alias should select ring-Ed25519, got: {}",
+        info.algorithm.contains("pq2025"),
+        "new-agent ed25519 request must resolve to pq2025, got: {}",
         info.algorithm
     );
-    let signed = agent.sign_message(&json!({"curve": "ed25519"})).unwrap();
+    let signed = agent.sign_message(&json!({"curve": "resolved"})).unwrap();
     assert!(agent.verify(&signed.raw).unwrap().valid);
 }
 

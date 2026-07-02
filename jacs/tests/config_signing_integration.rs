@@ -40,7 +40,46 @@ fn create_test_agent(name: &str) -> (SimpleAgent, simple::AgentInfo, tempfile::T
         .config_path("./jacs.config.json")
         .build();
 
-    let (agent, info) = SimpleAgent::create_with_params(params).expect("create test agent");
+    // Build a GRANDFATHERED Ed25519 agent via the legacy/test-only escape
+    // hatch: public creation paths are PQ-only (P2 Task 001), but these
+    // tests exercise pre-P2 agents (old-algorithm proofs, migration on
+    // rotation), so they need a genuine Ed25519 root.
+    let (agent, info) =
+        SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params).expect("create test agent");
+
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "ConfigSignTest!2026");
+        std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
+        std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+        std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+    }
+
+    (agent, info, tmp, guard)
+}
+
+/// Create a pq2025 test agent via the PUBLIC creation path. Used by the
+/// crash-recovery tests, which exercise same-algorithm rotation crashes
+/// (rotation from a grandfathered Ed25519 agent is a cross-algorithm
+/// migration; crash recovery across a migration is a separate concern).
+fn create_pq_test_agent(
+    name: &str,
+) -> (SimpleAgent, simple::AgentInfo, tempfile::TempDir, CwdGuard) {
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+    std::env::set_current_dir(&tmp_root).expect("cd to temp dir");
+    let guard = CwdGuard { saved: saved_cwd };
+
+    let params = CreateAgentParams::builder()
+        .name(name)
+        .password("ConfigSignTest!2026")
+        .description("PQ test agent for crash recovery")
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .build();
+
+    let (agent, info) = SimpleAgent::create_with_params(params).expect("create pq test agent");
 
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "ConfigSignTest!2026");
@@ -370,23 +409,153 @@ fn test_cross_algorithm_rotation_ed25519_to_pq2025() {
     );
 }
 
-/// Same-algorithm rotation preserves the config field.
+/// P2 Task 001: rotation is the Ed25519->PQ migration path. A grandfathered
+/// Ed25519 agent that rotates with NO argument migrates to pq2025 — rotation
+/// never re-mints Ed25519 from config (the old config fallback is gone).
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn test_same_algorithm_rotation_preserves_config_field() {
+fn grandfathered_agent_rotation_migrates_to_pq2025() {
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
-    let (agent, _info, _tmp, _guard) = create_test_agent("same-algo-test");
+    let (agent, _info, _tmp, _guard) = create_test_agent("grandfather-migrate-test");
 
-    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
+    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
+    // Config on disk is stamped pq2025 — the agent is fully migrated.
     let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
     let config: Value = serde_json::from_str(&config_str).expect("parse config");
     assert_eq!(
         config["jacs_agent_key_algorithm"].as_str(),
-        Some("ring-Ed25519"),
-        "Config algorithm should remain Ed25519 after same-algo rotation"
+        Some("pq2025"),
+        "No-argument rotation of a grandfathered Ed25519 agent must migrate to pq2025"
     );
+
+    // The transition proof is signed with the OLD (Ed25519) key — the
+    // grandfathered root authorizes its own migration.
+    let proof: Value =
+        serde_json::from_str(result.transition_proof.as_ref().expect("proof present"))
+            .expect("parse proof");
+    assert_eq!(
+        proof["signingAlgorithm"].as_str(),
+        Some("ring-Ed25519"),
+        "Transition proof must be signed by the old Ed25519 key"
+    );
+
+    // And the migrated agent signs + verifies with pq2025.
+    let signed = agent
+        .sign_message(&serde_json::json!({"migrated": true}))
+        .expect("sign after migration");
+    let signed_value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+    assert_eq!(
+        signed_value["jacsSignature"]["signingAlgorithm"].as_str(),
+        Some("pq2025"),
+        "post-migration signatures must be pq2025"
+    );
+    let verification = agent.verify(&signed.raw).expect("verify");
+    assert!(verification.valid, "{:?}", verification.errors);
+}
+
+/// P2 Task 001: a grandfathered Ed25519 agent keeps signing (load-and-sign
+/// is grandfathered; only creation and rotation are PQ-only).
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn existing_ed25519_agent_still_signs_grandfathered() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("grandfather-sign-test");
+
+    let signed = agent
+        .sign_message(&serde_json::json!({"grandfathered": true}))
+        .expect("grandfathered Ed25519 sign must succeed");
+    let signed_value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+    assert_eq!(
+        signed_value["jacsSignature"]["signingAlgorithm"].as_str(),
+        Some("ring-Ed25519"),
+        "grandfathered agent signs with its existing Ed25519 root"
+    );
+    let verification = agent.verify(&signed.raw).expect("verify");
+    assert!(verification.valid, "{:?}", verification.errors);
+
+    // Reload from disk and sign again — grandfathering survives load.
+    let reloaded =
+        SimpleAgent::load(Some("./jacs.config.json"), None).expect("grandfathered agent loads");
+    let signed2 = reloaded
+        .sign_message(&serde_json::json!({"grandfathered": "after reload"}))
+        .expect("grandfathered sign after reload");
+    let signed2_value: Value = serde_json::from_str(&signed2.raw).expect("signed JSON");
+    assert_eq!(
+        signed2_value["jacsSignature"]["signingAlgorithm"].as_str(),
+        Some("ring-Ed25519")
+    );
+}
+
+/// P2 Task 001 / FR1: a config requesting ring-Ed25519 for a NEW agent does
+/// not mint an Ed25519 root — public creation resolves to pq2025 (+ WARN).
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn config_ed25519_does_not_create_new_ed25519_signing_agent() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    std::env::set_current_dir(tmp.path().canonicalize().expect("canonical")).expect("cd");
+    let _guard = CwdGuard { saved: saved_cwd };
+
+    let params = CreateAgentParams::builder()
+        .name("new-agent-ed25519-request")
+        .password("ConfigSignTest!2026")
+        .algorithm("ring-Ed25519")
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .build();
+    let (_agent, info) =
+        SimpleAgent::create_with_params(params).expect("creation resolves, does not error");
+    assert!(
+        info.algorithm.contains("pq2025"),
+        "new-agent Ed25519 request must resolve to pq2025, got {}",
+        info.algorithm
+    );
+
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read"))
+            .expect("parse");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("pq2025"),
+        "config written for a NEW agent must record pq2025"
+    );
+}
+
+/// P2 Task 001 / NG1: ES256 is never a native signing option — a creation
+/// request for it is a typed error, not a late keygen failure.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn config_es256_does_not_create_new_native_signing_agent() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    std::env::set_current_dir(tmp.path().canonicalize().expect("canonical")).expect("cd");
+    let _guard = CwdGuard { saved: saved_cwd };
+
+    for bad in ["es256", "ES256", "ring-ES256"] {
+        let params = CreateAgentParams::builder()
+            .name("new-agent-es256-request")
+            .password("ConfigSignTest!2026")
+            .algorithm(bad)
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .build();
+        let err = SimpleAgent::create_with_params(params)
+            .err()
+            .unwrap_or_else(|| panic!("'{bad}' must be rejected for new agents"));
+        assert!(
+            err.to_string().contains("pq2025"),
+            "error should steer to pq2025, got: {err}"
+        );
+    }
 }
 
 /// Crash recovery: simulate crash after rotation, verify auto-repair on reload.
@@ -398,7 +567,7 @@ fn test_crash_recovery_full_flow() {
 
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
-    let (agent, info, _tmp, _guard) = create_test_agent("crash-recovery-test");
+    let (agent, info, _tmp, _guard) = create_pq_test_agent("crash-recovery-test");
     let old_public_key = agent.get_public_key().expect("get old public key");
     let old_key_hash = hash_public_key(&old_public_key);
 
@@ -418,7 +587,7 @@ fn test_crash_recovery_full_flow() {
         &info.agent_id,
         &info.version,
         &old_key_hash,
-        "ring-Ed25519",
+        "pq2025",
         "./jacs.config.json",
     )
     .expect("create journal");
@@ -696,7 +865,7 @@ fn test_crash_recovery_updates_id_and_version() {
 
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
-    let (agent, info, _tmp, _guard) = create_test_agent("recovery-id-version-test");
+    let (agent, info, _tmp, _guard) = create_pq_test_agent("recovery-id-version-test");
     let old_public_key = agent.get_public_key().expect("get old public key");
     let old_key_hash = hash_public_key(&old_public_key);
 
@@ -716,7 +885,7 @@ fn test_crash_recovery_updates_id_and_version() {
         &info.agent_id,
         &info.version,
         &old_key_hash,
-        "ring-Ed25519",
+        "pq2025",
         "./jacs.config.json",
     )
     .expect("create journal");

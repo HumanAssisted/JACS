@@ -24,7 +24,10 @@ fn write_temp_file(contents: &str) -> (TempDir, PathBuf) {
 }
 
 fn ephemeral_ed25519() -> SimpleAgent {
-    SimpleAgent::ephemeral(Some("ed25519"))
+    // Genuine Ed25519 signer for fixture/mixed-algorithm coverage: public
+    // ephemeral creation is PQ-only (P2 Task 001), so use the doc-hidden
+    // legacy hatch (grandfathered agents still sign Ed25519).
+    SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
         .expect("ephemeral ed25519")
         .0
 }

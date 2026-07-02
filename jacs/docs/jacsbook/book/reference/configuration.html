@@ -476,7 +476,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <ul>
 <li><code>jacs_data_directory</code> - Where agent/document data is stored (default: <code>./jacs_data</code>)</li>
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
-<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>pq2025</code>)</li>
+<li><code>jacs_agent_key_algorithm</code> - The agent's signing algorithm (default: <code>pq2025</code>). This field records the algorithm of an existing agent's keys; it is <strong>not</strong> a selector for new agents — new agent creation is always <code>pq2025</code> (a config requesting <code>ring-Ed25519</code> for a new agent logs a WARN and resolves to <code>pq2025</code>), and key rotation always stamps this field to <code>pq2025</code>. <code>ring-Ed25519</code> appears here only for grandfathered pre-existing agents.</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
 <li><code>jacs_keychain_backend</code> - OS keychain backend for password storage (default: <code>"auto"</code>). See below.</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>

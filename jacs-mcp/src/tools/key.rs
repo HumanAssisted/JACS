@@ -45,9 +45,9 @@ pub struct ReencryptKeyResult {
 /// Parameters for rotating the agent's cryptographic keys.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RotateKeysParams {
-    /// Signing algorithm for the new keys. If omitted, keeps the current algorithm.
+    /// Signing algorithm for the new keys. Rotation always resolves to pq2025.
     #[schemars(
-        description = "Signing algorithm for the new keys (ring-Ed25519, pq2025). If omitted, keeps the current algorithm."
+        description = "Signing algorithm for the new keys. Rotation always resolves to pq2025 (omit or pass pq2025); Ed25519-rooted agents migrate to pq2025 on rotation."
     )]
     pub algorithm: Option<String>,
 }

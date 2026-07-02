@@ -338,15 +338,22 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_agent_get_public_key_pem_for_ed25519() {
-        assert_public_key_pem_for_algorithm("ed25519", "ring-Ed25519");
+    fn test_simple_agent_get_public_key_pem_for_ed25519_request_resolves_pq2025() {
+        // P2 Task 001: new agent creation is PQ-only — an ed25519 request
+        // resolves to pq2025 (grandfathered Ed25519 agents are pre-existing
+        // on-disk agents, not new ephemerals).
+        assert_public_key_pem_for_algorithm("ed25519", "pq2025");
     }
 
     #[test]
-    fn test_simple_agent_ed25519_ephemeral_signs() {
+    fn test_simple_agent_ed25519_request_resolves_pq2025_and_signs() {
         let (agent, info) =
-            SimpleAgent::ephemeral(Some("ed25519")).expect("Ed25519 ephemeral should be supported");
-        assert!(info.algorithm.contains("Ed25519"));
+            SimpleAgent::ephemeral(Some("ed25519")).expect("ed25519 request resolves");
+        assert!(
+            info.algorithm.contains("pq2025"),
+            "new-agent ed25519 request must resolve to pq2025, got {}",
+            info.algorithm
+        );
         let signed = agent
             .sign_message(&serde_json::json!({"ok": true}))
             .unwrap();

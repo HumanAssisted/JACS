@@ -130,3 +130,51 @@ fn embedded_resolver_implements_retrieve_trait() {
         .expect("retrieve resolves known schema");
     assert!(v.is_object());
 }
+
+// =========================================================================
+// P2 Task 001 — the native algorithm schema wall.
+//
+// The `signingAlgorithm` enum is the crypto-level guard that keeps
+// ecosystem algorithms (ES256) out of native `jacsSignature` objects. It
+// must stay exactly `ring-Ed25519 | pq2025`, and it must stay OPTIONAL so
+// legacy documents that omit it still validate.
+// =========================================================================
+
+#[test]
+fn signature_schema_enum_stays_ring_ed25519_and_pq2025() {
+    let body = DEFAULT_SCHEMA_STRINGS
+        .get("schemas/components/signature/v1/signature.schema.json")
+        .copied()
+        .expect("signature schema embedded");
+    let schema: serde_json::Value = serde_json::from_str(body).expect("schema parses");
+
+    let enum_vals: Vec<&str> = schema["properties"]["signingAlgorithm"]["enum"]
+        .as_array()
+        .expect("signingAlgorithm must have an enum")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(
+        enum_vals,
+        vec!["ring-Ed25519", "pq2025"],
+        "native signingAlgorithm enum is the PQ wall — it must stay exactly \
+         ring-Ed25519|pq2025; ecosystem algorithms (ES256) are never valid here"
+    );
+
+    let required: Vec<&str> = schema["required"]
+        .as_array()
+        .expect("required array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert!(
+        !required.contains(&"signingAlgorithm"),
+        "signingAlgorithm stays OPTIONAL so legacy documents without it still validate"
+    );
+
+    assert_eq!(
+        schema["additionalProperties"],
+        serde_json::json!(false),
+        "signature schema must keep additionalProperties:false"
+    );
+}

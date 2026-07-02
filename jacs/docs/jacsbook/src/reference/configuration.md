@@ -370,7 +370,7 @@ All other JACS settings are **configuration file fields** that have sensible def
 
 - `jacs_data_directory` - Where agent/document data is stored (default: `./jacs_data`)
 - `jacs_key_directory` - Where cryptographic keys are stored (default: `./jacs_keys`)
-- `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `pq2025`)
+- `jacs_agent_key_algorithm` - The agent's signing algorithm (default: `pq2025`). This field records the algorithm of an existing agent's keys; it is **not** a selector for new agents — new agent creation is always `pq2025` (a config requesting `ring-Ed25519` for a new agent logs a WARN and resolves to `pq2025`), and key rotation always stamps this field to `pq2025`. `ring-Ed25519` appears here only for grandfathered pre-existing agents.
 - `jacs_default_storage` - Storage backend (default: `fs`)
 - `jacs_keychain_backend` - OS keychain backend for password storage (default: `"auto"`). See below.
 - `jacs_use_security` / `JACS_ENABLE_FILESYSTEM_QUARANTINE` - Enable filesystem quarantine of executable files (default: `false`). The env var `JACS_USE_SECURITY` is deprecated; use `JACS_ENABLE_FILESYSTEM_QUARANTINE` instead.

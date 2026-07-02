@@ -8811,6 +8811,23 @@ jacs verify --agent your-agent-id:version
 <li>Transition to post-quantum cryptography when needed</li>
 <li>Algorithm upgrades without breaking existing signatures</li>
 </ul>
+<h3 id="migrating-ed25519-agents-to-pq2025"><a class="header" href="#migrating-ed25519-agents-to-pq2025">Migrating Ed25519 Agents to pq2025</a></h3>
+<p><strong>Rotation always resolves to <code>pq2025</code></strong> — it is the designated migration path
+for grandfathered Ed25519 agents:</p>
+<pre><code class="language-bash">jacs agent rotate-keys
+</code></pre>
+<ul>
+<li>A grandfathered Ed25519 agent that rotates (with or without an <code>--algorithm</code>
+argument) gets a <code>pq2025</code> root; the config is stamped <code>pq2025</code>; the
+transition proof is signed by the old Ed25519 key, so the migration is
+cryptographically authorized by the previous root.</li>
+<li>Rotating <strong>to</strong> Ed25519 (or any non-PQ algorithm) is a typed error.</li>
+<li>Until it rotates, a grandfathered agent keeps signing with Ed25519 and each
+native signature logs a WARN <code>native_legacy_ed25519_sign</code> so operators can
+track fleet drift.</li>
+<li>Documents signed by the old Ed25519 key remain verifiable after migration
+(see Cross-Algorithm Verification in the Algorithm Selection Guide).</li>
+</ul>
 <h3 id="compliance-requirements"><a class="header" href="#compliance-requirements">Compliance Requirements</a></h3>
 <p>Many security standards require periodic key rotation:</p>
 <ul>
@@ -9352,20 +9369,23 @@ new_agent = agent.update_agent(json.dumps({
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="algorithm-selection-guide-1"><a class="header" href="#algorithm-selection-guide-1">Algorithm Selection Guide</a></h1>
 <p>Choosing the right signing algorithm affects key size, signature size, verification speed, and compliance posture. This guide helps you pick the right one.</p>
+<h2 id="new-agents-are-pq-only"><a class="header" href="#new-agents-are-pq-only">New Agents Are PQ-Only</a></h2>
+<p><strong>New agent creation always uses <code>pq2025</code> (ML-DSA-87 / FIPS-204).</strong> There is no
+algorithm choice at creation time: a request for Ed25519 (via config or an
+explicit parameter) resolves to <code>pq2025</code> and logs a WARN; ES256 or any other
+algorithm is a typed error. ES256 exists in JACS only as an ecosystem
+compatibility key, never as a native <code>jacsSignature</code> algorithm.</p>
+<p>Existing Ed25519-rooted agents are <strong>grandfathered</strong>: they continue to load,
+sign (each native signature logs a WARN <code>native_legacy_ed25519_sign</code>), and
+verify. All key rotations resolve to <code>pq2025</code>, so a grandfathered agent
+migrates to post-quantum keys the first time it rotates — see
+<a href="advanced/key-rotation.html">Key Rotation</a>.</p>
 <h2 id="supported-algorithms-2"><a class="header" href="#supported-algorithms-2">Supported Algorithms</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Public Key</th><th>Signature</th><th>Best For</th></tr></thead><tbody>
-<tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>32 bytes</td><td>64 bytes</td><td>Speed, small signatures</td></tr>
-<tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Post-quantum compliance (FIPS-204)</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Public Key</th><th>Signature</th><th>Status</th></tr></thead><tbody>
+<tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Default and only algorithm for new agents (FIPS-204)</td></tr>
+<tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>32 bytes</td><td>64 bytes</td><td>Legacy: verify always; sign only for grandfathered pre-existing agents</td></tr>
 </tbody></table>
 </div>
-<h2 id="how-to-choose"><a class="header" href="#how-to-choose">How to Choose</a></h2>
-<pre><code>Do you need FIPS/NIST post-quantum compliance?
-  ├── Yes → pq2025
-  └── No
-       └── Need a compact classical algorithm for new keys? → ring-Ed25519
-</code></pre>
-<p><strong>Default recommendation for new projects: <code>pq2025</code></strong></p>
-<p>Ed25519 is well-understood and widely deployed, but it is not quantum-resistant. If you don't have a specific reason to stay classical, start with <code>pq2025</code> so you don't have to migrate later.</p>
 <h2 id="when-to-choose-post-quantum"><a class="header" href="#when-to-choose-post-quantum">When to Choose Post-Quantum</a></h2>
 <p>Choose <code>pq2025</code> (ML-DSA-87, FIPS-204) when:</p>
 <ul>
@@ -16115,7 +16135,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <ul>
 <li><code>jacs_data_directory</code> - Where agent/document data is stored (default: <code>./jacs_data</code>)</li>
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
-<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>pq2025</code>)</li>
+<li><code>jacs_agent_key_algorithm</code> - The agent's signing algorithm (default: <code>pq2025</code>). This field records the algorithm of an existing agent's keys; it is <strong>not</strong> a selector for new agents — new agent creation is always <code>pq2025</code> (a config requesting <code>ring-Ed25519</code> for a new agent logs a WARN and resolves to <code>pq2025</code>), and key rotation always stamps this field to <code>pq2025</code>. <code>ring-Ed25519</code> appears here only for grandfathered pre-existing agents.</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
 <li><code>jacs_keychain_backend</code> - OS keychain backend for password storage (default: <code>"auto"</code>). See below.</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>

@@ -19,6 +19,35 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tracing::{debug, info, warn};
 
+/// Resolve the signing algorithm for a NEW agent: new creation is PQ-only.
+///
+/// Ed25519 requests are honored as `pq2025` with a WARN — existing
+/// Ed25519-rooted agents are unaffected (grandfathered): they continue to
+/// load and sign (see the `native_legacy_ed25519_sign` event) until they
+/// rotate, and rotation always migrates them to `pq2025`. Unknown
+/// algorithms are a typed error.
+///
+/// Public so binding layers (`jacs-binding-core`) apply the identical
+/// policy on their own creation paths.
+pub fn resolve_new_agent_algorithm(requested: &str) -> Result<String, JacsError> {
+    match requested {
+        "" | "pq2025" => Ok("pq2025".to_string()),
+        "ed25519" | "ring-Ed25519" => {
+            warn!(
+                event = "native_non_pq_sign_rejected",
+                requested_algorithm = requested,
+                "New agent creation is PQ-only; requested Ed25519 resolved to pq2025. \
+                 Existing Ed25519-rooted agents remain grandfathered until rotation."
+            );
+            Ok("pq2025".to_string())
+        }
+        other => Err(JacsError::ConfigError(format!(
+            "Unsupported algorithm '{}' for new agent creation. New agents use pq2025.",
+            other
+        ))),
+    }
+}
+
 use super::types::*;
 
 // =============================================================================
@@ -456,6 +485,26 @@ impl SimpleAgent {
     /// ```
     #[must_use = "agent creation result must be checked for errors"]
     pub fn create_with_params(params: CreateAgentParams) -> Result<(Self, AgentInfo), JacsError> {
+        Self::create_with_params_inner(params, false)
+    }
+
+    /// LEGACY / TEST-ONLY: create an Ed25519-rooted agent for building
+    /// grandfathered fixtures (pre-P2 agents). New agent creation through
+    /// every supported public path is PQ-only (`pq2025`); this escape hatch
+    /// exists solely so integration tests can exercise the grandfathered
+    /// load-and-sign and rotation-migration paths. Not part of the supported
+    /// API and never exposed through bindings/CLI/MCP.
+    #[doc(hidden)]
+    pub fn create_legacy_ed25519_agent_for_fixtures(
+        params: CreateAgentParams,
+    ) -> Result<(Self, AgentInfo), JacsError> {
+        Self::create_with_params_inner(params, true)
+    }
+
+    fn create_with_params_inner(
+        params: CreateAgentParams,
+        allow_legacy_ed25519: bool,
+    ) -> Result<(Self, AgentInfo), JacsError> {
         use crate::keystore::KeyPaths;
         use crate::storage::jenv;
 
@@ -488,15 +537,19 @@ impl SimpleAgent {
             }
         };
 
-        let algorithm = if params.algorithm.is_empty() {
-            "pq2025".to_string()
-        } else {
-            // Normalize user-friendly algorithm names to internal names,
-            // matching ephemeral() and quickstart() behaviour.
+        let algorithm = if allow_legacy_ed25519 {
+            // Fixture-only path (see create_legacy_ed25519_agent_for_fixtures).
             match params.algorithm.as_str() {
-                "ed25519" => "ring-Ed25519".to_string(),
-                other => other.to_string(),
+                "" | "ed25519" | "ring-Ed25519" => "ring-Ed25519".to_string(),
+                other => {
+                    return Err(JacsError::ConfigError(format!(
+                        "legacy fixture builder only supports Ed25519, got '{}'",
+                        other
+                    )));
+                }
             }
+        } else {
+            resolve_new_agent_algorithm(&params.algorithm)?
         };
         crate::crypt::ensure_private_key_operation_allowed(&algorithm, "key generation")?;
 
@@ -945,12 +998,23 @@ impl SimpleAgent {
     /// ```
     #[must_use = "ephemeral agent result must be checked for errors"]
     pub fn ephemeral(algorithm: Option<&str>) -> Result<(Self, AgentInfo), JacsError> {
-        // Map user-friendly names to internal algorithm strings
-        let algo = match algorithm.unwrap_or("pq2025") {
-            "ed25519" => "ring-Ed25519",
-            "pq2025" => "pq2025",
-            other => other,
-        };
+        // New agent creation is PQ-only: Ed25519 requests resolve to pq2025
+        // with a WARN, unknown algorithms are a typed error.
+        let algo = resolve_new_agent_algorithm(algorithm.unwrap_or(""))?;
+        Self::ephemeral_with_algo(&algo)
+    }
+
+    /// LEGACY / TEST-ONLY: build a genuine Ed25519 ephemeral agent for
+    /// grandfathered-agent and mixed-algorithm coverage. Public ephemeral
+    /// creation is PQ-only; this hatch skips the resolver. `#[doc(hidden)]`
+    /// like `create_legacy_ed25519_agent_for_fixtures` — not part of the
+    /// supported API and never exposed through bindings/CLI/MCP.
+    #[doc(hidden)]
+    pub fn ephemeral_legacy_ed25519_for_fixtures() -> Result<(Self, AgentInfo), JacsError> {
+        Self::ephemeral_with_algo("ring-Ed25519")
+    }
+
+    fn ephemeral_with_algo(algo: &str) -> Result<(Self, AgentInfo), JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
 
         let mut agent = Agent::ephemeral(algo).map_err(|e| JacsError::Internal {
