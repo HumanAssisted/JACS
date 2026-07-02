@@ -338,3 +338,30 @@ fn compatibility_key_binding_schema_rejects_unknown_scope_and_algorithms() {
         "ES256 can never be the ROOT algorithm — the wall holds inside the binding too"
     );
 }
+
+// =========================================================================
+// Persistence: the binding is a disk artifact — content-scope grants must
+// survive a process restart (fresh SimpleAgent::load from the config).
+// =========================================================================
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn binding_with_content_scopes_survives_agent_reload() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-reload");
+
+    agent
+        .issue_compat_binding(Some(&["jwks", "did", "ap2-mandate", "agreement-vc"]), None)
+        .expect("issue content binding");
+    drop(agent);
+
+    // A "new process": reload from the persisted config and re-verify
+    // the binding against the reloaded agent's root.
+    let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None).expect("reload from disk");
+    let (doc, scopes) = reloaded
+        .compat_binding()
+        .expect("binding re-verifies after reload");
+    assert_eq!(doc["jacsType"], "compatibilityKeyBinding");
+    assert!(scopes.iter().any(|s| s == "ap2-mandate"));
+    assert!(scopes.iter().any(|s| s == "agreement-vc"));
+}

@@ -323,3 +323,86 @@ fn agreement_vc_verified_by_independent_di_vector() {
         .export_agreement_v2_as_vc(&agreement)
         .expect_err("JACS export authorization requires the binding");
 }
+
+/// Adversarial: tampering the embedded agreement inside
+/// `credentialSubject` AFTER export must fail the independent DI
+/// reconstruction — the proof pins the exact credential bytes.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn agreement_vc_tampered_credential_subject_fails_verification() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("vc-subject-tamper");
+    grant_agreement_vc_scope(&agent);
+    let agreement = sample_agreement(&agent);
+
+    let export = agent
+        .export_agreement_v2_as_vc(&agreement)
+        .expect("export vc");
+    let vc = export["vc"].clone();
+    let proof = vc["proof"].clone();
+    let public_pem =
+        std::fs::read_to_string("./jacs_keys/jacs.ecosystem.public.pem").expect("public pem");
+    let sig = bs58::decode(
+        proof["proofValue"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches('z'),
+    )
+    .into_vec()
+    .expect("proofValue decodes");
+
+    // hashData = SHA-256(JCS(proof sans proofValue)) || SHA-256(JCS(doc
+    // sans proof)) for any candidate document.
+    let hash_data_for = |document: &Value| {
+        let mut unsecured = document.clone();
+        unsecured.as_object_mut().unwrap().remove("proof");
+        let mut config = proof.clone();
+        config.as_object_mut().unwrap().remove("proofValue");
+        let mut hash_data = Vec::with_capacity(64);
+        hash_data.extend_from_slice(&Sha256::digest(
+            jacs::protocol::canonicalize_json(&config).as_bytes(),
+        ));
+        hash_data.extend_from_slice(&Sha256::digest(
+            jacs::protocol::canonicalize_json(&unsecured).as_bytes(),
+        ));
+        hash_data
+    };
+
+    // Baseline: the untampered VC verifies — so the negative check
+    // below cannot pass vacuously on a bad reconstruction.
+    jacs::crypt::es256::verify_es256_jose(&public_pem, &hash_data_for(&vc), &sig)
+        .expect("baseline DI verification");
+
+    // Swap the embedded agreement's identity: the SAME proof must fail.
+    let mut tampered = vc.clone();
+    tampered["credentialSubject"]["jacsAgreementV2"]["jacsId"] =
+        json!("00000000-0000-4000-8000-000000000000");
+    assert!(
+        jacs::crypt::es256::verify_es256_jose(&public_pem, &hash_data_for(&tampered), &sig)
+            .is_err(),
+        "tampered credentialSubject must fail DI verification"
+    );
+}
+
+/// An EXPIRED binding denies the content export even when the
+/// `agreement-vc` scope was granted — expiry gates content exports,
+/// not just identity exports.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn agreement_vc_denied_when_binding_expired() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("vc-expired-binding");
+    let agreement = sample_agreement(&agent);
+
+    agent
+        .issue_compat_binding(
+            Some(&["jwks", "did", "agreement-vc"]),
+            Some("2020-01-01T00:00:00Z"),
+        )
+        .expect("issue expired binding with content scope");
+
+    let err = agent
+        .export_agreement_v2_as_vc(&agreement)
+        .expect_err("expired binding must deny the content export");
+    assert!(err.to_string().contains("expired"), "got: {err}");
+}

@@ -1975,6 +1975,54 @@ impl JacsSimpleAgent {
         self.inner.rotate_keys(algorithm.as_deref()).to_napi()
     }
 
+    /// Add the ES256 `ecosystem_signing` compatibility key to an EXISTING
+    /// agent (P2 Task 002). Errors if the key already exists or the agent
+    /// is ephemeral. Returns a JSON string of the CompatKeyInfo.
+    #[napi(js_name = "addCompatKey")]
+    pub fn add_compat_key(&self) -> Result<String> {
+        self.inner.add_compat_key_json().to_napi()
+    }
+
+    // =========================================================================
+    // ES256 compatibility exports (P2 Task 004 / 004b)
+    // =========================================================================
+
+    /// Export the agent's compatibility JWKS (ES256 public key only — PQ
+    /// material is never published here). Auto-issues the default identity
+    /// binding on first use. Returns a JSON string of the JWKS.
+    #[napi(js_name = "exportCompatibilityJwks")]
+    pub fn export_compatibility_jwks(&self) -> Result<String> {
+        self.inner.export_compatibility_jwks_json().to_napi()
+    }
+
+    /// Export the current (verified) PQ-root-signed compatibility key
+    /// binding document, so relying parties can trace the ES256 key back
+    /// to the post-quantum root. Returns a JSON string of the binding.
+    #[napi(js_name = "exportCompatibilityKeyBinding")]
+    pub fn export_compatibility_key_binding(&self) -> Result<String> {
+        self.inner.export_compatibility_key_binding_json().to_napi()
+    }
+
+    /// Export the AP2 merchant-authorization mandate for a UCP checkout as
+    /// a detached ES256 JWS (P2 Task 004b). Gated by the explicit
+    /// `ap2-mandate` binding scope (content exports never auto-issue a
+    /// binding). Returns a JSON string of the mandate export.
+    #[napi(js_name = "exportAp2Mandate")]
+    pub fn export_ap2_mandate(&self, checkout_json: String) -> Result<String> {
+        self.inner.export_ap2_mandate_json(&checkout_json).to_napi()
+    }
+
+    /// Export an Agreement-v2 JSON document as a Verifiable Credential
+    /// with an `ecdsa-jcs-2019` Data Integrity proof (P2 Task 004c).
+    /// Gated by the explicit `agreement-vc` binding scope.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "exportAgreementV2AsVc")]
+    pub fn export_agreement_v2_as_vc(&self, agreement_json: String) -> Result<String> {
+        self.inner
+            .export_agreement_v2_as_vc_json(&agreement_json)
+            .to_napi()
+    }
+
     // =========================================================================
     // Inline text + media signing (Task 11 — PRD §3.1, §3.2, §4.1, §4.2).
     // =========================================================================
@@ -2219,6 +2267,23 @@ impl JacsSimpleAgent {
             .extract_media_signature_json(&file_path, &opts_json)
             .to_napi()?;
         parse_extract_media_envelope(&envelope).map_err(to_napi_err)
+    }
+}
+
+// =============================================================================
+// A2A export on JacsSimpleAgent (feature-gated, separate impl block)
+// =============================================================================
+// In a separate `impl` block so the #[napi] macro only generates registration
+// code when the a2a feature is enabled (it is NOT in the default Node build).
+
+#[cfg(feature = "a2a")]
+#[napi]
+impl JacsSimpleAgent {
+    /// Export the A2A agent card signed with the ES256 compatibility key
+    /// (P2 Task 004-B).
+    #[napi(js_name = "exportA2aAgentCard")]
+    pub fn export_a2a_agent_card(&self) -> Result<String> {
+        self.inner.export_a2a_agent_card_json().to_napi()
     }
 }
 

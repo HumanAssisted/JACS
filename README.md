@@ -24,6 +24,7 @@ JACS signs canonical JSON and common artifact formats, then lets Rust, Python, N
 | **Artifact provenance** | Sign files, Markdown/text, images, and Rust email payloads so consumers can detect tampering and identify the signer. |
 | **Agreement v2** | Create standalone signed agreement documents with terms, parties, transcript evidence, notary support, branch handling, and portable verification. |
 | **Local trust** | Verify other agents with local keys, DNS anchors, and explicit trust policies (`open`, `verified`, `strict`). |
+| **Ecosystem compatibility** | Optional ES256 key bound to the post-quantum root. Export JWKS, key bindings, AP2 mandates, A2A agent cards, and Agreement v2 credentials via CLI and bindings; native signing stays `pq2025`. |
 | **Developer integration** | Use the CLI, built-in MCP server, Rust crate, Python package, Node package, or Go bindings. |
 
 ## Quick start

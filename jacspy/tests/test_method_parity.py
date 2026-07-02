@@ -93,6 +93,23 @@ PYTHON_NAME_MAP = {
     "detect_agreement_v2_branch_conflict_json": "detect_agreement_v2_branch_conflict",
     "merge_agreement_v2_transcript_branches_json": "merge_agreement_v2_transcript_branches",
     "resolve_agreement_v2_branch_conflict_json": "resolve_agreement_v2_branch_conflict",
+    # ES256 compatibility key + ecosystem exports (P2 Tasks 002 / 004).
+    "add_compat_key_json": "add_compat_key",
+    "export_compatibility_jwks_json": "export_compatibility_jwks",
+    "export_compatibility_key_binding_json": "export_compatibility_key_binding",
+    "export_ap2_mandate_json": "export_ap2_mandate",
+    "export_a2a_agent_card_json": "export_a2a_agent_card",
+    "export_agreement_v2_as_vc_json": "export_agreement_v2_as_vc",
+}
+
+# Feature-gated fixture groups are only present on SimpleAgent when the
+# native extension was compiled with the matching cargo feature. The default
+# maturin build (see pyproject.toml [tool.maturin] features) enables
+# `agreements` but not `a2a`. Detect each feature via a pre-existing gated
+# method so the presence check for NEW gated methods stays meaningful.
+FEATURE_BUILT = {
+    "a2a": hasattr(jacs.JacsAgent, "export_agent_card"),
+    "agreements": hasattr(SimpleAgent, "create_agreement_v2"),
 }
 
 
@@ -115,9 +132,19 @@ def parity_methods(method_parity: dict) -> list[str]:
     return methods
 
 
+def built_parity_methods(method_parity: dict) -> list[str]:
+    """Return the contract for THIS build: gated groups whose cargo feature
+    was not compiled in (see FEATURE_BUILT) are excluded from presence checks."""
+    methods = list(method_parity["all_methods_flat"])
+    for feature, gated in method_parity.get("feature_gated_methods", {}).items():
+        if FEATURE_BUILT.get(feature, True):
+            methods.extend(gated)
+    return methods
+
+
 def test_python_method_parity_against_fixture(method_parity: dict):
     """All non-excluded methods from the fixture must exist on SimpleAgent."""
-    all_methods = parity_methods(method_parity)
+    all_methods = built_parity_methods(method_parity)
 
     missing = []
     for rust_name in all_methods:

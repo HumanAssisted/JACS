@@ -26,6 +26,9 @@ const EXCLUDED_FROM_NODE = new Set([
   'from_agent',
   // load_with_info is an internal Rust helper; Node uses load() directly
   'load_with_info',
+  // Gated on the `a2a` cargo feature, which the default Node build does not
+  // enable (jacsnpm default features are attestation + agreements).
+  'export_a2a_agent_card_json',
 ]);
 
 // Rust snake_case method name -> Node camelCase method name mapping.
@@ -54,6 +57,11 @@ const NODE_NAME_MAP = {
   'to_html': 'toHtml',
   'from_html': 'fromHtml',
   'rotate_keys': 'rotateKeys',
+  // ES256 compatibility key + exports (P2 Tasks 002 / 004 / 004b).
+  'add_compat_key_json': 'addCompatKey',
+  'export_compatibility_jwks_json': 'exportCompatibilityJwks',
+  'export_compatibility_key_binding_json': 'exportCompatibilityKeyBinding',
+  'export_ap2_mandate_json': 'exportAp2Mandate',
   'export_w3c_did': 'exportW3cDid',
   'export_w3c_did_document_json': 'exportW3cDidDocument',
   'export_w3c_agent_description_json': 'exportW3cAgentDescription',
@@ -76,6 +84,7 @@ const NODE_NAME_MAP = {
   'detect_agreement_v2_branch_conflict_json': 'detectAgreementV2BranchConflict',
   'merge_agreement_v2_transcript_branches_json': 'mergeAgreementV2TranscriptBranches',
   'resolve_agreement_v2_branch_conflict_json': 'resolveAgreementV2BranchConflict',
+  'export_agreement_v2_as_vc_json': 'exportAgreementV2AsVc',
 };
 
 // Static methods (on the class itself, not on instances)

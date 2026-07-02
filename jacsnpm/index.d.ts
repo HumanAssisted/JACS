@@ -437,6 +437,37 @@ export declare class JacsSimpleAgent {
    */
   rotateKeys(algorithm?: string | undefined | null): string
   /**
+   * Add the ES256 `ecosystem_signing` compatibility key to an EXISTING
+   * agent (P2 Task 002). Errors if the key already exists or the agent
+   * is ephemeral. Returns a JSON string of the CompatKeyInfo.
+   */
+  addCompatKey(): string
+  /**
+   * Export the agent's compatibility JWKS (ES256 public key only — PQ
+   * material is never published here). Auto-issues the default identity
+   * binding on first use. Returns a JSON string of the JWKS.
+   */
+  exportCompatibilityJwks(): string
+  /**
+   * Export the current (verified) PQ-root-signed compatibility key
+   * binding document, so relying parties can trace the ES256 key back
+   * to the post-quantum root. Returns a JSON string of the binding.
+   */
+  exportCompatibilityKeyBinding(): string
+  /**
+   * Export the AP2 merchant-authorization mandate for a UCP checkout as
+   * a detached ES256 JWS (P2 Task 004b). Gated by the explicit
+   * `ap2-mandate` binding scope (content exports never auto-issue a
+   * binding). Returns a JSON string of the mandate export.
+   */
+  exportAp2Mandate(checkoutJson: string): string
+  /**
+   * Export an Agreement-v2 JSON document as a Verifiable Credential
+   * with an `ecdsa-jcs-2019` Data Integrity proof (P2 Task 004c).
+   * Gated by the explicit `agreement-vc` binding scope.
+   */
+  exportAgreementV2AsVc(agreementJson: string): string
+  /**
    * Sign a text/markdown file in place by appending an inline JACS
    * signature block. Returns the parsed `SignTextOutcome` object.
    */
@@ -483,39 +514,4 @@ export declare class JacsSimpleAgent {
   extractMediaSignature(filePath: string, opts?: ExtractMediaOptsNapi | undefined | null): Promise<string | null>
   /** Sync variant of [`extractMediaSignature`]. */
   extractMediaSignatureSync(filePath: string, opts?: ExtractMediaOptsNapi | undefined | null): string | null
-}
-
-/** Named roles accepted by `signAgreementV2`. Additive typing over the raw string param. */
-export type AgreementV2Role = 'signer' | 'witness' | 'notary'
-export declare const AgreementV2Role: {
-  readonly SIGNER: 'signer'
-  readonly WITNESS: 'witness'
-  readonly NOTARY: 'notary'
-}
-/** Parsed shape of the `verifyAgreementV2` report (camelCase wire format). */
-export interface AgreementV2VerificationReport {
-  valid: boolean
-  status: string
-  expectedStatus: string
-  recomputedAgreementHash: string
-  recomputedTranscriptHash: string
-  signerCount: number
-  witnessCount: number
-  notaryCount: number
-  verifiedChainDepth?: number
-  chainFullyVerified?: boolean
-  errors?: string[]
-  notes?: string[]
-}
-/** Parsed shape of the `detectAgreementV2BranchConflict` analysis. */
-export interface AgreementV2MergeAnalysis {
-  sameDocument: boolean
-  sameParent: boolean
-  autoMergeable: boolean
-  conflictFields?: string[]
-  leftChangedFields?: string[]
-  rightChangedFields?: string[]
-  leftTranscriptAdditions: number
-  rightTranscriptAdditions: number
-  errors?: string[]
 }

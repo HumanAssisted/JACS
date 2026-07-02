@@ -3006,6 +3006,111 @@ pub extern "C" fn jacs_simple_resolve_agreement_v2_branch_conflict(
 }
 
 // ============================================================================
+// Compatibility key + ecosystem export FFI (P2 Tasks 002–004c)
+// ============================================================================
+// These wrap the binding-core SimpleAgentWrapper ES256 compatibility methods.
+// Identity exports (JWKS, key binding) auto-issue the default identity
+// binding; content exports (AP2 mandate, Agreement-v2 VC) require the
+// explicit `ap2-mandate` / `agreement-vc` scope granted via
+// `jacs agent issue-compat-binding`. Errors are reported via
+// `set_last_simple_error`.
+
+ffi_simple_getter!(
+    jacs_simple_add_compat_key,
+    add_compat_key_json,
+    "Add the ES256 ecosystem compatibility key to an EXISTING agent. Returns CompatKeyInfo JSON. Caller must free with jacs_free_string."
+);
+
+ffi_simple_getter!(
+    jacs_simple_export_compatibility_jwks,
+    export_compatibility_jwks_json,
+    "Export the compatibility JWKS (ES256 public key only). Caller must free with jacs_free_string."
+);
+
+ffi_simple_getter!(
+    jacs_simple_export_compatibility_key_binding,
+    export_compatibility_key_binding_json,
+    "Export the PQ-root-signed compatibility key binding document. Caller must free with jacs_free_string."
+);
+
+/// Export the AP2 merchant-authorization mandate for a UCP checkout as a
+/// detached ES256 JWS. Requires the explicit `ap2-mandate` binding scope.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_ap2_mandate(
+    handle: *const SimpleAgentHandle,
+    checkout_json: *const c_char,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || checkout_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let checkout = match unsafe { CStr::from_ptr(checkout_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        simple_string_result(h.wrapper.export_ap2_mandate_json(checkout))
+    })
+}
+
+/// Export the A2A agent card signed with the ES256 compatibility key.
+#[cfg(feature = "a2a")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_a2a_agent_card(
+    handle: *const SimpleAgentHandle,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        simple_string_result(h.wrapper.export_a2a_agent_card_json())
+    })
+}
+
+#[cfg(not(feature = "a2a"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_a2a_agent_card(
+    _handle: *const SimpleAgentHandle,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        set_last_simple_error("a2a support not compiled".to_string());
+        ptr::null_mut()
+    })
+}
+
+/// Export an Agreement-v2 JSON document as a Verifiable Credential with an
+/// `ecdsa-jcs-2019` Data Integrity proof. Requires the explicit
+/// `agreement-vc` binding scope.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_agreement_v2_as_vc(
+    handle: *const SimpleAgentHandle,
+    agreement_json: *const c_char,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || agreement_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let agreement = match unsafe { CStr::from_ptr(agreement_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        simple_string_result(h.wrapper.export_agreement_v2_as_vc_json(agreement))
+    })
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_agreement_v2_as_vc(
+    _handle: *const SimpleAgentHandle,
+    _agreement_json: *const c_char,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
+}
+
+// ============================================================================
 // Inline text + media FFI exports (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
 // ============================================================================
 // The five new exports below match the binding-core SimpleAgentWrapper methods

@@ -101,6 +101,16 @@ var goNameMap = map[string]string{
 	"sign_image_json":              "SignImage",
 	"verify_image_json":            "VerifyImage",
 	"extract_media_signature_json": "ExtractMediaSignature",
+	// ES256 compatibility key + ecosystem exports (P2 Tasks 002-004c).
+	// export_a2a_agent_card_json / export_agreement_v2_as_vc_json are
+	// feature-gated in Rust (a2a / agreements) but included in the default
+	// Go native lib.
+	"add_compat_key_json":                   "AddCompatKey",
+	"export_compatibility_jwks_json":        "ExportCompatibilityJwks",
+	"export_compatibility_key_binding_json": "ExportCompatibilityKeyBinding",
+	"export_ap2_mandate_json":               "ExportAp2Mandate",
+	"export_a2a_agent_card_json":            "ExportA2aAgentCard",
+	"export_agreement_v2_as_vc_json":        "ExportAgreementV2AsVc",
 	// Agreement v2 (feature-gated in Rust, included in the default Go native lib).
 	"create_agreement_v2_json":                    "CreateAgreementV2",
 	"apply_agreement_v2_json":                     "ApplyAgreementV2",

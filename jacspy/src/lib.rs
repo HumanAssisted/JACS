@@ -808,6 +808,7 @@ fn parse_json_value(json_str: &str, label: &str) -> PyResult<serde_json::Value> 
     })
 }
 
+#[cfg(feature = "agreements")]
 fn py_json_arg_to_string(py: Python, value: Py<PyAny>, label: &str) -> PyResult<String> {
     let bound = value.bind(py);
     if let Ok(raw_json) = bound.extract::<String>() {
@@ -1537,6 +1538,80 @@ impl SimpleAgent {
                 e
             ))
         })
+    }
+
+    // =========================================================================
+    // ES256 compatibility key + ecosystem exports (P2 Tasks 002 / 004)
+    // =========================================================================
+
+    /// Add the ES256 `ecosystem_signing` compatibility key to an EXISTING
+    /// agent (explicit P2 migration; new agents mint the key at creation
+    /// unless they opt out).
+    ///
+    /// Returns:
+    ///     JSON string of CompatKeyInfo (role, algorithm, kid, key paths)
+    fn add_compat_key(&self) -> PyResult<String> {
+        self.inner.add_compat_key_json().to_py()
+    }
+
+    /// Export the agent's compatibility JWKS (ES256 public key only — PQ
+    /// material is never published here). Auto-issues the default identity
+    /// binding on first use.
+    ///
+    /// Returns:
+    ///     JSON string of the JWKS document
+    fn export_compatibility_jwks(&self) -> PyResult<String> {
+        self.inner.export_compatibility_jwks_json().to_py()
+    }
+
+    /// Export the PQ-root-signed compatibility key binding document, so
+    /// relying parties can trace the ES256 key back to the post-quantum root.
+    ///
+    /// Returns:
+    ///     JSON string of the verified binding document
+    fn export_compatibility_key_binding(&self) -> PyResult<String> {
+        self.inner.export_compatibility_key_binding_json().to_py()
+    }
+
+    /// Export the AP2 merchant-authorization mandate for a UCP checkout as
+    /// a detached ES256 JWS. Requires the explicit `ap2-mandate` binding
+    /// scope — content exports never auto-issue a binding.
+    ///
+    /// Args:
+    ///     checkout_json: JSON string of the UCP checkout to authorize
+    ///
+    /// Returns:
+    ///     JSON string of the AP2 mandate export
+    fn export_ap2_mandate(&self, checkout_json: &str) -> PyResult<String> {
+        self.inner.export_ap2_mandate_json(checkout_json).to_py()
+    }
+
+    /// Export the A2A agent card signed with the ES256 compatibility key
+    /// (typ "JOSE", binding referenced by content hash).
+    ///
+    /// Returns:
+    ///     JSON string of the signed A2A agent card
+    #[cfg(feature = "a2a")]
+    fn export_a2a_agent_card(&self) -> PyResult<String> {
+        self.inner.export_a2a_agent_card_json().to_py()
+    }
+
+    /// Export an Agreement-v2 JSON document as a Verifiable Credential with
+    /// an `ecdsa-jcs-2019` Data Integrity proof. Requires the explicit
+    /// `agreement-vc` binding scope — content exports never auto-issue a
+    /// binding.
+    ///
+    /// Args:
+    ///     agreement_json: JSON string of the agreement document
+    ///
+    /// Returns:
+    ///     JSON string of the Verifiable Credential
+    #[cfg(feature = "agreements")]
+    fn export_agreement_v2_as_vc(&self, py: Python, agreement_json: &str) -> PyResult<String> {
+        let agreement_json = agreement_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| inner.export_agreement_v2_as_vc_json(&agreement_json));
+        result.to_py()
     }
 
     // =========================================================================

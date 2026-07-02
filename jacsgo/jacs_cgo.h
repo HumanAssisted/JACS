@@ -90,6 +90,19 @@ char* jacs_simple_detect_agreement_v2_branch_conflict(SimpleAgentHandle handle, 
 char* jacs_simple_merge_agreement_v2_transcript_branches(SimpleAgentHandle handle, const char* base_document_json, const char* left_document_json, const char* right_document_json);
 char* jacs_simple_resolve_agreement_v2_branch_conflict(SimpleAgentHandle handle, const char* base_document_json, const char* previous_document_json, const char* side_branch_document_json, const char* mutation_json);
 
+// Compatibility key + ecosystem exports (P2 Tasks 002–004c)
+//
+// Identity exports (JWKS, key binding) auto-issue the default identity
+// binding; content exports (AP2 mandate, Agreement-v2 VC) require the
+// explicit `ap2-mandate` / `agreement-vc` binding scope. On failure they
+// return null with the message available via jacs_simple_last_error().
+char* jacs_simple_add_compat_key(SimpleAgentHandle handle);
+char* jacs_simple_export_compatibility_jwks(SimpleAgentHandle handle);
+char* jacs_simple_export_compatibility_key_binding(SimpleAgentHandle handle);
+char* jacs_simple_export_ap2_mandate(SimpleAgentHandle handle, const char* checkout_json);
+char* jacs_simple_export_a2a_agent_card(SimpleAgentHandle handle);
+char* jacs_simple_export_agreement_v2_as_vc(SimpleAgentHandle handle, const char* agreement_json);
+
 // Inline text + media signing (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
 //
 // Each export takes an optional `opts_json` parameter (may be null). On

@@ -24,6 +24,7 @@ cargo install jacs-cli
 | Inline Markdown/text signatures | `jacs::text` |
 | PNG/JPEG/WebP provenance | `jacs::media` |
 | RFC 5322 email signatures | `jacs::email` |
+| ES256 compatibility key and ecosystem exports (JWKS, key binding, AP2 mandate, agreement VC) | `jacs::compatibility` |
 | Standalone Agreement v2, storage, DNS, and trust | Core crate modules |
 
 ## Quick start

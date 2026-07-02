@@ -279,12 +279,15 @@ describe('Cross-language verification', function () {
         expect(countersigned).to.have.property('documentId').that.is.a('string').and.not.empty;
         expect(countersigned.agentId).to.equal(client.agentId);
 
-        // Verify structure of the countersigned document
+        // Verify structure of the countersigned document. P2: new agent
+        // creation always resolves to pq2025 — the requested ring-Ed25519
+        // ephemeral agent countersigns the legacy Ed25519 fixture with a
+        // PQ signature (mixed-algorithm documents are the migration path).
         const doc = JSON.parse(countersigned.raw);
         expect(doc).to.have.property('jacsSignature');
         expect(doc.jacsSignature.agentID).to.equal(client.agentId);
         expect(doc.jacsSignature).to.have.property('signature').that.is.a('string').and.not.empty;
-        expect(doc.jacsSignature).to.have.property('signingAlgorithm', 'ring-Ed25519');
+        expect(doc.jacsSignature).to.have.property('signingAlgorithm', 'pq2025');
 
         // The original Rust doc should be embedded in content
         expect(doc.content).to.have.property('originalDocument');

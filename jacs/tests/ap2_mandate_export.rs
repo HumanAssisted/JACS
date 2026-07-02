@@ -363,3 +363,112 @@ fn ap2_mandate_matches_known_answer_vector() {
         "known-answer vector drift through the public exporter"
     );
 }
+
+/// Adversarial: flipping ANY byte of the detached JWS signature must
+/// fail ES256 verification, and an intact signature must not verify
+/// over a tampered checkout payload.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn ap2_detached_jws_rejects_tampered_signature_or_payload() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("ap2-sig-tamper");
+    grant_ap2_scope(&agent);
+
+    let export = agent
+        .export_ap2_mandate(&sample_checkout().to_string())
+        .expect("export mandate");
+    let detached = export["detachedJws"].as_str().expect("detached jws");
+    let parts: Vec<&str> = detached.split('.').collect();
+
+    // Reconstruct the signing input exactly like a stock verifier.
+    let mut payload = export["checkout"].clone();
+    payload.as_object_mut().unwrap().remove("ap2");
+    let payload_jcs = jacs::protocol::canonicalize_json(&payload);
+    let signing_input = format!(
+        "{}.{}",
+        parts[0],
+        URL_SAFE_NO_PAD.encode(payload_jcs.as_bytes())
+    );
+    let public_pem =
+        std::fs::read_to_string("./jacs_keys/jacs.ecosystem.public.pem").expect("public pem");
+    let sig = URL_SAFE_NO_PAD.decode(parts[2]).expect("sig b64");
+    assert_eq!(sig.len(), 64, "P-256 r||s");
+
+    // Baseline: the untampered signature verifies — so the negative
+    // checks below cannot pass vacuously on a bad reconstruction.
+    jacs::crypt::es256::verify_es256_jose(&public_pem, signing_input.as_bytes(), &sig)
+        .expect("baseline verifies");
+
+    // Flip one bit in EVERY signature byte: each variant must fail.
+    for i in 0..sig.len() {
+        let mut tampered = sig.clone();
+        tampered[i] ^= 0x01;
+        assert!(
+            jacs::crypt::es256::verify_es256_jose(&public_pem, signing_input.as_bytes(), &tampered)
+                .is_err(),
+            "signature with byte {i} flipped must fail verification"
+        );
+    }
+
+    // Payload tampering: the intact signature over an altered total fails.
+    let mut altered = payload.clone();
+    altered["totals"][0]["amount"] = json!(1);
+    let altered_input = format!(
+        "{}.{}",
+        parts[0],
+        URL_SAFE_NO_PAD.encode(jacs::protocol::canonicalize_json(&altered).as_bytes())
+    );
+    assert!(
+        jacs::crypt::es256::verify_es256_jose(&public_pem, altered_input.as_bytes(), &sig).is_err(),
+        "signature must not verify over a tampered checkout payload"
+    );
+}
+
+/// Typed boundary: a checkout whose `ap2` field is not an object is
+/// rejected by the mandate schema before any signing happens.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn ap2_exporter_rejects_non_object_ap2_field() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("ap2-nonobject-ap2");
+    grant_ap2_scope(&agent);
+
+    for bad_ap2 in [json!("not-an-object"), json!(42), json!([{"k": "v"}])] {
+        let mut checkout = sample_checkout();
+        checkout["ap2"] = bad_ap2.clone();
+        let err = agent
+            .export_ap2_mandate(&checkout.to_string())
+            .expect_err("non-object ap2 must be rejected");
+        assert!(
+            matches!(err, jacs::error::JacsError::ValidationError(_)),
+            "typed validation error, got: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("ap2-mandate") || msg.contains("object"),
+            "error names the schema boundary for ap2={bad_ap2}: {msg}"
+        );
+    }
+}
+
+/// An EXPIRED binding denies the content export even when the
+/// `ap2-mandate` scope was granted — expiry gates content exports,
+/// not just identity exports.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn ap2_export_denied_when_binding_expired() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("ap2-expired-binding");
+
+    agent
+        .issue_compat_binding(
+            Some(&["jwks", "did", "ap2-mandate"]),
+            Some("2020-01-01T00:00:00Z"),
+        )
+        .expect("issue expired binding with content scope");
+
+    let err = agent
+        .export_ap2_mandate(&sample_checkout().to_string())
+        .expect_err("expired binding must deny the content export");
+    assert!(err.to_string().contains("expired"), "got: {err}");
+}
