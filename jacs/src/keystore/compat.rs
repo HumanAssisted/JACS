@@ -40,6 +40,26 @@ pub struct KeyRoleEntry {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Keyring {
     pub keys: Vec<KeyRoleEntry>,
+    /// Supersession watermark (issue 013): `issuedAt` of the last binding
+    /// written by `issue_compat_binding`. Verification denies bindings
+    /// that predate it — "latest issuedAt wins" — so a validly-signed
+    /// OLDER binding restored from backup no longer authorizes withdrawn
+    /// scopes. Absent on pre-fix keyrings (accepted; backfilled by the
+    /// next issuance).
+    #[serde(
+        default,
+        rename = "lastBindingIssuedAt",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub last_binding_issued_at: Option<String>,
+    /// Content hash (`jacsSha256`) of the last-issued binding — audit
+    /// companion to `lastBindingIssuedAt`.
+    #[serde(
+        default,
+        rename = "lastBindingHash",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub last_binding_hash: Option<String>,
 }
 
 fn joined(key_directory: &str, filename: &str) -> String {
@@ -91,6 +111,22 @@ fn write_keyring(key_directory: &str, keyring: &Keyring) -> Result<(), JacsError
         path,
         reason: e.to_string(),
     })
+}
+
+/// Record the compatibility-binding supersession watermark (issue 013).
+/// Called by `issue_compat_binding` after the binding file is persisted;
+/// `verify_compat_binding` denies any binding whose `issuedAt` predates
+/// the watermark, so scope narrowing survives a signed rollback of the
+/// binding file. Lives in the same 0600 keyring metadata as the key roles.
+pub(crate) fn record_binding_watermark(
+    key_directory: &str,
+    issued_at: &str,
+    binding_hash: &str,
+) -> Result<(), JacsError> {
+    let mut keyring = read_keyring(key_directory)?;
+    keyring.last_binding_issued_at = Some(issued_at.to_string());
+    keyring.last_binding_hash = Some(binding_hash.to_string());
+    write_keyring(key_directory, &keyring)
 }
 
 /// Result of creating (or describing) the ecosystem compatibility key.

@@ -331,6 +331,13 @@ fn missing_compatibility_key_is_reported_as_key_not_found() {
     let err = agent
         .ecosystem_key_info()
         .expect_err("no compat key -> typed error");
+    // The test name promises the TYPED variant, not a substring: a missing
+    // compatibility key is JacsError::KeyNotFound, never a generic
+    // ValidationError (whose message could also match loose substrings).
+    assert!(
+        matches!(err, jacs::error::JacsError::KeyNotFound { .. }),
+        "expected JacsError::KeyNotFound, got: {err:?}"
+    );
     let msg = err.to_string();
     assert!(
         msg.contains("compat") || msg.contains("ecosystem") || msg.contains("add-compat-key"),

@@ -64,13 +64,21 @@ events with matching Prometheus counters. This is the sysadmin fix-table:
 what fired, which metric to alert on, which part of the model is involved,
 and the usual fix.
 
+Note on the Metric column: the counters exist only in builds with the
+`otlp-metrics` feature enabled — it is not in the default feature set of
+the `jacs` crate or of `cargo install jacs-cli`, so in a default build the
+counters compile to no-ops. The log events are always emitted once a
+tracing subscriber is installed (see
+[Observability](../guides/observability.md)).
+
 | Log event | Metric | Failure class | Likely fix |
 |-----------|--------|---------------|------------|
 | `native_non_pq_sign_rejected` (WARN) | `jacs_native_non_pq_sign_rejected_total` | native trust | Use `pq2025` — new agents cannot mint Ed25519/ES256 native roots; the request was already resolved to `pq2025`. Fires during creation, before any agent id exists, so this is the one P2 event without a `jacs_id` field. |
 | `native_legacy_ed25519_sign` (WARN) | `jacs_native_legacy_ed25519_sign_total` | native trust | A grandfathered agent (`jacs_id` in the event) is still signing with Ed25519 — plan `jacs agent rotate-keys`, then `jacs agent issue-compat-binding`. |
 | `compatibility_key_missing` (WARN) | `jacs_compatibility_export_error_total{format,reason="missing_key"}` | compatibility binding | An export was attempted (`requested_export` in the event; `format` on the metric) but the agent has no ES256 compatibility key — run `jacs agent add-compat-key`. |
-| `compatibility_binding_verify_failed` (WARN) | `jacs_compatibility_binding_verify_failed_total{reason}` | compatibility binding | The PQ-root-signed binding no longer verifies (`jacs_id` + compat `kid` in the event) — re-issue after key rotation (`jacs agent issue-compat-binding`) and check `expiresAt`. |
+| `compatibility_binding_verify_failed` (WARN) | `jacs_compatibility_binding_verify_failed_total{reason}` | compatibility binding | The PQ-root-signed binding no longer verifies (`jacs_id` + compat `kid` in the event) — re-issue after key rotation (`jacs agent issue-compat-binding`) and check `expiresAt`. Fixed `reason` values: `schema_invalid` (also covers a `jacsSha256` content-hash mismatch — the document lies about itself), `signature_invalid`, `rotated_root`, `root_kid_mismatch`, `compat_kid_mismatch`, `jwk_mismatch`, `superseded` (an older validly-signed binding was restored over a re-issue; latest `issuedAt` wins), and `expired` (also an unparseable `expiresAt`, which fails closed). |
 | `content_export_scope_denied` (WARN) | `jacs_content_export_scope_denied_total{format}` | ecosystem export | The binding (`binding_hash` in the event) lacks the requested scope (`ap2-mandate`, `agreement-vc` are never auto-issued) — re-issue the binding with that scope; the PQ root signs the grant. |
+| `compatibility_binding_created` (INFO) | — (log event only, no counter) | compatibility binding | Success, not a failure — the PQ root (re-)issued the compatibility key binding (`jacs_id`, compat `kid`, `binding_hash`, and granted `scopes` in the event). Expect one per `jacs agent issue-compat-binding` or first identity-export auto-issue; its absence after a key rotation means the required re-issue has not happened yet. |
 | `ecosystem_export_generated` (INFO) | `jacs_compatibility_export_total{format}` | ecosystem export | Success, not a failure — six formats, exactly the six binding scopes: `jwks`, `did`, `a2a-agent-card`, `w3c-agent-identity`, `ap2-mandate`, `agreement-vc`. |
 
 Metric label values are fixed, low-cardinality strings (`reason`,

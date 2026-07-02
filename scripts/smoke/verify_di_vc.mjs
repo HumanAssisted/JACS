@@ -84,7 +84,11 @@ if (signature.length !== 64) {
   process.exit(1);
 }
 
-const jwk = jwks.keys.find((k) => k.kid === exported.kid) ?? jwks.keys[0];
+const jwk = jwks.keys.find((k) => k.kid === exported.kid);
+if (!jwk) {
+  console.error(`FAIL: kid ${exported.kid} not present in JWKS`);
+  process.exit(1);
+}
 const key = await webcrypto.subtle.importKey(
   'jwk',
   { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y },

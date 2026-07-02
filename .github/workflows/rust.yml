@@ -19,6 +19,7 @@ on:
       - "scripts/check-secure-io.sh"
       - "scripts/forbidden-deps.sh"
       - "scripts/forbidden-deps.test.sh"
+      - "scripts/smoke/**"
       - "jacs-core/**"
       - ".github/workflows/rust.yml"
   pull_request:
@@ -38,6 +39,7 @@ on:
       - "scripts/check-secure-io.sh"
       - "scripts/forbidden-deps.sh"
       - "scripts/forbidden-deps.test.sh"
+      - "scripts/smoke/**"
       - "jacs-core/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
@@ -167,6 +169,42 @@ jobs:
 
       - name: Run CLI integration tests
         run: make test-jacs-cli
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
+
+  # P2 NFR8: the committed stock verifier scripts (scripts/smoke/*.mjs)
+  # must keep verifying real CLI exports — a bit-rotted verifier script
+  # is invisible without this lane (deep-review Issue 018).
+  smoke-verifiers:
+    name: P2 smoke verifiers (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies (D-Bus for keychain support)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run exporters + stock verifier scripts
+        run: make smoke-verifiers
         env:
           JACS_KEYCHAIN_BACKEND: disabled
 

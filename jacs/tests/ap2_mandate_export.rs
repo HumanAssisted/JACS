@@ -216,18 +216,34 @@ fn ap2_export_does_not_touch_native_signature() {
     let signed = agent
         .sign_message(&json!({"native": "untouched"}))
         .expect("sign native");
-    let before = signed.raw.clone();
+    let parsed: Value = serde_json::from_str(&signed.raw).unwrap();
+    let document_key = format!(
+        "{}:{}",
+        parsed["jacsId"].as_str().expect("jacsId"),
+        parsed["jacsVersion"].as_str().expect("jacsVersion")
+    );
 
     agent
         .export_ap2_mandate(&sample_checkout().to_string())
         .expect("export mandate");
 
-    assert_eq!(before, signed.raw, "native document bytes unchanged");
-    let parsed: Value = serde_json::from_str(&signed.raw).unwrap();
     assert!(parsed.get("jacsProjections").is_none());
     assert_eq!(parsed["jacsSignature"]["signingAlgorithm"], "pq2025");
     let verification = agent.verify(&signed.raw).expect("verify");
     assert!(verification.valid, "{:?}", verification.errors);
+    // Non-vacuous no-mutate check: re-fetch the STORED copy from agent
+    // storage by id and re-verify hash + signature. Comparing an owned
+    // local clone to itself would pass regardless of exporter behavior;
+    // the byte-exact disk-snapshot guarantee lives in
+    // legacy_verify_guardrails.rs.
+    let stored = agent
+        .verify_by_id(&document_key)
+        .expect("stored native doc loads after export");
+    assert!(
+        stored.valid,
+        "stored native document must still verify after the export: {:?}",
+        stored.errors
+    );
 }
 
 #[test]

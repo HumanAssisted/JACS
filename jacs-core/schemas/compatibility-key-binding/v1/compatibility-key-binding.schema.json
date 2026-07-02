@@ -153,6 +153,7 @@
   },
   "required": [
     "jacsType",
-    "compatibilityKeyBinding"
+    "compatibilityKeyBinding",
+    "jacsSignature"
   ]
 }

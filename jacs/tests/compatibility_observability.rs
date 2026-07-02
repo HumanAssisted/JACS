@@ -959,6 +959,44 @@ mod counters {
         );
     }
 
+    /// A validly-signed OLDER binding restored over a re-issue increments
+    /// `jacs_compatibility_binding_verify_failed_total{reason="superseded"}`
+    /// — the one deliberate, documented addition to the fixed reason
+    /// label set (fix round, issue 013: "latest issuedAt wins" is
+    /// enforced against the keyring watermark).
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn superseded_binding_increments_reason_counter() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _guard) = setup_agent("obs-counter-superseded");
+        agent
+            .issue_compat_binding(Some(&["jwks", "did", "ap2-mandate"]), None)
+            .expect("issue broad binding");
+        let broad =
+            std::fs::read("./jacs_keys/jacs.compat-binding.json").expect("read broad binding");
+        agent
+            .issue_compat_binding(None, None)
+            .expect("narrowing re-issue (withdraws ap2-mandate)");
+        std::fs::write("./jacs_keys/jacs.compat-binding.json", &broad)
+            .expect("restore older binding");
+        let reader = install_metrics_reader();
+
+        agent
+            .compat_binding()
+            .expect_err("an older-issuedAt binding must be denied");
+
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_binding_verify_failed_total",
+                &[("reason", "superseded")],
+            ),
+            1,
+            "a signed rollback of the binding file must increment \
+             jacs_compatibility_binding_verify_failed_total{{reason=\"superseded\"}} once"
+        );
+    }
+
     /// Requesting Ed25519 on a PUBLIC creation path increments
     /// `jacs_native_non_pq_sign_rejected_total` (creation still succeeds,
     /// resolved to pq2025 — the counter tracks rejected requests).

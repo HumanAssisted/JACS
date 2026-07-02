@@ -251,14 +251,17 @@ fn agreement_vc_does_not_touch_native_signature() {
     let (agent, _tmp, _guard) = setup_agent("vc-native-untouched");
     grant_agreement_vc_scope(&agent);
     let agreement = sample_agreement(&agent);
-    let before = agreement.clone();
+    let parsed: Value = serde_json::from_str(&agreement).unwrap();
+    let document_key = format!(
+        "{}:{}",
+        parsed["jacsId"].as_str().expect("jacsId"),
+        parsed["jacsVersion"].as_str().expect("jacsVersion")
+    );
 
     agent
         .export_agreement_v2_as_vc(&agreement)
         .expect("export vc");
 
-    assert_eq!(before, agreement, "agreement bytes unchanged");
-    let parsed: Value = serde_json::from_str(&agreement).unwrap();
     assert!(parsed.get("jacsProjections").is_none());
     assert!(
         parsed.get("proof").is_none(),
@@ -269,16 +272,30 @@ fn agreement_vc_does_not_touch_native_signature() {
     // The native agreement still verifies through the agreement verifier.
     let report = jacs::agreements::v2::verify(&agent, &agreement).expect("verify agreement");
     assert!(report.valid, "{:?}", report.errors);
+    // Non-vacuous no-mutate check: re-fetch the STORED copy from agent
+    // storage by id and re-verify hash + signature. Comparing an owned
+    // local clone to itself would pass regardless of exporter behavior;
+    // the byte-exact disk-snapshot guarantee lives in
+    // legacy_verify_guardrails.rs.
+    let stored = agent
+        .verify_by_id(&document_key)
+        .expect("stored agreement loads after export");
+    assert!(
+        stored.valid,
+        "stored agreement must still verify after the export: {:?}",
+        stored.errors
+    );
 }
 
-/// The independent DI vector check: the W3C vc-di-ecdsa spec vector is
-/// pinned byte-exact in the vc.rs unit KAT; here we prove the PUBLIC
-/// exporter output is verifiable by an independent reconstruction, and
-/// that classical verification asserts nothing about the PQ root
-/// (threat-model honesty, §9.5).
+/// Independent-reconstruction check of the PUBLIC exporter output: the
+/// proof is rebuilt and verified from scratch here (hashData + P-256),
+/// and classical verification asserts nothing about the PQ root
+/// (threat-model honesty, §9.5). The genuinely independent W3C
+/// vc-di-ecdsa SPEC VECTOR is pinned byte-exact in the vc.rs unit KAT —
+/// this test makes no spec-vector claim.
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn agreement_vc_verified_by_independent_di_vector() {
+fn agreement_vc_proof_verifies_by_independent_reconstruction() {
     let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let (agent, _tmp, _guard) = setup_agent("vc-independent");
     grant_agreement_vc_scope(&agent);

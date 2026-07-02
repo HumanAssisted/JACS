@@ -9,11 +9,16 @@
 //!   always requires the PQ root — the ES256 holder cannot self-escalate;
 //! - the binding persists as ONE canonical-JSON file in the agent key
 //!   directory (`jacs.compat-binding.json`); re-issue replaces it —
-//!   latest `issuedAt` wins, no version chains, no registries;
+//!   latest `issuedAt` wins, no version chains, no registries; "latest
+//!   wins" is ENFORCED at verification against the last-issued watermark
+//!   recorded in the keyring metadata, so a validly-signed OLDER binding
+//!   restored over a re-issue no longer authorizes (issue 013);
 //! - a binding signed by a rotated-away root fails current-binding
 //!   verification and must be re-issued;
-//! - an expired binding denies export; `expiresAt: null` is permitted
-//!   (revocation/status is a later phase);
+//! - an expired binding denies export; expiry is compared as RFC 3339
+//!   INSTANTS and fails closed — an unparseable `expiresAt` denies at
+//!   verification and is rejected at issuance (issue 007);
+//!   `expiresAt: null` is permitted (revocation/status is a later phase);
 //! - identity scopes are granted by default at issuance; content scopes
 //!   (`ap2-mandate`, `agreement-vc`) require an explicit re-issue.
 //!
@@ -83,6 +88,19 @@ pub(crate) fn issue_compat_binding_ctx(
         }
     }
 
+    // FR24 fail-closed lifecycle (issue 007): an expiry that does not
+    // parse as RFC 3339 could never be honored at verification — reject
+    // it at the source with a typed error (the CLI surfaces this for
+    // `--expires-at`).
+    if let Some(expires) = expires_at
+        && let Err(e) = chrono::DateTime::parse_from_rfc3339(expires)
+    {
+        return Err(JacsError::ValidationError(format!(
+            "invalid expiresAt '{expires}': must be an RFC 3339 timestamp \
+                 (e.g. 2027-01-01T00:00:00Z): {e}"
+        )));
+    }
+
     let agent_id = agent.get_id()?;
     let compat = crate::keystore::compat::ecosystem_key_info_ctx(
         key_directory,
@@ -104,6 +122,7 @@ pub(crate) fn issue_compat_binding_ctx(
     let native_public_key = agent.get_public_key()?;
     let native_kid = crate::crypt::hash::hash_public_key(&native_public_key);
 
+    let issued_at = crate::time_utils::now_rfc3339();
     let envelope = json!({
         "$schema": "https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json",
         "jacsType": "compatibilityKeyBinding",
@@ -117,7 +136,7 @@ pub(crate) fn issue_compat_binding_ctx(
                 "publicJwk": { "kty": "EC", "crv": "P-256", "x": x, "y": y }
             },
             "scope": scopes,
-            "issuedAt": crate::time_utils::now_rfc3339(),
+            "issuedAt": issued_at.clone(),
             "expiresAt": expires_at,
         }
     });
@@ -126,11 +145,13 @@ pub(crate) fn issue_compat_binding_ctx(
     let envelope_str = serde_json::to_string(&envelope)?;
     let mut instance = agent.schema.create(&envelope_str)?;
 
-    // Validate against the binding schema, then sign with the native root.
-    let instance_str = serde_json::to_string(&instance)?;
-    agent.schema.validate_compat_binding(&instance_str)?;
+    // Sign with the native root FIRST, then validate against the binding
+    // schema: the schema requires the native `jacsSignature` (issue 010),
+    // so validation runs on the signed document.
     instance[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
         agent.signing_procedure(&instance, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
+    let instance_str = serde_json::to_string(&instance)?;
+    agent.schema.validate_compat_binding(&instance_str)?;
     let document_hash = agent.hash_doc(&instance)?;
     instance[SHA256_FIELDNAME] = json!(document_hash);
 
@@ -147,6 +168,13 @@ pub(crate) fn issue_compat_binding_ctx(
         path: path.clone(),
         reason: e.to_string(),
     })?;
+
+    // Supersession watermark (issue 013): record the new binding's
+    // issuedAt + content hash in the 0600 keyring metadata. Verification
+    // denies any binding whose issuedAt predates this watermark, so a
+    // validly-signed OLDER binding restored from backup cannot
+    // re-authorize a withdrawn scope.
+    crate::keystore::compat::record_binding_watermark(key_directory, &issued_at, &document_hash)?;
 
     info!(
         event = "compatibility_binding_created",
@@ -173,6 +201,17 @@ pub fn load_compat_binding(key_directory: &str) -> Result<Option<Value>, JacsErr
             reason: e.to_string(),
         }),
     }
+}
+
+/// Fail-closed expiry gate for `expiresAt` (issue 007): parses the value
+/// as RFC 3339 and compares INSTANTS against now-UTC — never lexicographic
+/// strings, which fail open for non-UTC offsets and garbage. `Ok(true)`
+/// means expired, `Ok(false)` means still valid, `Err` means the value
+/// does not parse and the caller must deny.
+#[doc(hidden)]
+pub fn expiry_denies(expires_at: &str) -> Result<bool, String> {
+    let expires = chrono::DateTime::parse_from_rfc3339(expires_at).map_err(|e| e.to_string())?;
+    Ok(expires.with_timezone(&chrono::Utc) < crate::time_utils::now_utc())
 }
 
 /// Verification verdict for a binding under the CURRENT agent state.
@@ -272,6 +311,23 @@ pub(crate) fn verify_compat_binding_ctx(
         );
     }
 
+    // 2b. Content-hash integrity (issue 023): `jacsSha256` is excluded
+    //     from the signature preimage (JACS_IGNORE_FIELDS), yet exporters
+    //     stamp it into ecosystem artifacts as the binding reference
+    //     (FR12). Recompute it before anything trusts it — a mismatch
+    //     means the document lies about itself, mapped to the existing
+    //     fixed "schema_invalid" reason.
+    let computed_hash = agent.hash_doc(binding)?;
+    if binding[SHA256_FIELDNAME].as_str() != Some(computed_hash.as_str()) {
+        return fail(
+            "schema_invalid",
+            format!(
+                "binding jacsSha256 '{}' does not match the recomputed content hash",
+                binding[SHA256_FIELDNAME].as_str().unwrap_or("")
+            ),
+        );
+    }
+
     // 3. Root metadata pins the same current root.
     if body["rootKey"]["kid"].as_str().unwrap_or("") != current_kid {
         return fail(
@@ -310,11 +366,59 @@ pub(crate) fn verify_compat_binding_ctx(
         );
     }
 
-    // 5. Expiry.
+    // 5. Supersession — "latest issuedAt wins" (issue 013): the loaded
+    //    binding must not predate the last-issued watermark recorded at
+    //    issuance. A missing watermark (pre-fix keyring) is accepted and
+    //    backfilled by the next issuance; an unorderable issuedAt fails
+    //    closed. "superseded" is the one deliberate, documented addition
+    //    to the fixed reason label set.
+    let keyring = crate::keystore::compat::read_keyring(key_directory)?;
+    if let Some(watermark) = keyring.last_binding_issued_at.as_deref()
+        && let Ok(watermark_at) = chrono::DateTime::parse_from_rfc3339(watermark)
+    {
+        let issued_at = body["issuedAt"].as_str().unwrap_or("");
+        match chrono::DateTime::parse_from_rfc3339(issued_at) {
+            Ok(binding_at) if binding_at >= watermark_at => {}
+            Ok(_) => {
+                return fail(
+                    "superseded",
+                    format!(
+                        "binding issuedAt {issued_at} predates the last-issued binding \
+                             ({watermark}); a newer binding superseded this one — restore \
+                             the current binding or re-issue"
+                    ),
+                );
+            }
+            Err(e) => {
+                return fail(
+                    "superseded",
+                    format!(
+                        "binding issuedAt '{issued_at}' is not valid RFC 3339 ({e}); \
+                             cannot order it against the last-issued binding — failing closed"
+                    ),
+                );
+            }
+        }
+    }
+
+    // 6. Expiry — RFC 3339 INSTANT comparison, fail closed (issue 007):
+    //    an unparseable expiresAt denies under the existing fixed
+    //    "expired" reason (the free-text message names the parse failure).
     if let Some(expires) = body["expiresAt"].as_str() {
-        let now = crate::time_utils::now_rfc3339();
-        if expires < now.as_str() {
-            return fail("expired", format!("binding expired at {expires}"));
+        match expiry_denies(expires) {
+            Ok(false) => {}
+            Ok(true) => {
+                return fail("expired", format!("binding expired at {expires}"));
+            }
+            Err(parse_err) => {
+                return fail(
+                    "expired",
+                    format!(
+                        "binding expiresAt '{expires}' is not valid RFC 3339 ({parse_err}); \
+                         failing closed as expired"
+                    ),
+                );
+            }
         }
     }
 

@@ -27,6 +27,13 @@ The exporter validates its input against the named schema
 rejects anything that does not conform — typed input is a schema check,
 not a naming convention.
 
+The schema is deliberately open (`additionalProperties: true`) to match
+UCP checkout extensibility: extra checkout fields beyond the required
+core are signed as-is, so relying parties must not assume JACS validated
+anything beyond the schema's required core fields. Operators granting the
+`ap2-mandate` scope are authorizing signatures over extensible checkout
+payloads.
+
 ## Usage
 
 The `ap2-mandate` binding scope is a **content scope**: it is never

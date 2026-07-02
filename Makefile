@@ -11,7 +11,7 @@
         bump-patch bump-minor bump-major \
         seal-changelog check-changelog-sealed \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
-        install-githooks regen-cross-lang-fixtures sync-schemas \
+        install-githooks regen-cross-lang-fixtures sync-schemas smoke-verifiers \
         help
 
 # ============================================================================
@@ -168,6 +168,44 @@ test-jacs-cli:
 
 test-jacs-cross-language:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features "agreements a2a attestation" --test cross_language_tests --test a2a_cross_language_tests --test attestation_cross_lang_tests -- --nocapture
+
+# P2 NFR8 smoke lane (docs/P2_ES256_SMOKE.md "End-to-End CLI Smoke"):
+# build the CLI, create a scratch agent, run both content exporters
+# (AP2 mandate detached JWS + Agreement-v2-as-VC), then verify both
+# artifacts with the committed stock verifier scripts (jose +
+# canonicalize; no JACS verification code). Requires node/npm.
+smoke-verifiers:
+	cargo build -p jacs-cli
+	@set -eu; \
+	REPO=$$(pwd); \
+	JACS=$$REPO/target/debug/jacs; \
+	WORK=$$(mktemp -d); \
+	trap 'rm -rf "$$WORK"' EXIT; \
+	cd "$$WORK"; \
+	export JACS_PRIVATE_KEY_PASSWORD='P2-Smoke-Password!2026'; \
+	export JACS_KEYCHAIN_BACKEND=disabled; \
+	"$$JACS" quickstart --name p2-smoke --domain example.com >/dev/null; \
+	"$$JACS" agent export-jwks > p2_jwks.json; \
+	"$$JACS" agent export-compat-binding > p2_binding.json; \
+	if "$$JACS" agent add-compat-key >/dev/null 2>&1; then \
+		echo "UNEXPECTED: duplicate add-compat-key succeeded"; exit 1; \
+	fi; \
+	echo "ok: duplicate add-compat-key rejected (typed error)"; \
+	"$$JACS" agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate,agreement-vc >/dev/null; \
+	printf '%s' '{"id":"checkout_smoke_001","status":"ready_for_payment","currency":"USD","line_items":[{"id":"li_1","title":"Widget","quantity":1,"base_amount":990,"total_amount":990}],"totals":[{"type":"total","display_text":"Total","amount":990}]}' > p2_checkout.json; \
+	"$$JACS" ap2 export-mandate --input p2_checkout.json > p2_mandate_export.json; \
+	AGENT_ID=$$(python3 -c "import json; print(json.load(open('jacs.config.json'))['jacs_agent_id_and_version'].split(':')[0])"); \
+	printf '{"title":"P2 smoke agreement","description":"Agreement used by make smoke-verifiers.","terms":"Party agrees to smoke-test things.","termsFormat":"text/plain","status":"proposed","parties":[{"agentId":"%s","agentType":"ai","role":"signer"}],"signaturePolicy":{"partyQuorum":"all"},"controllers":["%s"]}' "$$AGENT_ID" "$$AGENT_ID" > p2_agreement_input.json; \
+	"$$JACS" agreement-v2 create --input p2_agreement_input.json > p2_agreement.json; \
+	"$$JACS" agreement-v2 export-vc --agreement - < p2_agreement.json > p2_agreement_vc.json; \
+	cp "$$REPO"/scripts/smoke/verify_ap2_jws.mjs "$$REPO"/scripts/smoke/verify_di_vc.mjs .; \
+	npm init -y >/dev/null; \
+	npm install --silent --no-audit --no-fund jose canonicalize >/dev/null; \
+	node verify_ap2_jws.mjs p2_mandate_export.json p2_jwks.json; \
+	node verify_di_vc.mjs p2_agreement_vc.json p2_jwks.json; \
+	echo '{"claim":"native wall"}' | "$$JACS" quickstart --name p2-smoke --domain example.com --sign > p2_signed_document.json; \
+	"$$JACS" verify p2_signed_document.json >/dev/null; \
+	echo "SMOKE-VERIFIERS-OK"
 
 # NOTE: `observability-convenience` was removed as a feature in v0.9.4 (the
 # convenience module is unconditional); listing it made cargo abort the whole

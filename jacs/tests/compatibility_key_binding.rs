@@ -248,6 +248,242 @@ fn expired_binding_denies_export() {
 }
 
 // =========================================================================
+// Expiry is an INSTANT comparison that fails closed (issue 007). The old
+// lexicographic string compare failed open for non-UTC offsets, garbage
+// strings, and the 'Z'-vs-'.' sub-second quirk.
+// =========================================================================
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn expired_binding_with_non_utc_offset_denies() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-offset-expiry");
+
+    // 10 hours in the past as an INSTANT, rendered in +14:00 — the
+    // rendered wall-clock (now + 4h) string-compares AFTER now-UTC, so
+    // the old lexicographic check accepted it for up to ~26 hours.
+    let offset = chrono::FixedOffset::east_opt(14 * 3600).expect("+14:00 offset");
+    let expires = (chrono::Utc::now() - chrono::Duration::hours(10))
+        .with_timezone(&offset)
+        .to_rfc3339();
+    agent
+        .issue_compat_binding(None, Some(&expires))
+        .expect("issue binding (parseable RFC 3339, already expired)");
+
+    let err = agent
+        .compat_binding()
+        .expect_err("an offset-form expiry in the past must deny");
+    assert!(err.to_string().contains("expired"), "got: {err}");
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn subsecond_expiry_boundary_denies() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-subsecond-expiry");
+
+    // Whole-second 'Z' form of "now": by the time verification runs the
+    // instant is already past. The old compare read 'Z' (0x5A) > '.'
+    // (0x2E) against the microsecond `+00:00` form now_rfc3339 produces
+    // and failed open.
+    let expires = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    agent
+        .issue_compat_binding(None, Some(&expires))
+        .expect("issue binding at the sub-second boundary");
+    std::thread::sleep(std::time::Duration::from_millis(25));
+
+    let err = agent
+        .compat_binding()
+        .expect_err("the truncated-second expiry instant has passed — must deny");
+    assert!(err.to_string().contains("expired"), "got: {err}");
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn unparseable_expires_at_rejected_at_issuance() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-garbage-issue");
+
+    // "never" sorts above any year digit, so the old string compare
+    // treated it as an expiry infinitely far in the future.
+    let err = agent
+        .issue_compat_binding(None, Some("never"))
+        .expect_err("garbage expiresAt must be rejected at issuance");
+    assert!(
+        matches!(err, jacs::error::JacsError::ValidationError(_)),
+        "typed ValidationError expected, got {err:?}"
+    );
+    assert!(
+        err.to_string().contains("RFC 3339"),
+        "error names the required format: {err}"
+    );
+    assert!(
+        !std::path::Path::new(BINDING_PATH).exists(),
+        "a rejected issuance must not persist a binding file"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn unparseable_expires_at_fails_closed_at_verify() {
+    // The expiry gate itself fails closed on anything that does not parse
+    // (pre-fix issuance could persist such values).
+    jacs::compatibility::binding::expiry_denies("never")
+        .expect_err("'never' must fail the expiry gate closed");
+    jacs::compatibility::binding::expiry_denies("TBD")
+        .expect_err("'TBD' must fail the expiry gate closed");
+    assert!(
+        jacs::compatibility::binding::expiry_denies("2020-01-01T00:00:00Z").expect("Z-form parses"),
+        "past instant is expired"
+    );
+    assert!(
+        !jacs::compatibility::binding::expiry_denies("2999-01-01T00:00:00Z")
+            .expect("far-future parses"),
+        "far-future instant is not expired"
+    );
+
+    // End-to-end: a binding whose on-disk expiresAt was edited to garbage
+    // is DENIED (the edit also breaks the native signature — every route
+    // to a garbage expiry fails closed).
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-garbage-verify");
+    agent.issue_compat_binding(None, None).expect("issue");
+    let mut doc = read_binding_file();
+    doc["compatibilityKeyBinding"]["expiresAt"] = serde_json::json!("never");
+    std::fs::write(BINDING_PATH, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+    agent
+        .compat_binding()
+        .expect_err("a binding carrying garbage expiresAt must deny");
+}
+
+// =========================================================================
+// Supersession is ENFORCED (issue 013): "latest issuedAt wins" is checked
+// against the watermark recorded in the keyring metadata at issuance, so
+// a validly-signed OLDER binding restored over a re-issue cannot
+// re-authorize a withdrawn scope.
+// =========================================================================
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn latest_issued_at_binding_wins() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-supersede");
+
+    // Broad grant first (content scope), then a NARROWING re-issue.
+    agent
+        .issue_compat_binding(Some(&["jwks", "did", "ap2-mandate"]), None)
+        .expect("issue broad binding");
+    let broad = std::fs::read(BINDING_PATH).expect("capture broad binding bytes");
+    agent
+        .issue_compat_binding(None, None)
+        .expect("narrowing re-issue (withdraws ap2-mandate)");
+
+    // Normal re-issue still verifies, without the withdrawn scope.
+    let (_doc, scopes) = agent.compat_binding().expect("latest binding verifies");
+    assert!(
+        !scopes.iter().any(|s| s == "ap2-mandate"),
+        "the narrowed binding must not carry the withdrawn scope"
+    );
+
+    // Signed rollback: restore the OLDER validly-signed binding file.
+    std::fs::write(BINDING_PATH, &broad).expect("restore older binding");
+    let err = agent
+        .compat_binding()
+        .expect_err("an older-issuedAt binding is not authoritative");
+    assert!(
+        err.to_string().contains("superseded"),
+        "denial must name supersession: {err}"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn keyring_without_watermark_still_verifies() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-prefix-keyring");
+
+    agent.issue_compat_binding(None, None).expect("issue");
+
+    // Simulate a pre-fix keyring: strip the watermark fields (existing
+    // agents keep working; the next issuance backfills them).
+    let keyring_path = "./jacs_keys/jacs.keyring.json";
+    let mut keyring: Value =
+        serde_json::from_str(&std::fs::read_to_string(keyring_path).expect("keyring file"))
+            .expect("keyring parses");
+    let obj = keyring.as_object_mut().expect("keyring object");
+    assert!(
+        obj.remove("lastBindingIssuedAt").is_some(),
+        "issuance must record the supersession watermark"
+    );
+    obj.remove("lastBindingHash");
+    std::fs::write(keyring_path, serde_json::to_vec_pretty(&keyring).unwrap()).unwrap();
+
+    agent
+        .compat_binding()
+        .expect("a pre-fix keyring (no watermark) must still verify");
+}
+
+// =========================================================================
+// jacsSha256 is authenticated at verification (issue 023): the signature
+// preimage excludes it, but exporters stamp it into ecosystem artifacts as
+// the binding reference (FR12) — so verify recomputes it.
+// =========================================================================
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn tampered_jacs_sha256_fails_verification() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-sha-tamper");
+
+    agent.issue_compat_binding(None, None).expect("issue");
+
+    // Edit ONLY jacsSha256 — the native signature still verifies (the
+    // hash field is outside the signed preimage), so only the recompute
+    // catches the lie.
+    let mut doc = read_binding_file();
+    doc["jacsSha256"] =
+        serde_json::json!("0000000000000000000000000000000000000000000000000000000000000000");
+    std::fs::write(BINDING_PATH, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let err = agent
+        .compat_binding()
+        .expect_err("a binding with a forged jacsSha256 must fail verification");
+    assert!(
+        err.to_string().contains("jacsSha256"),
+        "denial must name the hash mismatch: {err}"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn binding_without_native_signature_fails_verification() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("binding-no-sig");
+
+    agent.issue_compat_binding(None, None).expect("issue");
+
+    // Strip the native signature entirely — the schema requires it
+    // (issue 010), so verification fails at the schema gate.
+    let mut doc = read_binding_file();
+    assert!(
+        doc.as_object_mut()
+            .unwrap()
+            .remove("jacsSignature")
+            .is_some(),
+        "issued binding carries jacsSignature"
+    );
+    std::fs::write(BINDING_PATH, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let err = agent
+        .compat_binding()
+        .expect_err("an unsigned binding must fail verification");
+    assert!(
+        err.to_string().contains("schema"),
+        "the schema requires jacsSignature: {err}"
+    );
+}
+
+// =========================================================================
 // Schema-shape tests (both embedded copies are byte-identical; the jacs
 // validator is the enforcement point used by issue/verify).
 // =========================================================================
@@ -277,6 +513,18 @@ fn valid_binding_shape() -> Value {
             "scope": ["jwks"],
             "issuedAt": "2026-06-28T00:00:00Z",
             "expiresAt": null
+        },
+        // The schema REQUIRES the native jacsSignature (issue 010).
+        "jacsSignature": {
+            "agentID": "8c8a1b90-0000-4000-8000-000000000003",
+            "agentVersion": "8c8a1b90-0000-4000-8000-000000000004",
+            "date": "2026-06-28T00:00:00Z",
+            "iat": 1782604800,
+            "jti": "binding-fixture-nonce-0001",
+            "signature": "c2lnbmF0dXJl",
+            "publicKeyHash": "roothash",
+            "signingAlgorithm": "pq2025",
+            "fields": ["$schema", "compatibilityKeyBinding", "jacsId"]
         }
     })
 }
@@ -318,6 +566,44 @@ fn compatibility_key_binding_schema_accepts_ap2_and_agreement_vc_scopes() {
     schema()
         .validate_compat_binding(&doc.to_string())
         .expect("content scopes are schema-valid (grant is a policy question)");
+}
+
+#[test]
+fn compatibility_key_binding_schema_requires_native_signature() {
+    let mut doc = valid_binding_shape();
+    doc.as_object_mut().unwrap().remove("jacsSignature");
+    assert!(
+        schema().validate_compat_binding(&doc.to_string()).is_err(),
+        "the native jacsSignature is required (issue 010)"
+    );
+}
+
+/// The two embedded schema copies (jacs/schemas and jacs-core/schemas)
+/// must stay BYTE-identical — mirrors the signature-schema pin in
+/// legacy_verify_guardrails.rs.
+#[test]
+fn compatibility_key_binding_schema_copies_are_byte_identical() {
+    const BINDING_SCHEMA_JSON: &str = include_str!(
+        "../schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json"
+    );
+    let core = jacs_core::schema::DEFAULT_SCHEMA_STRINGS
+        .get("schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json")
+        .copied()
+        .expect("jacs-core embeds the binding schema");
+    assert_eq!(
+        BINDING_SCHEMA_JSON, core,
+        "jacs and jacs-core binding schema copies drifted — run \
+         `cp -r jacs/schemas/* jacs-core/schemas/` (make sync-schemas)"
+    );
+    let parsed: Value = serde_json::from_str(BINDING_SCHEMA_JSON).expect("binding schema parses");
+    assert!(
+        parsed["required"]
+            .as_array()
+            .expect("required array")
+            .iter()
+            .any(|v| v == "jacsSignature"),
+        "the binding schema must require the native jacsSignature (issue 010)"
+    );
 }
 
 #[test]

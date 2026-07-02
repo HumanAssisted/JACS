@@ -63,8 +63,10 @@ Expected:
 ## Task 004 - Ecosystem Identity Exports
 
 ```bash
-cargo test -p jacs --test ecosystem_identity_exports -- --nocapture
-cargo test -p jacs --test a2a_keys_tests -- --nocapture es256
+# a2a feature required: a2a_keys_tests is #![cfg(feature = "a2a")] (0 tests without it),
+# and ecosystem_identity_exports gates its A2A cases on the same feature
+cargo test -p jacs --features a2a --test ecosystem_identity_exports -- --nocapture
+cargo test -p jacs --features a2a --test a2a_keys_tests -- --nocapture es256
 cargo test -p jacs --test w3c_fixtures -- --nocapture
 ```
 
@@ -132,7 +134,9 @@ Expected:
 ## Task 006 - Legacy Verify and Scope Guardrails
 
 ```bash
-cargo test -p jacs --test legacy_verify_guardrails -- --nocapture
+# agreements feature required: the content-export no-mutation guardrails
+# (agreement snapshot tests) are #[cfg(feature = "agreements")]
+cargo test -p jacs --features agreements --test legacy_verify_guardrails -- --nocapture
 cargo test -p jacs-binding-core --test contract -- --nocapture guardrail
 ```
 
@@ -148,7 +152,9 @@ Expected:
 ## Task 007 - Observability and Docs
 
 ```bash
-cargo test -p jacs --test compatibility_observability -- --nocapture
+# otlp-metrics gates the §9.8 counter assertions and agreements gates the
+# agreement-vc events — same feature set as `make test-jacs-observability`
+cargo test -p jacs --features "otlp-logs otlp-metrics otlp-tracing agreements" --test compatibility_observability -- --nocapture
 cargo test -p jacs-cli --test mcp_observability_tests -- --nocapture compatibility
 cargo test -p jacs-mcp --test tool_surface -- --nocapture compatibility
 ```
@@ -185,31 +191,75 @@ Expected:
 
 The checks above are cargo tests; this section exercises the actual commands a user runs, plus the external verifiers that prove interoperability (NFR8).
 
-```bash
-# fresh agent: PQ root + ES256 compat key + binding
-export JACS_PRIVATE_KEY_PASSWORD='smoke-password'
-jacs init --name p2-smoke --domain example.com
-jacs agent export-jwks > /tmp/p2_jwks.json
-jacs agent export-compat-binding > /tmp/p2_binding.json
+`make smoke-verifiers` runs this whole section unattended (builds the CLI, creates a scratch agent, runs both content exports and both stock verifier scripts in a temp directory); CI runs it on every PR as the `smoke-verifiers` job in `.github/workflows/rust.yml`, so a bit-rotted verifier script fails the build. The manual transcript below is the same flow.
 
-# migration path: an existing (pre-P2 / --no-compat-key) agent gains the key only explicitly
-jacs agent add-compat-key
+The verifier scripts resolve their npm dependencies (`jose`, `canonicalize`) from a `node_modules` next to (or above) the script file, so copy them into the scratch directory and install there.
+
+```bash
+JACS_REPO=$(pwd)                          # run this line from the repo root
+WORK=$(mktemp -d) && cd "$WORK"
+
+# fresh agent: PQ root + ES256 compat key (quickstart is the non-interactive
+# init path; `jacs init` prompts and is not scriptable)
+export JACS_PRIVATE_KEY_PASSWORD='P2-Smoke-Password!2026'
+jacs quickstart --name p2-smoke --domain example.com
+
+# identity exports; the FIRST identity export auto-issues the default
+# identity-scopes binding (content scopes are never part of it)
+jacs agent export-jwks > p2_jwks.json
+jacs agent export-compat-binding > p2_binding.json
+
+# migration is EXPLICIT and one-shot: this fresh agent already has the key,
+# so the command must FAIL with the typed duplicate error. (On a real
+# pre-P2 / --no-compat-key agent, this same command performs the migration.)
+jacs agent add-compat-key && echo "UNEXPECTED: duplicate add-compat-key succeeded" && exit 1
+echo "ok: duplicate add-compat-key rejected"
 
 # content scopes are NEVER auto-issued: grant them explicitly (PQ root signs)
 jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate,agreement-vc
 
 # content exports (CLI-only in P2; stdin form works like the rest of the agreement-v2 group)
-jacs ap2 export-mandate --input ./fixtures/ap2_mandate_sample.json > /tmp/p2_mandate_export.json
-cat ./fixtures/agreement_v2_sample.json | jacs agreement-v2 export-vc --agreement - > /tmp/p2_agreement_vc.json
+cat > p2_checkout.json <<'EOF'
+{
+  "id": "checkout_smoke_001",
+  "status": "ready_for_payment",
+  "currency": "USD",
+  "line_items": [
+    { "id": "li_1", "title": "Widget", "quantity": 1, "base_amount": 990, "total_amount": 990 }
+  ],
+  "totals": [
+    { "type": "total", "display_text": "Total", "amount": 990 }
+  ]
+}
+EOF
+jacs ap2 export-mandate --input p2_checkout.json > p2_mandate_export.json
 
-# external verification — stock tooling, no JACS installed
-# (run from a directory where `npm install jose canonicalize` has been done)
-node scripts/smoke/verify_ap2_jws.mjs /tmp/p2_mandate_export.json /tmp/p2_jwks.json   # stock `jose` verifier accepts the detached ES256 JWS
+AGENT_ID=$(python3 -c "import json; print(json.load(open('jacs.config.json'))['jacs_agent_id_and_version'].split(':')[0])")
+cat > p2_agreement_input.json <<EOF
+{
+  "title": "P2 smoke agreement",
+  "description": "Agreement used by the P2 smoke checklist.",
+  "terms": "Party agrees to smoke-test things.",
+  "termsFormat": "text/plain",
+  "status": "proposed",
+  "parties": [ { "agentId": "$AGENT_ID", "agentType": "ai", "role": "signer" } ],
+  "signaturePolicy": { "partyQuorum": "all" },
+  "controllers": [ "$AGENT_ID" ]
+}
+EOF
+jacs agreement-v2 create --input p2_agreement_input.json > p2_agreement.json
+cat p2_agreement.json | jacs agreement-v2 export-vc --agreement - > p2_agreement_vc.json
+
+# external verification — stock tooling, no JACS verification code involved
+cp "$JACS_REPO"/scripts/smoke/verify_ap2_jws.mjs "$JACS_REPO"/scripts/smoke/verify_di_vc.mjs .
+npm install jose canonicalize
+node verify_ap2_jws.mjs p2_mandate_export.json p2_jwks.json   # stock `jose` verifier accepts the detached ES256 JWS
 # independent Data Integrity check of the agreement VC (ecdsa-jcs-2019, Multikey verification method)
-node scripts/smoke/verify_di_vc.mjs /tmp/p2_agreement_vc.json
+node verify_di_vc.mjs p2_agreement_vc.json p2_jwks.json
 
 # native wall — both must hold after every export
-jacs verify signed-document.json          # native doc unchanged: same jacsSha256, pq2025 signature verifies
+echo '{"claim":"native wall"}' | jacs quickstart --name p2-smoke --domain example.com --sign > p2_signed_document.json
+jacs verify p2_signed_document.json       # native doc unchanged: pq2025 signature verifies
 # a native doc with signingAlgorithm mutated to "ES256" must FAIL verification (covered by legacy_verify_guardrails)
 ```
 

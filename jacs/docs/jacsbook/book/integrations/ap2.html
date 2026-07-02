@@ -200,6 +200,12 @@ canonicalized per RFC 8785 (JCS).</li>
 <code>jacs/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json</code> and
 rejects anything that does not conform — typed input is a schema check,
 not a naming convention.</p>
+<p>The schema is deliberately open (<code>additionalProperties: true</code>) to match
+UCP checkout extensibility: extra checkout fields beyond the required
+core are signed as-is, so relying parties must not assume JACS validated
+anything beyond the schema's required core fields. Operators granting the
+<code>ap2-mandate</code> scope are authorizing signatures over extensible checkout
+payloads.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <p>The <code>ap2-mandate</code> binding scope is a <strong>content scope</strong>: it is never
 auto-issued. Grant it explicitly first (this requires the PQ root's
