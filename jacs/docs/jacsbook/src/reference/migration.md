@@ -343,25 +343,28 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 ### Ed25519 to Post-Quantum
 
-For increased security, you may want to migrate to post-quantum algorithms.
+Native JACS signing is PQ-only for new agents: new agents sign with
+`pq2025` (ML-DSA-87 / FIPS-204). Existing Ed25519-rooted agents are
+grandfathered — they continue to load and sign (each native signature
+logs a WARN `native_legacy_ed25519_sign`) until they rotate.
 
-1. **Create New Agent with New Algorithm:**
-   ```json
-   {
-     "jacs_agent_key_algorithm": "pq2025"
-   }
-   ```
+**Key rotation is the designated migration path.** Every rotation
+resolves to `pq2025` — with or without an explicit algorithm argument —
+so rotating a grandfathered agent converges it to a post-quantum root.
+Rotating to any other algorithm is a typed error.
 
+1. **Rotate Keys:**
    ```bash
-   jacs agent create --create-keys true -f new-agent.json
+   jacs agent rotate-keys
    ```
 
-2. **Update Configuration:**
-   ```json
-   {
-     "jacs_agent_key_algorithm": "pq2025",
-     "jacs_agent_id_and_version": "new-agent-id:new-version"
-   }
+2. **Re-issue the Compatibility Key Binding (if present):**
+
+   The ES256 compatibility key binding is signed by the native root, so
+   rotation supersedes it. Ecosystem exports fail with a "re-issue"
+   error until a new binding is signed by the current PQ root:
+   ```bash
+   jacs agent issue-compat-binding
    ```
 
 3. **Re-sign Critical Documents (Optional):**

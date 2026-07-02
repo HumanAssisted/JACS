@@ -460,23 +460,26 @@ aws s3 sync ./jacs_data/ s3://my-jacs-bucket/data/
 </ol>
 <h2 id="migrating-cryptographic-algorithms"><a class="header" href="#migrating-cryptographic-algorithms">Migrating Cryptographic Algorithms</a></h2>
 <h3 id="ed25519-to-post-quantum"><a class="header" href="#ed25519-to-post-quantum">Ed25519 to Post-Quantum</a></h3>
-<p>For increased security, you may want to migrate to post-quantum algorithms.</p>
+<p>Native JACS signing is PQ-only for new agents: new agents sign with
+<code>pq2025</code> (ML-DSA-87 / FIPS-204). Existing Ed25519-rooted agents are
+grandfathered — they continue to load and sign (each native signature
+logs a WARN <code>native_legacy_ed25519_sign</code>) until they rotate.</p>
+<p><strong>Key rotation is the designated migration path.</strong> Every rotation
+resolves to <code>pq2025</code> — with or without an explicit algorithm argument —
+so rotating a grandfathered agent converges it to a post-quantum root.
+Rotating to any other algorithm is a typed error.</p>
 <ol>
 <li>
-<p><strong>Create New Agent with New Algorithm:</strong></p>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq2025"
-}
-</code></pre>
-<pre><code class="language-bash">jacs agent create --create-keys true -f new-agent.json
+<p><strong>Rotate Keys:</strong></p>
+<pre><code class="language-bash">jacs agent rotate-keys
 </code></pre>
 </li>
 <li>
-<p><strong>Update Configuration:</strong></p>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq2025",
-  "jacs_agent_id_and_version": "new-agent-id:new-version"
-}
+<p><strong>Re-issue the Compatibility Key Binding (if present):</strong></p>
+<p>The ES256 compatibility key binding is signed by the native root, so
+rotation supersedes it. Ecosystem exports fail with a "re-issue"
+error until a new binding is signed by the current PQ root:</p>
+<pre><code class="language-bash">jacs agent issue-compat-binding
 </code></pre>
 </li>
 <li>

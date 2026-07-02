@@ -2,16 +2,27 @@
 
 JACS supports multiple cryptographic algorithms for digital signatures, providing flexibility for different security requirements and future-proofing against quantum computing threats.
 
+**Native signing is PQ-only for new agents.** New agent creation always
+uses `pq2025` (ML-DSA-87 / FIPS-204); a request for Ed25519 resolves to
+`pq2025` with a WARN. Existing Ed25519-rooted agents are grandfathered —
+they keep loading and signing (each native signature logs a WARN
+`native_legacy_ed25519_sign`) until they rotate, and every key rotation
+resolves to `pq2025`. ES256 exists in JACS only as an ecosystem
+compatibility key for targeted exports; it is never a native
+`jacsSignature` algorithm. See the
+[Algorithm Selection Guide](algorithm-guide.md).
+
 ## Supported Algorithms
 
-| Algorithm | Config Value | Type | Key Size | Signature Size | Recommended Use |
-|-----------|--------------|------|----------|----------------|-----------------|
-| Ed25519 | `ring-Ed25519` | Elliptic Curve | 32 bytes | 64 bytes | General purpose (default) |
-| PQ2025 | `pq2025` | ML-DSA-87 | 2,592 bytes | 4,627 bytes | Post-quantum compliance |
+| Algorithm | Config Value | Type | Key Size | Signature Size | Role |
+|-----------|--------------|------|----------|----------------|------|
+| PQ2025 | `pq2025` | ML-DSA-87 | 2,592 bytes | 4,627 bytes | Native root for all new agents (default and only choice) |
+| Ed25519 | `ring-Ed25519` | Elliptic Curve | 32 bytes | 64 bytes | Verification always; signing only for grandfathered pre-existing agents |
 
 ## Ed25519 (ring-Ed25519)
 
-The recommended algorithm for most use cases.
+Supported for verification everywhere; signing is limited to grandfathered
+agents created before the PQ-only policy.
 
 ### Overview
 
@@ -32,12 +43,15 @@ Ed25519 is an elliptic curve signature scheme using Curve25519. JACS uses the `r
 }
 ```
 
+For **new** agents this value no longer selects Ed25519: creation resolves
+it to `pq2025` and logs a WARN. It remains meaningful only for existing
+Ed25519-rooted agents, which keep their keys until rotation.
+
 ### Use Cases
 
-- General agent communication
-- MCP message signing
-- HTTP request/response signing
-- Document signing
+- Verifying documents signed before the PQ-only policy (verification is
+  always supported)
+- Grandfathered pre-existing agents that have not yet rotated to `pq2025`
 
 ### Example
 
@@ -46,9 +60,9 @@ import jacs
 import json
 
 agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')  # Using ring-Ed25519
+agent.load('./jacs.config.json')  # grandfathered ring-Ed25519 agent
 
-# Sign a message
+# Sign a message (logs WARN native_legacy_ed25519_sign until rotation)
 signature = agent.sign_string("Hello, World!")
 print(f"Signature (64 bytes): {len(signature)} characters base64")
 ```
@@ -57,7 +71,7 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 
 ### Overview
 
-PQ2025 uses ML-DSA-87, the FIPS-204 post-quantum signature algorithm currently supported by JACS.
+PQ2025 uses ML-DSA-87, the FIPS-204 post-quantum signature algorithm currently supported by JACS. It is the native root algorithm for all new agents.
 
 ### Characteristics
 
@@ -87,27 +101,45 @@ PQ2025 uses ML-DSA-87, the FIPS-204 post-quantum signature algorithm currently s
 - Use for compliance or long-lived signatures where post-quantum readiness matters
 - May be required for future compliance
 
+## ES256 (Compatibility Key — Never Native)
+
+ES256 (ECDSA P-256) appears in JACS only as the **ecosystem compatibility
+key** used by the targeted exporters (JWKS, DID/W3C identity, A2A agent
+card, AP2 mandate, Agreement-v2 Verifiable Credential). It is never a
+valid native `jacsSignature` algorithm: the signature schema permits only
+`ring-Ed25519` and `pq2025`, and native verification rejects `ES256`.
+
+An ES256 signature on an exported artifact proves possession of the
+compatibility key, nothing more — it does not by itself establish native
+JACS trust. The PQ-signed **compatibility key binding** is what ties the
+ES256 key to the agent; see the
+[Security Model](security.md#compatibility-key-binding-p2) for the
+binding lifecycle. Verifying incoming AP2 mandates or third-party VCs is
+out of scope in P2.
+
 ## Algorithm Selection Guide
+
+There is no algorithm choice at agent creation time: new agents always
+sign natively with `pq2025`. The matrix below covers what each algorithm
+is used for post-P2.
 
 ### Decision Matrix
 
-| Requirement | Recommended Algorithm |
-|-------------|----------------------|
-| Best performance | `ring-Ed25519` |
-| Smallest signatures | `ring-Ed25519` |
-| Quantum resistance | `pq2025` |
-| Maximum security | `pq2025` |
-| General purpose | `pq2025` |
+| Requirement | Algorithm |
+|-------------|-----------|
+| New agent, any use case | `pq2025` (only option) |
+| Verifying legacy Ed25519 documents | `ring-Ed25519` (verification is automatic) |
+| JOSE/W3C ecosystem interop (JWKS, AP2, VC) | ES256 compatibility key — export-only, never native |
 
 ### By Use Case
 
 **Web APIs and MCP**:
 ```json
 {
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
-Fast signing is critical for real-time communication.
+Native signing uses `pq2025`; grandfathered Ed25519 agents keep working until rotation.
 
 **Legal/Financial Documents**:
 ```json
@@ -163,13 +195,13 @@ Signatures in JACS documents include algorithm metadata:
     "date": "2024-01-15T10:30:00Z",
     "signature": "base64-encoded-signature",
     "publicKeyHash": "sha256-of-public-key",
-    "signingAlgorithm": "ring-Ed25519",
+    "signingAlgorithm": "pq2025",
     "fields": ["jacsId", "jacsVersion", "content"]
   }
 }
 ```
 
-The `signingAlgorithm` field enables verifiers to use the correct verification method.
+The `signingAlgorithm` field enables verifiers to use the correct verification method. The native signature schema permits only `ring-Ed25519` and `pq2025`; a native document whose `signingAlgorithm` is anything else (for example `ES256`) fails verification.
 
 ## Hashing
 
@@ -187,35 +219,27 @@ JACS uses SHA-256 for all hash operations:
 
 ## Algorithm Migration
 
-To migrate to a new algorithm:
+**Key rotation is the designated Ed25519 → `pq2025` migration path.**
+Every rotation resolves to `pq2025` — with or without an explicit
+algorithm argument — so a grandfathered Ed25519 agent becomes PQ-rooted
+the first time it rotates. Requesting any other rotation target is a
+typed error.
 
-1. **Generate New Keys**
-   ```json
-   {
-     "jacs_agent_key_algorithm": "pq2025"
-   }
+1. **Rotate Keys**
+   ```bash
+   jacs agent rotate-keys
    ```
 
-2. **Create New Agent Version**
-   ```python
-   # Load with old algorithm
-   agent.load('./old-config.json')
+2. **Re-issue the Compatibility Key Binding (if present)**
 
-   # Update to new algorithm and generate new version
-   new_agent = agent.update_agent(json.dumps({
-       # ... agent data with new keys
-   }))
+   The ES256 compatibility key binding is signed by the native root, so
+   rotation supersedes it. Ecosystem exports fail with a "re-issue"
+   error until a new binding is signed by the current PQ root:
+   ```bash
+   jacs agent issue-compat-binding
    ```
 
-3. **Update Configuration**
-   ```json
-   {
-     "jacs_agent_id_and_version": "agent-id:new-version",
-     "jacs_agent_key_algorithm": "pq2025"
-   }
-   ```
-
-4. **Maintain Backward Compatibility**
+3. **Maintain Backward Compatibility**
    - Keep old agent versions for verifying old documents
    - Old signatures remain valid with old public keys
 

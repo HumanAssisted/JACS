@@ -758,3 +758,177 @@ fn test_get_agent_json_before_load_fails() {
         "get_agent_json should fail when agent is not loaded"
     );
 }
+
+// =============================================================================
+// 12. P2 Task 006 — surface guardrails: no generic projection surface.
+//
+// P2 ships ONLY named, targeted exporters (JWKS, compat key binding, A2A
+// card, AP2 mandate, Agreement-v2 VC). These source-scan tests (same
+// include_str! pattern as agreement_v2_json.rs) prove the old broad
+// "project any document into any envelope/algorithm" design did not creep
+// back onto the public binding surface. Source scan is feature-independent:
+// cfg(a2a) / cfg(agreements) methods are visible in the raw source.
+// =============================================================================
+
+const SIMPLE_WRAPPER_SRC: &str = include_str!("../src/simple_wrapper.rs");
+
+#[test]
+fn simple_wrapper_has_no_generic_sign_jws_method() {
+    assert!(
+        !SIMPLE_WRAPPER_SRC.contains("fn sign_jws"),
+        "SimpleAgentWrapper must not expose a generic sign_jws method; \
+         ES256 JWS signing is internal (pub(crate) sign_es256_jose) and \
+         only reachable through the named exporters"
+    );
+}
+
+#[test]
+fn simple_wrapper_has_no_generic_sign_es256_method() {
+    for forbidden in ["fn sign_es256", "fn sign_with_algorithm"] {
+        assert!(
+            !SIMPLE_WRAPPER_SRC.contains(forbidden),
+            "SimpleAgentWrapper must not expose `{forbidden}`; the ES256 \
+             compatibility key never signs arbitrary caller-chosen payloads"
+        );
+    }
+}
+
+#[test]
+fn simple_wrapper_has_no_generic_sign_data_integrity_method() {
+    for forbidden in [
+        "fn sign_data_integrity",
+        "fn issue_w3c_vc",
+        "fn export_dsse_document",
+    ] {
+        assert!(
+            !SIMPLE_WRAPPER_SRC.contains(forbidden),
+            "SimpleAgentWrapper must not expose `{forbidden}`; Data \
+             Integrity / VC / DSSE projections exist only as the named, \
+             scope-gated exporters"
+        );
+    }
+}
+
+/// Extract every `pub fn` in simple_wrapper.rs as `(name, [param names])`,
+/// handling multi-line parameter lists.
+fn simple_wrapper_public_fn_signatures() -> Vec<(String, Vec<String>)> {
+    let src = SIMPLE_WRAPPER_SRC;
+    let mut signatures = Vec::new();
+    let mut cursor = 0;
+    while let Some(rel) = src[cursor..].find("pub fn ") {
+        let name_start = cursor + rel + "pub fn ".len();
+        let rest = &src[name_start..];
+        let open = rest.find('(').expect("pub fn should have a parameter list");
+        let name = rest[..open]
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        // Walk to the matching close paren (param types may nest parens).
+        let mut depth = 0usize;
+        let mut close = open;
+        for (i, c) in rest[open..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = open + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(close > open, "unbalanced parameter list for pub fn {name}");
+
+        let params: Vec<String> = rest[open + 1..close]
+            .split(',')
+            .filter_map(|piece| piece.split_once(':'))
+            .map(|(param, _ty)| param.trim().trim_start_matches("mut ").trim().to_string())
+            .filter(|param| {
+                !param.is_empty() && param.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            })
+            .collect();
+
+        signatures.push((name, params));
+        cursor = name_start + close;
+    }
+    assert!(
+        signatures.len() > 30,
+        "source scan should see the full SimpleAgentWrapper surface, found only {}",
+        signatures.len()
+    );
+    signatures
+}
+
+#[test]
+fn no_public_method_accepts_arbitrary_document_plus_algorithm_or_suite() {
+    // A method that takes BOTH a document/JSON payload AND an
+    // algorithm/cryptosuite selector is the generic-projection shape P2
+    // deliberately closed (callers must not choose the envelope). Methods
+    // may take one or the other: rotate_keys/create/ephemeral take an
+    // algorithm but no document; sign_message_json takes a document but
+    // no algorithm; verify_with_key_json takes a document + key but no
+    // algorithm selector today.
+    //
+    // Exemptions:
+    // - verify_* methods: an algorithm parameter for VERIFICATION does
+    //   not let a caller mint signatures, so it is allowed.
+    // - ALLOWLIST: any future deliberate exception must be named here
+    //   with a justification (currently empty).
+    const ALLOWLIST: [&str; 0] = [];
+
+    let doc_like = |param: &str| {
+        ["document", "json", "payload", "data", "content", "message"]
+            .iter()
+            .any(|marker| param.contains(marker))
+    };
+    let algorithm_like = |param: &str| {
+        param.contains("algorithm")
+            || param.contains("suite")
+            || param.split('_').any(|segment| segment == "alg")
+    };
+
+    let violations: Vec<String> = simple_wrapper_public_fn_signatures()
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with("verify") && !ALLOWLIST.contains(&name.as_str()))
+        .filter(|(_, params)| {
+            params.iter().any(|p| doc_like(p)) && params.iter().any(|p| algorithm_like(p))
+        })
+        .map(|(name, params)| format!("pub fn {name}({})", params.join(", ")))
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "generic projection surface detected on SimpleAgentWrapper — a public \
+         method takes BOTH a document/JSON payload AND an algorithm/cryptosuite \
+         selector. Either remove the method or add it to the ALLOWLIST in this \
+         test with a written justification:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn named_targeted_export_methods_exist() {
+    // The narrow P2 surface: these exact named exporters, nothing broader.
+    // export_a2a_agent_card_json (cfg a2a) and export_agreement_v2_as_vc_json
+    // (cfg agreements) are checked via source scan so this test passes under
+    // any feature combination.
+    for method in [
+        "pub fn add_compat_key_json",
+        "pub fn export_compatibility_jwks_json",
+        "pub fn export_compatibility_key_binding_json",
+        "pub fn export_ap2_mandate_json",
+        "pub fn export_a2a_agent_card_json",
+        "pub fn export_agreement_v2_as_vc_json",
+    ] {
+        assert!(
+            SIMPLE_WRAPPER_SRC.contains(method),
+            "named targeted exporter `{method}` is missing from \
+             SimpleAgentWrapper — P2 exports must stay named, not generic"
+        );
+    }
+}

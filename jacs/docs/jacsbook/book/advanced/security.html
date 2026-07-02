@@ -199,10 +199,15 @@
   "jacsSignature": {
     "agentID": "550e8400-e29b-41d4-a716-446655440000",
     "publicKeyHash": "sha256-of-public-key",
-    "signingAlgorithm": "ring-Ed25519"
+    "signingAlgorithm": "pq2025"
   }
 }
 </code></pre>
+<p>Native signing is post-quantum only for new agents: new agents sign with
+<code>pq2025</code> (ML-DSA-87 / FIPS-204). Existing Ed25519-rooted agents are
+grandfathered — they keep signing (each native signature logs a WARN
+<code>native_legacy_ed25519_sign</code>) until they rotate, and every rotation
+converges to <code>pq2025</code>.</p>
 <h3 id="2-document-integrity"><a class="header" href="#2-document-integrity">2. Document Integrity</a></h3>
 <p>All documents include cryptographic guarantees:</p>
 <ul>
@@ -332,8 +337,13 @@ additionally requires verifying the PQ-signed compatibility key
 binding (<code>jacs agent export-compat-binding</code>).</li>
 <li><strong>Native documents are never mutated.</strong> Exports are derived views;
 the native <code>jacsSignature</code> stays <code>pq2025</code> and the source document's
-bytes and verification are unchanged after every export.</li>
+bytes and verification are unchanged after every export. These are
+targeted ecosystem artifacts, not JACS projections — native documents
+never gain <code>proof</code> or other projection fields.</li>
 </ul>
+<p>Exports are one-way in P2: JACS emits these artifacts, but verifying
+incoming AP2 mandates or third-party VCs is out of scope — use the
+target ecosystem's stock verifiers for that.</p>
 <h3 id="key-generation"><a class="header" href="#key-generation">Key Generation</a></h3>
 <p>JACS generates cryptographic key pairs during agent creation:</p>
 <pre><code class="language-bash"># Keys are created in the configured key directory
@@ -404,6 +414,11 @@ chmod 600 ./jacs_keys/private.pem
 <li>Sign new version with old key</li>
 <li>Update configuration to use new keys</li>
 </ol>
+<p>Every rotation resolves to <code>pq2025</code>, including rotation of a
+grandfathered Ed25519 agent — rotation is the designated
+Ed25519 → post-quantum migration path. Rotation also supersedes the
+ES256 compatibility key binding: re-issue it under the new PQ root
+(<code>jacs agent issue-compat-binding</code>) before the next ecosystem export.</p>
 <h2 id="tls-certificate-validation"><a class="header" href="#tls-certificate-validation">TLS Certificate Validation</a></h2>
 <p>JACS includes configurable TLS certificate validation for secure network communication.</p>
 <h3 id="default-behavior-development"><a class="header" href="#default-behavior-development">Default Behavior (Development)</a></h3>
@@ -629,17 +644,21 @@ agent_id = result.get('agentId')  # Who signed the response
 </code></pre>
 <h2 id="algorithm-security"><a class="header" href="#algorithm-security">Algorithm Security</a></h2>
 <h3 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Type</th><th>Security Level</th></tr></thead><tbody>
-<tr><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>High (recommended)</td></tr>
-<tr><td><code>pq2025</code></td><td>Post-Quantum</td><td>FIPS-204 ML-DSA-87</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Type</th><th>Role</th></tr></thead><tbody>
+<tr><td><code>pq2025</code></td><td>Post-Quantum (FIPS-204 ML-DSA-87)</td><td>Native root for all new agents; every rotation resolves to it</td></tr>
+<tr><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>Verification always; signing only for grandfathered pre-existing agents (logs WARN <code>native_legacy_ed25519_sign</code>)</td></tr>
+<tr><td>ES256</td><td>Elliptic Curve (P-256)</td><td>Compatibility key for targeted ecosystem exports only — never a valid native <code>jacsSignature</code> algorithm</td></tr>
 </tbody></table>
 </div>
 <h3 id="algorithm-selection"><a class="header" href="#algorithm-selection">Algorithm Selection</a></h3>
-<p>Choose based on requirements:</p>
-<ul>
-<li><strong>General Use</strong>: <code>ring-Ed25519</code> - fast, secure, small signatures</li>
-<li><strong>Future-Proofing</strong>: <code>pq2025</code> - FIPS-204 post-quantum signatures</li>
-</ul>
+<p>Native JACS signing is PQ-only for new agents — there is no algorithm
+choice at creation time. Existing Ed25519-rooted agents are grandfathered
+and keep signing with a WARN until they rotate; rotation always converges
+to <code>pq2025</code>.</p>
+<p>An ES256 content signature does <strong>not</strong> create native JACS trust:
+classical verification proves possession of the compatibility key only.
+The PQ-signed compatibility key binding is what ties that key to the
+agent — see <a href="#compatibility-key-binding-p2">Compatibility key binding (P2)</a>.</p>
 <h2 id="security-best-practices"><a class="header" href="#security-best-practices">Security Best Practices</a></h2>
 <h3 id="1-key-storage"><a class="header" href="#1-key-storage">1. Key Storage</a></h3>
 <pre><code class="language-bash"># Never commit keys to version control

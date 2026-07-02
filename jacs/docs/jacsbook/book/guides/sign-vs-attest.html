@@ -228,6 +228,20 @@
 <tr><td>Exchange artifact with another agent</td><td><code>sign_artifact()</code> / A2A</td><td>Signed wrapped artifact</td></tr>
 </tbody></table>
 </div>
+<h2 id="native-signing-vs-compatibility-exports"><a class="header" href="#native-signing-vs-compatibility-exports">Native Signing vs. Compatibility Exports</a></h2>
+<p>Every API above signs <strong>natively</strong>: the output carries a JACS
+<code>jacsSignature</code> from the agent's post-quantum root (<code>pq2025</code> for new
+agents; grandfathered Ed25519 agents keep signing with a WARN until they
+rotate). Separately, the CLI offers <strong>targeted ecosystem exporters</strong>
+(<code>jacs agent export-jwks</code>, <code>jacs ap2 export-mandate</code>,
+<code>jacs agreement-v2 export-vc</code>, the A2A agent card) that sign derived
+artifacts with the agent's ES256 compatibility key. Exports are one-way
+views: the native document never gains proof or projection fields, and an
+ES256 signature by itself proves possession of the compatibility key only
+— the PQ-signed compatibility key binding is what ties that key to the
+agent. There is no generic "sign this document with algorithm X" API, and
+verifying incoming AP2/VC artifacts is out of scope. See the
+<a href="../advanced/security.html">Security Model</a>.</p>
 <h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
 <h3 id="just-need-integrity-use-signing"><a class="header" href="#just-need-integrity-use-signing">Just need integrity? Use signing.</a></h3>
 <pre><code class="language-python">signed = client.sign_message({"action": "approve"})
