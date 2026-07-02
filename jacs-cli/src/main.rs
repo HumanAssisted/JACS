@@ -10,7 +10,7 @@ use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::{
-    handle_agent_create, handle_agent_create_auto, handle_config_create,
+    handle_agent_create_auto_opts, handle_agent_create_opts, handle_config_create,
 };
 use jacs::cli_utils::default_set_file_list;
 use jacs::cli_utils::document::{
@@ -198,9 +198,34 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Parse args for the specific agent create command
                 let filename = create_matches.get_one::<String>("filename");
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
+                let no_compat_key = create_matches.get_flag("no-compat-key");
 
                 // Call the refactored handler function
-                handle_agent_create(filename, create_keys)?;
+                handle_agent_create_opts(filename, create_keys, no_compat_key)?;
+            }
+            Some(("add-compat-key", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
+                    })?;
+                let compat = agent.add_compat_key().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(format!(
+                        "Failed to add compatibility key: {}",
+                        e
+                    )))
+                })?;
+                println!("Ecosystem compatibility key added.");
+                println!("  Role:      {}", compat.role);
+                println!("  Algorithm: {}", compat.algorithm);
+                println!("  Kid:       {}", compat.kid);
+                println!("  Public:    {}", compat.public_key_path);
+                println!("  Private:   {}", compat.private_key_path);
             }
             Some(("verify", verify_matches)) => {
                 let _agentfile = verify_matches.get_one::<String>("agent-file");
@@ -1945,10 +1970,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         }
         Some(("init", init_matches)) => {
             let auto_yes = *init_matches.get_one::<bool>("yes").unwrap_or(&false);
+            let no_compat_key = init_matches.get_flag("no-compat-key");
             println!("--- Running Config Creation ---");
             handle_config_create()?;
             println!("\n--- Running Agent Creation (with keys) ---");
-            handle_agent_create_auto(None, true, auto_yes)?;
+            handle_agent_create_auto_opts(None, true, auto_yes, no_compat_key)?;
             println!("\n--- JACS Initialization Complete ---");
         }
         #[cfg(feature = "keychain")]

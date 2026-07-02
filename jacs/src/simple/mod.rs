@@ -62,6 +62,7 @@ pub mod core;
 pub mod diagnostics;
 pub mod types;
 pub mod w3c;
+pub use crate::keystore::compat::CompatKeyInfo;
 pub use core::SimpleAgent;
 pub use core::build_loaded_agent_info;
 pub use diagnostics::diagnostics;
@@ -119,6 +120,8 @@ mod tests {
             key_directory: "./keys".to_string(),
             domain: String::new(),
             dns_record: String::new(),
+            ecosystem_kid: String::new(),
+            ecosystem_algorithm: String::new(),
         };
 
         let json = serde_json::to_string(&info).unwrap();

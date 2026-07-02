@@ -290,6 +290,78 @@ fn create_persistent_wrapper_for_rotation(
 
 #[test]
 #[serial]
+fn create_with_params_returns_pq_root_and_compatibility_key_metadata() {
+    // P2 Task 002: creation via params JSON eagerly mints the ES256
+    // compat key and surfaces its metadata through AgentInfo.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-key",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+    })
+    .to_string();
+
+    let (_wrapper, info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with params");
+    let info: Value = serde_json::from_str(&info_json).unwrap();
+    assert!(
+        info["algorithm"].as_str().unwrap_or("").contains("pq2025"),
+        "native root is pq2025"
+    );
+    assert_eq!(info["ecosystem_algorithm"], "ES256");
+    assert!(
+        !info["ecosystem_kid"].as_str().unwrap_or("").is_empty(),
+        "compat kid surfaces through the binding info"
+    );
+}
+
+#[test]
+#[serial]
+fn add_compat_key_json_migrates_existing_agent() {
+    // P2 Task 002: a pre-P2-style agent (created with the opt-out) gains
+    // the compat key only through the explicit migration method.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-migrate",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+        "no_compat_key": true,
+    })
+    .to_string();
+
+    let (wrapper, info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with opt-out");
+    let info: Value = serde_json::from_str(&info_json).unwrap();
+    assert!(
+        info["ecosystem_kid"].as_str().unwrap_or("").is_empty(),
+        "opt-out agent starts without a compat key"
+    );
+
+    let compat_json = wrapper
+        .add_compat_key_json()
+        .expect("explicit migration succeeds");
+    let compat: Value = serde_json::from_str(&compat_json).unwrap();
+    assert_eq!(compat["role"], "ecosystem_signing");
+    assert_eq!(compat["algorithm"], "ES256");
+
+    let err = wrapper
+        .add_compat_key_json()
+        .expect_err("duplicate migration is a typed error");
+    assert!(err.to_string().contains("already") || err.to_string().contains("exists"));
+}
+
+#[test]
+#[serial]
 fn rotate_keys_rejects_ed25519_selection() {
     let (wrapper, _tmp, _guard) = create_persistent_wrapper_for_rotation("rotate-wall-reject");
     for bad in ["ring-Ed25519", "ed25519"] {

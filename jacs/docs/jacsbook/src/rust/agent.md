@@ -63,26 +63,29 @@ jacs agent create --create-keys true -f my-agent.json
 
 ## Cryptographic Keys
 
-JACS supports:
+New agents hold two key roles:
 
-| Algorithm | Description |
-|-----------|-------------|
-| `ring-Ed25519` | Fast elliptic curve signatures |
-| `pq2025` | Post-quantum ML-DSA-87 signatures |
+| Role | Algorithm | Purpose |
+|------|-----------|---------|
+| `native_root` | `pq2025` (ML-DSA-87, FIPS-204) | Signs native JACS documents. New creation and all rotations are PQ-only. |
+| `ecosystem_signing` | `ES256` (ECDSA P-256) | Compatibility credential for ecosystems that require classical signatures (JWKS/DID/A2A). Never signs native documents. |
 
-Configure the default algorithm in `jacs.config.json`:
+`ring-Ed25519` remains supported for verification everywhere, and for
+signing only on grandfathered pre-existing agents (each such signature logs
+a WARN; rotation migrates them to `pq2025`).
 
-```json
-{
-  "jacs_agent_key_algorithm": "ring-Ed25519"
-}
+The compatibility key is minted eagerly at creation (skip with
+`CreateAgentParams::builder().no_compat_key(true)` or the CLI
+`--no-compat-key`). Existing agents migrate explicitly:
+
+```rust,ignore
+let compat = agent.add_compat_key()?; // role, algorithm, RFC 7638 kid, paths
+let info = agent.ecosystem_key_info()?; // typed KeyNotFound when absent
 ```
 
-Or with an environment variable:
-
-```bash
-JACS_AGENT_KEY_ALGORITHM=ring-Ed25519 jacs agent create --create-keys true
-```
+Roles are recorded in `jacs_keys/jacs.keyring.json` (metadata only); the
+ES256 private key uses the same AES-256-GCM + Argon2id envelope and 0600
+permissions as the native root.
 
 ## Verifying Agents
 

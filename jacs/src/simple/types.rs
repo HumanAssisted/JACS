@@ -47,6 +47,15 @@ pub struct AgentInfo {
     /// DNS TXT record to publish (if domain was configured).
     #[serde(default)]
     pub dns_record: String,
+    /// RFC 7638 thumbprint of the ES256 ecosystem compatibility key
+    /// (empty when the agent has no compat key, e.g. `--no-compat-key`
+    /// or a pre-P2 agent that has not run `add-compat-key`).
+    #[serde(default)]
+    pub ecosystem_kid: String,
+    /// Algorithm of the ecosystem compatibility key (`"ES256"` when
+    /// present; empty otherwise).
+    #[serde(default)]
+    pub ecosystem_algorithm: String,
 }
 
 /// A signed JACS document.
@@ -303,6 +312,12 @@ pub struct CreateAgentParams {
     /// ```
     #[serde(skip)]
     pub storage: Option<MultiStorage>,
+    /// Skip creating the ES256 ecosystem compatibility key at creation
+    /// time (minimal / air-gapped agents). Default: false — new agents
+    /// get the compat key eagerly. Existing agents NEVER mint keys on
+    /// load; they use explicit `add_compat_key` migration.
+    #[serde(default)]
+    pub no_compat_key: bool,
 }
 
 fn default_algorithm() -> String {
@@ -338,6 +353,7 @@ impl Default for CreateAgentParams {
             domain: String::new(),
             default_storage: default_storage(),
             storage: None,
+            no_compat_key: false,
         }
     }
 }
@@ -403,6 +419,11 @@ impl CreateAgentParamsBuilder {
     /// testing or custom storage configurations.
     pub fn storage(mut self, storage: MultiStorage) -> Self {
         self.params.storage = Some(storage);
+        self
+    }
+    /// Skip the eager ES256 ecosystem compatibility key at creation time.
+    pub fn no_compat_key(mut self, skip: bool) -> Self {
+        self.params.no_compat_key = skip;
         self
     }
     /// Build the `CreateAgentParams`. Name is required.

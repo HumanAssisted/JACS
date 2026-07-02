@@ -1,3 +1,4 @@
+pub mod compat;
 pub mod keychain;
 
 use crate::crypt::private_key::LockedVec;
@@ -36,7 +37,7 @@ fn set_secure_permissions(path: &str, is_directory: bool) -> Result<(), JacsErro
 ///
 /// Uses `create_new(true)` to avoid overwriting existing files or following
 /// symlink targets.
-fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), JacsError> {
+pub(crate) fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), JacsError> {
     let path_obj = std::path::Path::new(path);
 
     if let Some(parent) = path_obj.parent() {

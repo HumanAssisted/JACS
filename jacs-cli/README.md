@@ -25,6 +25,12 @@ jacs document create -f mydata.json
 jacs verify signed-document.json
 ```
 
+New agents sign natively with post-quantum `pq2025` (ML-DSA-87) and also get
+an ES256 ecosystem compatibility key (role `ecosystem_signing`) for
+W3C/JWKS/A2A interop — skip it with `--no-compat-key` on `init` or
+`agent create`, and add it to a pre-existing agent with
+`jacs agent add-compat-key`.
+
 ## Provenance commands
 
 ### JSON and files

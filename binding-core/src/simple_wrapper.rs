@@ -580,6 +580,24 @@ impl SimpleAgentWrapper {
         serialize_json(&result, "rotation result")
     }
 
+    /// Explicit migration (P2 Task 002): add the ES256 `ecosystem_signing`
+    /// compatibility key to an EXISTING agent. Loading never mints key
+    /// material; new agents get the key eagerly at creation unless they
+    /// opt out. Returns a JSON `CompatKeyInfo` (role, algorithm, kid, key
+    /// paths). Errors if the key already exists (no silent re-mint;
+    /// ES256 key rotation is out of P2 scope) or the agent is ephemeral.
+    pub fn add_compat_key_json(&self) -> BindingResult<String> {
+        let info = self.inner.add_compat_key().map_err(|e| {
+            // No new ErrorKind (P2 NG10): duplicate/ephemeral guard failures
+            // are validation errors on existing categories.
+            BindingCoreError::new(
+                ErrorKind::Validation,
+                format!("Failed to add compatibility key: {}", e),
+            )
+        })?;
+        serialize_json(&info, "compatibility key info")
+    }
+
     // =========================================================================
     // Inline text + media signature methods (Task 05 + Task 06, PRD §4.1, §4.2)
     // =========================================================================

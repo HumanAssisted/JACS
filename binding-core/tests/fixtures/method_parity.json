@@ -6,7 +6,7 @@
     "verification": ["verify_self", "verify_json", "verify_with_key_json", "verify_by_id_json"],
     "signing": ["sign_message_json", "sign_raw_bytes_base64", "sign_file_json"],
     "conversion": ["to_yaml", "from_yaml", "to_html", "from_html"],
-    "key_management": ["rotate_keys"],
+    "key_management": ["rotate_keys", "add_compat_key_json"],
     "w3c": ["export_w3c_did", "export_w3c_did_document_json", "export_w3c_agent_description_json", "generate_w3c_well_known_json", "sign_w3c_request_json", "verify_w3c_request_json"],
     "inline_and_media": ["sign_text_file_json", "verify_text_file_json", "sign_image_json", "verify_image_json", "extract_media_signature_json"]
   },
@@ -22,6 +22,7 @@
     ]
   },
   "all_methods_flat": [
+    "add_compat_key_json",
     "config_path", "create", "create_with_params", "diagnostics", "ephemeral",
     "export_agent", "export_w3c_agent_description_json", "export_w3c_did",
     "export_w3c_did_document_json", "extract_media_signature_json", "from_agent",

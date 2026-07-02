@@ -275,6 +275,18 @@ pub fn build_loaded_agent_info(
             .unwrap_or("")
             .to_string(),
         dns_record: String::new(),
+        // Loading never mints keys; report the compat key only if one
+        // already exists on disk (non-fatal when absent or unreadable).
+        ecosystem_kid: crate::keystore::compat::ecosystem_key_info(
+            &key_directory.to_string_lossy(),
+        )
+        .map(|c| c.kid)
+        .unwrap_or_default(),
+        ecosystem_algorithm: crate::keystore::compat::ecosystem_key_info(
+            &key_directory.to_string_lossy(),
+        )
+        .map(|c| c.algorithm)
+        .unwrap_or_default(),
     })
 }
 
@@ -682,6 +694,27 @@ impl SimpleAgent {
             .unwrap_or("unknown")
             .to_string();
 
+        // P2 Task 002: NEW agents get the ES256 ecosystem compatibility key
+        // eagerly (role: ecosystem_signing), stored with the same password
+        // and envelope as the native root — unless creation opts out.
+        // Existing agents NEVER mint keys on load; they use the explicit
+        // add_compat_key migration. The legacy Ed25519 fixture builder
+        // models a PRE-P2 agent, which by definition has no compat key.
+        let compat_key = if params.no_compat_key || allow_legacy_ed25519 {
+            None
+        } else {
+            let native_public_key = agent.get_public_key().map_err(|e| JacsError::Internal {
+                message: format!("Failed to read native public key for keyring: {}", e),
+            })?;
+            let native_kid = crate::crypt::hash::hash_public_key(&native_public_key);
+            Some(crate::keystore::compat::create_ecosystem_key(
+                &params.key_directory,
+                &password,
+                &algorithm,
+                &native_kid,
+            )?)
+        };
+
         let lookup_id = format!("{}:{}", agent_id, version);
 
         // Resolve the config: if one already exists at config_path, read it
@@ -901,6 +934,14 @@ impl SimpleAgent {
             key_directory: params.key_directory.clone(),
             domain: params.domain.clone(),
             dns_record,
+            ecosystem_kid: compat_key
+                .as_ref()
+                .map(|c| c.kid.clone())
+                .unwrap_or_default(),
+            ecosystem_algorithm: compat_key
+                .as_ref()
+                .map(|c| c.algorithm.clone())
+                .unwrap_or_default(),
         };
 
         Ok((
@@ -1014,6 +1055,56 @@ impl SimpleAgent {
         Self::ephemeral_with_algo("ring-Ed25519")
     }
 
+    /// Explicit migration: add the ES256 `ecosystem_signing` compatibility
+    /// key to an EXISTING agent (P2 Task 002). Loading never mints key
+    /// material; this is the only way a pre-existing agent gains the
+    /// compat key. Errors if one already exists (no silent re-mint;
+    /// ES256 key rotation is out of P2 scope) or if the agent is
+    /// ephemeral (compat keys are disk artifacts).
+    pub fn add_compat_key(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {
+        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        if inner.is_ephemeral() {
+            return Err(JacsError::ValidationError(
+                "ephemeral agents are memory-only; the ecosystem compatibility key is a disk \
+                 artifact and cannot be added"
+                    .to_string(),
+            ));
+        }
+        let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
+        let key_directory = config
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        let native_algorithm = config.get_key_algorithm()?;
+        let password = inner.resolve_password()?;
+        let native_public_key = inner.get_public_key()?;
+        let native_kid = crate::crypt::hash::hash_public_key(&native_public_key);
+        crate::keystore::compat::create_ecosystem_key(
+            &key_directory,
+            &password,
+            &native_algorithm,
+            &native_kid,
+        )
+    }
+
+    /// Describe the agent's ES256 ecosystem compatibility key. Typed
+    /// key-not-found error (pointing at `add-compat-key`) when absent.
+    pub fn ecosystem_key_info(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {
+        let inner = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
+        let key_directory = config
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string();
+        crate::keystore::compat::ecosystem_key_info(&key_directory)
+    }
+
     fn ephemeral_with_algo(algo: &str) -> Result<(Self, AgentInfo), JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
 
@@ -1042,6 +1133,10 @@ impl SimpleAgent {
             key_directory: String::new(),
             domain: String::new(),
             dns_record: String::new(),
+            // Ephemeral agents are memory-only: compat keys are disk
+            // artifacts, so none is minted (add_compat_key also refuses).
+            ecosystem_kid: String::new(),
+            ecosystem_algorithm: String::new(),
         };
 
         Ok((

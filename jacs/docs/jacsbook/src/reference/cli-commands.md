@@ -122,10 +122,11 @@ jacs keychain status --agent-id <AGENT_UUID>
 3. OS keychain keyed by agent ID (if `keychain` feature is enabled and not disabled)
 
 ### `jacs init`
-Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.
+Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup. New agents get a `pq2025` native root plus an ES256 ecosystem compatibility key; pass `--no-compat-key` to skip the compatibility key (minimal/air-gapped agents).
 
 ```bash
 jacs init
+jacs init --no-compat-key
 ```
 
 ### `jacs help`
@@ -155,7 +156,12 @@ Work with JACS agents - the cryptographic identities that sign and verify docume
 jacs agent [SUBCOMMAND]
 ```
 
-*Note: Specific subcommands for agent management are not detailed in the current help output.*
+### `jacs agent add-compat-key`
+Add the ES256 `ecosystem_signing` compatibility key to an existing agent (explicit migration — loading never creates key material). New agents mint this key at creation unless `--no-compat-key` was used. Errors if the key already exists.
+
+```bash
+jacs agent add-compat-key [--config ./jacs.config.json]
+```
 
 ## Document Commands
 

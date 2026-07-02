@@ -86,6 +86,22 @@ pub fn build_cli() -> Command {
                                 .required(true)
                                 .help("Create keys or not if they already exist. Configure key type in jacs.config.json")
                                 .value_parser(value_parser!(bool)),
+                        )
+                        .arg(
+                            Arg::new("no-compat-key")
+                                .long("no-compat-key")
+                                .action(ArgAction::SetTrue)
+                                .help("Skip the ES256 ecosystem compatibility key (minimal/air-gapped agents); add later with 'jacs agent add-compat-key'"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("add-compat-key")
+                        .about("Add the ES256 ecosystem compatibility key to an existing agent (explicit migration; loading never creates keys)")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
                         ),
                 )
                 .subcommand(
@@ -1078,6 +1094,12 @@ pub fn build_cli() -> Command {
                         .short('y')
                         .action(ArgAction::SetTrue)
                         .help("Automatically set the new agent ID in jacs.config.json without prompting"),
+                )
+                .arg(
+                    Arg::new("no-compat-key")
+                        .long("no-compat-key")
+                        .action(ArgAction::SetTrue)
+                        .help("Skip the ES256 ecosystem compatibility key (minimal/air-gapped agents); add later with 'jacs agent add-compat-key'"),
                 )
         )
         .subcommand(

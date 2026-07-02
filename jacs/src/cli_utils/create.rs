@@ -322,7 +322,16 @@ pub fn handle_config_create() -> Result<(), JacsError> {
 
 // Function to handle the 'agent create' logic
 pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, false)
+    handle_agent_create_inner(filename, create_keys, false, false)
+}
+
+/// Like `handle_agent_create` but with the P2 `--no-compat-key` opt-out.
+pub fn handle_agent_create_opts(
+    filename: Option<&String>,
+    create_keys: bool,
+    no_compat_key: bool,
+) -> Result<(), JacsError> {
+    handle_agent_create_inner(filename, create_keys, false, no_compat_key)
 }
 
 /// Like `handle_agent_create` but when `auto_update_config` is true, automatically
@@ -332,13 +341,24 @@ pub fn handle_agent_create_auto(
     create_keys: bool,
     auto_update_config: bool,
 ) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, auto_update_config)
+    handle_agent_create_inner(filename, create_keys, auto_update_config, false)
+}
+
+/// Like `handle_agent_create_auto` but with the P2 `--no-compat-key` opt-out.
+pub fn handle_agent_create_auto_opts(
+    filename: Option<&String>,
+    create_keys: bool,
+    auto_update_config: bool,
+    no_compat_key: bool,
+) -> Result<(), JacsError> {
+    handle_agent_create_inner(filename, create_keys, auto_update_config, no_compat_key)
 }
 
 fn handle_agent_create_inner(
     filename: Option<&String>,
     create_keys: bool,
     auto_update_config: bool,
+    no_compat_key: bool,
 ) -> Result<(), JacsError> {
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
     let config_path_str = "jacs.config.json";
@@ -488,6 +508,36 @@ fn handle_agent_create_inner(
     println!("Agent {} created successfully!", agent_id_version);
 
     agent.save()?;
+
+    // P2 Task 002: NEW agents get the ES256 ecosystem compatibility key
+    // eagerly (role: ecosystem_signing) unless the caller opted out. Same
+    // password + AES-256-GCM/Argon2id envelope as the native root key.
+    if create_keys && !no_compat_key {
+        let key_directory = agent
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
+            .unwrap_or_else(|| "./jacs_keys".to_string());
+        let native_algorithm = agent
+            .config
+            .as_ref()
+            .map(|c| c.get_key_algorithm())
+            .transpose()?
+            .unwrap_or_else(|| "pq2025".to_string());
+        let password = agent.resolve_password()?;
+        let native_public_key = agent.get_public_key()?;
+        let native_kid = crate::crypt::hash::hash_public_key(&native_public_key);
+        let compat = crate::keystore::compat::create_ecosystem_key(
+            &key_directory,
+            &password,
+            &native_algorithm,
+            &native_kid,
+        )?;
+        println!(
+            "Ecosystem compatibility key created (role: ecosystem_signing, ES256, kid {}).",
+            compat.kid
+        );
+    }
 
     // -- Determine whether to update the config --
     let should_update = if auto_update_config {

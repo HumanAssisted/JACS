@@ -277,8 +277,9 @@ jacs keychain status --agent-id &lt;AGENT_UUID&gt;
 <li>OS keychain keyed by agent ID (if <code>keychain</code> feature is enabled and not disabled)</li>
 </ol>
 <h3 id="jacs-init"><a class="header" href="#jacs-init"><code>jacs init</code></a></h3>
-<p>Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.</p>
+<p>Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup. New agents get a <code>pq2025</code> native root plus an ES256 ecosystem compatibility key; pass <code>--no-compat-key</code> to skip the compatibility key (minimal/air-gapped agents).</p>
 <pre><code class="language-bash">jacs init
+jacs init --no-compat-key
 </code></pre>
 <h3 id="jacs-help"><a class="header" href="#jacs-help"><code>jacs help</code></a></h3>
 <p>Print help information for JACS commands.</p>
@@ -295,7 +296,10 @@ jacs keychain status --agent-id &lt;AGENT_UUID&gt;
 <p>Work with JACS agents - the cryptographic identities that sign and verify documents.</p>
 <pre><code class="language-bash">jacs agent [SUBCOMMAND]
 </code></pre>
-<p><em>Note: Specific subcommands for agent management are not detailed in the current help output.</em></p>
+<h3 id="jacs-agent-add-compat-key"><a class="header" href="#jacs-agent-add-compat-key"><code>jacs agent add-compat-key</code></a></h3>
+<p>Add the ES256 <code>ecosystem_signing</code> compatibility key to an existing agent (explicit migration — loading never creates key material). New agents mint this key at creation unless <code>--no-compat-key</code> was used. Errors if the key already exists.</p>
+<pre><code class="language-bash">jacs agent add-compat-key [--config ./jacs.config.json]
+</code></pre>
 <h2 id="document-commands"><a class="header" href="#document-commands">Document Commands</a></h2>
 <p>The <code>jacs document</code> command provides comprehensive document management capabilities.</p>
 <h3 id="jacs-document-create"><a class="header" href="#jacs-document-create"><code>jacs document create</code></a></h3>

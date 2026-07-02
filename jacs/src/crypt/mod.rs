@@ -3,6 +3,7 @@ use secrecy::ExposeSecret;
 use zeroize::Zeroizing;
 pub mod aes_encrypt;
 pub mod constants;
+pub mod es256;
 pub mod hash;
 pub mod kem;
 pub mod pq2025;
