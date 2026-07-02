@@ -23,15 +23,12 @@ echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.
 
 # Sign a file
 jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
-
-# Use a specific algorithm
-jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
 ```
 
 **Options:**
 - `--name <name>` - Agent name used for first-time quickstart creation (required)
 - `--domain <domain>` - Agent domain used for DNS/public-key verification workflows (required)
-- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`
+- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). New agent creation is PQ-only: a `ring-Ed25519` request resolves to `pq2025` with a WARN (`native_non_pq_sign_rejected`)
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)
 

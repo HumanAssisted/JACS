@@ -283,6 +283,23 @@ if (assessment.allowed) {
 <li>Add the remote agent with <code>trust_agent_with_key()</code> / <code>trustAgentWithKey()</code></li>
 </ul>
 <p>This is the cleanest path into <code>strict</code> policy.</p>
+<h2 id="es256-signed-agent-cards-p2"><a class="header" href="#es256-signed-agent-cards-p2">ES256-Signed Agent Cards (P2)</a></h2>
+<p>Agent cards can also be exported with an ES256 signature from the agent's
+compatibility key (<code>export_a2a_agent_card</code> in the Rust core and bindings,
+feature <code>a2a</code>). This is a card-typed exporter, not a generic JWS API:</p>
+<ul>
+<li>The JWS protected header is pinned to <code>{"alg": "ES256", "typ": "JOSE", "kid": "&lt;compat-key kid&gt;"}</code> — <code>typ</code> is <code>JOSE</code>, not <code>JWT</code>.</li>
+<li>The export is gated by the <code>a2a-agent-card</code> scope of the PQ-root-signed
+compatibility key binding (an identity scope, granted by default).</li>
+<li>The card's <code>metadata</code> carries <code>jacsCompatKid</code> and
+<code>jacsCompatBindingHash</code> so a relying party can locate the binding.</li>
+</ul>
+<p>A stock JOSE verifier can check the ES256 signature against the agent's
+JWKS (<code>jacs agent export-jwks</code>), but that proves possession of the
+compatibility key only. Tracing the card to the agent's post-quantum root
+requires verifying the PQ-signed compatibility key binding
+(<code>jacs agent export-compat-binding</code>) — see the
+<a href="../advanced/security.html#compatibility-key-binding-p2">Security Model</a>.</p>
 <h2 id="current-runtime-differences"><a class="header" href="#current-runtime-differences">Current Runtime Differences</a></h2>
 <ul>
 <li><strong>Python</strong>: <code>jacs.a2a_server</code> is the clearest full discovery story.</li>

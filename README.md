@@ -18,7 +18,7 @@ JACS signs canonical JSON and common artifact formats, then lets Rust, Python, N
 
 | Capability | What it means |
 |-----------|---------------|
-| **Agent identity** | Generate and manage a persistent cryptographic identity for an agent. Post-quantum ready (`pq2025` / ML-DSA-87) by default. |
+| **Agent identity** | Generate and manage a persistent cryptographic identity for an agent. Native signing is post-quantum (`pq2025` / ML-DSA-87) for all new agents. |
 | **Portable signatures** | Sign in one surface and verify in another across Rust, Python, Node.js, Go, CLI, and MCP integrations. |
 | **Schema-backed JSON** | Create verifiable JSON documents with declared schemas, content hashes, signer identity, signing algorithm, and signature metadata. |
 | **Artifact provenance** | Sign files, Markdown/text, images, and Rust email payloads so consumers can detect tampering and identify the signer. |
@@ -124,7 +124,7 @@ The CLI and MCP server are the recommended starting points. Native APIs are avai
 - The MCP server is stdio-only and opens no network listener.
 - Signatures include algorithm identification and downgrade protection.
 - Automated tests cover cryptographic operations, password validation, agent lifecycle, DNS verification, media/text signing, and attack scenarios.
-- `pq2025` (ML-DSA-87 / FIPS-204) is the default signing algorithm for new agents.
+- `pq2025` (ML-DSA-87 / FIPS-204) is the native signing algorithm for all new agents; pre-existing Ed25519 agents are grandfathered until key rotation, which migrates them to `pq2025`.
 
 Report vulnerabilities to security@hai.ai. Do not open public issues for security concerns.
 

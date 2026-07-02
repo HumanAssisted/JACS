@@ -111,6 +111,8 @@ All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` sto
 
 JACS supports comprehensive observability through configurable logging, metrics, and tracing. All observability features are optional and can be configured in the `jacs.config.json` file.
 
+For the P2 compatibility/export WARN events and their `jacs_*_total` Prometheus counters (what to alert on and the likely fix), see [Failure Modes](../advanced/failure-modes.md#p2-compatibility-and-export-failures).
+
 ### Logs Configuration
 
 Controls how JACS generates and outputs log messages.

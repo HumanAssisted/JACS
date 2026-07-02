@@ -2093,6 +2093,11 @@ impl Agent {
                 agent_id = %agent_id,
                 "Grandfathered Ed25519 agent produced a native signature; rotate to pq2025"
             );
+            crate::observability::metrics::increment_counter(
+                "jacs_native_legacy_ed25519_sign_total",
+                1,
+                None,
+            );
         }
 
         let serialized_fields = to_value(&accepted_fields)?;

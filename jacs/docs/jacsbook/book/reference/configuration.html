@@ -263,6 +263,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 </code></pre>
 <h2 id="observability-configuration"><a class="header" href="#observability-configuration">Observability Configuration</a></h2>
 <p>JACS supports comprehensive observability through configurable logging, metrics, and tracing. All observability features are optional and can be configured in the <code>jacs.config.json</code> file.</p>
+<p>For the P2 compatibility/export WARN events and their <code>jacs_*_total</code> Prometheus counters (what to alert on and the likely fix), see <a href="../advanced/failure-modes.html#p2-compatibility-and-export-failures">Failure Modes</a>.</p>
 <h3 id="logs-configuration"><a class="header" href="#logs-configuration">Logs Configuration</a></h3>
 <p>Controls how JACS generates and outputs log messages.</p>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>

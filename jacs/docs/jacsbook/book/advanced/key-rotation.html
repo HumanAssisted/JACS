@@ -207,6 +207,12 @@ native signature logs a WARN <code>native_legacy_ed25519_sign</code> so operator
 track fleet drift.</li>
 <li>Documents signed by the old Ed25519 key remain verifiable after migration
 (see Cross-Algorithm Verification in the Algorithm Selection Guide).</li>
+<li>Rotation supersedes the ES256 <strong>compatibility key binding</strong>: the binding
+is signed by the native root, so after rotation ecosystem exports fail
+with a "re-issue" error until <code>jacs agent issue-compat-binding</code> runs
+under the new PQ root.</li>
+<li>Rotation applies to the <strong>native root</strong> only — rotating the ES256
+compatibility key itself is out of scope in P2.</li>
 </ul>
 <h3 id="compliance-requirements"><a class="header" href="#compliance-requirements">Compliance Requirements</a></h3>
 <p>Many security standards require periodic key rotation:</p>
@@ -524,6 +530,8 @@ Update DNS records</li>
 Securely delete old private key</li>
 <li><input disabled="" type="checkbox"/>
 Test signing with new key</li>
+<li><input disabled="" type="checkbox"/>
+Re-issue the compatibility key binding (<code>jacs agent issue-compat-binding</code>) if the agent has an ES256 compatibility key — ecosystem exports fail until the new PQ root signs a fresh binding</li>
 </ul>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>

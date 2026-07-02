@@ -178,6 +178,12 @@ parties — not isolation. Both private keys live in the same directory
 under the same password; a compromised host is outside this model. The
 sound property is non-self-escalation via the PQ signature requirement.
 
+The ES256 private key is encrypted at rest with the same AES-256-GCM +
+Argon2id envelope as the native root key — the post-quantum library is a
+signing primitive, not an encryption primitive, so compatibility keys
+reuse the existing audited envelope rather than inventing a PQ-encrypted
+key format.
+
 ### Targeted content exports (P2)
 
 Content exporters (the AP2 mandate export, the Agreement-v2-as-VC

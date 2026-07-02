@@ -37,6 +37,12 @@ jacs agent rotate-keys
   track fleet drift.
 - Documents signed by the old Ed25519 key remain verifiable after migration
   (see Cross-Algorithm Verification in the Algorithm Selection Guide).
+- Rotation supersedes the ES256 **compatibility key binding**: the binding
+  is signed by the native root, so after rotation ecosystem exports fail
+  with a "re-issue" error until `jacs agent issue-compat-binding` runs
+  under the new PQ root.
+- Rotation applies to the **native root** only — rotating the ES256
+  compatibility key itself is out of scope in P2.
 
 ### Compliance Requirements
 
@@ -409,6 +415,7 @@ After rotation:
 - [ ] Update DNS records
 - [ ] Securely delete old private key
 - [ ] Test signing with new key
+- [ ] Re-issue the compatibility key binding (`jacs agent issue-compat-binding`) if the agent has an ES256 compatibility key — ecosystem exports fail until the new PQ root signs a fresh binding
 
 ## See Also
 

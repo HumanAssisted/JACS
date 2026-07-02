@@ -6,6 +6,8 @@ Uses **stdio transport only** for security. The server holds the agent's private
 
 The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
+Ecosystem compatibility exports (ES256 JWKS, the PQ-root-signed compatibility key binding, ES256-signed A2A agent cards, AP2 mandates, and Agreement-v2 Verifiable Credentials) are CLI and language-binding surfaces only — by design there are no MCP tools for them.
+
 ## What can it do?
 
 The server exposes tools in these categories:

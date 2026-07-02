@@ -39,6 +39,11 @@ pub fn resolve_new_agent_algorithm(requested: &str) -> Result<String, JacsError>
                 "New agent creation is PQ-only; requested Ed25519 resolved to pq2025. \
                  Existing Ed25519-rooted agents remain grandfathered until rotation."
             );
+            crate::observability::metrics::increment_counter(
+                "jacs_native_non_pq_sign_rejected_total",
+                1,
+                None,
+            );
             Ok("pq2025".to_string())
         }
         other => Err(JacsError::ConfigError(format!(

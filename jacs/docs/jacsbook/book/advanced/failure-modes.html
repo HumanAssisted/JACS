@@ -175,7 +175,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="failure-modes"><a class="header" href="#failure-modes">Failure Modes</a></h1>
-<p>This page documents the error messages you will see when multi-agent agreements fail. Each scenario is validated by the chaos agreement tests in the JACS test suite.</p>
+<p>This page documents the error messages you will see when multi-agent agreements fail, plus the <a href="#p2-compatibility-and-export-failures">P2 compatibility and export failure table</a> for operators. Each agreement scenario is validated by the chaos agreement tests in the JACS test suite.</p>
 <h2 id="partial-signing-agent-crash"><a class="header" href="#partial-signing-agent-crash">Partial Signing (Agent Crash)</a></h2>
 <p><strong>What happened:</strong> An agreement was created for N agents but one or more agents never signed -- they crashed, timed out, or disconnected before calling <code>sign_agreement</code>.</p>
 <p><strong>Error message:</strong></p>
@@ -203,10 +203,28 @@
 <p><strong>What happened:</strong> <code>sign_agreement</code> succeeded but <code>save()</code> was never called -- for example, a storage backend failure or process interruption before persistence.</p>
 <p><strong>Error message:</strong> None. This is not an error. After <code>sign_agreement</code> returns successfully, the signed document is immediately retrievable and verifiable from in-memory storage.</p>
 <p><strong>What to do:</strong> Retry the <code>save()</code> call to persist to disk. The in-memory state is consistent: you can retrieve the document with <code>get_document</code>, verify it with <code>check_agreement</code>, serialize it, and transfer it to other agents for additional signatures -- all without saving first.</p>
+<h2 id="p2-compatibility-and-export-failures"><a class="header" href="#p2-compatibility-and-export-failures">P2 Compatibility and Export Failures</a></h2>
+<p>Beyond agreements, the P2 trust model (PQ-only native signing, the ES256
+compatibility key, and targeted ecosystem exports) emits structured log
+events with matching Prometheus counters. This is the sysadmin fix-table:
+what fired, which metric to alert on, which part of the model is involved,
+and the usual fix.</p>
+<div class="table-wrapper"><table><thead><tr><th>Log event</th><th>Metric</th><th>Failure class</th><th>Likely fix</th></tr></thead><tbody>
+<tr><td><code>native_non_pq_sign_rejected</code> (WARN)</td><td><code>jacs_native_non_pq_sign_rejected_total</code></td><td>native trust</td><td>Use <code>pq2025</code> — new agents cannot mint Ed25519/ES256 native roots; the request was already resolved to <code>pq2025</code>.</td></tr>
+<tr><td><code>native_legacy_ed25519_sign</code> (WARN)</td><td><code>jacs_native_legacy_ed25519_sign_total</code></td><td>native trust</td><td>A grandfathered agent is still signing with Ed25519 — plan <code>jacs agent rotate-keys</code>, then <code>jacs agent issue-compat-binding</code>.</td></tr>
+<tr><td><code>compatibility_key_missing</code> (WARN)</td><td><code>jacs_compatibility_export_error_total{reason="missing_key"}</code></td><td>compatibility binding</td><td>The agent has no ES256 compatibility key — run <code>jacs agent add-compat-key</code>.</td></tr>
+<tr><td><code>compatibility_binding_verify_failed</code> (WARN)</td><td><code>jacs_compatibility_binding_verify_failed_total{reason}</code></td><td>compatibility binding</td><td>The PQ-root-signed binding no longer verifies — re-issue after key rotation (<code>jacs agent issue-compat-binding</code>) and check <code>expiresAt</code>.</td></tr>
+<tr><td><code>content_export_scope_denied</code> (WARN)</td><td><code>jacs_content_export_scope_denied_total{format}</code></td><td>ecosystem export</td><td>The binding lacks the requested content scope (<code>ap2-mandate</code>, <code>agreement-vc</code> are never auto-issued) — re-issue the binding with that scope; the PQ root signs the grant.</td></tr>
+<tr><td><code>ecosystem_export_generated</code> (INFO)</td><td><code>jacs_compatibility_export_total{format}</code></td><td>ecosystem export</td><td>Success, not a failure — six formats: <code>jwks</code>, <code>did</code>, <code>a2a-agent-card</code>, <code>w3c-agent-identity</code>, <code>ap2-mandate</code>, <code>agreement-vc</code>.</td></tr>
+</tbody></table>
+</div>
+<p>Metric label values are fixed, low-cardinality strings (<code>reason</code>,
+<code>format</code>) — never raw error text.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../rust/agreements.html">Creating and Using Agreements</a> - Agreement creation and signing workflow</li>
-<li><a href="security.html">Security Model</a> - Overall security architecture</li>
+<li><a href="security.html">Security Model</a> - Overall security architecture, including the compatibility key binding lifecycle</li>
+<li><a href="key-rotation.html">Key Rotation</a> - Rotation, Ed25519 migration, and binding re-issue</li>
 <li><a href="crypto.html">Cryptographic Algorithms</a> - Algorithm details and signature verification</li>
 </ul>
 

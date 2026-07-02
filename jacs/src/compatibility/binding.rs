@@ -175,11 +175,20 @@ pub fn verify_compat_binding(
     key_directory: &str,
     binding: &Value,
 ) -> Result<BindingVerification, JacsError> {
-    let fail = |reason: String| {
+    // `metric_reason` is a FIXED low-cardinality label; `reason` is the
+    // free-text diagnostic for the log line and the verdict.
+    let fail = |metric_reason: &'static str, reason: String| {
         warn!(
             event = "compatibility_binding_verify_failed",
             reason = %reason,
             "compatibility binding verification failed"
+        );
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("reason".to_string(), metric_reason.to_string());
+        crate::observability::metrics::increment_counter(
+            "jacs_compatibility_binding_verify_failed_total",
+            1,
+            Some(tags),
         );
         Ok(BindingVerification {
             valid: false,
@@ -191,7 +200,7 @@ pub fn verify_compat_binding(
     // 1. Schema.
     let binding_str = serde_json::to_string(binding)?;
     if let Err(e) = agent.schema.validate_compat_binding(&binding_str) {
-        return fail(format!("schema validation failed: {e}"));
+        return fail("schema_invalid", format!("schema validation failed: {e}"));
     }
     let body = &binding["compatibilityKeyBinding"];
 
@@ -205,6 +214,7 @@ pub fn verify_compat_binding(
         .unwrap_or("");
     if sig_hash != current_kid {
         return fail(
+            "rotated_root",
             "binding was signed by a previous (rotated-away) root; re-issue the binding"
                 .to_string(),
         );
@@ -218,18 +228,27 @@ pub fn verify_compat_binding(
         None,
         None,
     ) {
-        return fail(format!("native signature verification failed: {e}"));
+        return fail(
+            "signature_invalid",
+            format!("native signature verification failed: {e}"),
+        );
     }
 
     // 3. Root metadata pins the same current root.
     if body["rootKey"]["kid"].as_str().unwrap_or("") != current_kid {
-        return fail("binding rootKey.kid does not match the current native root".to_string());
+        return fail(
+            "root_kid_mismatch",
+            "binding rootKey.kid does not match the current native root".to_string(),
+        );
     }
 
     // 4. ES256 key material matches the on-disk ecosystem key.
     let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
     if body["compatibilityKey"]["kid"].as_str().unwrap_or("") != compat.kid {
-        return fail("binding compatibilityKey.kid does not match the ecosystem key".to_string());
+        return fail(
+            "compat_kid_mismatch",
+            "binding compatibilityKey.kid does not match the ecosystem key".to_string(),
+        );
     }
     let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
         JacsError::FileReadFailed {
@@ -241,14 +260,17 @@ pub fn verify_compat_binding(
     if body["compatibilityKey"]["publicJwk"]["x"].as_str() != Some(x.as_str())
         || body["compatibilityKey"]["publicJwk"]["y"].as_str() != Some(y.as_str())
     {
-        return fail("binding publicJwk does not match the on-disk ecosystem key".to_string());
+        return fail(
+            "jwk_mismatch",
+            "binding publicJwk does not match the on-disk ecosystem key".to_string(),
+        );
     }
 
     // 5. Expiry.
     if let Some(expires) = body["expiresAt"].as_str() {
         let now = crate::time_utils::now_rfc3339();
         if expires < now.as_str() {
-            return fail(format!("binding expired at {expires}"));
+            return fail("expired", format!("binding expired at {expires}"));
         }
     }
 
@@ -271,13 +293,16 @@ pub fn verify_compat_binding(
 /// Authorization gate used by exporters: the CURRENT binding must verify
 /// and include `scope`. Returns the verified binding on success.
 pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<Value, JacsError> {
+    // Scopes map 1:1 to export formats, so `scope` is the `format` label.
     let binding = load_compat_binding(key_directory)?.ok_or_else(|| {
+        super::record_export_error(scope, "no_binding");
         JacsError::ValidationError(format!(
             "no compatibility binding issued; run issue_compat_binding before exporting '{scope}'"
         ))
     })?;
     let verdict = verify_compat_binding(agent, key_directory, &binding)?;
     if !verdict.valid {
+        super::record_export_error(scope, "binding_invalid");
         return Err(JacsError::ValidationError(format!(
             "compatibility binding invalid: {}",
             verdict.reason
@@ -288,6 +313,14 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
             event = "content_export_scope_denied",
             required_scope = %scope,
             "export denied: scope not granted by the PQ-root-signed binding"
+        );
+        super::record_export_error(scope, "scope_denied");
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("format".to_string(), scope.to_string());
+        crate::observability::metrics::increment_counter(
+            "jacs_content_export_scope_denied_total",
+            1,
+            Some(tags),
         );
         return Err(JacsError::ValidationError(format!(
             "scope '{scope}' is not granted by the compatibility binding; re-issue the binding \

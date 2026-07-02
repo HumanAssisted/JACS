@@ -1,6 +1,6 @@
 # Failure Modes
 
-This page documents the error messages you will see when multi-agent agreements fail. Each scenario is validated by the chaos agreement tests in the JACS test suite.
+This page documents the error messages you will see when multi-agent agreements fail, plus the [P2 compatibility and export failure table](#p2-compatibility-and-export-failures) for operators. Each agreement scenario is validated by the chaos agreement tests in the JACS test suite.
 
 ## Partial Signing (Agent Crash)
 
@@ -56,8 +56,29 @@ Agreement verification failed: agreement hashes do not match
 
 **What to do:** Retry the `save()` call to persist to disk. The in-memory state is consistent: you can retrieve the document with `get_document`, verify it with `check_agreement`, serialize it, and transfer it to other agents for additional signatures -- all without saving first.
 
+## P2 Compatibility and Export Failures
+
+Beyond agreements, the P2 trust model (PQ-only native signing, the ES256
+compatibility key, and targeted ecosystem exports) emits structured log
+events with matching Prometheus counters. This is the sysadmin fix-table:
+what fired, which metric to alert on, which part of the model is involved,
+and the usual fix.
+
+| Log event | Metric | Failure class | Likely fix |
+|-----------|--------|---------------|------------|
+| `native_non_pq_sign_rejected` (WARN) | `jacs_native_non_pq_sign_rejected_total` | native trust | Use `pq2025` — new agents cannot mint Ed25519/ES256 native roots; the request was already resolved to `pq2025`. |
+| `native_legacy_ed25519_sign` (WARN) | `jacs_native_legacy_ed25519_sign_total` | native trust | A grandfathered agent is still signing with Ed25519 — plan `jacs agent rotate-keys`, then `jacs agent issue-compat-binding`. |
+| `compatibility_key_missing` (WARN) | `jacs_compatibility_export_error_total{reason="missing_key"}` | compatibility binding | The agent has no ES256 compatibility key — run `jacs agent add-compat-key`. |
+| `compatibility_binding_verify_failed` (WARN) | `jacs_compatibility_binding_verify_failed_total{reason}` | compatibility binding | The PQ-root-signed binding no longer verifies — re-issue after key rotation (`jacs agent issue-compat-binding`) and check `expiresAt`. |
+| `content_export_scope_denied` (WARN) | `jacs_content_export_scope_denied_total{format}` | ecosystem export | The binding lacks the requested content scope (`ap2-mandate`, `agreement-vc` are never auto-issued) — re-issue the binding with that scope; the PQ root signs the grant. |
+| `ecosystem_export_generated` (INFO) | `jacs_compatibility_export_total{format}` | ecosystem export | Success, not a failure — six formats: `jwks`, `did`, `a2a-agent-card`, `w3c-agent-identity`, `ap2-mandate`, `agreement-vc`. |
+
+Metric label values are fixed, low-cardinality strings (`reason`,
+`format`) — never raw error text.
+
 ## See Also
 
 - [Creating and Using Agreements](../rust/agreements.md) - Agreement creation and signing workflow
-- [Security Model](security.md) - Overall security architecture
+- [Security Model](security.md) - Overall security architecture, including the compatibility key binding lifecycle
+- [Key Rotation](key-rotation.md) - Rotation, Ed25519 migration, and binding re-issue
 - [Cryptographic Algorithms](crypto.md) - Algorithm details and signature verification

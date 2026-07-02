@@ -141,6 +141,26 @@ Use the trust store when you want explicit admission:
 
 This is the cleanest path into `strict` policy.
 
+## ES256-Signed Agent Cards (P2)
+
+Agent cards can also be exported with an ES256 signature from the agent's
+compatibility key (`export_a2a_agent_card` in the Rust core and bindings,
+feature `a2a`). This is a card-typed exporter, not a generic JWS API:
+
+- The JWS protected header is pinned to `{"alg": "ES256", "typ": "JOSE",
+  "kid": "<compat-key kid>"}` — `typ` is `JOSE`, not `JWT`.
+- The export is gated by the `a2a-agent-card` scope of the PQ-root-signed
+  compatibility key binding (an identity scope, granted by default).
+- The card's `metadata` carries `jacsCompatKid` and
+  `jacsCompatBindingHash` so a relying party can locate the binding.
+
+A stock JOSE verifier can check the ES256 signature against the agent's
+JWKS (`jacs agent export-jwks`), but that proves possession of the
+compatibility key only. Tracing the card to the agent's post-quantum root
+requires verifying the PQ-signed compatibility key binding
+(`jacs agent export-compat-binding`) — see the
+[Security Model](../advanced/security.md#compatibility-key-binding-p2).
+
 ## Current Runtime Differences
 
 - **Python**: `jacs.a2a_server` is the clearest full discovery story.

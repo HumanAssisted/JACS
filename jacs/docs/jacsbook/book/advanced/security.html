@@ -323,6 +323,11 @@ authorization policy</strong> and an auditable delegation record for relying
 parties — not isolation. Both private keys live in the same directory
 under the same password; a compromised host is outside this model. The
 sound property is non-self-escalation via the PQ signature requirement.</p>
+<p>The ES256 private key is encrypted at rest with the same AES-256-GCM +
+Argon2id envelope as the native root key — the post-quantum library is a
+signing primitive, not an encryption primitive, so compatibility keys
+reuse the existing audited envelope rather than inventing a PQ-encrypted
+key format.</p>
 <h3 id="targeted-content-exports-p2"><a class="header" href="#targeted-content-exports-p2">Targeted content exports (P2)</a></h3>
 <p>Content exporters (the AP2 mandate export, the Agreement-v2-as-VC
 export) sign <strong>ecosystem artifacts</strong> with the ES256 compatibility key

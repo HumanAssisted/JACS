@@ -41,7 +41,8 @@ pub fn export_compatibility_jwks(
 ) -> Result<Value, JacsError> {
     require_identity_scope(agent, key_directory, "jwks")?;
 
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
+        .inspect_err(|_| super::record_export_error("jwks", "missing_key"))?;
     let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
         JacsError::FileReadFailed {
             path: compat.public_key_path.clone(),
@@ -68,6 +69,7 @@ pub fn export_compatibility_jwks(
         kid = %compat.kid,
         "compatibility JWKS exported"
     );
+    super::record_export_generated("jwks");
     Ok(jwks)
 }
 
@@ -84,7 +86,8 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
 
     let binding = require_identity_scope(agent, key_directory, "a2a-agent-card")?;
     let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
+        .inspect_err(|_| super::record_export_error("a2a-agent-card", "missing_key"))?;
 
     // Base card from the existing exporter, plus the binding reference.
     let card = crate::a2a::agent_card::export_agent_card(agent)?;
@@ -138,6 +141,7 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
         binding_hash = %binding_hash,
         "A2A agent card exported with ES256 compatibility signature"
     );
+    super::record_export_generated("a2a-agent-card");
     Ok(card_value)
 }
 
@@ -164,6 +168,7 @@ pub fn export_compatibility_key_binding(
     })?;
     let verdict = super::binding::verify_compat_binding(agent, key_directory, &binding)?;
     if !verdict.valid {
+        super::record_export_error("compat-binding", "binding_invalid");
         return Err(JacsError::ValidationError(format!(
             "compatibility binding invalid: {}",
             verdict.reason
@@ -175,5 +180,6 @@ pub fn export_compatibility_key_binding(
         format = "compat-binding",
         "compatibility key binding exported"
     );
+    super::record_export_generated("compat-binding");
     Ok(binding)
 }

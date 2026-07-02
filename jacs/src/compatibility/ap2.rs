@@ -98,19 +98,24 @@ pub fn export_ap2_mandate(
     key_directory: &str,
     checkout_json: &str,
 ) -> Result<Value, JacsError> {
-    let checkout: Value = serde_json::from_str(checkout_json)
-        .map_err(|e| JacsError::ValidationError(format!("mandate input is not JSON: {e}")))?;
+    let checkout: Value = serde_json::from_str(checkout_json).map_err(|e| {
+        super::record_export_error("ap2-mandate", "invalid_input");
+        JacsError::ValidationError(format!("mandate input is not JSON: {e}"))
+    })?;
     if !checkout.is_object() {
+        super::record_export_error("ap2-mandate", "invalid_input");
         return Err(JacsError::ValidationError(
             "mandate input must be a checkout JSON object".to_string(),
         ));
     }
-    validate_mandate_input(&checkout)?;
+    validate_mandate_input(&checkout)
+        .inspect_err(|_| super::record_export_error("ap2-mandate", "invalid_input"))?;
 
     // Content scope: require_scope directly — no auto-issue path.
     let binding = super::binding::require_scope(agent, key_directory, "ap2-mandate")?;
     let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
+        .inspect_err(|_| super::record_export_error("ap2-mandate", "missing_key"))?;
 
     // Decrypt the ES256 private key; plaintext PKCS#8 DER lives only in
     // this zeroizing buffer for the duration of the signing call.
@@ -146,6 +151,7 @@ pub fn export_ap2_mandate(
         spec_revision = AP2_SPEC_REVISION,
         "AP2 merchant-authorization mandate exported as detached ES256 JWS"
     );
+    super::record_export_generated("ap2-mandate");
 
     Ok(json!({
         "format": "ap2-mandate",

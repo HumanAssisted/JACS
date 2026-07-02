@@ -15,7 +15,7 @@
 
 use crate::error::JacsError;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 
 /// Fixed on-disk names for the ecosystem compatibility key. There is no
 /// per-purpose slot in `KeyPaths`; the compat key gets distinct filenames
@@ -183,6 +183,16 @@ pub fn create_ecosystem_key(
 pub fn ecosystem_key_info(key_directory: &str) -> Result<CompatKeyInfo, JacsError> {
     let priv_path = ecosystem_private_key_path(key_directory);
     if !std::path::Path::new(&priv_path).exists() {
+        // Operators watch this event: an export was attempted against an
+        // agent that never minted (or lost) the ES256 compat key. The fix
+        // is explicit migration — loading never creates key material.
+        warn!(
+            event = "compatibility_key_missing",
+            path = %priv_path,
+            hint = "run `jacs agent add-compat-key` (or SimpleAgent::add_compat_key) to add \
+                    the ES256 ecosystem compatibility key to this agent",
+            "ecosystem compatibility key not found"
+        );
         return Err(JacsError::KeyNotFound {
             path: format!(
                 "{priv_path} (no ecosystem compatibility key; run `jacs agent add-compat-key` \

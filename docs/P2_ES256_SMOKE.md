@@ -163,6 +163,24 @@ Expected:
 - the §9.8 counters increment (`jacs_compatibility_export_total{format}` etc.) — asserted, not just documented
 - docs explain CLI-only content exporters, the trust-chain degradation, and the no-generic-projection boundary
 
+### Docs checks
+
+```bash
+# 1. Negative: user docs must NOT present these as public native features
+#    (mentions as negative guardrails or test names are fine — use judgment)
+rg "ring-ES256|jacsProjections|sign-jws|sign-data-integrity|export-dsse-document|issue-w3c-vc" \
+  README.md jacs/docs/jacsbook/src jacs-cli/README.md jacs-mcp/README.md
+
+# 2. Positive: the P2 model must be findable in user docs
+rg -l "PQ root|compatibility key binding|ES256 compatibility|AP2 mandate|Agreement-v2-as-VC" \
+  README.md jacs/docs/jacsbook/src jacs-cli/README.md jacs-mcp/README.md
+```
+
+Expected:
+
+- check 1 returns no hits that present these names as public native features
+- check 2 lists the top-level README and jacsbook user docs (security, crypto, failure-modes, ap2, agreement-v2, cli-commands at minimum)
+
 ## End-to-End CLI Smoke (the deliverable surface, not just cargo tests)
 
 The checks above are cargo tests; this section exercises the actual commands a user runs, plus the external verifiers that prove interoperability (NFR8).

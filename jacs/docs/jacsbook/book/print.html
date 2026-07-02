@@ -8321,6 +8321,11 @@ authorization policy</strong> and an auditable delegation record for relying
 parties — not isolation. Both private keys live in the same directory
 under the same password; a compromised host is outside this model. The
 sound property is non-self-escalation via the PQ signature requirement.</p>
+<p>The ES256 private key is encrypted at rest with the same AES-256-GCM +
+Argon2id envelope as the native root key — the post-quantum library is a
+signing primitive, not an encryption primitive, so compatibility keys
+reuse the existing audited envelope rather than inventing a PQ-encrypted
+key format.</p>
 <h3 id="targeted-content-exports-p2"><a class="header" href="#targeted-content-exports-p2">Targeted content exports (P2)</a></h3>
 <p>Content exporters (the AP2 mandate export, the Agreement-v2-as-VC
 export) sign <strong>ecosystem artifacts</strong> with the ES256 compatibility key
@@ -8893,6 +8898,12 @@ native signature logs a WARN <code>native_legacy_ed25519_sign</code> so operator
 track fleet drift.</li>
 <li>Documents signed by the old Ed25519 key remain verifiable after migration
 (see Cross-Algorithm Verification in the Algorithm Selection Guide).</li>
+<li>Rotation supersedes the ES256 <strong>compatibility key binding</strong>: the binding
+is signed by the native root, so after rotation ecosystem exports fail
+with a "re-issue" error until <code>jacs agent issue-compat-binding</code> runs
+under the new PQ root.</li>
+<li>Rotation applies to the <strong>native root</strong> only — rotating the ES256
+compatibility key itself is out of scope in P2.</li>
 </ul>
 <h3 id="compliance-requirements"><a class="header" href="#compliance-requirements">Compliance Requirements</a></h3>
 <p>Many security standards require periodic key rotation:</p>
@@ -9210,6 +9221,8 @@ Update DNS records</li>
 Securely delete old private key</li>
 <li><input disabled="" type="checkbox"/>
 Test signing with new key</li>
+<li><input disabled="" type="checkbox"/>
+Re-issue the compatibility key binding (<code>jacs agent issue-compat-binding</code>) if the agent has an ES256 compatibility key — ecosystem exports fail until the new PQ root signs a fresh binding</li>
 </ul>
 <h2 id="see-also-8"><a class="header" href="#see-also-8">See Also</a></h2>
 <ul>
@@ -10276,7 +10289,7 @@ app.use(jacsMiddleware({ client }));
 <li><a href="advanced/key-rotation.html">Key Rotation</a> -- coordinating key changes with DNS updates</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="failure-modes"><a class="header" href="#failure-modes">Failure Modes</a></h1>
-<p>This page documents the error messages you will see when multi-agent agreements fail. Each scenario is validated by the chaos agreement tests in the JACS test suite.</p>
+<p>This page documents the error messages you will see when multi-agent agreements fail, plus the <a href="advanced/failure-modes.html#p2-compatibility-and-export-failures">P2 compatibility and export failure table</a> for operators. Each agreement scenario is validated by the chaos agreement tests in the JACS test suite.</p>
 <h2 id="partial-signing-agent-crash"><a class="header" href="#partial-signing-agent-crash">Partial Signing (Agent Crash)</a></h2>
 <p><strong>What happened:</strong> An agreement was created for N agents but one or more agents never signed -- they crashed, timed out, or disconnected before calling <code>sign_agreement</code>.</p>
 <p><strong>Error message:</strong></p>
@@ -10304,10 +10317,28 @@ app.use(jacsMiddleware({ client }));
 <p><strong>What happened:</strong> <code>sign_agreement</code> succeeded but <code>save()</code> was never called -- for example, a storage backend failure or process interruption before persistence.</p>
 <p><strong>Error message:</strong> None. This is not an error. After <code>sign_agreement</code> returns successfully, the signed document is immediately retrievable and verifiable from in-memory storage.</p>
 <p><strong>What to do:</strong> Retry the <code>save()</code> call to persist to disk. The in-memory state is consistent: you can retrieve the document with <code>get_document</code>, verify it with <code>check_agreement</code>, serialize it, and transfer it to other agents for additional signatures -- all without saving first.</p>
+<h2 id="p2-compatibility-and-export-failures"><a class="header" href="#p2-compatibility-and-export-failures">P2 Compatibility and Export Failures</a></h2>
+<p>Beyond agreements, the P2 trust model (PQ-only native signing, the ES256
+compatibility key, and targeted ecosystem exports) emits structured log
+events with matching Prometheus counters. This is the sysadmin fix-table:
+what fired, which metric to alert on, which part of the model is involved,
+and the usual fix.</p>
+<div class="table-wrapper"><table><thead><tr><th>Log event</th><th>Metric</th><th>Failure class</th><th>Likely fix</th></tr></thead><tbody>
+<tr><td><code>native_non_pq_sign_rejected</code> (WARN)</td><td><code>jacs_native_non_pq_sign_rejected_total</code></td><td>native trust</td><td>Use <code>pq2025</code> — new agents cannot mint Ed25519/ES256 native roots; the request was already resolved to <code>pq2025</code>.</td></tr>
+<tr><td><code>native_legacy_ed25519_sign</code> (WARN)</td><td><code>jacs_native_legacy_ed25519_sign_total</code></td><td>native trust</td><td>A grandfathered agent is still signing with Ed25519 — plan <code>jacs agent rotate-keys</code>, then <code>jacs agent issue-compat-binding</code>.</td></tr>
+<tr><td><code>compatibility_key_missing</code> (WARN)</td><td><code>jacs_compatibility_export_error_total{reason="missing_key"}</code></td><td>compatibility binding</td><td>The agent has no ES256 compatibility key — run <code>jacs agent add-compat-key</code>.</td></tr>
+<tr><td><code>compatibility_binding_verify_failed</code> (WARN)</td><td><code>jacs_compatibility_binding_verify_failed_total{reason}</code></td><td>compatibility binding</td><td>The PQ-root-signed binding no longer verifies — re-issue after key rotation (<code>jacs agent issue-compat-binding</code>) and check <code>expiresAt</code>.</td></tr>
+<tr><td><code>content_export_scope_denied</code> (WARN)</td><td><code>jacs_content_export_scope_denied_total{format}</code></td><td>ecosystem export</td><td>The binding lacks the requested content scope (<code>ap2-mandate</code>, <code>agreement-vc</code> are never auto-issued) — re-issue the binding with that scope; the PQ root signs the grant.</td></tr>
+<tr><td><code>ecosystem_export_generated</code> (INFO)</td><td><code>jacs_compatibility_export_total{format}</code></td><td>ecosystem export</td><td>Success, not a failure — six formats: <code>jwks</code>, <code>did</code>, <code>a2a-agent-card</code>, <code>w3c-agent-identity</code>, <code>ap2-mandate</code>, <code>agreement-vc</code>.</td></tr>
+</tbody></table>
+</div>
+<p>Metric label values are fixed, low-cardinality strings (<code>reason</code>,
+<code>format</code>) — never raw error text.</p>
 <h2 id="see-also-12"><a class="header" href="#see-also-12">See Also</a></h2>
 <ul>
 <li><a href="advanced/../rust/agreements.html">Creating and Using Agreements</a> - Agreement creation and signing workflow</li>
-<li><a href="advanced/security.html">Security Model</a> - Overall security architecture</li>
+<li><a href="advanced/security.html">Security Model</a> - Overall security architecture, including the compatibility key binding lifecycle</li>
+<li><a href="advanced/key-rotation.html">Key Rotation</a> - Rotation, Ed25519 migration, and binding re-issue</li>
 <li><a href="advanced/crypto.html">Cryptographic Algorithms</a> - Algorithm details and signature verification</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="testing"><a class="header" href="#testing">Testing</a></h1>
@@ -11299,6 +11330,23 @@ if (assessment.allowed) {
 <li>Add the remote agent with <code>trust_agent_with_key()</code> / <code>trustAgentWithKey()</code></li>
 </ul>
 <p>This is the cleanest path into <code>strict</code> policy.</p>
+<h2 id="es256-signed-agent-cards-p2"><a class="header" href="#es256-signed-agent-cards-p2">ES256-Signed Agent Cards (P2)</a></h2>
+<p>Agent cards can also be exported with an ES256 signature from the agent's
+compatibility key (<code>export_a2a_agent_card</code> in the Rust core and bindings,
+feature <code>a2a</code>). This is a card-typed exporter, not a generic JWS API:</p>
+<ul>
+<li>The JWS protected header is pinned to <code>{"alg": "ES256", "typ": "JOSE", "kid": "&lt;compat-key kid&gt;"}</code> — <code>typ</code> is <code>JOSE</code>, not <code>JWT</code>.</li>
+<li>The export is gated by the <code>a2a-agent-card</code> scope of the PQ-root-signed
+compatibility key binding (an identity scope, granted by default).</li>
+<li>The card's <code>metadata</code> carries <code>jacsCompatKid</code> and
+<code>jacsCompatBindingHash</code> so a relying party can locate the binding.</li>
+</ul>
+<p>A stock JOSE verifier can check the ES256 signature against the agent's
+JWKS (<code>jacs agent export-jwks</code>), but that proves possession of the
+compatibility key only. Tracing the card to the agent's post-quantum root
+requires verifying the PQ-signed compatibility key binding
+(<code>jacs agent export-compat-binding</code>) — see the
+<a href="integrations/../advanced/security.html#compatibility-key-binding-p2">Security Model</a>.</p>
 <h2 id="current-runtime-differences"><a class="header" href="#current-runtime-differences">Current Runtime Differences</a></h2>
 <ul>
 <li><strong>Python</strong>: <code>jacs.a2a_server</code> is the clearest full discovery story.</li>
@@ -15616,15 +15664,12 @@ echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.
 
 # Sign a file
 jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
-
-# Use a specific algorithm
-jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
 </code></pre>
 <p><strong>Options:</strong></p>
 <ul>
 <li><code>--name &lt;name&gt;</code> - Agent name used for first-time quickstart creation (required)</li>
 <li><code>--domain &lt;domain&gt;</code> - Agent domain used for DNS/public-key verification workflows (required)</li>
-<li><code>--algorithm &lt;algo&gt;</code> - Signing algorithm (default: <code>pq2025</code>). Also: <code>ring-Ed25519</code></li>
+<li><code>--algorithm &lt;algo&gt;</code> - Signing algorithm (default: <code>pq2025</code>). New agent creation is PQ-only: a <code>ring-Ed25519</code> request resolves to <code>pq2025</code> with a WARN (<code>native_non_pq_sign_rejected</code>)</li>
 <li><code>--sign</code> - Sign input (from stdin or <code>--file</code>) instead of printing info</li>
 <li><code>--file &lt;path&gt;</code> - Read JSON input from file instead of stdin (requires <code>--sign</code>)</li>
 </ul>
@@ -16124,6 +16169,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 </code></pre>
 <h2 id="observability-configuration"><a class="header" href="#observability-configuration">Observability Configuration</a></h2>
 <p>JACS supports comprehensive observability through configurable logging, metrics, and tracing. All observability features are optional and can be configured in the <code>jacs.config.json</code> file.</p>
+<p>For the P2 compatibility/export WARN events and their <code>jacs_*_total</code> Prometheus counters (what to alert on and the likely fix), see <a href="reference/../advanced/failure-modes.html#p2-compatibility-and-export-failures">Failure Modes</a>.</p>
 <h3 id="logs-configuration"><a class="header" href="#logs-configuration">Logs Configuration</a></h3>
 <p>Controls how JACS generates and outputs log messages.</p>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>

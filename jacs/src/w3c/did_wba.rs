@@ -4,6 +4,7 @@ use crate::public_agent::PublicAgentProjection;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tracing::info;
 use url::Url;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -59,6 +60,14 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
     // URL; P2 defines no resolution protocol (NG8).
     if let Some(compat_entries) = es256_entries_if_authorized(agent, &parts)? {
         let (jwk_entry, multikey_entry, kid, binding_hash) = compat_entries;
+        info!(
+            event = "ecosystem_export_generated",
+            format = "did",
+            kid = %kid,
+            binding_hash = %binding_hash,
+            "DID document exported with ES256 compatibility verification methods"
+        );
+        crate::compatibility::record_export_generated("did");
         let jwk_id = jwk_entry["id"].as_str().unwrap_or("").to_string();
         let mk_id = multikey_entry["id"].as_str().unwrap_or("").to_string();
         verification_methods.push(jwk_entry);

@@ -24,7 +24,7 @@ cargo install jacs-cli
 | Inline Markdown/text signatures | `jacs::text` |
 | PNG/JPEG/WebP provenance | `jacs::media` |
 | RFC 5322 email signatures | `jacs::email` |
-| ES256 compatibility key and ecosystem exports (JWKS, key binding, AP2 mandate, agreement VC) | `jacs::compatibility` |
+| ES256 compatibility key and ecosystem exports (JWKS, key binding, A2A agent card, AP2 mandate, agreement VC) | `jacs::compatibility` |
 | Standalone Agreement v2, storage, DNS, and trust | Core crate modules |
 
 ## Quick start
@@ -95,7 +95,7 @@ Agreement v2 is the preferred model for new multi-agent consent workflows. It cr
 - Algorithm identification embedded in signatures with downgrade prevention
 - DNSSEC-aware identity verification paths
 - Stdio-only MCP server; no network listener
-- `pq2025` / ML-DSA-87 is the default for new agents
+- `pq2025` / ML-DSA-87 native signing for all new agents; the ES256 compatibility key is bound to the PQ root and never signs native documents
 
 Report vulnerabilities to security@hai.ai.
 

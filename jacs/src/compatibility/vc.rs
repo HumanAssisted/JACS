@@ -93,15 +93,19 @@ pub fn export_agreement_v2_as_vc(
     key_directory: &str,
     agreement_json: &str,
 ) -> Result<Value, JacsError> {
-    let agreement: Value = serde_json::from_str(agreement_json)
-        .map_err(|e| JacsError::ValidationError(format!("agreement input is not JSON: {e}")))?;
+    let agreement: Value = serde_json::from_str(agreement_json).map_err(|e| {
+        super::record_export_error("agreement-vc", "invalid_input");
+        JacsError::ValidationError(format!("agreement input is not JSON: {e}"))
+    })?;
     // Typed boundary: a valid Agreement-v2 document, not arbitrary JSON.
-    crate::agreements::v2::assert_agreement_v2(&agreement)?;
+    crate::agreements::v2::assert_agreement_v2(&agreement)
+        .inspect_err(|_| super::record_export_error("agreement-vc", "invalid_input"))?;
 
     // Content scope: require_scope directly — no auto-issue path.
     let binding = super::binding::require_scope(agent, key_directory, "agreement-vc")?;
     let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
+        .inspect_err(|_| super::record_export_error("agreement-vc", "missing_key"))?;
 
     // The verification method is the Multikey entry of the agent's DID
     // document (Task 004) — the JWK entry would be rejected by
@@ -159,6 +163,7 @@ pub fn export_agreement_v2_as_vc(
         cryptosuite = CRYPTOSUITE,
         "Agreement-v2 exported as VC with ecdsa-jcs-2019 Data Integrity proof"
     );
+    super::record_export_generated("agreement-vc");
 
     Ok(json!({
         "format": "agreement-vc",

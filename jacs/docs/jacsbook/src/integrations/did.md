@@ -1,6 +1,6 @@
 # DID Integration (No Blockchain Required)
 
-This chapter describes an integration pattern. JACS does not currently ship a built-in DID resolver, DID method implementation, or DID document toolchain in core bindings.
+This chapter describes an integration pattern. JACS ships a lightweight `did:wba` export surface (`jacs w3c did`, `jacs w3c did-document`, and the W3C MCP tools) but no general-purpose DID resolver or full DID method toolchain.
 
 You can still use JACS in DID-oriented architectures without requiring a blockchain or ledger.
 
@@ -48,6 +48,24 @@ This avoids duplicate trust stacks while still supporting DID-based interoperabi
 - Accept external artifacts only when JACS verification succeeds under your trust policy
 
 This gives human-readable identity, standards-friendly discovery, and strong cryptographic verification without blockchain dependencies.
+
+## ES256 Compatibility Entries in DID Documents (P2)
+
+When the agent has an ES256 compatibility key **and** a valid
+PQ-root-signed compatibility key binding granting the `did` scope,
+generated DID documents (`jacs w3c did-document`) include two
+verification-method entries for that key:
+
+- a `JsonWebKey` entry (`publicKeyJwk`) for JOSE consumers, and
+- a `Multikey` entry (`publicKeyMultibase`) — the form `ecdsa-jcs-2019`
+  Data Integrity proofs reference.
+
+If the compatibility key is absent or the binding is missing, invalid, or
+lacks the `did` scope, the DID document is still exported — it simply
+omits the ES256 entries. The ES256 entries prove possession of the
+compatibility key only; post-quantum trust comes from the binding
+(`jacs agent export-compat-binding`) — see the
+[Security Model](../advanced/security.md#compatibility-key-binding-p2).
 
 ## Where to Combine With Other Standards
 
