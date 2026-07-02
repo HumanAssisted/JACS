@@ -568,23 +568,26 @@ fn native_verify_never_dispatches_to_es256() {
     )
     .expect("canonical payload for the mutated metadata");
 
-    let compat_key = jacs::crypt::es256::generate_es256_keypair().expect("es256 keypair");
+    // `jacs::crypt::es256::generate_es256_keypair` is pub(crate) (issue
+    // 014): build the compat-style P-256 key directly from the same
+    // RustCrypto stack the module uses — this guardrail only needs *a*
+    // genuinely valid ES256 signature, not JACS's keygen.
+    use p256::pkcs8::EncodePublicKey as _;
+    let signing_key = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
+    let verifying_key = p256::ecdsa::VerifyingKey::from(&signing_key);
+    let public_spki_pem = verifying_key
+        .to_public_key_pem(p256::pkcs8::LineEnding::LF)
+        .expect("SPKI PEM encodes");
+    let public_sec1_uncompressed = verifying_key.to_encoded_point(false).as_bytes().to_vec();
     let es256_signature: Vec<u8> = {
         use p256::ecdsa::signature::Signer;
-        use p256::pkcs8::DecodePrivateKey;
-        let signing_key = p256::ecdsa::SigningKey::from_pkcs8_der(&compat_key.private_pkcs8_der)
-            .expect("compat private key parses");
         let sig: p256::ecdsa::Signature = signing_key.sign(canonical.as_bytes());
         sig.to_bytes().to_vec()
     };
     // Sanity: this IS a valid ES256 signature over the payload — the
     // rejection below cannot be blamed on bad signature bytes.
-    jacs::crypt::es256::verify_es256_jose(
-        &compat_key.public_spki_pem,
-        canonical.as_bytes(),
-        &es256_signature,
-    )
-    .expect("the crafted ES256 signature is genuinely valid");
+    jacs::crypt::es256::verify_es256_jose(&public_spki_pem, canonical.as_bytes(), &es256_signature)
+        .expect("the crafted ES256 signature is genuinely valid");
     doc["jacsSignature"]["signature"] = json!(STANDARD.encode(&es256_signature));
 
     // Keep the document internally consistent (fresh jacsSha256) so the
@@ -613,7 +616,7 @@ fn native_verify_never_dispatches_to_es256() {
     // jacs-core dispatch refuses the algorithm before touching bytes.
     let err = jacs_core::verify::verify_document(
         &doc,
-        &compat_key.public_sec1_uncompressed,
+        &public_sec1_uncompressed,
         SigningAlgorithm::Pq2025,
         "jacsSignature",
     )

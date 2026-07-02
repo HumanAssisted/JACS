@@ -17,7 +17,9 @@ pub mod vc;
 /// PRD §9.8 counter: one successful ecosystem export, labeled by format.
 /// Called unconditionally next to each `ecosystem_export_generated` event
 /// (cheap no-op unless the `otlp-metrics` feature is enabled). `format`
-/// is always one of the fixed export format strings — low cardinality.
+/// is always one of the SIX binding scopes — the PRD §9.4 bijection
+/// (`binding::ALL_SCOPES`), pinned by the label-set test in
+/// `tests/compatibility_observability.rs` — low cardinality.
 pub(crate) fn record_export_generated(format: &str) {
     let mut tags = std::collections::HashMap::new();
     tags.insert("format".to_string(), format.to_string());

@@ -3,6 +3,9 @@ use secrecy::ExposeSecret;
 use zeroize::Zeroizing;
 pub mod aes_encrypt;
 pub mod constants;
+// Public module, but only for its SANCTIONED verification/encoding helpers
+// (see the module docs in es256.rs). Keygen (`generate_es256_keypair`) and
+// signing (`sign_es256_jose`) stay pub(crate) per P2 §9.6 / FR25.
 pub mod es256;
 pub mod hash;
 pub mod kem;

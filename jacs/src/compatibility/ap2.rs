@@ -19,6 +19,7 @@
 //! this module never claims full AP2 conformance.
 
 use crate::agent::Agent;
+use crate::agent::boilerplate::BoilerPlate;
 use crate::error::JacsError;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -114,8 +115,8 @@ pub fn export_ap2_mandate(
     // Content scope: require_scope directly — no auto-issue path.
     let binding = super::binding::require_scope(agent, key_directory, "ap2-mandate")?;
     let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
-        .inspect_err(|_| super::record_export_error("ap2-mandate", "missing_key"))?;
+    // Missing keys fail (and count as `missing_key`) inside `require_scope`.
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
 
     // Decrypt the ES256 private key; plaintext PKCS#8 DER lives only in
     // this zeroizing buffer for the duration of the signing call.
@@ -146,6 +147,7 @@ pub fn export_ap2_mandate(
     info!(
         event = "ecosystem_export_generated",
         format = "ap2-mandate",
+        jacs_id = %agent.get_id().unwrap_or_default(),
         kid = %compat.kid,
         binding_hash = %binding_hash,
         spec_revision = AP2_SPEC_REVISION,

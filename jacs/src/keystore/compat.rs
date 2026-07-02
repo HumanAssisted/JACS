@@ -129,9 +129,12 @@ pub fn create_ecosystem_key(
 
     let keypair = crate::crypt::es256::generate_es256_keypair()?;
 
-    // Encrypt with the SAME password/envelope as the native root key.
+    // Encrypt with the SAME password/envelope as the native root key. The
+    // plaintext DER lives in a `Zeroizing` buffer and is wiped when
+    // `keypair` drops at the end of this function (FR9) — it is never
+    // copied into an un-wiped `Vec`.
     let encrypted = crate::crypt::aes_encrypt::encrypt_private_key_with_password(
-        &keypair.private_pkcs8_der,
+        keypair.private_pkcs8_der.as_slice(),
         password,
     )?;
 
@@ -181,6 +184,33 @@ pub fn create_ecosystem_key(
 /// Describe the existing ecosystem key. Typed key-not-found error pointing
 /// at the migration command when absent (no silent creation on load).
 pub fn ecosystem_key_info(key_directory: &str) -> Result<CompatKeyInfo, JacsError> {
+    ecosystem_key_info_ctx(key_directory, None, None)
+}
+
+/// Quiet existence probe: `Some` when the ES256 compat key exists and its
+/// keyring entry parses, `None` otherwise — no `compatibility_key_missing`
+/// WARN and no typed error. For metadata/enrichment paths (agent load,
+/// gate-and-enrich identity views) where a missing key is not a failed
+/// export attempt.
+pub(crate) fn try_ecosystem_key_info(key_directory: &str) -> Option<CompatKeyInfo> {
+    if !std::path::Path::new(&ecosystem_private_key_path(key_directory)).exists() {
+        return None;
+    }
+    ecosystem_key_info(key_directory).ok()
+}
+
+/// Same as [`ecosystem_key_info`], with caller context threaded into the
+/// `compatibility_key_missing` WARN (PRD §9.8 fields: `jacs_id`,
+/// `requested_export`). The keystore itself knows neither, so callers that
+/// do (the binding issue/verify paths reached through
+/// `require_scope`/`require_identity_scope`) pass them down; empty means
+/// "unknown at this call site". One emission site — never a double WARN
+/// for one failure.
+pub(crate) fn ecosystem_key_info_ctx(
+    key_directory: &str,
+    jacs_id: Option<&str>,
+    requested_export: Option<&str>,
+) -> Result<CompatKeyInfo, JacsError> {
     let priv_path = ecosystem_private_key_path(key_directory);
     if !std::path::Path::new(&priv_path).exists() {
         // Operators watch this event: an export was attempted against an
@@ -188,6 +218,8 @@ pub fn ecosystem_key_info(key_directory: &str) -> Result<CompatKeyInfo, JacsErro
         // is explicit migration — loading never creates key material.
         warn!(
             event = "compatibility_key_missing",
+            jacs_id = jacs_id.unwrap_or(""),
+            requested_export = requested_export.unwrap_or(""),
             path = %priv_path,
             hint = "run `jacs agent add-compat-key` (or SimpleAgent::add_compat_key) to add \
                     the ES256 ecosystem compatibility key to this agent",

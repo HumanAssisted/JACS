@@ -224,6 +224,15 @@ pub fn build_loaded_agent_info(
         .and_then(|cfg| cfg.jacs_agent_private_key_filename().as_deref())
         .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME);
 
+    // Loading never mints keys; report the compat key only if one already
+    // exists on disk. ONE quiet probe — loading is not an export attempt,
+    // so a pre-P2 agent gets empty fields, not a
+    // `compatibility_key_missing` WARN on every load.
+    let (ecosystem_kid, ecosystem_algorithm) =
+        crate::keystore::compat::try_ecosystem_key_info(&key_directory.to_string_lossy())
+            .map(|c| (c.kid, c.algorithm))
+            .unwrap_or_default();
+
     Ok(AgentInfo {
         agent_id: agent_value["jacsId"].as_str().unwrap_or("").to_string(),
         name: agent_value["name"].as_str().unwrap_or("").to_string(),
@@ -254,18 +263,8 @@ pub fn build_loaded_agent_info(
             .unwrap_or("")
             .to_string(),
         dns_record: String::new(),
-        // Loading never mints keys; report the compat key only if one
-        // already exists on disk (non-fatal when absent or unreadable).
-        ecosystem_kid: crate::keystore::compat::ecosystem_key_info(
-            &key_directory.to_string_lossy(),
-        )
-        .map(|c| c.kid)
-        .unwrap_or_default(),
-        ecosystem_algorithm: crate::keystore::compat::ecosystem_key_info(
-            &key_directory.to_string_lossy(),
-        )
-        .map(|c| c.algorithm)
-        .unwrap_or_default(),
+        ecosystem_kid,
+        ecosystem_algorithm,
     })
 }
 

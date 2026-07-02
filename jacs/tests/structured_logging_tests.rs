@@ -708,5 +708,6 @@ fn test_grandfathered_ed25519_sign_warns() {
         Level::WARN,
         "native_legacy_ed25519_sign must be WARN, not DEBUG"
     );
-    assert_has_field(warns[0], "agent_id");
+    // PRD §9.8 names the identity field `jacs_id` (not `agent_id`).
+    assert_has_field(warns[0], "jacs_id");
 }

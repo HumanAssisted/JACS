@@ -72,6 +72,30 @@ fn parse_agreement_v2_role(
     }
 }
 
+/// Install the process-wide stderr tracing subscriber (Issue 016).
+///
+/// Delegates to `jacs::observability::init_logging()`: STDERR writer,
+/// `RUST_LOG`-honoring `EnvFilter`, `try_init` semantics (repeated calls —
+/// e.g. the `jacs mcp` arm's own call — are no-ops). STDOUT is never
+/// touched; it stays reserved for machine-readable output (JSON envelopes,
+/// JWKS/PEM exports) and, under `jacs mcp`, the JSON-RPC transport.
+///
+/// Level policy: when `RUST_LOG` is unset, one-shot commands default to
+/// `jacs=warn` so operators see the §9.8 WARN diagnostics
+/// (`compatibility_key_missing`, `content_export_scope_denied`, ...) without
+/// success-path INFO noise; the `jacs mcp` serve path keeps the library's
+/// `jacs=info` default so the `mcp_server_starting` line is emitted even
+/// without `RUST_LOG` (CLAUDE.md norm 1: silent stdio is not acceptable).
+fn init_cli_tracing(is_mcp: bool) {
+    if !is_mcp && std::env::var_os("RUST_LOG").is_none() {
+        // SAFETY: called from main() before any threads are spawned (the
+        // signal handler installed earlier only sets a panic hook; the
+        // tokio runtime is built later, inside the `mcp` arm).
+        unsafe { std::env::set_var("RUST_LOG", "jacs=warn") };
+    }
+    jacs::observability::init_logging();
+}
+
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
     install_signal_handler();
@@ -79,6 +103,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // Create shutdown guard to ensure cleanup on exit (including early returns)
     let _shutdown_guard = ShutdownGuard::new();
     let matches = build_cli().arg_required_else_help(true).get_matches();
+
+    // Observability (CLAUDE.md norm 1 / P2 §9.8, Issue 016): install the
+    // stderr tracing subscriber BEFORE subcommand dispatch so structured
+    // events from the library are never dropped to a no-op dispatcher —
+    // including for one-shot commands like `agent export-jwks` and
+    // `ap2 export-mandate`, the primary P2 delivery surface.
+    init_cli_tracing(matches.subcommand_name() == Some("mcp"));
 
     match matches.subcommand() {
         Some(("version", _sub_matches)) => {
@@ -933,12 +964,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 process::exit(0);
             }
             _ => {
-                // Observability (CLAUDE.md norm): install a tracing subscriber
-                // before serving so verification/trust/auth events are not
-                // dropped to a no-op dispatcher. init_logging() writes to STDERR
-                // (never STDOUT — that is the JSON-RPC transport) and honors
-                // RUST_LOG. Scoped to the serve path so one-shot CLI commands
-                // that emit machine-readable envelopes to stderr are unaffected.
+                // Observability (CLAUDE.md norm): the subscriber is installed
+                // at the top of main() via init_cli_tracing() for EVERY
+                // command (Issue 016). init_logging() writes to STDERR (never
+                // STDOUT — that is the JSON-RPC transport) and honors
+                // RUST_LOG. This call is a try_init no-op kept as a safety
+                // net so the serve path can never start silent even if the
+                // early init is refactored away.
                 jacs::observability::init_logging();
                 let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
                 // Emitted to STDERR by the subscriber above; the operator gets a
@@ -1747,7 +1779,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     let agent = match SimpleAgent::load(None, None) {
                         Ok(a) => a,
                         Err(_) => {
-                            let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                            let (a, _) = SimpleAgent::ephemeral(Some("pq2025"))
                                 .map_err(|e| format!("Failed to create verifier: {}", e))?;
                             a
                         }
@@ -1851,8 +1883,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         process::exit(1);
                     });
 
-                    let (_agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
-                        .unwrap_or_else(|e| {
+                    let (_agent, _info) =
+                        SimpleAgent::ephemeral(Some("pq2025")).unwrap_or_else(|e| {
                             eprintln!("Failed to create agent: {}", e);
                             process::exit(1);
                         });
@@ -1943,13 +1975,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             );
                             eprintln!("{}", quickstart_password_bootstrap_help());
                         }
-                        let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                        let (a, _) = SimpleAgent::ephemeral(Some("pq2025"))
                             .map_err(|e| format!("Failed to create verifier: {}", e))?;
                         a
                     }
                 }
             } else {
-                let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                let (a, _) = SimpleAgent::ephemeral(Some("pq2025"))
                     .map_err(|e| format!("Failed to create verifier: {}", e))?;
                 a
             };
@@ -2097,6 +2129,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             handle_config_create()?;
             println!("\n--- Running Agent Creation (with keys) ---");
             handle_agent_create_auto_opts(None, true, auto_yes, no_compat_key)?;
+            print_init_key_summary(no_compat_key);
             println!("\n--- JACS Initialization Complete ---");
         }
         #[cfg(feature = "keychain")]
@@ -2175,6 +2208,49 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+/// Print the post-`jacs init` key summary (P2 Task 002, Issue 019): one
+/// line per key role so the operator sees the pq2025 native root and the
+/// ES256 ecosystem compatibility key (or the explicit `--no-compat-key`
+/// opt-out) without opening the keyring file. Best-effort and read-only:
+/// it must never fail an init that already succeeded.
+fn print_init_key_summary(no_compat_key: bool) {
+    let config: Option<serde_json::Value> = std::fs::read_to_string("jacs.config.json")
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok());
+    let key_directory = config
+        .as_ref()
+        .and_then(|cfg| cfg.get("jacs_key_directory"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("./jacs_keys")
+        .to_string();
+    let keyring = jacs::keystore::compat::read_keyring(&key_directory).unwrap_or_default();
+
+    println!("\nKey summary ({}):", key_directory);
+    match keyring.keys.iter().find(|k| k.role == "native_root") {
+        Some(root) => println!("  native_root:       {} (kid {})", root.algorithm, root.kid),
+        None => {
+            // `--no-compat-key` inits never write keyring metadata; fall
+            // back to the configured native algorithm (default pq2025).
+            let algorithm = config
+                .as_ref()
+                .and_then(|cfg| cfg.get("jacs_agent_key_algorithm"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("pq2025")
+                .to_string();
+            println!("  native_root:       {}", algorithm);
+        }
+    }
+    match keyring.keys.iter().find(|k| k.role == "ecosystem_signing") {
+        Some(eco) => println!("  ecosystem_signing: {} (kid {})", eco.algorithm, eco.kid),
+        None if no_compat_key => println!(
+            "  ecosystem_signing: skipped (--no-compat-key); add later with `jacs agent add-compat-key`"
+        ),
+        None => {
+            println!("  ecosystem_signing: missing; add with `jacs agent add-compat-key`")
+        }
+    }
 }
 
 fn w3c_did_options(matches: &clap::ArgMatches) -> jacs::w3c::W3cDidOptions {
@@ -2266,6 +2342,12 @@ fn serve_w3c_documents(
 /// Load an agent for sign operations: prefer the local config; fall back to a
 /// fresh ephemeral agent if none exists. Mirrors the resolution logic of the
 /// top-level `verify` handler so behaviour is consistent.
+///
+/// The fallback requests `pq2025` explicitly: FR1 resolves any Ed25519
+/// request to pq2025 anyway, and asking for "ed25519" here would only emit
+/// the `native_non_pq_sign_rejected` WARN (contaminating the strict-mode
+/// stderr JSON envelope of `verify-text --json` now that every command has
+/// a subscriber — Issue 016) and falsely bump its operator metric.
 fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
     use jacs::simple::SimpleAgent;
     if std::path::Path::new("./jacs.config.json").exists() {
@@ -2286,7 +2368,7 @@ fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
                         wrap_quickstart_error_with_password_help("loading agent", &e)
                     );
                 }
-                let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+                let (a, _) = SimpleAgent::ephemeral(Some("pq2025")).unwrap_or_else(|err| {
                     eprintln!("Failed to create ephemeral agent: {}", err);
                     process::exit(1);
                 });
@@ -2294,7 +2376,7 @@ fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
             }
         }
     } else {
-        let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+        let (a, _) = SimpleAgent::ephemeral(Some("pq2025")).unwrap_or_else(|err| {
             eprintln!("Failed to create ephemeral agent: {}", err);
             process::exit(1);
         });

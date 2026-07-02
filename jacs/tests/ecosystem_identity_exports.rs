@@ -216,6 +216,59 @@ fn did_document_lists_es256_as_jsonwebkey_and_multikey_when_authorized() {
     assert!(assertions.len() >= 3);
 }
 
+/// The `w3c-agent-identity` scope gates the compat enrichment of the W3C
+/// AgentDescription export (gate-and-enrich, mirroring the DID document):
+/// without an authorized binding the description keeps its pre-P2
+/// native-only shape; with the default identity binding the `jacs` block
+/// carries the compat kid and the binding reference AS A CONTENT HASH.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn agent_description_carries_compat_metadata_only_when_authorized() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("w3c-description-gate");
+
+    // Without a binding: pre-P2 native-only shape.
+    let doc_before =
+        jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+            .expect("description export succeeds without a binding");
+    assert!(
+        doc_before["jacs"].get("compatKid").is_none(),
+        "no compat metadata without an authorized binding"
+    );
+    assert!(doc_before["jacs"].get("compatBindingHash").is_none());
+
+    // A binding WITHOUT the scope must not enrich either.
+    agent
+        .issue_compat_binding(Some(&["jwks", "did"]), None)
+        .expect("issue narrow binding");
+    let doc_narrow =
+        jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+            .expect("description export succeeds with a narrow binding");
+    assert!(
+        doc_narrow["jacs"].get("compatKid").is_none(),
+        "binding without w3c-agent-identity must not enrich the description"
+    );
+
+    // Default identity binding grants `w3c-agent-identity`: enriched.
+    agent
+        .issue_compat_binding(None, None)
+        .expect("issue default identity binding");
+    let doc = jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+        .expect("authorized description export");
+    let compat = agent.ecosystem_key_info().expect("key info");
+    assert_eq!(
+        doc["jacs"]["compatKid"].as_str().unwrap(),
+        compat.kid,
+        "description carries the compat kid (same field style as the DID document)"
+    );
+    let binding_ref = doc["jacs"]["compatBindingHash"].as_str().unwrap();
+    assert!(!binding_ref.is_empty());
+    assert!(
+        !binding_ref.contains("://"),
+        "binding reference is a content hash, never a URL"
+    );
+}
+
 #[cfg(feature = "a2a")]
 #[test]
 #[serial(jacs_env, cwd_env)]
@@ -263,6 +316,45 @@ fn a2a_agent_card_uses_bound_es256_key() {
         .expect("sig b64");
     jacs::crypt::es256::verify_es256_jose(&public_pem, signing_input.as_bytes(), &sig_bytes)
         .expect("ES256 card signature verifies");
+}
+
+/// FR14: the JWS payload segment is the JCS (RFC 8785) canonicalization
+/// of the card without `signatures` — pinned against an independent
+/// reconstruction, not just self-verification of the attached segment.
+/// (Default-valued card fields are omitted before canonicalization by the
+/// card serializer's `skip_serializing_if` attributes.)
+#[cfg(feature = "a2a")]
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn a2a_card_jws_payload_is_jcs_of_card_without_signatures() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("a2a-card-jcs-payload");
+
+    let card = agent.export_a2a_agent_card().expect("export card");
+    let jws = card["signatures"][0]["jws"].as_str().expect("jws");
+    let parts: Vec<&str> = jws.split('.').collect();
+    assert_eq!(parts.len(), 3, "compact JWS");
+
+    use base64::Engine as _;
+    let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .expect("payload b64");
+
+    // Reconstruct what an A2A-conformant verifier signs over: JCS of the
+    // exported card minus `signatures`.
+    let mut unsigned = card.clone();
+    unsigned
+        .as_object_mut()
+        .expect("card is an object")
+        .remove("signatures");
+    let expected_jcs =
+        jacs_core::canonical::canonicalize_json_try(&unsigned).expect("JCS canonicalization");
+
+    assert_eq!(
+        payload_bytes,
+        expected_jcs.as_bytes(),
+        "JWS payload must be exactly the JCS bytes of the card without `signatures` (FR14)"
+    );
 }
 
 #[test]

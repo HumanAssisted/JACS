@@ -58,8 +58,14 @@ pub fn create_jwk_keys(
     // arms of sign_jws / verify_jws below keep returning errors (FR25 —
     // no generic caller-chosen-algorithm ES256 signing surface).
     let es256_pair = || -> Result<(Vec<u8>, Vec<u8>), JacsError> {
-        let kp = crate::crypt::es256::generate_es256_keypair()?;
-        Ok((kp.private_pkcs8_der, kp.public_sec1_uncompressed))
+        let mut kp = crate::crypt::es256::generate_es256_keypair()?;
+        // MOVE (not copy) the plaintext DER out of its `Zeroizing` wrapper:
+        // `DualKeyPair` holds plain ephemeral `Vec<u8>`s for every algorithm,
+        // and `mem::take` transfers the allocation so no duplicate plaintext
+        // buffer is left behind un-wiped (the emptied wrapper still zeroizes
+        // on drop).
+        let private = std::mem::take(&mut *kp.private_pkcs8_der);
+        Ok((private, kp.public_sec1_uncompressed))
     };
 
     // Generate keys directly in memory without file persistence

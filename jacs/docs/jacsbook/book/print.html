@@ -10324,16 +10324,27 @@ events with matching Prometheus counters. This is the sysadmin fix-table:
 what fired, which metric to alert on, which part of the model is involved,
 and the usual fix.</p>
 <div class="table-wrapper"><table><thead><tr><th>Log event</th><th>Metric</th><th>Failure class</th><th>Likely fix</th></tr></thead><tbody>
-<tr><td><code>native_non_pq_sign_rejected</code> (WARN)</td><td><code>jacs_native_non_pq_sign_rejected_total</code></td><td>native trust</td><td>Use <code>pq2025</code> — new agents cannot mint Ed25519/ES256 native roots; the request was already resolved to <code>pq2025</code>.</td></tr>
-<tr><td><code>native_legacy_ed25519_sign</code> (WARN)</td><td><code>jacs_native_legacy_ed25519_sign_total</code></td><td>native trust</td><td>A grandfathered agent is still signing with Ed25519 — plan <code>jacs agent rotate-keys</code>, then <code>jacs agent issue-compat-binding</code>.</td></tr>
-<tr><td><code>compatibility_key_missing</code> (WARN)</td><td><code>jacs_compatibility_export_error_total{reason="missing_key"}</code></td><td>compatibility binding</td><td>The agent has no ES256 compatibility key — run <code>jacs agent add-compat-key</code>.</td></tr>
-<tr><td><code>compatibility_binding_verify_failed</code> (WARN)</td><td><code>jacs_compatibility_binding_verify_failed_total{reason}</code></td><td>compatibility binding</td><td>The PQ-root-signed binding no longer verifies — re-issue after key rotation (<code>jacs agent issue-compat-binding</code>) and check <code>expiresAt</code>.</td></tr>
-<tr><td><code>content_export_scope_denied</code> (WARN)</td><td><code>jacs_content_export_scope_denied_total{format}</code></td><td>ecosystem export</td><td>The binding lacks the requested content scope (<code>ap2-mandate</code>, <code>agreement-vc</code> are never auto-issued) — re-issue the binding with that scope; the PQ root signs the grant.</td></tr>
-<tr><td><code>ecosystem_export_generated</code> (INFO)</td><td><code>jacs_compatibility_export_total{format}</code></td><td>ecosystem export</td><td>Success, not a failure — six formats: <code>jwks</code>, <code>did</code>, <code>a2a-agent-card</code>, <code>w3c-agent-identity</code>, <code>ap2-mandate</code>, <code>agreement-vc</code>.</td></tr>
+<tr><td><code>native_non_pq_sign_rejected</code> (WARN)</td><td><code>jacs_native_non_pq_sign_rejected_total</code></td><td>native trust</td><td>Use <code>pq2025</code> — new agents cannot mint Ed25519/ES256 native roots; the request was already resolved to <code>pq2025</code>. Fires during creation, before any agent id exists, so this is the one P2 event without a <code>jacs_id</code> field.</td></tr>
+<tr><td><code>native_legacy_ed25519_sign</code> (WARN)</td><td><code>jacs_native_legacy_ed25519_sign_total</code></td><td>native trust</td><td>A grandfathered agent (<code>jacs_id</code> in the event) is still signing with Ed25519 — plan <code>jacs agent rotate-keys</code>, then <code>jacs agent issue-compat-binding</code>.</td></tr>
+<tr><td><code>compatibility_key_missing</code> (WARN)</td><td><code>jacs_compatibility_export_error_total{format,reason="missing_key"}</code></td><td>compatibility binding</td><td>An export was attempted (<code>requested_export</code> in the event; <code>format</code> on the metric) but the agent has no ES256 compatibility key — run <code>jacs agent add-compat-key</code>.</td></tr>
+<tr><td><code>compatibility_binding_verify_failed</code> (WARN)</td><td><code>jacs_compatibility_binding_verify_failed_total{reason}</code></td><td>compatibility binding</td><td>The PQ-root-signed binding no longer verifies (<code>jacs_id</code> + compat <code>kid</code> in the event) — re-issue after key rotation (<code>jacs agent issue-compat-binding</code>) and check <code>expiresAt</code>.</td></tr>
+<tr><td><code>content_export_scope_denied</code> (WARN)</td><td><code>jacs_content_export_scope_denied_total{format}</code></td><td>ecosystem export</td><td>The binding (<code>binding_hash</code> in the event) lacks the requested scope (<code>ap2-mandate</code>, <code>agreement-vc</code> are never auto-issued) — re-issue the binding with that scope; the PQ root signs the grant.</td></tr>
+<tr><td><code>ecosystem_export_generated</code> (INFO)</td><td><code>jacs_compatibility_export_total{format}</code></td><td>ecosystem export</td><td>Success, not a failure — six formats, exactly the six binding scopes: <code>jwks</code>, <code>did</code>, <code>a2a-agent-card</code>, <code>w3c-agent-identity</code>, <code>ap2-mandate</code>, <code>agreement-vc</code>.</td></tr>
 </tbody></table>
 </div>
 <p>Metric label values are fixed, low-cardinality strings (<code>reason</code>,
 <code>format</code>) — never raw error text.</p>
+<p>Two boundary notes for dashboard authors:</p>
+<ul>
+<li>The <code>did</code> and <code>w3c-agent-identity</code> exports are <strong>gate-and-enrich</strong> views:
+without a valid binding granting the scope they still succeed in their
+pre-P2 native-only shape and emit <strong>no</strong> event or counter. Only the
+authorized (compat-enriched) exports appear under
+<code>jacs_compatibility_export_total</code>.</li>
+<li>Exporting the compatibility key binding itself (<code>jacs agent export-compat-binding</code>) is the trust artifact behind the six scoped
+exports, not one of them — it logs a plain INFO line and never appears
+under the <code>format</code> label.</li>
+</ul>
 <h2 id="see-also-12"><a class="header" href="#see-also-12">See Also</a></h2>
 <ul>
 <li><a href="advanced/../rust/agreements.html">Creating and Using Agreements</a> - Agreement creation and signing workflow</li>

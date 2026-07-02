@@ -62,6 +62,19 @@ pub fn issue_compat_binding(
     scopes: &[&str],
     expires_at: Option<&str>,
 ) -> Result<Value, JacsError> {
+    issue_compat_binding_ctx(agent, key_directory, scopes, expires_at, None)
+}
+
+/// [`issue_compat_binding`] with the requesting export format threaded
+/// into the `compatibility_key_missing` WARN (PRD §9.8) when issuance is
+/// an auto-issue on behalf of an identity export.
+pub(crate) fn issue_compat_binding_ctx(
+    agent: &mut Agent,
+    key_directory: &str,
+    scopes: &[&str],
+    expires_at: Option<&str>,
+    requested_export: Option<&str>,
+) -> Result<Value, JacsError> {
     for s in scopes {
         if !ALL_SCOPES.contains(s) {
             return Err(JacsError::ValidationError(format!(
@@ -70,7 +83,12 @@ pub fn issue_compat_binding(
         }
     }
 
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    let agent_id = agent.get_id()?;
+    let compat = crate::keystore::compat::ecosystem_key_info_ctx(
+        key_directory,
+        Some(&agent_id),
+        requested_export,
+    )?;
     let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
         JacsError::FileReadFailed {
             path: compat.public_key_path.clone(),
@@ -79,7 +97,6 @@ pub fn issue_compat_binding(
     })?;
     let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
 
-    let agent_id = agent.get_id()?;
     let native_algorithm = {
         let config = agent.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
         config.get_key_algorithm()?
@@ -175,11 +192,32 @@ pub fn verify_compat_binding(
     key_directory: &str,
     binding: &Value,
 ) -> Result<BindingVerification, JacsError> {
+    verify_compat_binding_ctx(agent, key_directory, binding, None)
+}
+
+/// [`verify_compat_binding`] with the requesting export format threaded
+/// into the `compatibility_key_missing` WARN (PRD §9.8) when verification
+/// runs on behalf of an export (`require_scope`).
+pub(crate) fn verify_compat_binding_ctx(
+    agent: &Agent,
+    key_directory: &str,
+    binding: &Value,
+    requested_export: Option<&str>,
+) -> Result<BindingVerification, JacsError> {
+    // §9.8 identity fields for the WARN: the agent id and the compat kid
+    // the binding CLAIMS (empty when the document is malformed).
+    let jacs_id = agent.get_id().unwrap_or_default();
+    let binding_kid = binding["compatibilityKeyBinding"]["compatibilityKey"]["kid"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     // `metric_reason` is a FIXED low-cardinality label; `reason` is the
     // free-text diagnostic for the log line and the verdict.
     let fail = |metric_reason: &'static str, reason: String| {
         warn!(
             event = "compatibility_binding_verify_failed",
+            jacs_id = %jacs_id,
+            kid = %binding_kid,
             reason = %reason,
             "compatibility binding verification failed"
         );
@@ -242,8 +280,14 @@ pub fn verify_compat_binding(
         );
     }
 
-    // 4. ES256 key material matches the on-disk ecosystem key.
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    // 4. ES256 key material matches the on-disk ecosystem key. This is
+    //    where a deleted/never-minted key surfaces as `KeyNotFound` on
+    //    export paths — the ctx threads §9.8 fields into the WARN.
+    let compat = crate::keystore::compat::ecosystem_key_info_ctx(
+        key_directory,
+        Some(&jacs_id),
+        requested_export,
+    )?;
     if body["compatibilityKey"]["kid"].as_str().unwrap_or("") != compat.kid {
         return fail(
             "compat_kid_mismatch",
@@ -300,7 +344,15 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
             "no compatibility binding issued; run issue_compat_binding before exporting '{scope}'"
         ))
     })?;
-    let verdict = verify_compat_binding(agent, key_directory, &binding)?;
+    // A missing/deleted ES256 key surfaces as `KeyNotFound` inside
+    // verification (step 4) — this gate knows the requested format, so the
+    // documented `reason="missing_key"` counter increments here.
+    let verdict = verify_compat_binding_ctx(agent, key_directory, &binding, Some(scope))
+        .inspect_err(|e| {
+            if matches!(e, JacsError::KeyNotFound { .. }) {
+                super::record_export_error(scope, "missing_key");
+            }
+        })?;
     if !verdict.valid {
         super::record_export_error(scope, "binding_invalid");
         return Err(JacsError::ValidationError(format!(
@@ -311,7 +363,10 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
     if !verdict.scopes.iter().any(|s| s == scope) {
         warn!(
             event = "content_export_scope_denied",
+            jacs_id = %agent.get_id().unwrap_or_default(),
+            format = %scope,
             required_scope = %scope,
+            binding_hash = %binding[SHA256_FIELDNAME].as_str().unwrap_or(""),
             "export denied: scope not granted by the PQ-root-signed binding"
         );
         super::record_export_error(scope, "scope_denied");
@@ -328,4 +383,40 @@ pub fn require_scope(agent: &Agent, key_directory: &str, scope: &str) -> Result<
         )));
     }
     Ok(binding)
+}
+
+/// Gate-and-enrich probe for identity views that FALL BACK to their
+/// pre-P2 (native-only) shape instead of failing — the DID document and
+/// the W3C agent description. Returns `Some((compat, binding))` only when
+/// the agent has an ES256 compat key AND the CURRENT binding verifies AND
+/// grants `scope`. A missing key or absent binding is not a failed export
+/// attempt here, so the probe is quiet: no `compatibility_key_missing`
+/// WARN, no export-error counter. An INVALID binding still WARNs and
+/// counts through [`verify_compat_binding`] — a bad trust artifact is
+/// always operator-visible.
+pub(crate) fn compat_enrichment_if_authorized(
+    agent: &Agent,
+    scope: &str,
+) -> Result<Option<(crate::keystore::compat::CompatKeyInfo, Value)>, JacsError> {
+    let key_directory = match agent.config.as_ref() {
+        Some(config) => config
+            .jacs_key_directory()
+            .as_deref()
+            .unwrap_or("./jacs_keys")
+            .to_string(),
+        None => return Ok(None),
+    };
+    let compat = match crate::keystore::compat::try_ecosystem_key_info(&key_directory) {
+        Some(c) => c,
+        None => return Ok(None),
+    };
+    let binding = match load_compat_binding(&key_directory)? {
+        Some(b) => b,
+        None => return Ok(None),
+    };
+    let verdict = verify_compat_binding(agent, &key_directory, &binding)?;
+    if !verdict.valid || !verdict.scopes.iter().any(|s| s == scope) {
+        return Ok(None);
+    }
+    Ok(Some((compat, binding)))
 }

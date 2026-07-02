@@ -2135,7 +2135,7 @@ impl Agent {
             // (which always migrates to pq2025).
             warn!(
                 event = "native_legacy_ed25519_sign",
-                agent_id = %agent_id,
+                jacs_id = %agent_id,
                 "Grandfathered Ed25519 agent produced a native signature; rotate to pq2025"
             );
             crate::observability::metrics::increment_counter(

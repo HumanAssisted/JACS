@@ -26,6 +26,7 @@
 //! of P2 scope.
 
 use crate::agent::Agent;
+use crate::agent::boilerplate::BoilerPlate;
 use crate::error::JacsError;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -104,8 +105,8 @@ pub fn export_agreement_v2_as_vc(
     // Content scope: require_scope directly — no auto-issue path.
     let binding = super::binding::require_scope(agent, key_directory, "agreement-vc")?;
     let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
-        .inspect_err(|_| super::record_export_error("agreement-vc", "missing_key"))?;
+    // Missing keys fail (and count as `missing_key`) inside `require_scope`.
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
 
     // The verification method is the Multikey entry of the agent's DID
     // document (Task 004) — the JWK entry would be rejected by
@@ -158,6 +159,7 @@ pub fn export_agreement_v2_as_vc(
     info!(
         event = "ecosystem_export_generated",
         format = "agreement-vc",
+        jacs_id = %agent.get_id().unwrap_or_default(),
         kid = %compat.kid,
         binding_hash = %binding_hash,
         cryptosuite = CRYPTOSUITE,

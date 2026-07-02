@@ -63,6 +63,7 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
         info!(
             event = "ecosystem_export_generated",
             format = "did",
+            jacs_id = %projection.jacs_id,
             kid = %kid,
             binding_hash = %binding_hash,
             "DID document exported with ES256 compatibility verification methods"
@@ -106,27 +107,11 @@ fn es256_entries_if_authorized(
     agent: &Agent,
     parts: &W3cDidParts,
 ) -> Result<Option<(Value, Value, String, String)>, JacsError> {
-    let key_directory = match agent.config.as_ref() {
-        Some(config) => config
-            .jacs_key_directory()
-            .as_deref()
-            .unwrap_or("./jacs_keys")
-            .to_string(),
-        None => return Ok(None),
-    };
-    let compat = match crate::keystore::compat::ecosystem_key_info(&key_directory) {
-        Ok(c) => c,
-        Err(_) => return Ok(None),
-    };
-    let binding = match crate::compatibility::binding::load_compat_binding(&key_directory)? {
-        Some(b) => b,
-        None => return Ok(None),
-    };
-    let verdict =
-        crate::compatibility::binding::verify_compat_binding(agent, &key_directory, &binding)?;
-    if !verdict.valid || !verdict.scopes.iter().any(|s| s == "did") {
-        return Ok(None);
-    }
+    let (compat, binding) =
+        match crate::compatibility::binding::compat_enrichment_if_authorized(agent, "did")? {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
 
     let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
         JacsError::FileReadFailed {

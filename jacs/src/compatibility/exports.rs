@@ -8,6 +8,8 @@
 //! exports (Tasks 004b/004c) never auto-issue.
 
 use crate::agent::Agent;
+use crate::agent::SHA256_FIELDNAME;
+use crate::agent::boilerplate::BoilerPlate;
 use crate::error::JacsError;
 use serde_json::{Value, json};
 use tracing::info;
@@ -20,12 +22,21 @@ fn require_identity_scope(
     scope: &str,
 ) -> Result<Value, JacsError> {
     if super::binding::load_compat_binding(key_directory)?.is_none() {
-        super::binding::issue_compat_binding(
+        // Auto-issue needs the ES256 key on disk; a fresh agent without
+        // one fails HERE with `KeyNotFound` — record the documented
+        // `reason="missing_key"` error counter under the requested format.
+        super::binding::issue_compat_binding_ctx(
             agent,
             key_directory,
             super::binding::DEFAULT_IDENTITY_SCOPES,
             None,
-        )?;
+            Some(scope),
+        )
+        .inspect_err(|e| {
+            if matches!(e, JacsError::KeyNotFound { .. }) {
+                super::record_export_error(scope, "missing_key");
+            }
+        })?;
     }
     super::binding::require_scope(agent, key_directory, scope)
 }
@@ -39,10 +50,13 @@ pub fn export_compatibility_jwks(
     agent: &mut Agent,
     key_directory: &str,
 ) -> Result<Value, JacsError> {
-    require_identity_scope(agent, key_directory, "jwks")?;
+    let binding = require_identity_scope(agent, key_directory, "jwks")?;
+    let binding_hash = binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
 
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
-        .inspect_err(|_| super::record_export_error("jwks", "missing_key"))?;
+    // The scope gate above already verified the key exists (missing keys
+    // fail inside `require_identity_scope` and count there); this re-read
+    // just fetches the descriptor.
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
     let public_pem = std::fs::read_to_string(&compat.public_key_path).map_err(|e| {
         JacsError::FileReadFailed {
             path: compat.public_key_path.clone(),
@@ -66,7 +80,9 @@ pub fn export_compatibility_jwks(
     info!(
         event = "ecosystem_export_generated",
         format = "jwks",
+        jacs_id = %agent.get_id().unwrap_or_default(),
         kid = %compat.kid,
+        binding_hash = %binding_hash,
         "compatibility JWKS exported"
     );
     super::record_export_generated("jwks");
@@ -85,9 +101,9 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let binding = require_identity_scope(agent, key_directory, "a2a-agent-card")?;
-    let binding_hash = binding["jacsSha256"].as_str().unwrap_or("").to_string();
-    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)
-        .inspect_err(|_| super::record_export_error("a2a-agent-card", "missing_key"))?;
+    let binding_hash = binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
+    // Missing keys fail (and count) inside the scope gate above.
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
 
     // Base card from the existing exporter, plus the binding reference.
     let card = crate::a2a::agent_card::export_agent_card(agent)?;
@@ -102,7 +118,16 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
     if let Some(obj) = unsigned.as_object_mut() {
         obj.remove("signatures");
     }
-    let payload = serde_json::to_vec(&unsigned)?;
+    // FR14: the signed payload is the JCS (RFC 8785) canonicalization of
+    // the card without `signatures` — pinned explicitly, never plain
+    // serde serialization (which only coincides with JCS while the map is
+    // sorted and the card carries no floats/non-ASCII). Default-valued
+    // card fields are omitted BEFORE canonicalization by the card
+    // serializer itself: every optional `AgentCard` field carries
+    // `#[serde(skip_serializing_if = "Option::is_none")]`.
+    let payload = jacs_core::canonical::canonicalize_json_try(&unsigned)
+        .map_err(|e| JacsError::ValidationError(format!("JCS canonicalization failed: {e}")))?;
+    let payload = payload.into_bytes();
 
     let header = json!({
         "alg": "ES256",
@@ -137,6 +162,7 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
     info!(
         event = "ecosystem_export_generated",
         format = "a2a-agent-card",
+        jacs_id = %agent.get_id().unwrap_or_default(),
         kid = %compat.kid,
         binding_hash = %binding_hash,
         "A2A agent card exported with ES256 compatibility signature"
@@ -168,18 +194,21 @@ pub fn export_compatibility_key_binding(
     })?;
     let verdict = super::binding::verify_compat_binding(agent, key_directory, &binding)?;
     if !verdict.valid {
-        super::record_export_error("compat-binding", "binding_invalid");
         return Err(JacsError::ValidationError(format!(
             "compatibility binding invalid: {}",
             verdict.reason
         )));
     }
 
+    // The binding is the trust artifact behind the six scoped ecosystem
+    // exports, not one of them: PRD §9.4 pins the `format` label set of
+    // `ecosystem_export_generated` / `jacs_compatibility_export_total` to
+    // exactly the six binding scopes, so this export logs a plain INFO
+    // (no event name, no export counters).
     info!(
-        event = "ecosystem_export_generated",
-        format = "compat-binding",
+        jacs_id = %agent.get_id().unwrap_or_default(),
+        binding_hash = %binding[SHA256_FIELDNAME].as_str().unwrap_or(""),
         "compatibility key binding exported"
     );
-    super::record_export_generated("compat-binding");
     Ok(binding)
 }

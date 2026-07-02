@@ -83,6 +83,9 @@ fn compatibility_es256_signing_helpers_are_not_public() {
 
     for (src, helper, file) in [
         (ES256_SRC, "sign_es256_jose", "crypt/es256.rs"),
+        // Issue 014: keygen is crate-internal too — only the in-crate
+        // keystore and the A2A keygen carve-out may mint ES256 key material.
+        (ES256_SRC, "generate_es256_keypair", "crypt/es256.rs"),
         (AP2_SRC, "build_ap2_detached_jws", "compatibility/ap2.rs"),
         (VC_SRC, "build_ecdsa_jcs_2019_proof", "compatibility/vc.rs"),
     ] {
@@ -95,4 +98,19 @@ fn compatibility_es256_signing_helpers_are_not_public() {
             "{file}: '{helper}' must NOT be public API"
         );
     }
+
+    // The helpers that DO stay public (verify_es256_jose + the encoding
+    // utilities) are a documented, sanctioned surface: verification and
+    // encoding only, no signing, no keygen. The module docs must carry the
+    // sanction marker explaining why they are public.
+    assert!(
+        ES256_SRC.contains("SANCTIONED PUBLIC SURFACE"),
+        "crypt/es256.rs: module docs must carry the 'SANCTIONED PUBLIC SURFACE' \
+         marker documenting why the verification/encoding helpers are public"
+    );
+    assert!(
+        ES256_SRC.contains("pub fn verify_es256_jose"),
+        "crypt/es256.rs: 'verify_es256_jose' is the sanctioned public verify \
+         utility (integration tests + downstream verifiers depend on it)"
+    );
 }

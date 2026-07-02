@@ -13,6 +13,19 @@
 //! Storage: the private key is PKCS#8 DER, encrypted at rest with the
 //! existing AES-256-GCM + Argon2id V2 envelope; the public key is SPKI PEM.
 //! The PQ signing library is never used as encryption.
+//!
+//! ## Public surface sanction (P2 §9.6 / FR25)
+//!
+//! SANCTIONED PUBLIC SURFACE: `verify_es256_jose`, `jwk_xy_from_spki_pem`,
+//! `multikey_from_spki_pem`, and `rfc7638_thumbprint_p256` are public on
+//! purpose. They are verification/encoding utilities only — none of them
+//! can produce a signature or mint key material — and they are public
+//! because out-of-crate integration tests (and downstream verifiers
+//! re-checking exported JWKS/DID/A2A/AP2/VC artifacts) need them.
+//! Everything that touches private key material stays `pub(crate)`:
+//! `sign_es256_jose` per FR25/§9.6 (no public arbitrary-payload ES256
+//! signing surface) and `generate_es256_keypair` (its only legitimate
+//! callers are the in-crate keystore and the A2A keygen carve-out).
 
 use crate::error::JacsError;
 use base64::Engine as _;
@@ -22,27 +35,41 @@ use p256::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use sha2::{Digest, Sha256};
 
 /// A freshly generated ES256 compatibility keypair, ready for storage.
-pub struct Es256Keypair {
+///
+/// Crate-internal on purpose (see the module docs): only the keystore
+/// (`keystore::compat::create_ecosystem_key`) and the A2A keygen carve-out
+/// (`a2a::keys::create_jwk_keys`) may mint ES256 key material.
+pub(crate) struct Es256Keypair {
     /// PKCS#8 v1 DER private key (to be envelope-encrypted before disk).
-    pub private_pkcs8_der: Vec<u8>,
+    /// `Zeroizing` so the plaintext DER is wiped on drop (FR9).
+    pub(crate) private_pkcs8_der: zeroize::Zeroizing<Vec<u8>>,
     /// SPKI PEM public key (written as-is).
-    pub public_spki_pem: String,
+    pub(crate) public_spki_pem: String,
     /// SEC1 uncompressed public point (0x04 || x || y), 65 bytes.
-    pub public_sec1_uncompressed: Vec<u8>,
+    // Read by the `a2a` keygen carve-out and the unit tests; without that
+    // feature the field is intentionally unused (it still documents the
+    // encoding contract `rfc7638_thumbprint_p256` consumes at keygen).
+    #[cfg_attr(not(feature = "a2a"), allow(dead_code))]
+    pub(crate) public_sec1_uncompressed: Vec<u8>,
     /// RFC 7638 JWK thumbprint (base64url, SHA-256) — the stable `kid`.
-    pub kid: String,
+    pub(crate) kid: String,
 }
 
 /// Generate a new P-256 keypair for the `ecosystem_signing` role.
-pub fn generate_es256_keypair() -> Result<Es256Keypair, JacsError> {
+pub(crate) fn generate_es256_keypair() -> Result<Es256Keypair, JacsError> {
     let secret = p256::SecretKey::random(&mut rand_core::OsRng);
     let public = secret.public_key();
 
-    let private_pkcs8_der = secret
-        .to_pkcs8_der()
-        .map_err(|e| JacsError::CryptoError(format!("ES256 PKCS#8 encoding failed: {e}")))?
-        .as_bytes()
-        .to_vec();
+    // `to_pkcs8_der` yields a zeroizing `SecretDocument`; the one plaintext
+    // copy made here is moved straight into a `Zeroizing` buffer so it is
+    // wiped on drop (FR9) — no plain `Vec` of the DER outlives this call.
+    let private_pkcs8_der = zeroize::Zeroizing::new(
+        secret
+            .to_pkcs8_der()
+            .map_err(|e| JacsError::CryptoError(format!("ES256 PKCS#8 encoding failed: {e}")))?
+            .as_bytes()
+            .to_vec(),
+    );
 
     let public_spki_pem = public
         .to_public_key_pem(p256::pkcs8::LineEnding::LF)

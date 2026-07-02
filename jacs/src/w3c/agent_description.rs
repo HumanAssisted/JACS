@@ -1,4 +1,4 @@
-use crate::agent::Agent;
+use crate::agent::{Agent, SHA256_FIELDNAME};
 use crate::error::JacsError;
 use crate::public_agent::PublicAgentProjection;
 use crate::w3c::did_wba::{W3cDidOptions, parts_for_projection};
@@ -7,28 +7,54 @@ use tracing::info;
 
 pub fn export_agent_description(agent: &Agent, options: W3cDidOptions) -> Result<Value, JacsError> {
     let projection = PublicAgentProjection::from_agent(agent)?;
-    export_agent_description_with_options(&projection, options)
+    export_agent_description_for_agent(agent, &projection, options)
 }
 
+/// Agent-aware funnel (P2 Task 004): the description starts as the pre-P2
+/// native-only projection, and when the agent holds an ES256 compat key
+/// AND a valid PQ-root-signed binding granting the `w3c-agent-identity`
+/// scope, the `jacs` block is enriched with the compat kid and the
+/// binding reference AS A CONTENT HASH (same fields as the DID document —
+/// never a URL, NG8). The `ecosystem_export_generated` event and the
+/// export counter fire ONLY on that authorized path — an ungated
+/// native-only export emits no P2 telemetry (mirrors `did_wba`).
+pub(crate) fn export_agent_description_for_agent(
+    agent: &Agent,
+    projection: &PublicAgentProjection,
+    options: W3cDidOptions,
+) -> Result<Value, JacsError> {
+    let mut description = export_agent_description_with_options(projection, options)?;
+
+    if let Some((compat, binding)) =
+        crate::compatibility::binding::compat_enrichment_if_authorized(agent, "w3c-agent-identity")?
+    {
+        let binding_hash = binding[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
+        description["jacs"]["compatKid"] = json!(compat.kid);
+        description["jacs"]["compatBindingHash"] = json!(binding_hash);
+        info!(
+            event = "ecosystem_export_generated",
+            format = "w3c-agent-identity",
+            jacs_id = %projection.jacs_id,
+            kid = %compat.kid,
+            binding_hash = %binding_hash,
+            did = %description["did"].as_str().unwrap_or(""),
+            "W3C agent identity (AgentDescription) exported with ES256 compatibility metadata"
+        );
+        crate::compatibility::record_export_generated("w3c-agent-identity");
+    }
+
+    Ok(description)
+}
+
+/// Projection-only view: the pre-P2 native-only AgentDescription shape.
+/// No agent means no binding check, so this path never carries compat
+/// metadata and never emits the scoped export event/counter.
 pub fn export_agent_description_with_options(
     projection: &PublicAgentProjection,
     options: W3cDidOptions,
 ) -> Result<Value, JacsError> {
     let parts = parts_for_projection(projection, &options)?;
     let description_url = format!("{}{}", parts.origin, parts.agent_description_path);
-
-    // P2 observability: the W3C agent identity (AgentDescription) export.
-    // No exporter consumes the `w3c-agent-identity` binding scope yet —
-    // this export carries native (not ES256) key material and is not
-    // scope-gated — but the event completes the six-format bijection so
-    // operators see every ecosystem-facing identity export in one stream.
-    info!(
-        event = "ecosystem_export_generated",
-        format = "w3c-agent-identity",
-        did = %parts.did,
-        "W3C agent identity (AgentDescription) exported"
-    );
-    crate::compatibility::record_export_generated("w3c-agent-identity");
 
     Ok(json!({
         "@context": {

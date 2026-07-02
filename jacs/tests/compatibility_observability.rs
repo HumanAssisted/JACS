@@ -283,6 +283,17 @@ fn binding_verify_failure_logs_warn() {
         "reason names the failure: {:?}",
         warns[0].fields
     );
+    // §9.8 identity fields: which agent, which compat key.
+    assert!(
+        get_field(warns[0], "jacs_id").is_some_and(|v| !v.is_empty()),
+        "verify-failed WARN must carry jacs_id: {:?}",
+        warns[0].fields
+    );
+    assert!(
+        get_field(warns[0], "kid").is_some_and(|v| !v.is_empty()),
+        "verify-failed WARN must carry the compat kid: {:?}",
+        warns[0].fields
+    );
 }
 
 /// A denied content export emits `content_export_scope_denied` at WARN
@@ -314,6 +325,23 @@ fn content_export_scope_denied_logs_warn() {
         get_field(warns[0], "required_scope"),
         Some("ap2-mandate"),
         "required_scope names the denied scope"
+    );
+    // §9.8 fields: agent identity, the format (scope 1:1), and the hash
+    // of the binding that denied the export.
+    assert_eq!(
+        get_field(warns[0], "format"),
+        Some("ap2-mandate"),
+        "format is derived from the requested scope"
+    );
+    assert!(
+        get_field(warns[0], "jacs_id").is_some_and(|v| !v.is_empty()),
+        "scope-denied WARN must carry jacs_id: {:?}",
+        warns[0].fields
+    );
+    assert!(
+        get_field(warns[0], "binding_hash").is_some_and(|v| !v.is_empty()),
+        "scope-denied WARN must carry the binding content hash: {:?}",
+        warns[0].fields
     );
 }
 
@@ -356,7 +384,8 @@ fn grandfathered_ed25519_sign_logs_warn() {
         events.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
     assert_eq!(warns[0].level, Level::WARN, "must be WARN, not DEBUG");
-    assert_has_field(warns[0], "agent_id");
+    // §9.8 names the identity field `jacs_id` (not `agent_id`).
+    assert_has_field(warns[0], "jacs_id");
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +421,17 @@ fn ecosystem_export_logs_info_with_format_and_kid() {
     assert_eq!(exports[0].level, Level::INFO);
     let kid = get_field(exports[0], "kid").unwrap_or("");
     assert!(!kid.is_empty(), "kid field must carry the ES256 key id");
+    // §9.8: jacs_id and the binding content hash at every export site.
+    assert!(
+        get_field(exports[0], "jacs_id").is_some_and(|v| !v.is_empty()),
+        "export event must carry jacs_id: {:?}",
+        exports[0].fields
+    );
+    assert!(
+        get_field(exports[0], "binding_hash").is_some_and(|v| !v.is_empty()),
+        "export event must carry binding_hash: {:?}",
+        exports[0].fields
+    );
 }
 
 /// The AP2 content exporter logs format `ap2-mandate` with kid and the
@@ -424,6 +464,7 @@ fn ap2_export_logs_format_ap2_mandate() {
     assert_eq!(exports[0].level, Level::INFO);
     assert_has_field(exports[0], "kid");
     assert_has_field(exports[0], "binding_hash");
+    assert_has_field(exports[0], "jacs_id");
     assert!(
         !get_field(exports[0], "binding_hash")
             .unwrap_or("")
@@ -489,6 +530,127 @@ fn agreement_vc_export_logs_format_agreement_vc() {
     assert_eq!(exports[0].level, Level::INFO);
     assert_has_field(exports[0], "kid");
     assert_has_field(exports[0], "binding_hash");
+    assert_has_field(exports[0], "jacs_id");
+}
+
+/// The `w3c-agent-identity` scope is consumed by the W3C AgentDescription
+/// export (gate-and-enrich, mirroring the DID exporter). Without an
+/// authorized binding the export still succeeds in its pre-P2 native-only
+/// shape and emits NO `ecosystem_export_generated` event (no fabricated
+/// telemetry); with the default identity binding the description carries
+/// the compat metadata and the event fires with the §9.8 fields.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn w3c_agent_description_event_fires_only_when_scope_authorized() {
+    let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent("obs-w3c-description");
+
+    let events = with_captured_logs(|| {
+        let doc =
+            jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+                .expect("native-only export succeeds without a binding");
+        assert!(
+            doc["jacs"].get("compatKid").is_none(),
+            "no compat metadata without an authorized binding"
+        );
+    });
+    assert!(
+        events_with_name(&events, "ecosystem_export_generated")
+            .iter()
+            .all(|e| get_field(e, "format") != Some("w3c-agent-identity")),
+        "unauthorized description export must not emit ecosystem_export_generated"
+    );
+
+    agent
+        .issue_compat_binding(None, None)
+        .expect("issue default identity binding (grants w3c-agent-identity)");
+    let events = with_captured_logs(|| {
+        let doc =
+            jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+                .expect("authorized export");
+        assert!(
+            doc["jacs"]["compatKid"]
+                .as_str()
+                .is_some_and(|k| !k.is_empty()),
+            "authorized description carries the compat kid"
+        );
+    });
+    let exports: Vec<_> = events_with_name(&events, "ecosystem_export_generated")
+        .into_iter()
+        .filter(|e| get_field(e, "format") == Some("w3c-agent-identity"))
+        .collect();
+    assert!(
+        !exports.is_empty(),
+        "authorized description export must emit ecosystem_export_generated"
+    );
+    assert_eq!(exports[0].level, Level::INFO);
+    for field in ["jacs_id", "kid", "binding_hash"] {
+        assert!(
+            get_field(exports[0], field).is_some_and(|v| !v.is_empty()),
+            "export event must carry §9.8 field '{}': {:?}",
+            field,
+            exports[0].fields
+        );
+    }
+}
+
+/// PRD §9.4 bijection pin: the set of `format` labels passed to
+/// `record_export_generated(...)` in the library source equals EXACTLY
+/// the six binding scopes (`ALL_SCOPES`). A seventh label (like the old
+/// `compat-binding`) or a non-literal argument fails here — this is how
+/// dashboards written to the six-format contract stay truthful.
+#[test]
+fn export_format_label_set_is_exactly_the_six_scopes() {
+    fn rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                rs_files(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    let src_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rs_files(&src_root, &mut files);
+    assert!(!files.is_empty(), "source scan found no .rs files");
+
+    let needle = "record_export_generated(";
+    let mut labels = std::collections::BTreeSet::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path).expect("read source file");
+        for (idx, _) in source.match_indices(needle) {
+            let rest = &source[idx + needle.len()..];
+            if rest.starts_with("format: &str") {
+                continue; // the helper's own definition in compatibility/mod.rs
+            }
+            assert!(
+                rest.starts_with('"'),
+                "{}: record_export_generated must be called with a string literal so the \
+                 emitted label set stays pinned; found: {}…",
+                path.display(),
+                &rest[..rest.len().min(40)]
+            );
+            labels.insert(
+                rest[1..]
+                    .chars()
+                    .take_while(|c| *c != '"')
+                    .collect::<String>(),
+            );
+        }
+    }
+
+    let expected: std::collections::BTreeSet<String> = jacs::compatibility::binding::ALL_SCOPES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(expected.len(), 6, "PRD §9.4 pins exactly six scopes");
+    assert_eq!(
+        labels, expected,
+        "emitted ecosystem_export_generated format labels must equal the six binding scopes"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -602,6 +764,92 @@ mod counters {
             ),
             1,
             "JWKS export must increment jacs_compatibility_export_total{{format=\"jwks\"}} once"
+        );
+    }
+
+    /// A fresh agent WITHOUT the ES256 compat key attempting a JWKS
+    /// export increments the documented alerting metric
+    /// `jacs_compatibility_export_error_total{format="jwks",reason="missing_key"}`
+    /// — the counter fires where `KeyNotFound` actually surfaces (inside
+    /// the scope gate), not on an unreachable post-gate path.
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn missing_key_export_increments_missing_key_counter() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard) = enter_temp_cwd();
+        let _ = &tmp;
+        let params = CreateAgentParams::builder()
+            .name("obs-counter-missing-key")
+            .password(TEST_PASSWORD)
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .no_compat_key(true)
+            .build();
+        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create agent");
+        let reader = install_metrics_reader();
+
+        agent
+            .export_compatibility_jwks()
+            .expect_err("no compat key -> export must fail");
+
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_error_total",
+                &[("format", "jwks"), ("reason", "missing_key")],
+            ),
+            1,
+            "a missing compat key during a JWKS export must increment \
+             jacs_compatibility_export_error_total{{format=\"jwks\",reason=\"missing_key\"}} once"
+        );
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_total",
+                &[("format", "jwks")],
+            ),
+            0,
+            "a failed export must never increment the success counter"
+        );
+    }
+
+    /// The `w3c-agent-identity` export counter fires ONLY when a valid
+    /// binding grants the scope (gate-and-enrich): a native-only
+    /// description export emits nothing, an authorized one exactly one.
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn w3c_agent_identity_counter_requires_authorized_binding() {
+        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _guard) = setup_agent("obs-counter-w3c-identity");
+        let reader = install_metrics_reader();
+
+        jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+            .expect("native-only description export succeeds without a binding");
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_total",
+                &[("format", "w3c-agent-identity")],
+            ),
+            0,
+            "no binding -> no fabricated export telemetry"
+        );
+
+        agent
+            .issue_compat_binding(None, None)
+            .expect("issue default identity binding");
+        jacs::simple::w3c::export_w3c_agent_description(&agent, Some("https://example.com"))
+            .expect("authorized description export");
+        assert_eq!(
+            counter_value(
+                &reader,
+                "jacs_compatibility_export_total",
+                &[("format", "w3c-agent-identity")],
+            ),
+            1,
+            "authorized description export must increment \
+             jacs_compatibility_export_total{{format=\"w3c-agent-identity\"}} once"
         );
     }
 
