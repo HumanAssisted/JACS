@@ -103,15 +103,15 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # Each ignore here MUST carry a reason. Re-evaluate on every quarterly audit
 # and whenever the named upstream releases.
 ignore = [
-    # quick-xml 0.38.x (via object_store 0.12): quadratic duplicate-attribute
-    # check. DoS-class only; the XML parsed here is cloud-storage API
-    # responses from the operator-configured provider (S3/GCS/Azure), not
-    # arbitrary attacker input. Fixed in quick-xml >=0.41, which requires
-    # object_store >=0.13 — an API-breaking storage upgrade tracked as a
-    # follow-up. Revisit when bumping object_store.
+    # quick-xml 0.40.x (via object_store 0.14, which pins quick-xml ^0.40):
+    # quadratic duplicate-attribute check. DoS-class only; the XML parsed
+    # here is cloud-storage API responses from the operator-configured
+    # provider (S3/GCS/Azure), not arbitrary attacker input. Patched in
+    # quick-xml >=0.41 — no object_store release admits it yet. Revisit on
+    # the next object_store release (we are already on the latest, 0.14).
     "RUSTSEC-2026-0194",
-    # quick-xml 0.38.x (via object_store 0.12): unbounded NsReader
+    # quick-xml 0.40.x (via object_store 0.14): unbounded NsReader
     # namespace-declaration allocation (memory-exhaustion DoS). Same
-    # exposure and same object_store >=0.13 upgrade path as above.
+    # exposure and same upstream quick-xml >=0.41 wait as above.
     "RUSTSEC-2026-0195",
 ]

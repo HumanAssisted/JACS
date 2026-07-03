@@ -65,7 +65,7 @@ use crate::time_utils;
 use futures_executor::block_on;
 use futures_util::StreamExt;
 use object_store::{
-    Error as ObjectStoreError, ObjectStore, PutPayload,
+    Error as ObjectStoreError, ObjectStore, ObjectStoreExt as _, PutPayload,
     aws::{AmazonS3, AmazonS3Builder},
     local::LocalFileSystem,
     memory::InMemory,
