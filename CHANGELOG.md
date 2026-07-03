@@ -2,6 +2,15 @@
 
 (unreleased)
 
+### Security
+
+Dependabot remediation (production + dev surfaces):
+
+- **jacs-surrealdb 0.1.19: surrealdb 3.0.5 → 3.2.0.** Clears all open surrealdb advisories against the storage crate, including the high-severity arbitrary file read via `DEFINE ANALYZER` (GHSA-cc8f-fcx3-gpjr), the JWKS SSRF, the indexed `ORDER BY` field leak, and the deep-operator-chain DoS. Practical exposure was low (embedded `kv-mem`, JACS controls all queries) but the crate is published, so downstream usage may differ. Also drops the unmaintained `proc-macro-error2` from the dependency tree.
+- **jacspy dev lock refreshed** (`uv.lock`; nothing here ships in the wheel — jacspy declares no required runtime deps, and the extras' version ranges already resolve to patched releases for end users): aiohttp 3.14.1, cryptography 49.0.0, starlette 1.3.1, python-multipart 0.0.32, langsmith 0.9.7, langchain 1.3.11, langgraph-sdk 0.4.2, langgraph-checkpoint 4.1.1.
+- **jacsnpm dev/example locks refreshed**: hono 4.12.27 (transitive via `@modelcontextprotocol/sdk` devDependency; also in `examples/`), js-yaml 4.3.0. The published package's runtime deps were unaffected.
+- Deferred: the opentelemetry 0.30 → 0.32.1 bump in `jacs` core (medium severity, feature-gated off by default, requires a lockstep upgrade of five otel crates with API churn) — tracked for its own PR.
+
 ## 0.11.3
 
 
