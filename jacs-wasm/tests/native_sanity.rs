@@ -256,23 +256,33 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
     // SOURCE OF TRUTH for the expected camelCase js_name of each agreement v2
     // method. If the Rust source declares a *different* js_name (drift), the
     // test fails at the parsed-vs-expected check below.
-    let expected_js_names = [
-        ("create_agreement_v2_json", "createAgreementV2Json"),
-        ("apply_agreement_v2_json", "applyAgreementV2Json"),
-        ("sign_agreement_v2_json", "signAgreementV2Json"),
-        ("verify_agreement_v2_json", "verifyAgreementV2Json"),
+    //
+    // `None` = a deliberate NOT-ON-WASM decision: the fixture method is
+    // excluded from the browser surface, and the test enforces that it is
+    // NOT declared (an undocumented wasm exposure fails loud, and a new
+    // fixture method with no entry here still panics below).
+    let expected_js_names: [(&str, Option<&str>); 8] = [
+        ("create_agreement_v2_json", Some("createAgreementV2Json")),
+        ("apply_agreement_v2_json", Some("applyAgreementV2Json")),
+        ("sign_agreement_v2_json", Some("signAgreementV2Json")),
+        ("verify_agreement_v2_json", Some("verifyAgreementV2Json")),
         (
             "detect_agreement_v2_branch_conflict_json",
-            "detectAgreementV2BranchConflictJson",
+            Some("detectAgreementV2BranchConflictJson"),
         ),
         (
             "merge_agreement_v2_transcript_branches_json",
-            "mergeAgreementV2TranscriptBranchesJson",
+            Some("mergeAgreementV2TranscriptBranchesJson"),
         ),
         (
             "resolve_agreement_v2_branch_conflict_json",
-            "resolveAgreementV2BranchConflictJson",
+            Some("resolveAgreementV2BranchConflictJson"),
         ),
+        // P2 Task 004c exporter: signs with the ES256 ecosystem compatibility
+        // key, which lives in the ON-DISK keystore (jacs_keys/) gated by an
+        // on-disk PQ-root-signed binding — machinery browser builds do not
+        // have. Excluded from the wasm surface by decision, not omission.
+        ("export_agreement_v2_as_vc_json", None),
     ];
 
     // Parse src/agent_handle.rs into rust_fn_name -> js_name by scanning for
@@ -291,6 +301,17 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
             .unwrap_or_else(|| {
                 panic!("test mapping missing expected js_name for {rust_name}; update the test")
             });
+
+        let Some(expected) = expected else {
+            // Documented not-on-wasm exclusion: it must stay absent from the
+            // declared surface — exposing it requires updating this decision.
+            assert!(
+                !declared_js_names.contains_key(rust_name),
+                "{rust_name} is excluded from the wasm surface by decision, \
+                 but src/agent_handle.rs declares it; update the test mapping"
+            );
+            continue;
+        };
 
         let actual = declared_js_names.get(rust_name).unwrap_or_else(|| {
             panic!("src/agent_handle.rs has no #[wasm_bindgen(js_name = ...)] for {rust_name}")
