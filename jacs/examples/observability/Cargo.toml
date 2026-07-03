@@ -7,9 +7,7 @@ edition = "2021"
 rust-version = "1.93"
 
 [dependencies]
-jacs = { path = "../../" }
-opentelemetry = "0.31.0"
-opentelemetry_sdk = "0.31.0"
+jacs = { path = "../../", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
 tracing = "0.1.44"
 serde_json = "1.0.149"
 chrono = { version = "0.4.43", features = ["serde"] }
