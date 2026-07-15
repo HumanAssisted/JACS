@@ -2,7 +2,7 @@
 name = "jacs-mcp"
 version = "0.11.4"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 description = "MCP server for JACS: data provenance and cryptographic signing"
 readme = "README.md"
 license = "Apache-2.0"

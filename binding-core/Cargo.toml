@@ -2,7 +2,7 @@
 name = "jacs-binding-core"
 version = "0.11.4"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 description = "Shared core logic for JACS language bindings (Python, Node.js, etc.)"
 readme = "../README.md"

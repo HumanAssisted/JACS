@@ -11,7 +11,7 @@ JACS signs canonical JSON and common artifact formats, then lets Rust, Python, N
   [![Crates.io](https://img.shields.io/crates/v/jacs)](https://crates.io/crates/jacs)
   [![npm](https://img.shields.io/npm/v/@hai.ai/jacs)](https://www.npmjs.com/package/@hai.ai/jacs)
   [![PyPI](https://img.shields.io/pypi/v/jacs)](https://pypi.org/project/jacs/)
-  [![Rust 1.93+](https://img.shields.io/badge/rust-1.93+-DEA584.svg?logo=rust)](https://www.rust-lang.org/)
+  [![Rust 1.97+](https://img.shields.io/badge/rust-1.97+-DEA584.svg?logo=rust)](https://www.rust-lang.org/)
   [![Homebrew](https://github.com/HumanAssisted/JACS/actions/workflows/homebrew.yml/badge.svg)](https://github.com/HumanAssisted/JACS/actions/workflows/homebrew.yml)
 
 ## What JACS does

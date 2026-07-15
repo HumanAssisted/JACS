@@ -2,7 +2,7 @@
 name = "jacs-wasm"
 version = "0.11.4"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 description = "JACS browser bindings (wasm-bindgen wrapper around jacs-core)"
 readme = "README.md"

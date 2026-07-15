@@ -77,6 +77,21 @@ name = "surrealdb-types-derive"
 expression = "BUSL-1.1"
 license-files = []
 
+[[licenses.clarify]]
+name = "surrealdb-collections"
+expression = "BUSL-1.1"
+license-files = []
+
+[[licenses.clarify]]
+name = "surrealdb-strand"
+expression = "BUSL-1.1"
+license-files = []
+
+[[licenses.clarify]]
+name = "tokio-tungstenite-wasm"
+expression = "MIT"
+license-files = []
+
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
 name = "surrealdb"
@@ -93,6 +108,14 @@ name = "surrealdb-types"
 allow = ["BUSL-1.1"]
 name = "surrealdb-types-derive"
 
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-collections"
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-strand"
+
 [licenses.private]
 ignore = true
 
@@ -100,18 +123,7 @@ ignore = true
 # Use the RustSec advisory database
 db-urls = ["https://github.com/rustsec/advisory-db"]
 
-# Each ignore here MUST carry a reason. Re-evaluate on every quarterly audit
-# and whenever the named upstream releases.
-ignore = [
-    # quick-xml 0.40.x (via object_store 0.14, which pins quick-xml ^0.40):
-    # quadratic duplicate-attribute check. DoS-class only; the XML parsed
-    # here is cloud-storage API responses from the operator-configured
-    # provider (S3/GCS/Azure), not arbitrary attacker input. Patched in
-    # quick-xml >=0.41 — no object_store release admits it yet. Revisit on
-    # the next object_store release (we are already on the latest, 0.14).
-    "RUSTSEC-2026-0194",
-    # quick-xml 0.40.x (via object_store 0.14): unbounded NsReader
-    # namespace-declaration allocation (memory-exhaustion DoS). Same
-    # exposure and same upstream quick-xml >=0.41 wait as above.
-    "RUSTSEC-2026-0195",
-]
+# Root-workspace advisories are never ignored here. Optional standalone
+# lockfiles use command-scoped cargo-audit exceptions documented in
+# SECURITY_AUDIT.md.
+ignore = []

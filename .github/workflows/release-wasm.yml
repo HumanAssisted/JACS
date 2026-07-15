@@ -60,14 +60,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
-      # Stable Rust + the wasm32-unknown-unknown target. The crate sets
-      # rust-version = 1.93 in Cargo.toml; setup-rust-toolchain will pick
-      # the right version when actions-rust-lang/setup-rust-toolchain
-      # respects rust-toolchain.toml. We pin to stable here so the
-      # release flow does not silently float onto a newer compiler.
+      # Exact workspace Rust plus the wasm32-unknown-unknown target; the
+      # release flow cannot float past the repository toolchain.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: "1.97"
           target: wasm32-unknown-unknown
 
       # wasm-pack — uses the rustwasm action for a pinned binary install.
@@ -151,7 +148,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: "1.97"
           target: wasm32-unknown-unknown
 
       - name: Install wasm-pack

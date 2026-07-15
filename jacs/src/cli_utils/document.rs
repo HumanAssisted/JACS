@@ -206,7 +206,7 @@ pub fn update_documents(
     }
 
     if no_save {
-        println!("{}", &updated_document.getvalue());
+        println!("{}", updated_document.getvalue());
     } else {
         agent
             .save_document(

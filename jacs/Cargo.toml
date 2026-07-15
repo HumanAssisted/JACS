@@ -2,7 +2,7 @@
 name = "jacs"
 version = "0.11.4"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 
 include = [
@@ -138,7 +138,7 @@ crate-type = ["cdylib", "rlib"]
 ring = "0.17.9"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 walkdir = "2.5.0"
-object_store = { version ="0.14.0", features = ["serde","serde_json", "aws", "http"] }
+object_store = { version ="0.14.1", features = ["serde","serde_json", "aws", "http"] }
 # Post-quantum 2025 standards (ML-DSA and ML-KEM)
 fips203 = "0.4.3"
 fips204 = "0.4.6"

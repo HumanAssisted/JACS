@@ -2,10 +2,15 @@
 
 (unreleased)
 
+### Changed
+
+- **Rust 1.97.0 is now the repository-wide minimum toolchain.** Active crates, CI jobs, release builders, wheel images, and installation guides now use the current stable compiler. A root `rust-toolchain.toml` pins Rust 1.97.0 with Clippy and rustfmt.
+
 ### Security
 
 Dependabot remediation (production + dev surfaces):
 
+- **Rust, Python, and Node dependency locks were refreshed to their latest compatible releases.** `object_store` 0.14.1 admits patched `quick-xml` 0.41.0, clearing RUSTSEC-2026-0194 and RUSTSEC-2026-0195; yanked `spin` 0.9.8/0.10.0 releases are replaced by 0.9.9/0.10.1. Root Rust, npm, and Go audits report no vulnerabilities. Remaining no-fix or upstream-pinned findings are isolated to the optional SurrealDB and CrewAI graphs and documented with owners and review deadlines in `SECURITY_AUDIT.md`.
 - **jacs-surrealdb 0.1.19: surrealdb 3.0.5 → 3.2.0.** Clears all open surrealdb advisories against the storage crate, including the high-severity arbitrary file read via `DEFINE ANALYZER` (GHSA-cc8f-fcx3-gpjr), the JWKS SSRF, the indexed `ORDER BY` field leak, and the deep-operator-chain DoS. Practical exposure was low (embedded `kv-mem`, JACS controls all queries) but the crate is published, so downstream usage may differ. Also drops the unmaintained `proc-macro-error2` from the dependency tree.
 - **jacspy dev lock refreshed** (`uv.lock`; nothing here ships in the wheel — jacspy declares no required runtime deps, and the extras' version ranges already resolve to patched releases for end users): aiohttp 3.14.1, cryptography 49.0.0, starlette 1.3.1, python-multipart 0.0.32, langsmith 0.9.7, langchain 1.3.11, langgraph-sdk 0.4.2, langgraph-checkpoint 4.1.1.
 - **jacsnpm dev/example locks refreshed**: hono 4.12.27 (transitive via `@modelcontextprotocol/sdk` devDependency; also in `examples/`), js-yaml 4.3.0. The published package's runtime deps were unaffected.

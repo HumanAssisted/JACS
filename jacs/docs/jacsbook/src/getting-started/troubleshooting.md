@@ -70,7 +70,7 @@ cd jacspy && maturin develop --release
 cd jacsnpm && npm run build
 ```
 
-Requires Rust 1.93+ (install via [rustup](https://rustup.rs/)).
+Requires Rust 1.97+ (install via [rustup](https://rustup.rs/)).
 
 ## Getting Help
 

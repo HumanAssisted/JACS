@@ -66,7 +66,7 @@ pub const DEFAULT_JACS_DOC_LEVEL: &str = "raw";
 impl JACSDocument {
     pub fn getkey(&self) -> String {
         // No need to clone, as format! macro does not take ownership
-        format!("{}:{}", &self.id, &self.version)
+        format!("{}:{}", self.id, self.version)
     }
 
     pub fn getvalue(&self) -> &Value {

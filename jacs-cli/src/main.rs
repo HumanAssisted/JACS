@@ -2418,10 +2418,8 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
     while search_from < content.len() {
         // Find the next BEGIN occurrence at column zero (i.e. either at
         // index 0 or immediately after an LF).
-        let begin_idx = match content[search_from..].find(BEGIN) {
-            Some(rel) => search_from + rel,
-            None => return None,
-        };
+        let rel = content[search_from..].find(BEGIN)?;
+        let begin_idx = search_from + rel;
         let at_column_zero =
             begin_idx == 0 || content.as_bytes().get(begin_idx.wrapping_sub(1)) == Some(&b'\n');
         if !at_column_zero {
@@ -2430,15 +2428,11 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
         }
         let after_begin = begin_idx + BEGIN.len();
         // Expect a trailing newline.
-        let body_start = match content[after_begin..].find('\n') {
-            Some(n) => after_begin + n + 1,
-            None => return None, // Missing newline — the lib will reject this on its own.
-        };
+        let n = content[after_begin..].find('\n')?;
+        let body_start = after_begin + n + 1;
         // Find the matching END marker.
-        let end_offset = match content[body_start..].find(END) {
-            Some(n) => body_start + n,
-            None => return None, // No END — the lib will reject.
-        };
+        let n = content[body_start..].find(END)?;
+        let end_offset = body_start + n;
         let body = content[body_start..end_offset].trim();
         // Required-field heuristic. New inline footers are full JACS documents;
         // legacy footers are mini SignatureBlockYaml values.

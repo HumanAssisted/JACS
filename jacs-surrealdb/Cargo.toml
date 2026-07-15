@@ -2,7 +2,7 @@
 name = "jacs-surrealdb"
 version = "0.1.19"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 description = "SurrealDB storage backend for JACS documents"
 readme = "../README.md"
 authors = ["HAI.AI <engineering@hai.io>"]

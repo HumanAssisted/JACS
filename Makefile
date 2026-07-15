@@ -243,7 +243,7 @@ test-jacs-storage: test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs
 
 audit-jacs:
 	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
-	cargo audit --ignore RUSTSEC-2023-0071
+	cargo audit
 
 test-jacspy:
 	cd jacspy && maturin develop && python -m pytest tests/ -v

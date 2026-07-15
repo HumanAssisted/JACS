@@ -26,7 +26,7 @@ JACS includes native bindings (Rust compiled to platform-specific libraries), so
 
 | Language | Minimum Version |
 |----------|----------------|
-| Rust | 1.93+ (edition 2024) |
+| Rust | 1.97+ (edition 2024) |
 | Python | 3.10+ |
 | Node.js | 18+ (LTS recommended) |
 
@@ -60,4 +60,4 @@ cd jacspy && maturin develop --release
 cd jacsnpm && npm run build
 ```
 
-Requires Rust 1.93+ toolchain installed via [rustup](https://rustup.rs/).
+Requires Rust 1.97+ toolchain installed via [rustup](https://rustup.rs/).

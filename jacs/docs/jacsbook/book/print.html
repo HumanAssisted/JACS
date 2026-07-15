@@ -979,7 +979,7 @@ tampered with, <code>sign_message()</code> is sufficient. See
 </div>
 <h2 id="version-requirements"><a class="header" href="#version-requirements">Version Requirements</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Language</th><th>Minimum Version</th></tr></thead><tbody>
-<tr><td>Rust</td><td>1.93+ (edition 2024)</td></tr>
+<tr><td>Rust</td><td>1.97+ (edition 2024)</td></tr>
 <tr><td>Python</td><td>3.10+</td></tr>
 <tr><td>Node.js</td><td>18+ (LTS recommended)</td></tr>
 </tbody></table>
@@ -1006,7 +1006,7 @@ cd jacspy &amp;&amp; maturin develop --release
 # Node.js
 cd jacsnpm &amp;&amp; npm run build
 </code></pre>
-<p>Requires Rust 1.93+ toolchain installed via <a href="https://rustup.rs/">rustup</a>.</p>
+<p>Requires Rust 1.97+ toolchain installed via <a href="https://rustup.rs/">rustup</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <p>Common issues and solutions when installing or using JACS.</p>
 <h2 id="installation-issues"><a class="header" href="#installation-issues">Installation Issues</a></h2>
@@ -1049,7 +1049,7 @@ cd jacspy &amp;&amp; maturin develop --release
 # Node.js binding
 cd jacsnpm &amp;&amp; npm run build
 </code></pre>
-<p>Requires Rust 1.93+ (install via <a href="https://rustup.rs/">rustup</a>).</p>
+<p>Requires Rust 1.97+ (install via <a href="https://rustup.rs/">rustup</a>).</p>
 <h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
 <ul>
 <li><a href="https://github.com/HumanAssisted/JACS/issues">GitHub Issues</a> -- report bugs and feature requests</li>
@@ -1059,12 +1059,12 @@ cd jacsnpm &amp;&amp; npm run build
 <p>This guide covers installing the JACS Rust CLI and library.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <ul>
-<li><strong>Rust</strong>: Version 1.93 or later (Edition 2024)</li>
+<li><strong>Rust</strong>: Version 1.97 or later (Edition 2024)</li>
 <li><strong>Cargo</strong>: Included with Rust installation</li>
 </ul>
 <h3 id="verify-rust-version"><a class="header" href="#verify-rust-version">Verify Rust Version</a></h3>
 <pre><code class="language-bash">rustc --version
-# Should show rustc 1.93.0 or later
+# Should show rustc 1.97.0 or later
 </code></pre>
 <p>If you need to update Rust:</p>
 <pre><code class="language-bash">rustup update stable
@@ -1175,7 +1175,7 @@ jacs agent create --create-keys true
 <h2 id="troubleshooting-1"><a class="header" href="#troubleshooting-1">Troubleshooting</a></h2>
 <h3 id="build-errors"><a class="header" href="#build-errors">Build Errors</a></h3>
 <p><strong>"edition 2024 is required"</strong>
-Update Rust to version 1.93 or later:</p>
+Update Rust to version 1.97 or later:</p>
 <pre><code class="language-bash">rustup update stable
 </code></pre>
 <p><strong>Missing dependencies on Linux</strong>

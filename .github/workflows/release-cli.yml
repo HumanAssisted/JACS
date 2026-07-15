@@ -146,7 +146,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.93'
+          toolchain: '1.97'
           targets: ${{ matrix.target }}
 
       - name: Build binaries

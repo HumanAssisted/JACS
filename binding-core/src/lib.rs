@@ -936,7 +936,7 @@ impl AgentWrapper {
             .private_key_password
             .lock()
             .map_err(BindingCoreError::from)?;
-        *slot = password.and_then(|value| if value.is_empty() { None } else { Some(value) });
+        *slot = password.filter(|value| !value.is_empty());
         Ok(())
     }
 

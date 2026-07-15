@@ -3,7 +3,7 @@ FROM quay.io/pypa/manylinux_2_28_aarch64
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/opt/python/cp311-cp311/bin:/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.85.1
+    RUST_VERSION=1.97.0
 
 RUN yum install -y curl gcc openssl-devel
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_VERSION

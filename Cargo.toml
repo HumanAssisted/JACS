@@ -18,7 +18,7 @@ exclude = ["jacs-surrealdb"]
 resolver = "3"
 
 [workspace.package]
-rust-version = "1.93"
+rust-version = "1.97"
 readme = "README.md"
 authors = ["HAI.AI <engineering@hai.io>"]
 license = "Apache-2.0"

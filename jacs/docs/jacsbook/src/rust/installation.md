@@ -4,13 +4,13 @@ This guide covers installing the JACS Rust CLI and library.
 
 ## Requirements
 
-- **Rust**: Version 1.93 or later (Edition 2024)
+- **Rust**: Version 1.97 or later (Edition 2024)
 - **Cargo**: Included with Rust installation
 
 ### Verify Rust Version
 ```bash
 rustc --version
-# Should show rustc 1.93.0 or later
+# Should show rustc 1.97.0 or later
 ```
 
 If you need to update Rust:
@@ -159,7 +159,7 @@ JACS respects the following environment variables:
 ### Build Errors
 
 **"edition 2024 is required"**
-Update Rust to version 1.93 or later:
+Update Rust to version 1.97 or later:
 ```bash
 rustup update stable
 ```

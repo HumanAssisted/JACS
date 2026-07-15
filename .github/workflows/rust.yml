@@ -75,7 +75,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo dependencies
@@ -136,7 +136,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -162,7 +162,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -193,7 +193,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Install Node
         uses: actions/setup-node@v4
@@ -223,7 +223,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -256,7 +256,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -281,7 +281,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -312,7 +312,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -374,7 +374,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
