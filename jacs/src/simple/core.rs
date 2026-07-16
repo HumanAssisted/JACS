@@ -2288,4 +2288,46 @@ impl SimpleAgent {
     pub fn config_path(&self) -> Option<&str> {
         self.config_path.as_deref()
     }
+
+    /// Edit-and-re-sign the loaded config's filesystem directories.
+    ///
+    /// JACS documents — configs included — are edited by re-signing, never by
+    /// mutating signed bytes in place: a deployed config must be byte-exactly
+    /// what was signed or hash verification fails closed. Provisioning
+    /// pipelines that point the deployed copy at deployment paths (for
+    /// example `/etc/hai/keys`) must therefore produce a fresh signature over
+    /// the edited fields. This helper re-reads the config file this agent was
+    /// loaded from, applies the directory edits, and delegates to
+    /// [`Agent::update_config`] (bumps `jacsVersion`, chains
+    /// `jacsPreviousVersion`, re-signs, re-hashes) followed by a
+    /// [`Agent::verify_config`] self-check. The caller writes the returned
+    /// document to its destination.
+    pub fn resign_config_with_directories(
+        &self,
+        key_directory: Option<&str>,
+        data_directory: Option<&str>,
+    ) -> Result<Value, JacsError> {
+        let config_path = self.config_path.as_deref().ok_or_else(|| {
+            JacsError::ConfigError(
+                "resign_config_with_directories requires an agent loaded from a config file"
+                    .to_string(),
+            )
+        })?;
+        let raw = fs::read_to_string(config_path)
+            .map_err(|e| JacsError::ConfigError(format!("read config {config_path}: {e}")))?;
+        let mut config_value: Value = serde_json::from_str(&raw)
+            .map_err(|e| JacsError::ConfigError(format!("parse config {config_path}: {e}")))?;
+        if let Some(dir) = key_directory {
+            config_value["jacs_key_directory"] = Value::String(dir.to_string());
+        }
+        if let Some(dir) = data_directory {
+            config_value["jacs_data_directory"] = Value::String(dir.to_string());
+        }
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let signed = agent.update_config(&config_value)?;
+        agent.verify_config(&signed)?;
+        Ok(signed)
+    }
 }
