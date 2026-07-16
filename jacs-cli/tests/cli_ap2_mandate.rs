@@ -61,7 +61,7 @@ fn ap2_export_mandate_full_cli_flow() {
         .failure()
         .stderr(predicate::str::contains("binding"));
 
-    // Grant the content scope explicitly (PQ root signs the binding).
+    // Grant the content scope explicitly (the native root signs the binding).
     cmd()
         .current_dir(dir.path())
         .args([

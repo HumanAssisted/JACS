@@ -187,9 +187,9 @@ fn signature_schema_enum_stays_ring_ed25519_and_pq2025() {
 // from (the jacs crate re-exports these embedded strings), so the Task
 // 003 schema contract is pinned here: valid bindings validate, scope is
 // required and closed, content scopes are schema-valid (grant is a
-// policy question), and the native `jacsSignature` is REQUIRED. Per the
-// sanctioned FR10 amendment, grandfathered `ring-Ed25519` roots may sign
-// bindings until rotation — ES256 never can.
+// policy question), and the native `jacsSignature` is REQUIRED. Both supported
+// native roots (`pq2025` and explicitly selected `ring-Ed25519`) may sign
+// bindings until rotation; ES256 never can.
 // =========================================================================
 
 use serde_json::json;
@@ -303,14 +303,13 @@ fn compatibility_key_binding_schema_requires_signature() {
         "ES256 must be rejected as the binding's native signingAlgorithm"
     );
 
-    // pq2025 (post-P2 agents) and ring-Ed25519 (grandfathered roots until
-    // rotation — sanctioned FR10 amendment) both validate.
-    let mut legacy = valid_binding_document();
-    legacy["jacsSignature"]["signingAlgorithm"] = json!("ring-Ed25519");
-    legacy["compatibilityKeyBinding"]["rootKey"]["algorithm"] = json!("ring-Ed25519");
+    // pq2025 and explicitly selected ring-Ed25519 native roots both validate.
+    let mut ed25519 = valid_binding_document();
+    ed25519["jacsSignature"]["signingAlgorithm"] = json!("ring-Ed25519");
+    ed25519["compatibilityKeyBinding"]["rootKey"]["algorithm"] = json!("ring-Ed25519");
     assert!(
-        validator.is_valid(&legacy),
-        "grandfathered Ed25519 roots may sign bindings until rotation"
+        validator.is_valid(&ed25519),
+        "supported Ed25519 native roots may sign bindings until rotation"
     );
 }
 

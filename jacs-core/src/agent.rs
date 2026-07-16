@@ -184,15 +184,11 @@ impl CoreAgent {
     /// the underlying `EncryptionFailed` if envelope encryption fails.
     pub fn export_encrypted_material(&self, password: &str) -> Result<AgentMaterial, CoreError> {
         let signer = self.signer.as_ref().ok_or(CoreError::Locked)?;
-        let raw_private = signer.export_private_key_bytes()?;
-        let encrypted = crate::envelope::encrypt_private_key(&raw_private, password)?;
-        // Zeroize the intermediate plaintext as soon as we have the
-        // ciphertext — defense-in-depth even though `raw_private` will
-        // drop at scope exit anyway. Using `zeroize::Zeroize` keeps the
-        // wipe explicit + compiler-resistant.
-        use zeroize::Zeroize as _;
-        let mut raw_private = raw_private;
-        raw_private.zeroize();
+        // Wrap the plaintext immediately so it is wiped on every exit path,
+        // including an envelope-encryption error. The encrypted material is
+        // the only private-key representation allowed to escape this method.
+        let raw_private = zeroize::Zeroizing::new(signer.export_private_key_bytes()?);
+        let encrypted = crate::envelope::encrypt_private_key(raw_private.as_slice(), password)?;
         Ok(AgentMaterial {
             // Browser ephemeral agents don't carry a full `jacs.config.json`
             // — emit an empty object as a placeholder. Round-trip readers

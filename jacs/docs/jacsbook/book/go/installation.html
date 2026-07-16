@@ -180,10 +180,22 @@
 <p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For the full MCP surface, install <code>jacs-cli</code> and run <code>jacs mcp</code>; the Go MCP examples in the repo are demo code.</p>
 </blockquote>
 <h2 id="install"><a class="header" href="#install">Install</a></h2>
-<pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
+<p>At the 2026-07-09 distribution baseline, the Go module had only a
+pseudo-version and no matching native library. <code>go get</code> alone therefore cannot
+produce a linkable consumer. Build the full repository today:</p>
+<pre><code class="language-bash">git clone https://github.com/HumanAssisted/JACS.git
+cd JACS
+# For reproducible use, pin a reviewed source commit before building.
+make -C jacsgo build-rust
+cd jacsgo
+go test ./...
 </code></pre>
+<p>After a semantic <code>jacsgo/vX.Y.Z</code> release and its checksum manifest actually
+exist, use the version-matched installer documented in the
+<a href="https://github.com/HumanAssisted/JACS/tree/main/jacsgo">jacsgo README</a>.</p>
 <h2 id="minimal-sign--verify"><a class="header" href="#minimal-sign--verify">Minimal Sign + Verify</a></h2>
-<p>Create an agent first (CLI: <code>jacs create --name my-agent</code>, or programmatically with <code>jacs.Create()</code> and <code>JACS_PRIVATE_KEY_PASSWORD</code>). Then:</p>
+<p>Create an agent first (CLI: <code>jacs quickstart --name my-agent --domain my-agent.example.com</code>, or programmatically with <code>jacs.Create()</code> and
+<code>JACS_PRIVATE_KEY_PASSWORD</code>). Then:</p>
 <pre><code class="language-go">package main
 
 import (
@@ -196,7 +208,7 @@ import (
 func main() {
 	// Load agent: nil = default ./jacs.config.json
 	if err := jacs.Load(nil); err != nil {
-		log.Fatal("create an agent first: jacs create --name my-agent")
+            log.Fatal("create an agent first: jacs quickstart --name my-agent --domain my-agent.example.com")
 	}
 
 	signed, err := jacs.SignMessage(map[string]interface{}{
@@ -219,6 +231,44 @@ func main() {
 <p>Use <code>jacs.Create(name, &amp;jacs.CreateAgentOptions{...})</code>. Password must be set in options or via <code>JACS_PRIVATE_KEY_PASSWORD</code>. See the <a href="https://github.com/HumanAssisted/JACS/tree/main/jacsgo">jacsgo README</a> for the full API table and options.</p>
 <h2 id="concurrent-use"><a class="header" href="#concurrent-use">Concurrent use</a></h2>
 <p>For multiple agents in one process, use <code>NewJacsAgent()</code>, then <code>agent.Load(path)</code> and agent methods; call <code>agent.Close()</code> when done. Attestation, A2A (agent cards, trust policy), and protocol helpers are available on <code>JacsAgent</code> and as package-level wrappers (see godoc or the jacsgo README).</p>
+<h2 id="request-authentication-and-signed-events"><a class="header" href="#request-authentication-and-signed-events">Request authentication and signed events</a></h2>
+<p>For the cross-language simple contract, use <code>JacsSimpleAgent</code>:</p>
+<pre><code class="language-go">algorithm := "ed25519"
+agent, _, err := jacs.EphemeralSimpleAgent(&amp;algorithm)
+if err != nil {
+	log.Fatal(err)
+}
+defer agent.Close()
+
+body := []byte(`{"action":"approve"}`)
+authorization, err := agent.BuildAuthHeader(
+	"POST",
+	"https://api.example.com/v1/jobs?mode=strict",
+	body,
+	"jobs-api",
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+envelope, err := agent.SignResponse(`{"decision":"allow"}`)
+if err != nil {
+	log.Fatal(err)
+}
+</code></pre>
+<p><code>BuildAuthHeader</code> binds method, absolute URL including query, exact body bytes,
+audience, signer/key, issue time, and nonce. <code>SignResponse</code> creates a fully
+bound <code>2.0.0</code> response envelope. Verify an incoming envelope with
+<code>UnwrapSignedEvent(eventJSON, serverKeysJSON)</code>, where <code>serverKeysJSON</code> is a JSON
+map from signer ID to a pinned base64 key or PEM string. Plain events, unknown
+signers, legacy payload-only envelopes, and mutations return errors without
+releasing data.</p>
+<p>The key map is a configured trust decision. A valid signature proves key
+possession, not a real-world identity by itself. For legacy <code>JacsAgent</code>, migrate
+from the denied-by-default no-argument <code>BuildAuthHeader</code> to
+<code>BuildRequestAuthHeader</code>; <code>JacsSimpleAgent.BuildAuthHeader</code> already requires the
+full request context and emits v2. See the
+<a href="../advanced/security.html#request-bound-http-authorization">security guide</a>.</p>
 <h2 id="common-go-use-cases"><a class="header" href="#common-go-use-cases">Common Go Use Cases</a></h2>
 <ul>
 <li>Sign outbound API/MCP payloads before crossing trust boundaries</li>

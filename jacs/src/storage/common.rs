@@ -15,13 +15,13 @@ pub fn parse_document_key(key: &str) -> Result<(&str, &str), JacsError> {
 
 /// Reconstruct a stored document from canonical JSON text.
 pub fn document_from_raw_json(raw: &str) -> Result<JACSDocument, JacsError> {
-    let value: Value = serde_json::from_str(raw)?;
+    let value: Value = jacs_core::strict_json::parse_strict_json(raw)?;
     document_from_value(value)
 }
 
 /// Reconstruct a stored document from canonical JSON bytes.
 pub fn document_from_raw_bytes(raw: &[u8]) -> Result<JACSDocument, JacsError> {
-    let value: Value = serde_json::from_slice(raw)?;
+    let value: Value = jacs_core::strict_json::parse_strict_json_slice(raw)?;
     document_from_value(value)
 }
 

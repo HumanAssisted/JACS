@@ -289,12 +289,12 @@ The VC's `@context` is `["https://www.w3.org/ns/credentials/v2",
 `verificationMethod` references the **Multikey** entry of the agent's DID
 document (conformant `ecdsa-jcs-2019` verifiers reject JWK-typed methods).
 The export is a derived view: the native agreement's bytes, `jacsSignature`
-(pq2025), and verification are unchanged.
+(using the agent's selected native algorithm), and verification are unchanged.
 
 A stock Data Integrity verifier can check the proof classically — see
 `scripts/smoke/verify_di_vc.mjs`. That proves possession of the ES256 key
-only; tracing the credential to the agent's post-quantum root requires the
-PQ-signed compatibility key binding (`jacs agent export-compat-binding`).
+only; tracing the credential to the agent's native root requires the
+native-root-signed compatibility key binding (`jacs agent export-compat-binding`).
 Verifying incoming VCs is out of scope for JACS in P2.
 
 ## Troubleshooting

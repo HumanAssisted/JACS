@@ -3,6 +3,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
 use jacs::config::Config;
 use jacs::crypt::KeyManager;
+use jacs::error::JacsError;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 mod utils;
@@ -13,7 +14,7 @@ fn env_guard() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
-        .expect("test environment lock poisoned")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn configure_unique_pq2025_env(test_name: &str) -> (PathBuf, PathBuf) {
@@ -249,6 +250,10 @@ fn test_pq_dilithium_key_generation_is_rejected() {
     let _env_guard = env_guard();
     let _ = configure_unique_pq2025_env("test_pq_dilithium_key_generation_is_rejected");
 
+    assert_pq_dilithium_key_generation_is_rejected();
+}
+
+fn assert_pq_dilithium_key_generation_is_rejected() {
     let mut agent = create_agent_v1().expect("Agent schema should have instantiated");
     let config = Config::new(
         Some("false".to_string()),
@@ -266,12 +271,40 @@ fn test_pq_dilithium_key_generation_is_rejected() {
     let err = agent
         .generate_keys()
         .expect_err("pq-dilithium key generation should be rejected");
+    assert!(
+        matches!(err, JacsError::ConfigError(_)),
+        "legacy algorithm must be a typed ConfigError, got: {err:?}"
+    );
     let msg = err.to_string();
     assert!(
-        msg.contains("Unsupported key algorithm"),
-        "Unexpected error for rejected legacy algorithm: {}",
-        msg
+        msg.contains("Unsupported algorithm") && msg.contains("pq-dilithium"),
+        "rejection should identify the unsupported algorithm: {msg}"
     );
+}
+
+#[test]
+fn legacy_keygen_rejection_is_stable_before_and_after_valid_pq_use() {
+    let _env_guard = env_guard();
+    let _ = configure_unique_pq2025_env(
+        "legacy_keygen_rejection_is_stable_before_and_after_valid_pq_use",
+    );
+
+    assert_pq_dilithium_key_generation_is_rejected();
+
+    let mut agent = create_pq2025_test_agent_from_env().expect("create valid pq2025 test agent");
+    agent.generate_keys().expect("generate valid pq2025 keys");
+    let data = "valid PQ operation between legacy rejection probes".to_string();
+    let signature = agent.sign_string(&data).expect("sign with pq2025");
+    agent
+        .verify_string(
+            &data,
+            &signature,
+            agent.get_public_key().expect("pq2025 public key"),
+            Some("pq2025".to_string()),
+        )
+        .expect("verify with pq2025");
+
+    assert_pq_dilithium_key_generation_is_rejected();
 }
 
 #[test]
@@ -291,6 +324,37 @@ fn test_verify_rejects_legacy_dilithium_algorithm_hint() {
         result.is_err(),
         "Verification with legacy pq-dilithium algorithm hint should fail"
     );
+}
+
+#[test]
+fn legacy_algorithm_rejection_does_not_poison_neighboring_pq_verification() {
+    let _env_guard = env_guard();
+    let _ = configure_unique_pq2025_env(
+        "legacy_algorithm_rejection_does_not_poison_neighboring_pq_verification",
+    );
+    let mut agent =
+        create_pq2025_test_agent_from_env().expect("Failed to create pq2025 test agent");
+    agent.generate_keys().expect("Key generation failed");
+
+    let data = "valid-before-and-after-legacy-rejection".to_string();
+    let signature = agent.sign_string(&data).expect("Signing failed");
+    let public_key = agent.get_public_key().expect("public key should exist");
+
+    agent
+        .verify_string(&data, &signature, public_key.clone(), Some("pq2025".into()))
+        .expect("valid PQ verification before rejection");
+    let legacy_error = agent
+        .verify_string(
+            &data,
+            &signature,
+            public_key.clone(),
+            Some("pq-dilithium".into()),
+        )
+        .expect_err("legacy algorithm must fail");
+    assert!(legacy_error.to_string().contains("pq-dilithium"));
+    agent
+        .verify_string(&data, &signature, public_key, Some("pq2025".into()))
+        .expect("valid PQ verification after rejection");
 }
 
 #[test]

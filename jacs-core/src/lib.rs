@@ -15,6 +15,7 @@ pub mod errors;
 pub mod material;
 pub mod schema;
 pub mod sign;
+pub mod strict_json;
 pub mod verify;
 
 pub use agent::CoreAgent;

@@ -18,15 +18,15 @@ JACS A2A integration enables:
 ```
 JACS Agent (PQC)
       |
-  export_agent_card()
+  persisted ES256 compatibility key
       |
 A2A Agent Card (v0.4.0)
       |
-  sign_agent_card_jws() + embed_signature_in_agent_card()
+  JCS + ES256 JWS + native-root-signed binding
       |
 Signed Agent Card (signatures embedded)
       |
-/.well-known/agent-card.json (discoverable)
+/.well-known/{agent-card,jwks,jacs-compat-binding}.json
       |
 A2A Artifacts <-- wrap_artifact_with_provenance()
       |
@@ -54,15 +54,16 @@ Converts JACS agents to A2A Agent Card format:
 - Builds `supportedInterfaces` from agent domain
 - Security schemes as a keyed map
 
-### 3. Dual Key Management (`keys.rs`)
-Generates and manages two key pairs:
-- **JACS Key**: `pq2025` or `ring-Ed25519` for documents
-- **A2A Key**: `ring-Ed25519` for JWS Agent Card signing
+### 3. Identity Key Management (`keys.rs`, `compatibility/`)
+- **Native JACS root**: `pq2025` or `ring-Ed25519` for native documents and the compatibility binding
+- **A2A compatibility key**: persisted ES256 key for JCS/JOSE Agent Card signing
+- The native-root-signed `a2a-agent-card` binding scope authorizes that exact ES256 JWK and `kid`
+- Legacy caller-generated ephemeral discovery keys are rejected
 
 ### 4. Extension Management (`extension.rs`)
-- Signs Agent Cards with JWS
+- Signs Agent Cards with the persisted ES256 compatibility key
 - Embeds signatures in `AgentCard.signatures` (v0.4.0)
-- Generates .well-known endpoints
+- Generates six stable .well-known endpoints, including the compatibility binding
 - Creates JACS descriptor documents
 
 ### 5. Provenance Wrapping (`provenance.rs`)
@@ -75,24 +76,11 @@ Generates and manages two key pairs:
 ### Rust
 
 ```rust
-use jacs::a2a::{agent_card::*, keys::*, extension::*, provenance::*};
+use jacs::a2a::simple::generate_well_known_documents;
 
-// Export JACS agent to A2A Agent Card (v0.4.0)
-let agent_card = export_agent_card(&agent)?;
-
-// Generate dual keys
-let dual_keys = create_jwk_keys(Some("pq2025"), Some("ring-Ed25519"))?;
-
-// Sign Agent Card with JWS
-let jws_signature = sign_agent_card_jws(
-    &agent_card,
-    &dual_keys.a2a_private_key,
-    &dual_keys.a2a_algorithm,
-    &agent_id,
-)?;
-
-// Embed signature in Agent Card (v0.4.0)
-let signed_card = embed_signature_in_agent_card(&agent_card, &jws_signature, None);
+// Omit the compatibility-only algorithm argument. Discovery always reuses
+// the persisted ES256 compatibility key and publishes its native binding.
+let documents = generate_well_known_documents(&simple_agent, None)?;
 
 // Wrap A2A artifact with JACS provenance
 let wrapped = wrap_artifact_with_provenance(
@@ -126,9 +114,11 @@ result = a2a.verify_wrapped_artifact(wrapped)
 JACS A2A integration provides these standard endpoints:
 
 - `/.well-known/agent-card.json` — A2A Agent Card with embedded JWS signatures
-- `/.well-known/jwks.json` — JWK Set for verification
+- `/.well-known/jwks.json` — stable ES256 compatibility JWK
+- `/.well-known/jacs-compat-binding.json` — native-root-signed ES256 identity binding
 - `/.well-known/jacs-agent.json` — JACS agent descriptor
 - `/.well-known/jacs-pubkey.json` — JACS public key
+- `/.well-known/jacs-extension.json` — JACS provenance extension descriptor
 
 ## JACS Extension for A2A
 
@@ -162,8 +152,14 @@ cargo test --test a2a_integration_test
 
 ## Security Considerations
 
-1. **Key Separation**: JACS and A2A keys are separate
-2. **Algorithm Choice**: Use PQC for long-term security
-3. **Verification**: Always verify wrapped artifacts
-4. **Chain of Custody**: Maintain for compliance
-5. **Signature Embedding**: v0.4.0 embeds signatures in the AgentCard rather than external wrappers
+1. **Key Separation**: the native root authorizes, but does not replace, the persisted ES256 compatibility key
+2. **Strict identity**: validate the fixed-path compatibility binding against an explicitly trusted native root; a self-advertised JWKS key alone is not identity proof
+3. **Verified/TOFU**: proves same-origin key continuity only and remains distinguishable from explicit trust
+
+Strict also enforces an absolute seven-day window from the binding's signed
+`issuedAt` (plus five minutes of future clock skew), including on first
+contact. Well-known generation refreshes an authentic binding after six days
+under the shared issuance lock while preserving scopes and explicit expiry.
+4. **Network boundary**: JWKS and binding fetches enforce HTTPS (except explicit loopback opt-in), DNS/IP pinning, same-origin redirects, MIME checks, timeouts, and a 256 KiB limit
+5. **Verification**: always verify wrapped artifacts separately from Agent Card admission
+6. **Chain of Custody**: maintain for compliance

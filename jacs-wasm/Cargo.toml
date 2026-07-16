@@ -1,6 +1,7 @@
 [package]
 name = "jacs-wasm"
 version = "0.11.4"
+publish = false
 edition = "2024"
 rust-version = "1.97"
 resolver = "3"
@@ -31,6 +32,10 @@ base64 = "0.22"
 # For the eventual JS-side raw-key unlock constructor; CoreAgent::
 # from_encrypted_material accepts `UnlockSecret::RawPrivateKey(SecretBox)`.
 secrecy = "0.10.3"
+# Own password strings at the JS boundary and wipe the Rust/WASM copy when
+# encrypted export completes. JavaScript strings themselves remain managed by
+# the host and cannot be zeroized by Rust.
+zeroize = "1.8"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

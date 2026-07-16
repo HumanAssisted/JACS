@@ -3,7 +3,7 @@
  *
  * Validates:
  * - a2a: true enables well-known endpoints via mock Koa context
- * - All 5 well-known documents are served
+ * - All 6 identity-bound well-known documents are served
  * - CORS headers on responses
  * - OPTIONS preflight handling
  * - a2a: false (default) does not intercept well-known routes
@@ -12,6 +12,7 @@
 
 const { expect } = require('chai');
 const sinon = require('sinon');
+const { configureNativeGenerator } = require('./helpers/a2a-bound');
 
 // The compiled middleware — skip entire suite if not compiled yet.
 let koaModule;
@@ -25,12 +26,21 @@ try {
  * Create a stubbed JacsClient.
  */
 function createMockClient(overrides = {}) {
+  const agent = configureNativeGenerator(
+    { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
+    {
+      agentId: overrides.agentId || 'koa-a2a-agent',
+      name: overrides.name || 'Koa A2A Agent',
+      skills: overrides.skills || [],
+      interfaceUrl: overrides.interfaceUrl,
+    },
+  );
   return {
     signMessage: sinon.stub().resolves({ raw: '{}', documentId: 'x', agentId: 'a', timestamp: '' }),
     verify: sinon.stub().resolves({ valid: true, data: {}, signerId: '', timestamp: '', attachments: [], errors: [] }),
     agentId: overrides.agentId || 'koa-a2a-agent',
     name: overrides.name || 'Koa A2A Agent',
-    _agent: { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
+    _agent: agent,
   };
 }
 
@@ -61,6 +71,7 @@ const WELL_KNOWN_PATHS = [
   '/.well-known/jacs-extension.json',
   '/.well-known/jacs-agent.json',
   '/.well-known/jwks.json',
+  '/.well-known/jacs-compat-binding.json',
   '/.well-known/jacs-pubkey.json',
 ];
 
@@ -84,12 +95,20 @@ describe('Koa Middleware A2A Route Injection - [2.9.2]', function () {
 
     before(function () {
       if (!available) this.skip();
-      const client = createMockClient({ agentId: 'koa-agent-1', name: 'Koa A2A Test' });
+      const skills = [
+        { id: 'summarize', name: 'Summarize', description: 'Summarize text', tags: ['nlp'] },
+      ];
+      const client = createMockClient({
+        agentId: 'koa-agent-1',
+        name: 'Koa A2A Test',
+        skills,
+        interfaceUrl: 'https://koa-agent.example.com/agent',
+      });
       mw = koaModule.jacsKoaMiddleware({
         client,
         verify: false,
         a2a: true,
-        a2aSkills: [{ id: 'summarize', name: 'Summarize', description: 'Summarize text', tags: ['nlp'] }],
+        a2aSkills: skills,
         a2aUrl: 'koa-agent.example.com',
       });
     });
@@ -108,7 +127,7 @@ describe('Koa Middleware A2A Route Injection - [2.9.2]', function () {
       expect(ctx.type).to.equal('application/json');
     });
 
-    it('should serve all 5 well-known documents', async () => {
+    it('should serve all 6 identity-bound well-known documents', async () => {
       for (const path of WELL_KNOWN_PATHS) {
         const ctx = mockCtx('GET', path);
         const next = mockNext();

@@ -76,13 +76,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 6: Generate .well-known documents
     println!("\n6. Generating .well-known endpoints...");
-    let well_known_docs = generate_well_known_documents(
-        &agent,
-        &agent_card,
-        &dual_keys.a2a_public_key,
-        &dual_keys.a2a_algorithm,
-        &jws_signature,
-    )?;
+    let well_known_docs =
+        generate_bound_well_known_documents(&mut agent, "./jacs_keys", Some(agent_card.clone()))?;
 
     for (path, _) in &well_known_docs {
         println!("   {}", path);

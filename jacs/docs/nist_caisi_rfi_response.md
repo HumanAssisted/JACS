@@ -279,7 +279,14 @@ Multi-agent authorization via quorum provides a deployment-level control for con
 
 ### 5.4 MCP Integration
 
-JACS provides a Model Context Protocol (MCP) server with 33 tools for signing, verification, trust management, A2A artifact operations, and attestation (including DSSE export). This allows any MCP-compatible client (including AI assistants and development tools) to use JACS signing and verification as native tool calls, without requiring direct library integration.
+JACS provides a runtime-profiled Model Context Protocol (MCP) server. Source
+`0.11.4` exposes 25 everyday signing, verification, trust, discovery, and
+provenance tools in the default `core` profile; the opt-in `full` profile
+exposes 42 tools by adding Agreement v2, A2A artifact, and attestation
+operations (including DSSE export). This allows any MCP-compatible client
+(including AI assistants and development tools) to use JACS signing and
+verification as native tool calls, without requiring direct library
+integration.
 
 ### 5.5 Cross-Platform Support
 

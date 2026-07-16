@@ -7,18 +7,21 @@
 //! # Trust Policies
 //!
 //! - **Open**: Accept any A2A agent, including those without JACS signatures.
-//! - **Verified** (default): Only accept agents with valid JACS signatures
-//!   (the JACS provenance extension must be declared in the Agent Card).
-//! - **Strict**: Only accept agents that are explicitly in the local trust store.
+//! - **Verified** (default): Require a valid card signature plus a durable
+//!   same-origin JWKS key pin. This proves origin/key continuity, not the
+//!   claimed native JACS identity.
+//! - **Strict**: Require an explicitly trusted native JACS root and, for the
+//!   generated ES256 card, a valid native-root-signed compatibility binding.
 //!
 //! # Trust Levels
 //!
 //! Each assessed agent receives a trust level:
 //!
 //! - **Untrusted**: No JACS provenance, or signature could not be verified.
-//! - **JacsVerified**: Has a valid JACS signature and declares the JACS extension,
-//!   but is not in the local trust store.
-//! - **ExplicitlyTrusted**: In the local trust store with a verified signature.
+//! - **JacsVerified**: Card signature and origin key pin verified, but the
+//!   claimed native identity is not explicitly trusted.
+//! - **ExplicitlyTrusted**: Card signature and native identity binding verified
+//!   against an explicitly trusted root.
 
 use crate::a2a::extension::verify_agent_card_jws;
 use crate::a2a::keys::Jwk;
@@ -35,19 +38,92 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use url::Url;
 
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_JWKS_RESPONSE_BYTES: usize = 256 * 1024;
+
+/// Fetch an A2A Agent Card through the shared trust-boundary transport.
+///
+/// Language bindings use this entry point so Python and Node discovery inherit
+/// the same DNS/IP pinning, proxy isolation, redirect, MIME, timeout, and body
+/// limits as JWKS and compatibility-binding resolution.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fetch_agent_card_json(
+    base_url: &str,
+    timeout_ms: Option<u64>,
+) -> Result<String, crate::error::JacsError> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(crate::error::JacsError::ValidationError(
+            "Agent base URL cannot be empty".to_string(),
+        ));
+    }
+    let card_url = format!("{trimmed}/.well-known/agent-card.json");
+    ensure_network_access(NetworkCapability::AgentCardFetch)?;
+    let total_timeout = Duration::from_millis(timeout_ms.unwrap_or(10_000).clamp(1, 30_000));
+    let policy = crate::secure_fetch::SecureFetchPolicy::new(
+        "A2A Agent Card",
+        MAX_JWKS_RESPONSE_BYTES,
+        &["application/agent-card+json", "application/json"],
+    )
+    .max_redirects(3)
+    .timeouts(
+        total_timeout,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+    )
+    .redirect_scope(crate::secure_fetch::RedirectScope::SameOrigin)
+    .allow_exact_loopback(crate::secure_fetch::is_exact_textual_loopback_endpoint(
+        &card_url,
+    ));
+    let response = crate::secure_fetch::secure_get(
+        &card_url,
+        "application/agent-card+json, application/json",
+        &policy,
+    )?;
+    if !response.status.is_success() {
+        return Err(crate::error::JacsError::NetworkError(format!(
+            "A2A Agent Card endpoint returned HTTP {}",
+            response.status
+        )));
+    }
+    let value =
+        jacs_core::strict_json::parse_strict_json_slice(&response.body).map_err(|error| {
+            crate::error::JacsError::ValidationError(format!(
+                "A2A Agent Card response is not valid strict JSON: {error}"
+            ))
+        })?;
+    if !value.is_object() {
+        return Err(crate::error::JacsError::ValidationError(
+            "A2A Agent Card response must be a JSON object".to_string(),
+        ));
+    }
+    serde_json::to_string(&value).map_err(crate::error::JacsError::from)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn fetch_agent_card_json(
+    _base_url: &str,
+    _timeout_ms: Option<u64>,
+) -> Result<String, crate::error::JacsError> {
+    Err(crate::error::JacsError::NetworkError(
+        "A2A Agent Card network fetch is not supported on wasm32".to_string(),
+    ))
+}
+
 /// Trust policy controlling which remote agents are allowed to interact.
 ///
-/// The default policy is `Verified`, requiring agents to have valid JACS
-/// provenance signatures.
+/// The default policy is `Verified`, requiring a valid Agent Card JWS plus a
+/// durable same-origin key pin. This proves origin/key continuity, not native
+/// JACS identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum A2ATrustPolicy {
     /// Accept any A2A agent, even those without JACS signatures.
     Open,
-    /// Only accept agents that have valid JACS signatures and declare
-    /// the JACS provenance extension. This is the default.
+    /// Require a valid card signature and durable same-origin key pin. This is
+    /// origin continuity, not proof of the claimed native JACS identity.
     #[default]
     Verified,
-    /// Only accept agents that are explicitly in the local trust store.
+    /// Require an explicitly trusted native root and a valid identity binding.
     Strict,
 }
 
@@ -85,10 +161,10 @@ impl A2ATrustPolicy {
 pub enum TrustLevel {
     /// No JACS provenance, or signature could not be verified.
     Untrusted,
-    /// Has a valid JACS signature and declares the JACS extension,
-    /// but is not in the local trust store.
+    /// Card signature and origin key pin verified, but no explicitly trusted
+    /// native identity binding was established.
     JacsVerified,
-    /// In the local trust store with a verified signature.
+    /// Explicit native root trust plus a verified card identity binding.
     ExplicitlyTrusted,
 }
 
@@ -131,8 +207,8 @@ pub struct TrustAssessment {
 /// on first contact (A2A-1). Signals that the result proves card-origin control,
 /// not the claimed identity, on this contact.
 const FIRST_CONTACT_CAVEAT: &str = " (first contact: verifying key pinned trust-on-first-use — proves control of the \
-     card origin, NOT the claimed identity; treat identity as unconfirmed until a \
-     subsequent contact re-presents the same pinned key)";
+     card origin, NOT the claimed identity; native identity remains unconfirmed \
+     without explicit root trust and a valid compatibility binding)";
 
 /// Check whether a remote Agent Card declares the JACS provenance extension.
 ///
@@ -200,6 +276,9 @@ fn agent_card_origin(card: &AgentCard) -> Result<String, String> {
     let host = parsed
         .host_str()
         .ok_or_else(|| "Agent Card interface URL does not include a host".to_string())?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("Agent Card interface URL must not contain credentials".to_string());
+    }
 
     // SECURITY (A2A-2): the JWKS fetched from this origin supplies the public
     // key that decides whether the Agent Card signature verifies. Fetching it
@@ -218,13 +297,42 @@ fn agent_card_origin(card: &AgentCard) -> Result<String, String> {
         ));
     }
 
-    let mut origin = format!("{}://{}", scheme, host);
-    if let Some(port) = parsed.port() {
-        origin.push(':');
-        origin.push_str(&port.to_string());
-    }
+    Ok(parsed.origin().ascii_serialization())
+}
 
-    Ok(origin)
+#[cfg(not(target_arch = "wasm32"))]
+fn private_loopback_jwks_opted_in() -> bool {
+    std::env::var("JACS_ALLOW_PRIVATE_JWKS")
+        .ok()
+        .is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true"))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_a2a_json(
+    url: &str,
+    surface: &'static str,
+    accept: &'static str,
+    mime_types: &'static [&'static str],
+) -> Result<Vec<u8>, String> {
+    let policy =
+        crate::secure_fetch::SecureFetchPolicy::new(surface, MAX_JWKS_RESPONSE_BYTES, mime_types)
+            .max_redirects(3)
+            .timeouts(
+                Duration::from_secs(5),
+                Duration::from_secs(3),
+                Duration::from_secs(3),
+            )
+            .redirect_scope(crate::secure_fetch::RedirectScope::SameOrigin)
+            .allow_exact_loopback(private_loopback_jwks_opted_in());
+    let response =
+        crate::secure_fetch::secure_get(url, accept, &policy).map_err(|error| error.to_string())?;
+    if !response.status.is_success() {
+        return Err(format!(
+            "{surface} endpoint returned HTTP {}",
+            response.status
+        ));
+    }
+    Ok(response.body)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -238,7 +346,7 @@ fn fetch_jwks(card: &AgentCard) -> Result<Vec<Jwk>, String> {
         .is_some_and(|origin| origin == "https://local-jwks.invalid")
         && let Ok(jwks_json) = std::env::var("JACS_TEST_JWKS_JSON")
     {
-        let value = serde_json::from_str::<serde_json::Value>(&jwks_json).map_err(|e| {
+        let value = jacs_core::strict_json::parse_strict_json(&jwks_json).map_err(|e| {
             format!(
                 "Failed to parse test JWKS JSON from JACS_TEST_JWKS_JSON: {}",
                 e
@@ -257,26 +365,13 @@ fn fetch_jwks(card: &AgentCard) -> Result<Vec<Jwk>, String> {
     }
 
     ensure_network_access(NetworkCapability::JwksFetch).map_err(|e| e.to_string())?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| format!("Failed to build JWKS client: {}", e))?;
-
-    let response = client
-        .get(&jwks_url)
-        .send()
-        .map_err(|e| format!("Failed to fetch JWKS from '{}': {}", jwks_url, e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "JWKS endpoint '{}' returned HTTP {}",
-            jwks_url,
-            response.status()
-        ));
-    }
-
-    let value = response
-        .json::<serde_json::Value>()
+    let body = fetch_a2a_json(
+        &jwks_url,
+        "A2A JWKS",
+        "application/jwk-set+json, application/json",
+        &["application/jwk-set+json", "application/json"],
+    )?;
+    let value = jacs_core::strict_json::parse_strict_json_slice(&body)
         .map_err(|e| format!("Failed to parse JWKS JSON from '{}': {}", jwks_url, e))?;
 
     let keys_value = value
@@ -286,6 +381,59 @@ fn fetch_jwks(card: &AgentCard) -> Result<Vec<Jwk>, String> {
 
     serde_json::from_value::<Vec<Jwk>>(keys_value)
         .map_err(|e| format!("Failed to decode JWKS keys from '{}': {}", jwks_url, e))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_compat_binding(card: &AgentCard) -> Result<serde_json::Value, String> {
+    let binding_path = card
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("jacsCompatBindingPath"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            "Agent Card metadata is missing deterministic jacsCompatBindingPath".to_string()
+        })?;
+    if binding_path != crate::compatibility::exports::A2A_COMPAT_BINDING_PATH {
+        return Err(format!(
+            "Agent Card compatibility binding path '{}' is not the fixed same-origin path '{}'",
+            binding_path,
+            crate::compatibility::exports::A2A_COMPAT_BINDING_PATH
+        ));
+    }
+
+    let origin = agent_card_origin(card)?;
+    #[cfg(test)]
+    if origin == "https://local-jwks.invalid" {
+        let binding_json = std::env::var("JACS_TEST_COMPAT_BINDING_JSON").map_err(|_| {
+            "Agent Card compatibility binding could not be resolved from the test origin"
+                .to_string()
+        })?;
+        return jacs_core::strict_json::parse_strict_json(&binding_json).map_err(|error| {
+            format!(
+                "Failed to parse test compatibility binding JSON from \
+                 JACS_TEST_COMPAT_BINDING_JSON: {error}"
+            )
+        });
+    }
+
+    ensure_network_access(NetworkCapability::JwksFetch).map_err(|error| error.to_string())?;
+    let mut endpoint = Url::parse(&origin)
+        .map_err(|error| format!("Invalid Agent Card origin '{origin}': {error}"))?;
+    endpoint.set_path(binding_path);
+    endpoint.set_query(None);
+    endpoint.set_fragment(None);
+    let body = fetch_a2a_json(
+        endpoint.as_str(),
+        "A2A compatibility binding",
+        "application/json",
+        &["application/json"],
+    )?;
+    jacs_core::strict_json::parse_strict_json_slice(&body).map_err(|error| {
+        format!(
+            "Failed to parse compatibility binding JSON from '{}': {error}",
+            endpoint
+        )
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -315,8 +463,19 @@ fn jwk_to_verifier(jwk: &Jwk) -> Result<(Vec<u8>, &'static str), String> {
                 .map_err(|e| format!("Failed to decode Ed25519 JWK x coordinate: {}", e))?;
             Ok((public_key, "ring-Ed25519"))
         }
+        "EC" if jwk.crv.as_deref() == Some("P-256") => {
+            let public_pem = crate::a2a::keys::es256_jwk_public_pem(jwk)
+                .map_err(|error| format!("Invalid ES256 A2A JWK: {error}"))?;
+            Ok((public_pem.into_bytes(), "ES256"))
+        }
         other => Err(format!("Unsupported JWKS key type '{}'", other)),
     }
+}
+
+struct VerifiedAgentCardSignature {
+    public_key: Vec<u8>,
+    algorithm: &'static str,
+    jwk: Jwk,
 }
 
 /// Verify a remote Agent Card's embedded JWS against its advertised JWKS.
@@ -326,7 +485,7 @@ fn jwk_to_verifier(jwk: &Jwk) -> Result<(Vec<u8>, &'static str), String> {
 /// can bind the card to a pinned identity key — a verified JWKS only proves
 /// control of the card's origin, not the claimed `jacsId`.
 #[cfg(not(target_arch = "wasm32"))]
-fn verify_agent_card_signature(card: &AgentCard) -> Result<(bool, Vec<u8>), String> {
+fn verify_agent_card_signature(card: &AgentCard) -> Result<VerifiedAgentCardSignature, String> {
     if card
         .signatures
         .as_ref()
@@ -341,12 +500,122 @@ fn verify_agent_card_signature(card: &AgentCard) -> Result<(bool, Vec<u8>), Stri
 
     let verified = verify_agent_card_jws(card, &public_key, algorithm)
         .map_err(|e| format!("Agent Card signature verification failed: {}", e))?;
-    Ok((verified, public_key))
+    if !verified {
+        return Err("Agent Card signature verifier returned false".to_string());
+    }
+    Ok(VerifiedAgentCardSignature {
+        public_key,
+        algorithm,
+        jwk: jwk.clone(),
+    })
 }
 
 #[cfg(target_arch = "wasm32")]
-fn verify_agent_card_signature(_card: &AgentCard) -> Result<(bool, Vec<u8>), String> {
+fn verify_agent_card_signature(_card: &AgentCard) -> Result<VerifiedAgentCardSignature, String> {
     Err("Agent Card JWKS verification is not supported on wasm32".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_explicit_trusted_identity_binding(
+    card: &AgentCard,
+    trust_store_key: &str,
+    verified_signature: &VerifiedAgentCardSignature,
+) -> Result<(), String> {
+    let trusted_native_root = trust::get_trusted_public_key(trust_store_key)
+        .map_err(|error| format!("trusted native root could not be loaded: {error}"))?;
+
+    // Historical cards signed directly by the trusted native Ed25519 root do
+    // not need an ES256 delegation artifact. The exact trusted key must still
+    // be the key that verified the card.
+    if verified_signature.algorithm == "ring-Ed25519" {
+        let trusted_hash = crate::crypt::hash::hash_public_key(&trusted_native_root);
+        let card_hash = crate::crypt::hash::hash_public_key(&verified_signature.public_key);
+        return if trusted_hash == card_hash {
+            Ok(())
+        } else {
+            Err(format!(
+                "card key substitution: directly signed Ed25519 card key hash '{card_hash}' \
+                 does not match trusted native root '{trusted_hash}'"
+            ))
+        };
+    }
+
+    if verified_signature.algorithm != "ES256" {
+        return Err(format!(
+            "unsupported Agent Card verification algorithm '{}'",
+            verified_signature.algorithm
+        ));
+    }
+
+    let agent_id = extract_agent_id(card)
+        .ok_or_else(|| "Agent Card is missing metadata.jacsId".to_string())?;
+    let agent_version = extract_agent_version(card)
+        .ok_or_else(|| "Agent Card is missing metadata.jacsVersion".to_string())?;
+    if card.version != agent_version {
+        return Err(format!(
+            "Agent Card version '{}' does not match metadata.jacsVersion '{}'",
+            card.version, agent_version
+        ));
+    }
+    let metadata = card
+        .metadata
+        .as_ref()
+        .ok_or_else(|| "Agent Card metadata is missing".to_string())?;
+    let compat_kid = metadata
+        .get("jacsCompatKid")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Agent Card metadata is missing jacsCompatKid".to_string())?;
+    if compat_kid != verified_signature.jwk.kid {
+        return Err(format!(
+            "Agent Card compatibility kid '{}' does not match the JWKS key '{}' that verified \
+             the card",
+            compat_kid, verified_signature.jwk.kid
+        ));
+    }
+    let binding_hash = metadata
+        .get("jacsCompatBindingHash")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Agent Card metadata is missing jacsCompatBindingHash".to_string())?;
+    let binding = fetch_compat_binding(card)?;
+    let compat_jwk = serde_json::to_value(&verified_signature.jwk)
+        .map_err(|error| format!("Failed to serialize verified A2A JWK: {error}"))?;
+    let verdict = crate::compatibility::binding::verify_remote_a2a_binding(
+        &binding,
+        &agent_id,
+        &agent_version,
+        binding_hash,
+        &compat_jwk,
+        &trusted_native_root,
+    )
+    .map_err(|error| format!("native compatibility binding verification failed: {error}"))?;
+    if verdict.valid {
+        let binding_issued_at = binding
+            .pointer("/compatibilityKeyBinding/issuedAt")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "compatibility binding is missing issuedAt".to_string())?;
+        trust::enforce_a2a_binding_lifecycle(
+            trust_store_key,
+            binding_hash,
+            compat_kid,
+            binding_issued_at,
+        )
+        .map_err(|error| format!("compatibility binding lifecycle check failed: {error}"))?;
+        Ok(())
+    } else {
+        Err(format!(
+            "native compatibility binding verification failed: {}",
+            verdict.reason
+        ))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn verify_explicit_trusted_identity_binding(
+    _card: &AgentCard,
+    _trust_store_key: &str,
+    _verified_signature: &VerifiedAgentCardSignature,
+) -> Result<(), String> {
+    Err("strict A2A compatibility binding verification is not supported on wasm32".to_string())
 }
 
 /// Assess whether a remote A2A agent should be allowed to interact.
@@ -375,17 +644,14 @@ pub fn assess_a2a_agent(
     let signature_verification = if jacs_registered {
         verify_agent_card_signature(remote_card)
     } else {
-        Ok((false, Vec::new()))
+        Err("Agent Card does not declare JACS provenance".to_string())
     };
-    let card_signature_verified = signature_verification
-        .as_ref()
-        .map(|(verified, _)| *verified)
-        .unwrap_or(false);
+    let card_signature_verified = signature_verification.is_ok();
     // Hash of the JWKS key that actually verified the card (A2A-1). Used to
     // pin the agent's A2A key trust-on-first-use.
     let verifying_key_hash = match &signature_verification {
-        Ok((verified, key)) if *verified && !key.is_empty() => {
-            Some(crate::crypt::hash::hash_public_key(key))
+        Ok(verified) if !verified.public_key.is_empty() => {
+            Some(crate::crypt::hash::hash_public_key(&verified.public_key))
         }
         _ => None,
     };
@@ -405,17 +671,47 @@ pub fn assess_a2a_agent(
     // id:version that presents a DIFFERENT key is a key-substitution signal and
     // is downgraded to Untrusted. (Legitimate key rotation bumps the version,
     // producing a fresh pin rather than a false-positive mismatch.) Pin-store
-    // failures degrade gracefully: the agent stays JacsVerified rather than
-    // being blocked by an unwritable trust dir.
+    // failures fail closed: accepting without a durable/readable binding would
+    // turn each store outage into a fresh TOFU opportunity.
     let mut key_binding_failure: Option<String> = None;
     // A2A-1: whether the verifying key was pinned on THIS assessment (first
     // contact). A first-contact JacsVerified proves origin control, not the
     // claimed identity, so callers must be able to distinguish it.
     let mut first_contact = false;
-    let trust_level = if in_trust_store {
-        TrustLevel::ExplicitlyTrusted
-    } else if card_signature_verified {
+    let trust_level = if card_signature_verified {
         match (trust_store_key.as_deref(), &verifying_key_hash) {
+            (Some(key), Some(_seen)) if in_trust_store => match &signature_verification {
+                Ok(verified) => {
+                    match verify_explicit_trusted_identity_binding(remote_card, key, verified) {
+                        Ok(()) => TrustLevel::ExplicitlyTrusted,
+                        Err(error) => {
+                            tracing::warn!(
+                                event = "a2a_identity_binding_verify_failed",
+                                agent_id = agent_id.as_deref().unwrap_or("unknown"),
+                                trust_store_key = key,
+                                reason = %error,
+                                "A2A Agent Card identity binding verification failed"
+                            );
+                            key_binding_failure = Some(format!(
+                                "agent '{}' has a cryptographically valid Agent Card, but its \
+                                 explicitly trusted identity binding failed: {}",
+                                agent_id.as_deref().unwrap_or("unknown"),
+                                error
+                            ));
+                            TrustLevel::Untrusted
+                        }
+                    }
+                }
+                Err(error) => {
+                    key_binding_failure = Some(format!(
+                        "agent '{}' has an explicit trust entry, but Agent Card signature \
+                             verification failed: {}",
+                        agent_id.as_deref().unwrap_or("unknown"),
+                        error
+                    ));
+                    TrustLevel::Untrusted
+                }
+            },
             (Some(key), Some(seen)) => match trust::pin_a2a_key(key, seen) {
                 Ok(trust::A2aPinOutcome::Mismatch { pinned }) => {
                     key_binding_failure = Some(format!(
@@ -435,14 +731,28 @@ pub fn assess_a2a_agent(
                 Ok(trust::A2aPinOutcome::Match) => TrustLevel::JacsVerified,
                 Err(e) => {
                     tracing::warn!(
+                        event = "a2a_key_pin_failed",
                         agent_id = agent_id.as_deref().unwrap_or("unknown"),
-                        "A2A key pinning unavailable ({}); proceeding without pin enforcement",
+                        "A2A key pinning unavailable ({}); refusing verification",
                         e
                     );
-                    TrustLevel::JacsVerified
+                    key_binding_failure = Some(format!(
+                        "agent '{}' Agent Card signature verified, but its A2A key pin could not \
+                         be persisted or read: {}",
+                        agent_id.as_deref().unwrap_or("unknown"),
+                        e
+                    ));
+                    TrustLevel::Untrusted
                 }
             },
-            _ => TrustLevel::JacsVerified,
+            _ => {
+                key_binding_failure = Some(format!(
+                    "agent '{}' Agent Card signature verified, but no complete id/version and \
+                     verifying-key binding was available to pin",
+                    agent_id.as_deref().unwrap_or("unknown")
+                ));
+                TrustLevel::Untrusted
+            }
         }
     } else {
         TrustLevel::Untrusted
@@ -490,8 +800,10 @@ pub fn assess_a2a_agent(
                     "Open policy: agent accepted and explicitly trusted".to_string()
                 }
                 TrustLevel::JacsVerified => {
-                    let mut reason =
-                        "Open policy: agent accepted and Agent Card signature verified".to_string();
+                    let mut reason = "Open policy: agent accepted with verified same-origin Agent \
+                                      Card signature and durable key pin; native JACS identity is \
+                                      not explicitly trusted"
+                        .to_string();
                     if first_contact {
                         reason.push_str(FIRST_CONTACT_CAVEAT);
                     }
@@ -509,9 +821,10 @@ pub fn assess_a2a_agent(
                 "Verified policy: agent is explicitly trusted".to_string(),
             ),
             TrustLevel::JacsVerified => {
-                let mut reason =
-                    "Verified policy: Agent Card signature verified against advertised JWKS"
-                        .to_string();
+                let mut reason = "Verified policy: Agent Card signature verified against \
+                                  same-origin JWKS and durable key pin; this establishes \
+                                  origin/key continuity, not the claimed native JACS identity"
+                    .to_string();
                 if first_contact {
                     reason.push_str(FIRST_CONTACT_CAVEAT);
                 }
@@ -522,7 +835,15 @@ pub fn assess_a2a_agent(
         A2ATrustPolicy::Strict => match trust_level {
             TrustLevel::ExplicitlyTrusted => (
                 true,
-                "Strict policy: agent is in local trust store".to_string(),
+                "Strict policy: explicitly trusted native root and compatibility binding verified"
+                    .to_string(),
+            ),
+            _ if in_trust_store => (
+                false,
+                format!(
+                    "Strict policy: a local trust entry exists, but {}",
+                    unverified_reason
+                ),
             ),
             _ => (
                 false,
@@ -554,6 +875,7 @@ mod tests {
     use crate::a2a::{
         A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentExtension, AgentInterface,
     };
+    use crate::agent::document::DocumentTraits;
     use serde_json::json;
 
     /// Create a minimal Agent Card for testing.
@@ -735,6 +1057,9 @@ mod tests {
         let origin = agent_card_origin(&card).expect("loopback http must be allowed for dev");
         assert_eq!(origin, "http://localhost:8080");
     }
+
+    // A2A JWKS and binding fetches delegate to `crate::secure_fetch`; its test
+    // module owns the shared DNS/SSRF/redirect/MIME/size/deadline matrix.
 
     // =========================================================================
     // assess_a2a_agent: Open policy
@@ -942,6 +1267,41 @@ mod tests {
         embed_signature_in_agent_card(&card, &jws, Some(agent_id))
     }
 
+    fn write_explicit_trust_record(
+        trust_store_dir: &std::path::Path,
+        key: &str,
+        public_key: &[u8],
+    ) {
+        let public_key_hash = crate::crypt::hash::hash_public_key(public_key);
+        let trusted_document = json!({
+            "jacsSignature": {
+                "publicKeyHash": public_key_hash,
+            }
+        });
+        std::fs::write(
+            trust_store_dir.join(format!("{key}.json")),
+            serde_json::to_vec(&trusted_document).expect("serialize trusted document"),
+        )
+        .expect("write trusted document");
+        let metadata = crate::trust::TrustedAgent {
+            agent_id: key.to_string(),
+            name: None,
+            public_key_pem: crate::crypt::normalize_public_key_pem(public_key),
+            public_key_hash: public_key_hash.clone(),
+            trusted_at: crate::time_utils::now_rfc3339(),
+            verified: true,
+        };
+        std::fs::write(
+            trust_store_dir.join(format!("{key}.meta.json")),
+            serde_json::to_vec(&metadata).expect("serialize trust metadata"),
+        )
+        .expect("write trust metadata");
+        let keys_dir = trust_store_dir.join("keys");
+        std::fs::create_dir_all(&keys_dir).expect("create trusted key cache");
+        std::fs::write(keys_dir.join(format!("{public_key_hash}.pem")), public_key)
+            .expect("write trusted key cache");
+    }
+
     #[test]
     #[serial_test::serial(jacs_env, home_env)]
     fn test_verified_policy_accepts_signed_jacs_agent() {
@@ -1070,6 +1430,43 @@ mod tests {
 
     #[test]
     #[serial_test::serial(jacs_env, home_env)]
+    fn strict_policy_requires_card_signature_to_match_explicit_trust_key() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
+        }
+
+        let card = make_signed_card_with_test_jwks();
+        let key = build_trust_store_key(&card).expect("card trust key");
+        let verifying_key = verify_agent_card_signature(&card)
+            .expect("signed card should verify")
+            .public_key;
+        write_explicit_trust_record(&trust_store_dir, &key, &verifying_key);
+
+        let accepted = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        write_explicit_trust_record(&trust_store_dir, &key, b"different-trusted-key");
+        let mismatch = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        unsafe {
+            std::env::remove_var("JACS_TEST_JWKS_JSON");
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
+        }
+
+        assert!(
+            accepted.allowed,
+            "matching trusted card key should pass: {accepted:?}"
+        );
+        assert_eq!(accepted.trust_level, TrustLevel::ExplicitlyTrusted);
+        assert!(
+            !mismatch.allowed,
+            "trusted-key mismatch must fail: {mismatch:?}"
+        );
+        assert_eq!(mismatch.trust_level, TrustLevel::Untrusted);
+        assert!(mismatch.reason.contains("substitution"));
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
     fn test_strict_policy_rejects_unverified_a2a_card_bookmark() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
@@ -1092,6 +1489,333 @@ mod tests {
         unsafe {
             std::env::remove_var("JACS_TRUST_STORE_DIR");
         }
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
+    fn strict_policy_rejects_unsigned_card_that_copies_verified_identity() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
+        }
+
+        let agent_id = "550e8400-e29b-41d4-a716-446655440050";
+        let version = "550e8400-e29b-41d4-a716-446655440051";
+        let key = format!("{agent_id}:{version}");
+        let card = make_card(
+            "copied-trusted-identity",
+            true,
+            Some(agent_id),
+            Some(version),
+        );
+
+        // Model an already verified native-agent trust entry. The remote card
+        // is attacker-controlled and merely copies its id/version metadata.
+        std::fs::write(
+            trust_store_dir.join(format!("{key}.json")),
+            serde_json::to_vec(&card).expect("serialize card"),
+        )
+        .expect("write trusted record");
+        let metadata = crate::trust::TrustedAgent {
+            agent_id: key.clone(),
+            name: None,
+            public_key_pem: "trusted-key".to_string(),
+            public_key_hash: crate::crypt::hash::hash_public_key(b"trusted-key"),
+            trusted_at: crate::time_utils::now_rfc3339(),
+            verified: true,
+        };
+        std::fs::write(
+            trust_store_dir.join(format!("{key}.meta.json")),
+            serde_json::to_vec(&metadata).expect("serialize trust metadata"),
+        )
+        .expect("write trust metadata");
+
+        let result = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        unsafe {
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
+        }
+
+        assert!(
+            !result.allowed,
+            "copied trusted metadata must not replace card signature verification: {result:?}"
+        );
+        assert_eq!(result.trust_level, TrustLevel::Untrusted);
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env, home_env, cwd_env)]
+    fn strict_policy_accepts_generated_es256_card_only_with_native_binding() {
+        use crate::simple::{CreateAgentParams, SimpleAgent};
+
+        struct EnvGuard {
+            cwd: std::path::PathBuf,
+        }
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.cwd);
+                unsafe {
+                    std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+                    std::env::remove_var("JACS_TEST_JWKS_JSON");
+                    std::env::remove_var("JACS_TEST_COMPAT_BINDING_JSON");
+                    std::env::remove_var("JACS_TRUST_STORE_DIR");
+                }
+            }
+        }
+
+        let cwd = std::env::current_dir().expect("cwd");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let temp_root = temp.path().canonicalize().expect("canonical tempdir");
+        std::env::set_current_dir(&temp_root).expect("enter tempdir");
+        let _guard = EnvGuard { cwd };
+        let password = "StrictA2aBindingTest!2026";
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+            std::env::set_var("JACS_TRUST_STORE_DIR", temp_root.join("trust"));
+        }
+        let params = CreateAgentParams::builder()
+            .name("strict-bound-remote")
+            .password(password)
+            .domain("https://local-jwks.invalid")
+            .key_directory("./keys")
+            .data_directory("./data")
+            .config_path("./jacs.config.json")
+            .build();
+        let (remote, _) = SimpleAgent::create_with_params(params).expect("create remote agent");
+        let documents = crate::a2a::simple::generate_well_known_documents(&remote, None)
+            .expect("generate bound discovery");
+        let document = |path: &str| {
+            documents
+                .iter()
+                .find(|(candidate, _)| candidate == path)
+                .map(|(_, value)| value.clone())
+                .unwrap_or_else(|| panic!("missing discovery path {path}"))
+        };
+        let card_value = document("/.well-known/agent-card.json");
+        let jwks = document("/.well-known/jwks.json");
+        let binding = document("/.well-known/jacs-compat-binding.json");
+        unsafe {
+            std::env::set_var("JACS_TEST_JWKS_JSON", jwks.to_string());
+            std::env::set_var("JACS_TEST_COMPAT_BINDING_JSON", binding.to_string());
+        }
+
+        let trusted_id = crate::trust::trust_agent_with_key(
+            &remote.export_agent().expect("export native identity"),
+            Some(
+                &remote
+                    .get_public_key_pem()
+                    .expect("export native root public key"),
+            ),
+        )
+        .expect("explicitly trust the native JACS identity");
+        let card: AgentCard =
+            serde_json::from_value(card_value.clone()).expect("decode Agent Card");
+        assert_eq!(
+            build_trust_store_key(&card).as_deref(),
+            Some(trusted_id.as_str())
+        );
+
+        // First-observation replay regression: a native-root-signed legacy
+        // binding with expiresAt:null must not become immortal merely because
+        // this verifier has not observed a newer binding yet. Re-sign both the
+        // old binding and its matching ES256 card so every cryptographic check
+        // succeeds; only the absolute Strict freshness boundary should deny.
+        let stale_issued_at =
+            (crate::time_utils::now_utc() - chrono::Duration::days(8)).to_rfc3339();
+        let mut stale_binding = binding.clone();
+        stale_binding["compatibilityKeyBinding"]["issuedAt"] =
+            serde_json::Value::String(stale_issued_at);
+        let mut stale_card_value = card_value.clone();
+        {
+            let mut inner = remote.agent.lock().expect("lock remote agent");
+            stale_binding["jacsSignature"] = inner
+                .signing_procedure(&stale_binding, None, "jacsSignature")
+                .expect("native re-sign stale binding");
+            stale_binding["jacsSha256"] = serde_json::Value::String(
+                inner
+                    .hash_doc(&stale_binding)
+                    .expect("recompute stale binding hash"),
+            );
+            stale_card_value["metadata"]["jacsCompatBindingHash"] =
+                stale_binding["jacsSha256"].clone();
+            stale_card_value
+                .as_object_mut()
+                .expect("card object")
+                .remove("signatures");
+            let payload = jacs_core::canonical::canonicalize_json_try(&stale_card_value)
+                .expect("canonicalize stale card");
+            let compat = crate::keystore::compat::ecosystem_key_info("./keys")
+                .expect("load compatibility key");
+            let header = json!({ "alg": "ES256", "typ": "JOSE", "kid": compat.kid });
+            let header_b64 = URL_SAFE_NO_PAD
+                .encode(serde_json::to_vec(&header).expect("serialize protected header"));
+            let payload_b64 = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+            let signing_input = format!("{header_b64}.{payload_b64}");
+            let private_key = crate::compatibility::decrypt_ecosystem_private_key(&inner, &compat)
+                .expect("decrypt compatibility key");
+            let signature = crate::crypt::es256::sign_es256_jose(
+                private_key.as_slice(),
+                signing_input.as_bytes(),
+            )
+            .expect("sign stale card");
+            let jws = format!(
+                "{header_b64}.{payload_b64}.{}",
+                URL_SAFE_NO_PAD.encode(signature)
+            );
+            stale_card_value["signatures"] = json!([{ "jws": jws, "keyId": compat.kid }]);
+        }
+        let stale_card: AgentCard =
+            serde_json::from_value(stale_card_value).expect("decode stale Agent Card");
+        unsafe {
+            std::env::set_var("JACS_TEST_COMPAT_BINDING_JSON", stale_binding.to_string());
+        }
+        let stale_first = assess_a2a_agent(&test_agent(), &stale_card, A2ATrustPolicy::Strict);
+        assert!(
+            !stale_first.allowed,
+            "an old null-expiry binding must fail on the verifier's first Strict observation: \
+             {stale_first:?}"
+        );
+        assert!(
+            stale_first.reason.contains("stale"),
+            "unexpected first-observation freshness reason: {}",
+            stale_first.reason
+        );
+
+        unsafe {
+            std::env::set_var("JACS_TEST_COMPAT_BINDING_JSON", binding.to_string());
+        }
+
+        let accepted = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        assert!(
+            accepted.allowed,
+            "valid native-root-bound ES256 Agent Card must pass strict trust: {accepted:?}"
+        );
+        assert_eq!(accepted.trust_level, TrustLevel::ExplicitlyTrusted);
+
+        // A newer native-root-signed binding advances the durable Strict
+        // lifecycle pin. Once observed, replaying the older card/binding pair
+        // must fail even though both signatures remain cryptographically valid.
+        let refreshed_binding = remote
+            .issue_compat_binding(None, None)
+            .expect("reissue compatibility binding");
+        let refreshed_documents = crate::a2a::simple::generate_well_known_documents(&remote, None)
+            .expect("generate refreshed discovery");
+        let refreshed_card_value = refreshed_documents
+            .iter()
+            .find(|(path, _)| path == "/.well-known/agent-card.json")
+            .map(|(_, value)| value.clone())
+            .expect("refreshed card");
+        let refreshed_jwks = refreshed_documents
+            .iter()
+            .find(|(path, _)| path == "/.well-known/jwks.json")
+            .map(|(_, value)| value.clone())
+            .expect("refreshed JWKS");
+        unsafe {
+            std::env::set_var("JACS_TEST_JWKS_JSON", refreshed_jwks.to_string());
+            std::env::set_var(
+                "JACS_TEST_COMPAT_BINDING_JSON",
+                refreshed_binding.to_string(),
+            );
+        }
+        let refreshed_card: AgentCard =
+            serde_json::from_value(refreshed_card_value).expect("decode refreshed card");
+        let refreshed = assess_a2a_agent(&test_agent(), &refreshed_card, A2ATrustPolicy::Strict);
+        assert!(
+            refreshed.allowed,
+            "a newer valid binding must advance Strict lifecycle state: {refreshed:?}"
+        );
+
+        unsafe {
+            std::env::set_var("JACS_TEST_JWKS_JSON", jwks.to_string());
+            std::env::set_var("JACS_TEST_COMPAT_BINDING_JSON", binding.to_string());
+        }
+        let replayed = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        assert!(
+            !replayed.allowed,
+            "an older valid card/binding must not roll Strict lifecycle state back: {replayed:?}"
+        );
+        assert!(
+            replayed.reason.contains("rollback") || replayed.reason.contains("lifecycle"),
+            "unexpected rollback reason: {}",
+            replayed.reason
+        );
+
+        unsafe {
+            std::env::set_var("JACS_TEST_JWKS_JSON", refreshed_jwks.to_string());
+            std::env::set_var(
+                "JACS_TEST_COMPAT_BINDING_JSON",
+                refreshed_binding.to_string(),
+            );
+        }
+        let refreshed_again =
+            assess_a2a_agent(&test_agent(), &refreshed_card, A2ATrustPolicy::Strict);
+        assert!(
+            refreshed_again.allowed,
+            "rollback attempts must not disturb the current lifecycle pin: {refreshed_again:?}"
+        );
+
+        let mut tampered_binding = binding.clone();
+        tampered_binding["compatibilityKeyBinding"]["compatibilityKey"]["kid"] =
+            serde_json::Value::String("attacker-substituted-kid".to_string());
+        unsafe {
+            std::env::set_var(
+                "JACS_TEST_COMPAT_BINDING_JSON",
+                tampered_binding.to_string(),
+            );
+        }
+        let tampered = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        assert!(
+            !tampered.allowed,
+            "strict trust must reject a tampered compatibility binding"
+        );
+        assert!(
+            tampered.reason.contains("binding"),
+            "unexpected tamper failure reason: {}",
+            tampered.reason
+        );
+
+        unsafe {
+            std::env::remove_var("JACS_TEST_COMPAT_BINDING_JSON");
+        }
+        let missing_binding = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        assert!(
+            !missing_binding.allowed,
+            "strict trust must fail when the compatibility binding cannot be resolved"
+        );
+        assert!(
+            missing_binding.reason.contains("binding"),
+            "unexpected strict failure reason: {}",
+            missing_binding.reason
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
+    fn verified_policy_fails_closed_when_first_contact_pin_cannot_persist() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let unusable_trust_root = temp_dir.path().join("not-a-directory");
+        std::fs::write(&unusable_trust_root, b"occupied").expect("create blocking file");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", &unusable_trust_root);
+        }
+
+        let card = make_signed_card_with_test_jwks();
+        let result = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Verified);
+        unsafe {
+            std::env::remove_var("JACS_TEST_JWKS_JSON");
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
+        }
+
+        assert!(
+            !result.allowed,
+            "a failed TOFU persistence boundary must reject Verified policy: {result:?}"
+        );
+        assert_eq!(result.trust_level, TrustLevel::Untrusted);
+        assert!(
+            result.reason.contains("pin"),
+            "unexpected reason: {}",
+            result.reason
+        );
     }
 
     // =========================================================================
@@ -1156,7 +1880,9 @@ mod tests {
         let assessment_strict = TrustAssessment {
             allowed: true,
             trust_level: TrustLevel::ExplicitlyTrusted,
-            reason: "Strict policy: agent is in local trust store".to_string(),
+            reason:
+                "Strict policy: explicitly trusted native root and compatibility binding verified"
+                    .to_string(),
             jacs_registered: true,
             agent_id: Some("trusted-agent-xyz".to_string()),
             policy: A2ATrustPolicy::Strict,
@@ -1167,7 +1893,7 @@ mod tests {
         let expected_strict = json!({
             "allowed": true,
             "trustLevel": "ExplicitlyTrusted",
-            "reason": "Strict policy: agent is in local trust store",
+            "reason": "Strict policy: explicitly trusted native root and compatibility binding verified",
             "jacsRegistered": true,
             "agentId": "trusted-agent-xyz",
             "policy": "Strict",

@@ -2,13 +2,9 @@
 Tests for JACS A2A (Agent-to-Agent) Protocol Integration (v0.4.0)
 """
 
-import base64
-import hashlib
 import pytest
 import json
-import uuid
-from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from jacs.a2a import (
     JACSA2AIntegration,
@@ -224,8 +220,19 @@ class TestJACSA2AIntegration:
             }
         }
 
-        # verify_response returns the payload on success
-        a2a_integration.client._agent.verify_response.return_value = {"data": "test"}
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(
+            {
+                "valid": True,
+                "status": "Verified",
+                "signerId": "signer-agent",
+                "signerVersion": "v1.0",
+                "artifactType": "a2a-task",
+                "timestamp": "2024-01-15T10:00:00Z",
+                "originalArtifact": {"data": "test"},
+                "parentSignaturesValid": True,
+                "parentVerificationResults": [],
+            }
+        )
 
         result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
 
@@ -235,7 +242,8 @@ class TestJACSA2AIntegration:
         assert result["artifact_type"] == "a2a-task"
         assert result["timestamp"] == "2024-01-15T10:00:00Z"
         assert result["original_artifact"] == {"data": "test"}
-        a2a_integration.client._agent.verify_response.assert_called_once()
+        a2a_integration.client._agent.verify_a2a_artifact.assert_called_once()
+        a2a_integration.client._agent.verify_response.assert_not_called()
 
     def test_verify_wrapped_artifact_with_parents(self, a2a_integration):
         """Test verifying artifact with parent signatures"""
@@ -245,13 +253,304 @@ class TestJACSA2AIntegration:
             "a2aArtifact": {}
         }
 
-        # verify_response returns the payload on success
-        a2a_integration.client._agent.verify_response.return_value = {}
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(
+            {
+                "valid": True,
+                "status": "Verified",
+                "signerId": "agent",
+                "signerVersion": "v1",
+                "artifactType": "a2a-task",
+                "timestamp": "2026-07-10T00:00:00Z",
+                "originalArtifact": {},
+                "parentSignaturesValid": True,
+                "parentVerificationResults": [
+                    {
+                        "index": index,
+                        "artifactId": f"parent-{index}",
+                        "signerId": f"parent-agent-{index}",
+                        "status": "Verified",
+                        "verified": True,
+                    }
+                    for index in range(2)
+                ],
+            }
+        )
 
         result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
 
         assert result["parent_signatures_count"] == 2
         assert result["parent_signatures_valid"] is True
+        a2a_integration.client._agent.verify_response.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "malicious_result",
+        [
+            {},
+            {"valid": False},
+            {"valid": True},
+            {"verified": True},
+            {"data": "parsed payload"},
+            "false",
+            {"valid": "false"},
+            {"verified": "true"},
+        ],
+    )
+    def test_legacy_verifier_truthy_non_booleans_fail_closed(
+        self, a2a_integration, malicious_result
+    ):
+        wrapped_artifact = {
+            "jacsId": "artifact-truthiness",
+            "jacsType": "a2a-task",
+            "a2aArtifact": {},
+            "jacsSignature": {"agentID": "remote-agent"},
+        }
+        a2a_integration.client._agent.verify_response.return_value = malicious_result
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is False
+
+    def test_legacy_verifier_literal_true_cannot_assert_a2a_validity_or_provenance(
+        self, a2a_integration
+    ):
+        wrapped_artifact = {
+            "jacsId": "artifact-explicit-true",
+            "jacsType": "attacker-controlled-type",
+            "jacsVersionDate": "attacker-controlled-time",
+            "a2aArtifact": {"attacker": "payload"},
+            "jacsSignature": {
+                "agentID": "attacker-controlled-signer",
+                "agentVersion": "attacker-controlled-version",
+            },
+        }
+        a2a_integration.client._agent.verify_response.return_value = True
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is False
+        assert "Invalid" in result["status"]
+        assert "canonical native" in result["status"]["Invalid"]["reason"]
+        assert result["signerId"] == ""
+        assert result["signerVersion"] == ""
+        assert result["artifactType"] == ""
+        assert result["timestamp"] == ""
+        assert result["originalArtifact"] == {}
+        assert result["parentSignaturesValid"] is False
+        assert "trustAssessment" not in result
+        a2a_integration.client._agent.verify_response.assert_not_called()
+
+    def test_parent_verified_flag_contradicting_invalid_status_fails_closed(
+        self, a2a_integration
+    ):
+        wrapped_artifact = {
+            "jacsId": "artifact-parent-status-contradiction",
+            "jacsType": "a2a-task",
+            "a2aArtifact": {},
+            "jacsSignature": {"agentID": "remote-agent"},
+            "jacsParentSignatures": [{"jacsId": "parent-1"}],
+        }
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(
+            {
+                "valid": True,
+                "status": "Verified",
+                "signerId": "remote-agent",
+                "signerVersion": "v1",
+                "artifactType": "a2a-task",
+                "timestamp": "2026-07-10T00:00:00Z",
+                "originalArtifact": {},
+                "parentSignaturesValid": True,
+                "parentVerificationResults": [
+                    {
+                        "index": 0,
+                        "artifactId": "parent-1",
+                        "status": "Invalid",
+                        "verified": True,
+                    }
+                ],
+            }
+        )
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is False
+        assert result["parent_signatures_valid"] is False
+
+    def test_missing_parent_verified_flag_invalidates_canonical_chain(self, a2a_integration):
+        wrapped_artifact = {
+            "jacsId": "artifact-with-parent",
+            "jacsType": "a2a-task",
+            "a2aArtifact": {},
+            "jacsSignature": {"agentID": "remote-agent"},
+            "jacsParentSignatures": [{"jacsId": "parent-1"}],
+        }
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(
+            {
+                "valid": True,
+                "status": "Verified",
+                "signerId": "remote-agent",
+                "signerVersion": "v1",
+                "artifactType": "a2a-task",
+                "timestamp": "2026-07-10T00:00:00Z",
+                "originalArtifact": {},
+                "parentSignaturesValid": "false",
+                "parentVerificationResults": [
+                    {"index": 0, "artifactId": "parent-1", "status": "Verified"}
+                ],
+            }
+        )
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is False
+        assert result["parent_signatures_valid"] is False
+
+    def test_truthy_parent_summary_string_does_not_validate_chain(self, a2a_integration):
+        wrapped_artifact = {
+            "jacsId": "artifact-with-parent-summary",
+            "jacsType": "a2a-task",
+            "a2aArtifact": {},
+            "jacsSignature": {"agentID": "remote-agent"},
+            "jacsParentSignatures": [{"jacsId": "parent-1"}],
+        }
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(
+            {
+                "valid": True,
+                "status": "Verified",
+                "signerId": "remote-agent",
+                "signerVersion": "v1",
+                "artifactType": "a2a-task",
+                "timestamp": "2026-07-10T00:00:00Z",
+                "originalArtifact": {},
+                "parentSignaturesValid": "true",
+                "parentVerificationResults": [
+                    {
+                        "index": 0,
+                        "artifactId": "parent-1",
+                        "status": "Verified",
+                        "verified": True,
+                    }
+                ],
+            }
+        )
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is False
+        assert result["parent_signatures_valid"] is False
+
+    @pytest.mark.parametrize(
+        "missing_field",
+        ["signerId", "signerVersion", "artifactType", "timestamp", "originalArtifact"],
+    )
+    def test_canonical_success_requires_authenticated_provenance_fields(
+        self, a2a_integration, missing_field
+    ):
+        wrapped_artifact = {
+            "jacsId": "artifact-canonical-provenance",
+            "jacsType": "attacker-type",
+            "jacsVersionDate": "attacker-time",
+            "a2aArtifact": {"attacker": "raw fallback"},
+            "jacsSignature": {
+                "agentID": "attacker-signer",
+                "agentVersion": "attacker-version",
+            },
+        }
+        canonical = {
+            "valid": True,
+            "status": "Verified",
+            "signerId": "verified-signer",
+            "signerVersion": "verified-version",
+            "artifactType": "a2a-task",
+            "timestamp": "2026-07-10T00:00:00Z",
+            "originalArtifact": {"verified": "payload"},
+            "parentSignaturesValid": True,
+            "parentVerificationResults": [],
+        }
+        canonical.pop(missing_field)
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(canonical)
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is False
+        if missing_field == "signerId":
+            assert result["signerId"] == ""
+        if missing_field == "originalArtifact":
+            assert result["originalArtifact"] == {}
+
+    def test_complete_canonical_result_uses_only_verified_provenance(self, a2a_integration):
+        wrapped_artifact = {
+            "jacsId": "artifact-canonical-positive",
+            "jacsType": "attacker-type",
+            "jacsVersionDate": "attacker-time",
+            "a2aArtifact": {"attacker": "raw fallback"},
+            "jacsSignature": {
+                "agentID": "attacker-signer",
+                "agentVersion": "attacker-version",
+            },
+        }
+        canonical = {
+            "valid": True,
+            "status": "Verified",
+            "signerId": "verified-signer",
+            "signerVersion": "verified-version",
+            "artifactType": "a2a-task",
+            "timestamp": "2026-07-10T00:00:00Z",
+            "originalArtifact": {"verified": "payload"},
+            "parentSignaturesValid": True,
+            "parentVerificationResults": [],
+        }
+        a2a_integration.client._agent.verify_a2a_artifact.return_value = json.dumps(canonical)
+
+        result = a2a_integration.verify_wrapped_artifact(wrapped_artifact)
+
+        assert result["valid"] is True
+        assert result["signerId"] == "verified-signer"
+        assert result["originalArtifact"] == {"verified": "payload"}
+
+    @pytest.mark.parametrize("malformed_allowed", [False, "true", 1, None])
+    def test_canonical_trust_denial_overrides_valid_flag(
+        self, a2a_integration, malformed_allowed
+    ):
+        wrapped_artifact = {
+            "jacsId": "artifact-trust-contradiction",
+            "jacsType": "a2a-task",
+            "jacsVersionDate": "2026-07-10T00:00:00Z",
+            "a2aArtifact": {},
+            "jacsSignature": {"agentID": "remote-agent", "agentVersion": "v1"},
+        }
+        canonical = {
+            "valid": True,
+            "status": "Verified",
+            "signerId": "remote-agent",
+            "signerVersion": "v1",
+            "artifactType": "a2a-task",
+            "timestamp": "2026-07-10T00:00:00Z",
+            "originalArtifact": {},
+            "parentSignaturesValid": True,
+            "parentVerificationResults": [],
+            "trustAssessment": {
+                "allowed": malformed_allowed,
+                "trustLevel": "JacsVerified",
+                "reason": "policy denied or malformed",
+                "jacsRegistered": True,
+                "agentId": "remote-agent",
+                "policy": "Verified",
+            },
+        }
+        a2a_integration.client._agent.verify_a2a_artifact_with_policy.return_value = (
+            json.dumps(canonical)
+        )
+
+        result = a2a_integration.verify_wrapped_artifact(
+            wrapped_artifact,
+            assess_trust=True,
+            trust_policy="verified",
+        )
+
+        assert result["valid"] is False
+        assert result["trust"]["allowed"] is False
+        assert result["trustLevel"] == "Untrusted"
+        assert result["trust"]["trust_level"] == "untrusted"
 
     def test_create_chain_of_custody(self, a2a_integration):
         """Test creating chain of custody document"""
@@ -342,7 +641,7 @@ class TestJACSA2AIntegration:
         assert result["metadata"]["version"] == "1.0"
 
     def test_generate_well_known_documents(self, a2a_integration):
-        """Test generating well-known documents (v0.4.0)"""
+        """Wrapper generation fails closed without the native bound generator."""
         agent_card = A2AAgentCard(
             name="Test",
             description="Test",
@@ -367,43 +666,13 @@ class TestJACSA2AIntegration:
             "keyAlgorithm": "ring-Ed25519"
         }
 
-        documents = a2a_integration.generate_well_known_documents(
-            agent_card,
-            "mock-jws-signature",
-            "bW9jay1wdWJsaWMta2V5",
-            agent_data
-        )
-
-        # Verify v0.4.0 well-known path (agent-card.json, not agent.json)
-        assert "/.well-known/agent-card.json" in documents
-        assert "/.well-known/jwks.json" in documents
-        assert "/.well-known/jacs-agent.json" in documents
-        assert "/.well-known/jacs-pubkey.json" in documents
-        assert "/.well-known/jacs-extension.json" in documents
-
-        # Verify agent card document has embedded signature (v0.4.0)
-        agent_doc = documents["/.well-known/agent-card.json"]
-        assert "signatures" in agent_doc
-        assert agent_doc["signatures"][0]["jws"] == "mock-jws-signature"
-
-        # Verify JACS descriptor
-        jacs_desc = documents["/.well-known/jacs-agent.json"]
-        assert jacs_desc["agentId"] == "agent-123"
-        assert jacs_desc["keyAlgorithm"] == "ring-Ed25519"
-        expected_hash = hashlib.sha256(
-            base64.b64decode("bW9jay1wdWJsaWMta2V5")
-        ).hexdigest()
-        assert jacs_desc["publicKeyHash"] == expected_hash
-
-        # Verify public key document
-        pubkey_doc = documents["/.well-known/jacs-pubkey.json"]
-        assert pubkey_doc["publicKey"] == "bW9jay1wdWJsaWMta2V5"
-        assert pubkey_doc["algorithm"] == "ring-Ed25519"
-
-        # Verify JWKS is present for A2A verifiers
-        jwks_doc = documents["/.well-known/jwks.json"]
-        assert "keys" in jwks_doc
-        assert isinstance(jwks_doc["keys"], list)
+        with pytest.raises(RuntimeError, match="requires the native JACS generator"):
+            a2a_integration.generate_well_known_documents(
+                agent_card,
+                "mock-jws-signature",
+                "bW9jay1wdWJsaWMta2V5",
+                agent_data,
+            )
 
 
 class TestA2ADataClasses:

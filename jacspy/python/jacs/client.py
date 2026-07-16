@@ -16,7 +16,10 @@ Example:
 import json
 import logging
 import os
-from typing import Any, List, Optional, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Union
+
+if TYPE_CHECKING:
+    from .a2a import A2AAgentCard, JACSA2AIntegration
 
 from .types import (
     AgentInfo,
@@ -26,12 +29,15 @@ from .types import (
     ConfigError,
     AgentNotLoadedError,
     SignedDocument,
-    SignerStatus,
     SigningError,
     VerificationError,
     VerificationResult,
 )
 from ._runtime import EphemeralAgentAdapter
+from ._verification import (
+    authenticated_signature_metadata,
+    normalize_attestation_verification_result,
+)
 
 logger = logging.getLogger("jacs.client")
 
@@ -114,15 +120,6 @@ def _quickstart_private_key_password(
 
 def _is_config_not_found_error(error: Exception) -> bool:
     return "config file not found" in str(error).lower()
-
-
-def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
-    sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
-    return (
-        sig_info.get("agentId", sig_info.get("agentID", "")),
-        sig_info.get("publicKeyHash", ""),
-        sig_info.get("date", ""),
-    )
 
 
 def _parse_signed_document(json_str: str) -> SignedDocument:
@@ -560,14 +557,19 @@ class JacsClient:
         try:
             is_valid = agent.verify_document(doc_str)
             doc_data = json.loads(doc_str)
-            sig_info = doc_data.get("jacsSignature", {})
+            signer_id, signer_public_key_hash, timestamp = (
+                authenticated_signature_metadata(
+                    doc_data,
+                    verified=is_valid is True,
+                )
+            )
             return VerificationResult(
-                valid=is_valid,
-                signer_id=sig_info.get("agentId", sig_info.get("agentID", "")),
-                signer_public_key_hash=sig_info.get("publicKeyHash", ""),
-                content_hash_valid=is_valid,
-                signature_valid=is_valid,
-                timestamp=sig_info.get("date", ""),
+                valid=is_valid is True,
+                signer_id=signer_id,
+                signer_public_key_hash=signer_public_key_hash,
+                content_hash_valid=is_valid is True,
+                signature_valid=is_valid is True,
+                timestamp=timestamp,
             )
         except Exception as e:
             if self._strict:
@@ -578,7 +580,10 @@ class JacsClient:
         """Verify this client's agent integrity."""
         agent = self._require_agent()
         try:
-            agent.verify_agent(None)
+            if agent.verify_agent(None) is not True:
+                raise VerificationError(
+                    "Agent verification did not return literal true"
+                )
             return VerificationResult(
                 valid=True,
                 signer_id=self._agent_info.agent_id if self._agent_info else "",
@@ -603,13 +608,18 @@ class JacsClient:
             doc_data = json.loads(doc_json) if doc_json else None
             if not isinstance(doc_data, dict):
                 doc_data = None
-            signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
+            signer_id, signer_public_key_hash, timestamp = (
+                authenticated_signature_metadata(
+                    doc_data,
+                    verified=is_valid is True,
+                )
+            )
             return VerificationResult(
-                valid=is_valid,
+                valid=is_valid is True,
                 signer_id=signer_id,
                 signer_public_key_hash=signer_public_key_hash,
-                content_hash_valid=is_valid,
-                signature_valid=is_valid,
+                content_hash_valid=is_valid is True,
+                signature_valid=is_valid is True,
                 timestamp=timestamp,
             )
         except Exception as e:
@@ -725,14 +735,9 @@ class JacsClient:
         try:
             result_json = agent.check_agreement(doc_str, agreement_fieldname)
             result_data = json.loads(result_json)
-            signers = [
-                SignerStatus.from_dict(s) for s in result_data.get("signers", [])
-            ]
-            return AgreementStatus(
-                complete=result_data.get("complete", False),
-                signers=signers,
-                pending=result_data.get("pending", []),
-            )
+            if not isinstance(result_data, dict):
+                raise ValueError("agreement status result must be a JSON object")
+            return AgreementStatus.from_dict(result_data)
         except json.JSONDecodeError as e:
             raise JacsError(f"Invalid agreement status response: {e}")
         except Exception as e:
@@ -800,8 +805,8 @@ class JacsClient:
         version, and re-signs the config file.
 
         Args:
-            algorithm: Optional new algorithm ("ring-Ed25519", "pq2025"). If
-                      None, keeps the current algorithm.
+            algorithm: Optional rotation target. Omit it or pass "pq2025";
+                      Ed25519 and unknown targets are rejected.
 
         Returns:
             dict with keys: jacs_id, old_version, new_version,
@@ -990,7 +995,9 @@ class JacsClient:
                 result_json = agent.verify_attestation_full(doc_key)
             else:
                 result_json = agent.verify_attestation(doc_key)
-            return json.loads(result_json)
+            return normalize_attestation_verification_result(
+                json.loads(result_json)
+            )
         except Exception as e:
             if self._strict:
                 raise VerificationError(f"Attestation verification failed: {e}") from e

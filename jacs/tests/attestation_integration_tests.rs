@@ -30,7 +30,7 @@ fn ephemeral_agent() -> Agent {
 }
 
 fn ephemeral_simple_agent() -> SimpleAgent {
-    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+    let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
     agent
 }
 

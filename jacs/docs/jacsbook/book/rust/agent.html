@@ -222,13 +222,12 @@ jacs agent create --create-keys true
 <h2 id="cryptographic-keys"><a class="header" href="#cryptographic-keys">Cryptographic Keys</a></h2>
 <p>New agents hold two key roles:</p>
 <div class="table-wrapper"><table><thead><tr><th>Role</th><th>Algorithm</th><th>Purpose</th></tr></thead><tbody>
-<tr><td><code>native_root</code></td><td><code>pq2025</code> (ML-DSA-87, FIPS-204)</td><td>Signs native JACS documents. New creation and all rotations are PQ-only.</td></tr>
+<tr><td><code>native_root</code></td><td><code>pq2025</code> (default) or <code>ring-Ed25519</code></td><td>Signs native JACS documents. Creation honors explicit Ed25519 selection. Rotation preserves the current algorithm unless Ed25519 explicitly upgrades to <code>pq2025</code>; downgrade is rejected.</td></tr>
 <tr><td><code>ecosystem_signing</code></td><td><code>ES256</code> (ECDSA P-256)</td><td>Compatibility credential for ecosystems that require classical signatures (JWKS/DID/A2A). Never signs native documents.</td></tr>
 </tbody></table>
 </div>
-<p><code>ring-Ed25519</code> remains supported for verification everywhere, and for
-signing only on grandfathered pre-existing agents (each such signature logs
-a WARN; rotation migrates them to <code>pq2025</code>).</p>
+<p>Use <code>ed25519</code> as the user-facing creation label; configuration and signed
+documents use the canonical <code>ring-Ed25519</code> wire label.</p>
 <p>The compatibility key is minted eagerly at creation (skip with
 <code>CreateAgentParams::builder().no_compat_key(true)</code> or the CLI
 <code>--no-compat-key</code>). Existing agents migrate explicitly:</p>
@@ -243,6 +242,41 @@ jacs agent verify -a ./path/to/agent.json
 jacs agent verify --require-dns
 jacs agent verify --require-strict-dns
 </code></pre>
+<h2 id="http-protocol-helpers"><a class="header" href="#http-protocol-helpers">HTTP protocol helpers</a></h2>
+<p><code>SimpleAgent</code> signs request context and complete response envelopes without
+exposing its internal mutex:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use std::collections::HashMap;
+use jacs::{protocol::verify_signed_event_with_trusted_keys, simple::SimpleAgent};
+
+let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
+let body = br#"{"action":"approve"}"#;
+let authorization = agent.build_request_auth_header(
+    "POST",
+    "https://api.example.com/v1/jobs?mode=strict",
+    body,
+    "jobs-api",
+)?;
+
+let envelope = agent.sign_response(&amp;serde_json::json!({"decision": "allow"}))?;
+let signer_id = envelope["jacsSignature"]["agentID"]
+    .as_str()
+    .ok_or("missing signer ID")?;
+let keys = HashMap::from([(signer_id.to_owned(), agent.get_public_key()?)]);
+let verified = verify_signed_event_with_trusted_keys(&amp;envelope, &amp;keys)?;
+assert!(authorization.starts_with("JACS v2."));
+assert_eq!(verified.data["decision"], "allow");
+<span class="boring">}</span></code></pre></pre>
+<p>The request header binds method, absolute URL including query, exact body
+bytes, audience, key, time, and nonce. The response signature covers both data
+and every envelope field. The verifier rejects unsigned/plain events, unknown
+signers, legacy payload-only envelopes, and any metadata or payload mutation.
+See <a href="../advanced/security.html#request-bound-http-authorization">Security</a> for
+server replay-store requirements and migration from unbound headers.</p>
+<p>The supplied key map is the trust boundary. A valid signature proves possession
+of that key, not a real-world identity unless the application established the
+signer-to-key association under its configured policy.</p>
 <h2 id="agent-document-structure"><a class="header" href="#agent-document-structure">Agent Document Structure</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",

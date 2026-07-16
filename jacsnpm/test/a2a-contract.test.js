@@ -144,6 +144,22 @@ function makeWrappedArtifact({
   };
 }
 
+function makeIdentityBoundAgentCard(wrappedArtifact) {
+  return {
+    name: 'Remote Agent',
+    description: 'Identity-bound remote Agent Card used for trust-policy verification',
+    version: '1',
+    protocolVersions: ['0.4.0'],
+    supportedInterfaces: [{ url: 'https://remote.example/a2a', protocolBinding: 'jsonrpc' }],
+    capabilities: { extensions: [{ uri: 'urn:jacs:provenance-v1', required: false }] },
+    skills: [],
+    metadata: {
+      jacsId: wrappedArtifact.jacsSignature?.agentID,
+      jacsVersion: wrappedArtifact.jacsSignature?.agentVersion,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Unit Tests — Verify Result Shape
 // ---------------------------------------------------------------------------
@@ -203,7 +219,10 @@ describe('A2A Contract Tests', function () {
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client, 'verified');
       const wrapped = makeWrappedArtifact();
-      const result = await int.verifyWrappedArtifact(wrapped);
+      const result = await int.verifyWrappedArtifact(
+        wrapped,
+        makeIdentityBoundAgentCard(wrapped),
+      );
 
       expect(result, 'Output must contain trustAssessment when trust policy is set')
         .to.have.property('trustAssessment');
@@ -213,7 +232,10 @@ describe('A2A Contract Tests', function () {
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client, 'verified');
       const wrapped = makeWrappedArtifact();
-      const result = await int.verifyWrappedArtifact(wrapped);
+      const result = await int.verifyWrappedArtifact(
+        wrapped,
+        makeIdentityBoundAgentCard(wrapped),
+      );
 
       if (!result.trustAssessment) {
         expect.fail('Missing trustAssessment in output');
@@ -282,6 +304,10 @@ describe('A2A Contract Tests', function () {
         timestamp: expected.timestamp,
         artifact: expected.originalArtifact,
       });
+      wrapped.jacsParentSignatures = expected.parentVerificationResults.map((parent) => ({
+        jacsId: parent.artifactId,
+        jacsSignature: { agentID: parent.signerId },
+      }));
       const result = await int.verifyWrappedArtifact(wrapped);
 
       const valid = validate(result);
@@ -294,11 +320,14 @@ describe('A2A Contract Tests', function () {
       expect(result.signerId).to.equal(expected.signerId);
     });
 
-    it('should distinguish Unverified from Invalid in status field', async () => {
+    it('should make denied trust Invalid even when cryptographic status was Unverified', async () => {
       const unverifiedExpected = loadFixture('foreign_unverified');
       const invalidExpected = loadFixture('invalid_signature');
 
-      // Both fail verification but for different reasons
+      // Both fail verification. The foreign-unverified fixture begins with an
+      // Unverified cryptographic status, but the high-level Node API also
+      // applies its default Verified admission policy. A denied trust result
+      // must AND with cryptographic validity and produce Invalid.
       const client = createMockClient(false);
       const int = new JACSA2AIntegration(client);
 
@@ -309,7 +338,10 @@ describe('A2A Contract Tests', function () {
         timestamp: unverifiedExpected.timestamp,
         artifact: unverifiedExpected.originalArtifact,
       });
-      const unverifiedResult = await int.verifyWrappedArtifact(unverifiedWrapped);
+      const unverifiedResult = await int.verifyWrappedArtifact(
+        unverifiedWrapped,
+        makeIdentityBoundAgentCard(unverifiedWrapped),
+      );
 
       const invalidWrapped = makeWrappedArtifact({
         signerId: invalidExpected.signerId,
@@ -318,27 +350,24 @@ describe('A2A Contract Tests', function () {
         timestamp: invalidExpected.timestamp,
         artifact: invalidExpected.originalArtifact,
       });
-      const invalidResult = await int.verifyWrappedArtifact(invalidWrapped);
+      const invalidResult = await int.verifyWrappedArtifact(
+        invalidWrapped,
+        makeIdentityBoundAgentCard(invalidWrapped),
+      );
 
       // Both must be invalid
       expect(unverifiedResult.valid).to.equal(false);
       expect(invalidResult.valid).to.equal(false);
 
-      // But they must have distinct status values
       expect(unverifiedResult).to.have.property('status');
       expect(invalidResult).to.have.property('status');
-
-      expect(unverifiedResult.status).to.not.deep.equal(invalidResult.status,
-        'Unverified and Invalid must produce distinct status values');
-
-      // Unverified status: { Unverified: { reason: "..." } }
       if (typeof unverifiedResult.status === 'object') {
-        expect(unverifiedResult.status).to.have.property('Unverified');
+        expect(unverifiedResult.status).to.have.property('Invalid');
       }
-      // Invalid status: { Invalid: { reason: "..." } }
       if (typeof invalidResult.status === 'object') {
         expect(invalidResult.status).to.have.property('Invalid');
       }
+      expect(unverifiedResult.trustAssessment?.allowed).to.equal(false);
     });
 
     it('should match trust_blocked fixture schema', async () => {
@@ -352,7 +381,10 @@ describe('A2A Contract Tests', function () {
         timestamp: expected.timestamp,
         artifact: expected.originalArtifact,
       });
-      const result = await int.verifyWrappedArtifact(wrapped);
+      const result = await int.verifyWrappedArtifact(
+        wrapped,
+        makeIdentityBoundAgentCard(wrapped),
+      );
 
       const valid = validate(result);
       if (!valid) {

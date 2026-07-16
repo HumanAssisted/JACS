@@ -121,10 +121,6 @@ pub const ML_DSA_87_PUBLIC_KEY_SIZE: usize = 2592;
 /// ML-DSA-87 signature size in bytes.
 pub const ML_DSA_87_SIGNATURE_SIZE: usize = 4627;
 
-/// Non-ASCII ratio threshold for Ed25519 detection.
-/// Ed25519 keys typically have high non-ASCII content (>50%).
-pub const ED25519_NON_ASCII_RATIO: f32 = 0.5;
-
 // ============================================================================
 // Dilithium Signature Size Detection
 // ============================================================================

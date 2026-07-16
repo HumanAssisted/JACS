@@ -1,0 +1,11 @@
+{
+  "algorithm": "ed25519",
+  "signing_algorithm": "ring-Ed25519",
+  "agent_id": "2f8008ac-49f7-4de2-9777-c2b79d398dd1",
+  "document_id": "65cb90e9-dfc4-4664-b77e-cd9f5c864abe",
+  "timestamp": "2026-07-10T08:39:59.897304+00:00",
+  "public_key_hash": "216f2834c3efd869cb6169762251592769147b443bbf37bddcfd368b90baefe9",
+  "generated_by": "python",
+  "jacs_version": "0.11.4",
+  "original_fixture": "ed25519_curve"
+}

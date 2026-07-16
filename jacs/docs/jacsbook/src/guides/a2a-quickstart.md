@@ -67,10 +67,13 @@ Receiving agents that don't understand JACS will ignore the extra fields. Receiv
 
 JACS generates two key pairs per agent:
 
-- **Post-quantum (ML-DSA-87)** for JACS document signatures -- future-proof
-- **Ed25519 (`EdDSA`)** for JWS Agent Card signatures -- A2A ecosystem compatibility
+- A **native JACS root** (`pq2025` by default, or `ring-Ed25519`) for JACS
+  documents and compatibility-key authorization.
+- A persisted **P-256 / ES256 compatibility key** for RFC 8785-canonicalized
+  Agent Card JWS signatures.
 
-This means your agent is compatible with both the current A2A ecosystem and quantum-resistant verification.
+The native root signs the published compatibility binding, so strict verifiers
+can connect the ES256 card key to an explicitly trusted JACS identity.
 
 ---
 
@@ -83,13 +86,19 @@ A: The `a2a-server` extra requires Python 3.10+ and adds FastAPI + uvicorn. If y
 A: The remote agent's Agent Card does not include the `urn:jacs:provenance-v1` extension. This is normal for non-JACS A2A agents. With the `open` trust policy, they are still allowed; with `verified`, they are rejected.
 
 **Q: Verification returns `valid: true` but `trust.allowed: false`.**
-A: The signature is cryptographically correct, but the trust policy rejected the signer. With `strict` policy, the signer must be in your local trust store. Add them with `a2a.trust_a2a_agent(card_json)`.
+A: The card signature may be correct while identity policy still rejects it.
+For `strict`, import the full native self-signed agent document and explicit
+native public key through an authenticated out-of-band channel with
+`a2a.trust_a2a_agent(agent_document_json, public_key_pem)`. Passing the
+self-advertised Agent Card is rejected.
 
 **Q: `sign_artifact` raises "no agent loaded".**
 A: Call `JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")` or `JacsClient(config_path=...)` before signing. The client must have a loaded agent with keys.
 
 **Q: Agent Card export returns empty skills.**
-A: Skills come from A2A Agent Card data. Pass `skills=[...]` to `export_agent_card()` when exporting the card.
+A: Skills are part of the signed Agent Card. Configure them on the agent before
+generating or mounting discovery documents; servers reject post-signing skill
+overrides.
 
 **Q: My existing A2A client doesn't understand the JACS fields.**
 A: This is expected. JACS fields (`jacsId`, `jacsSignature`, `jacsSha256`) are additive. Non-JACS clients should ignore unknown fields per JSON convention. If a client rejects them, strip JACS fields before sending by extracting `signed["payload"]`.

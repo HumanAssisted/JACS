@@ -230,10 +230,20 @@ app.add_middleware(JacsMiddleware, client=client)
 </code></pre>
 <p>Useful options:</p>
 <ul>
-<li><code>strict=True</code> to reject verification failures instead of passing through</li>
+<li>Signing and verification failures fail closed by default</li>
 <li><code>sign_responses=False</code> or <code>verify_requests=False</code> to narrow the behavior</li>
 <li><code>a2a=True</code> to also expose A2A discovery routes from the same FastAPI app</li>
 </ul>
+<p>Legacy compatibility options are explicit and dangerous:</p>
+<ul>
+<li><code>allow_unsigned_output=True</code> permits raw output after signing fails</li>
+<li><code>allow_unverified_passthrough=True</code> permits unverifiable input to continue</li>
+<li><code>allow_plain_signature_fallback=True</code> permits an attestation request to
+downgrade to a plain signature, dropping attestation claims</li>
+</ul>
+<p><code>strict=True</code> always disables all three fallbacks. Do not use these options at
+a trust boundary unless the caller separately marks the data as unsigned or
+unverified.</p>
 <p>For auth-style endpoints, replay protection is available:</p>
 <pre><code class="language-python">app.add_middleware(
     JacsMiddleware,
@@ -263,7 +273,9 @@ task = Task(
     guardrail=jacs_guardrail(client=client),
 )
 </code></pre>
-<p>If you build tasks with factories, <code>signed_task()</code> can pre-attach the guardrail.</p>
+<p>If you build tasks with factories, <code>signed_task()</code> can pre-attach the guardrail.
+It rejects an existing guardrail rather than silently allowing that guardrail
+to suppress JACS signing; compose guardrails explicitly when both are needed.</p>
 <h2 id="anthropic--claude-sdk"><a class="header" href="#anthropic--claude-sdk">Anthropic / Claude SDK</a></h2>
 <p>Use the Anthropic adapter when you want signed return values from normal Python tool functions:</p>
 <pre><code class="language-python">from jacs.adapters.anthropic import signed_tool

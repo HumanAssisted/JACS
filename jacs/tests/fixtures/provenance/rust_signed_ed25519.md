@@ -8,15 +8,15 @@ content:
   hashAlgorithm: sha256
   inlineSignatureVersion: 1
   signedContentHash: no5dxbp1r2zqkzn-CcfoBTzc0g1ei9Ps4E6q_bmiC3U
-jacsId: 95ed19c3-2686-4f45-be2b-dfcca9ed5606
+jacsId: e7ded000-20d7-4982-b085-02f03293e30f
 jacsLevel: artifact
-jacsOriginalDate: 2026-05-02T00:56:51.467865+00:00
-jacsOriginalVersion: a5421cf6-4588-4ee1-a009-bb1a78685a08
-jacsSha256: 722cb03029164635522f068335fa8a5c9984162880bf4a552f0076903e1e1119
+jacsOriginalDate: 2026-07-10T07:25:44.876805+00:00
+jacsOriginalVersion: 6887e681-f0ba-430a-9c2b-98eeb4ef8ed2
+jacsSha256: 772252b72d8e396a782389c5bdb6e2ffa61d11b1676988abcaf4b57a82838710
 jacsSignature:
-  agentID: e389982b-cd64-4a04-9be3-378e9971b4e0
-  agentVersion: 0ba015fe-2e6e-403b-9d9f-73ca2cac451e
-  date: 2026-05-02T00:56:51.468352+00:00
+  agentID: f162c86a-b331-4a93-b2b9-b7e3501fa0d0
+  agentVersion: 8fdbfe25-3ef5-42d3-83d8-0286f2f544a7
+  date: 2026-07-10T07:25:44.876864+00:00
   fields:
   - $schema
   - content
@@ -27,12 +27,13 @@ jacsSignature:
   - jacsType
   - jacsVersion
   - jacsVersionDate
-  iat: 1777683411
-  jti: 019de630-320c-7183-9f82-37b72a04382a
-  publicKeyHash: 0bebc98f846e92334fd1552ff9e17c31acfa72d1e5e67ad1adca7430fafb5ebf
-  signature: Bzx22PpDSGSqLqQCxpyq+rk7iYhH+1Ch3xbG84Kl9ZHgYW07sLdN2erOzg12AGfttirJ4ZQuh9+b3007DpvtAA==
+  iat: 1783668344
+  jti: 019f4aeb-082c-7550-bfff-d3f70a4b94af
+  publicKeyHash: 8b82db4c4a51ec59dce89a4362277e4974e2f5f54bad0b47a6db6788ecb8663b
+  signature: krx/hLopBAXBCvopnvmBakJIngzuk87mLR7s0+K2k0GQg56XNciIBFZUqJ8fl1w2vMAJzi6D1PFuBi0dvdjcAQ==
+  signatureContentVersion: jacs-signature-v2
   signingAlgorithm: ring-Ed25519
 jacsType: inline-md
-jacsVersion: a5421cf6-4588-4ee1-a009-bb1a78685a08
-jacsVersionDate: 2026-05-02T00:56:51.467865+00:00
+jacsVersion: 6887e681-f0ba-430a-9c2b-98eeb4ef8ed2
+jacsVersionDate: 2026-07-10T07:25:44.876805+00:00
 -----END JACS SIGNATURE-----

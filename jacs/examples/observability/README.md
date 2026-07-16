@@ -4,7 +4,7 @@
 
 1. **Start the observability stack:**
 ```bash
-docker compose -f docker-compose.observability.yml up -d
+docker compose up -d
 ```
 
 2. **Run the JACS demo:**
@@ -29,13 +29,5 @@ The demo will run for 50 iterations (~2 minutes) then exit.
 ## Cleanup
 
 ```bash
-docker compose -f docker-compose.observability.yml down
+docker compose down
 ```
-```
-
-Now you can:
-1. `docker compose -f docker-compose.observability.yml up -d`
-2. `cargo run` 
-3. Check Grafana at http://localhost:3000 to see your data!
-
-http://localhost:9090/targets

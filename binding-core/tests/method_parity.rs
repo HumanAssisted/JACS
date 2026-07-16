@@ -42,6 +42,16 @@ fn known_methods() -> Vec<&'static str> {
         "sign_message_json",
         "sign_raw_bytes_base64",
         "sign_file_json",
+        // Protocol helpers
+        "build_auth_header",
+        "build_request_auth_header",
+        "canonicalize_json",
+        "sign_response",
+        "encode_verify_payload",
+        "decode_verify_payload",
+        "extract_document_id",
+        "prepare_signed_event_replay_json",
+        "unwrap_signed_event",
         // Conversion
         "to_yaml",
         "from_yaml",
@@ -216,11 +226,36 @@ fn test_method_parity_fixture_count() {
 
     assert_eq!(
         flat_methods.len(),
-        43,
-        "SimpleAgentWrapper should have exactly 43 public methods. \
+        52,
+        "SimpleAgentWrapper should have exactly 52 public methods. \
          Found {}. If you added or removed a method, update the fixture.",
         flat_methods.len()
     );
+}
+
+#[test]
+fn wrapper_exposes_additive_auth_builders() {
+    let _: fn(&jacs_binding_core::SimpleAgentWrapper) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::build_auth_header;
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &[u8],
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::build_request_auth_header;
+}
+
+#[test]
+fn wrapper_exposes_external_replay_preparation() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        u64,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::prepare_signed_event_replay_json;
 }
 
 #[cfg(feature = "agreements")]

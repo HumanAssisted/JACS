@@ -18,7 +18,9 @@ if result["allowed"]:
 
 ### Add to Your Trust Store
 
-For `strict` policy, agents must be in your local trust store:
+For `strict` policy, establish native JACS trust from an authenticated agent
+document and explicit native public key. An Agent Card is self-advertised and
+cannot create strict identity trust by itself:
 
 ```python
 from jacs.client import JacsClient
@@ -32,8 +34,8 @@ assessment = a2a.assess_remote_agent(remote_card_json)
 print(f"JACS registered: {assessment['jacs_registered']}")
 print(f"Allowed: {assessment['allowed']}")
 
-# Add to trust store (verifies agent's self-signature first)
-a2a.trust_a2a_agent(remote_card_json)
+# Obtain both values through an authenticated out-of-band channel.
+a2a.trust_a2a_agent(remote_native_agent_json, remote_native_public_key_pem)
 ```
 
 ### Async API
@@ -79,8 +81,9 @@ const assessment = a2a.assessRemoteAgent(remoteCardJson);
 console.log(`JACS registered: ${assessment.jacsRegistered}`);
 console.log(`Allowed: ${assessment.allowed}`);
 
-// Add to trust store
-a2a.trustA2AAgent(remoteAgentId);
+// Obtain both through an authenticated out-of-band channel. Passing an
+// Agent Card here is rejected.
+a2a.trustA2AAgent(remoteNativeAgentDocument, remoteNativePublicKeyPem);
 ```
 
 </div>
@@ -100,7 +103,12 @@ a2a.trustA2AAgent(remoteAgentId);
 4. Trust     -- Optionally add the agent to your local trust store
 ```
 
-With `open` policy, all agents pass step 3. With `verified`, agents must have the JACS extension. With `strict`, agents must be explicitly added to the trust store in step 4 before they pass.
+With `open`, all agents pass step 3 without identity assurance. With
+`verified`, the Agent Card JWS must verify against the same-origin JWKS and the
+ES256 key must match its durable TOFU pin; this proves origin/key continuity,
+not native identity. With `strict`, the native root must be explicitly trusted
+and its signed compatibility binding must authorize the exact card key,
+identity, version, scope, and current binding hash.
 
 ## Next Steps
 

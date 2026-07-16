@@ -97,7 +97,7 @@ def test_ap2_mandate_export_succeeds_after_scope_grant(agent):
     with pytest.raises(RuntimeError):
         agent.export_ap2_mandate(json.dumps(SAMPLE_CHECKOUT))
 
-    # Grant identity + ap2-mandate content scope, PQ-root-signed.
+    # Grant identity + ap2-mandate content scope, native-root-signed.
     binding = json.loads(
         agent.issue_compat_binding(
             ["jwks", "did", "a2a-agent-card", "w3c-agent-identity", "ap2-mandate"]

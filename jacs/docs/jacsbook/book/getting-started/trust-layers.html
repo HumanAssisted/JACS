@@ -195,9 +195,9 @@
 <p><strong>Policy status values:</strong> <code>allowed</code> · <code>blocked</code> · <code>not_assessed</code></p>
 <p>Trust policies (<code>open</code>, <code>verified</code>, <code>strict</code>) control admission:</p>
 <div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Requirement</th></tr></thead><tbody>
-<tr><td><code>open</code></td><td>Accept all agents</td></tr>
-<tr><td><code>verified</code></td><td>Agent must have the <code>urn:jacs:provenance-v1</code> extension</td></tr>
-<tr><td><code>strict</code></td><td>Agent must be in the local trust store</td></tr>
+<tr><td><code>open</code></td><td>Accept all agents without identity assurance</td></tr>
+<tr><td><code>verified</code></td><td>Valid same-origin Agent Card JWS plus a durable ES256 TOFU pin; proves origin/key continuity, not native identity</td></tr>
+<tr><td><code>strict</code></td><td>Explicitly trusted native root plus a valid binding for the exact identity, version, ES256 key, scope, and binding lifecycle</td></tr>
 </tbody></table>
 </div>
 <p>See <a href="../integrations/a2a.html">A2A Interoperability</a> for full details.</p>

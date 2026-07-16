@@ -71,8 +71,8 @@ EOF
 # Create signed document
 jacs document create -f invoice.json
 
-# Output shows the saved document path
-# Document saved to: jacs_data/documents/[uuid]/[version].json
+# Output shows the exact saved document path, for example:
+# Saved signed document: jacs_data/<uuid>:<version>
 ```
 
 **Create with custom output:**
@@ -80,6 +80,9 @@ jacs document create -f invoice.json
 ```bash
 # Specify output filename
 jacs document create -f invoice.json -o signed-invoice.json
+
+# Machine-readable document key and path
+jacs document create -f invoice.json --json
 
 # Print to stdout (don't save)
 jacs document create -f invoice.json --no-save

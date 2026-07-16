@@ -7,7 +7,6 @@ These provide type hints and structure for the simplified API.
 
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 
 
 @dataclass
@@ -187,6 +186,7 @@ class VerificationResult:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VerificationResult":
         """Create VerificationResult from a dictionary."""
+        valid = data.get("valid") is True
         errors = data.get("errors", [])
         if not errors and data.get("error"):
             errors = [data.get("error")]
@@ -195,12 +195,14 @@ class VerificationResult:
             for a in data.get("attachments", [])
         ]
         return cls(
-            valid=data.get("valid", False),
-            signer_id=data.get("signer_id", ""),
-            signer_public_key_hash=data.get("signer_public_key_hash", ""),
-            content_hash_valid=data.get("content_hash_valid", False),
-            signature_valid=data.get("signature_valid", False),
-            timestamp=data.get("timestamp", ""),
+            valid=valid,
+            signer_id=data.get("signer_id", "") if valid else "",
+            signer_public_key_hash=(
+                data.get("signer_public_key_hash", "") if valid else ""
+            ),
+            content_hash_valid=data.get("content_hash_valid") is True,
+            signature_valid=data.get("signature_valid") is True,
+            timestamp=data.get("timestamp", "") if valid else "",
             errors=errors,
             attachments=attachments,
         )
@@ -425,7 +427,7 @@ class SignerStatus:
         """Create SignerStatus from a dictionary."""
         return cls(
             agent_id=data.get("agent_id", data.get("agentId", "")),
-            signed=data.get("signed", False),
+            signed=data.get("signed") is True,
             signed_at=data.get("signed_at", data.get("signedAt")),
         )
 
@@ -451,7 +453,7 @@ class AgreementStatus:
             for s in data.get("signers", [])
         ]
         return cls(
-            complete=data.get("complete", False),
+            complete=data.get("complete") is True,
             signers=signers,
             pending=data.get("pending", []),
         )

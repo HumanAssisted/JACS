@@ -19,6 +19,7 @@ pub struct Jwk {
     pub kty: String,
     pub kid: String,
     pub alg: String,
+    #[serde(rename = "use")]
     pub use_: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub n: Option<String>,
@@ -81,7 +82,7 @@ pub fn create_jwk_keys(
     let (jacs_private, jacs_public) = match jacs_alg {
         "pq2025" => crate::crypt::pq2025::generate_keys()?,
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        "ecdsa" | "es256" => es256_pair()?,
+        "ecdsa" | "es256" | "ES256" => es256_pair()?,
         _ => {
             return Err(JacsError::CryptoError(format!(
                 "Unsupported JACS algorithm: {}",
@@ -92,7 +93,7 @@ pub fn create_jwk_keys(
 
     let (a2a_private, a2a_public) = match a2a_alg {
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
-        "ecdsa" | "es256" => es256_pair()?,
+        "ecdsa" | "es256" | "ES256" => es256_pair()?,
         _ => {
             return Err(JacsError::CryptoError(format!(
                 "Unsupported A2A algorithm: {}",
@@ -158,12 +159,72 @@ pub fn export_es256_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsE
 pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result<Jwk, JacsError> {
     match algorithm {
         "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
-        "ecdsa" | "es256" => export_es256_as_jwk(public_key, key_id),
+        "ecdsa" | "es256" | "ES256" => export_es256_as_jwk(public_key, key_id),
         _ => Err(JacsError::CryptoError(format!(
             "Cannot export {} key as JWK",
             algorithm
         ))),
     }
+}
+
+/// Convert a public ES256 JWK into SPKI PEM after validating its JOSE shape
+/// and RFC 7638 key id.
+///
+/// This is verification-only: it never accepts or creates private key
+/// material. A2A trust uses the returned PEM to verify the card JWS and then
+/// validates the same JWK against the native-root-signed compatibility
+/// binding.
+pub fn es256_jwk_public_pem(jwk: &Jwk) -> Result<String, JacsError> {
+    if jwk.kty != "EC"
+        || jwk.crv.as_deref() != Some("P-256")
+        || jwk.alg != "ES256"
+        || jwk.use_ != "sig"
+    {
+        return Err(JacsError::CryptoError(format!(
+            "ES256 A2A JWK must declare kty=EC, crv=P-256, alg=ES256, use=sig \
+             (got kty={}, crv={:?}, alg={}, use={})",
+            jwk.kty, jwk.crv, jwk.alg, jwk.use_
+        )));
+    }
+    let decode_coordinate = |name: &str, encoded: Option<&str>| -> Result<Vec<u8>, JacsError> {
+        let encoded = encoded
+            .ok_or_else(|| JacsError::CryptoError(format!("ES256 A2A JWK is missing '{name}'")))?;
+        let bytes = general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .map_err(|error| {
+                JacsError::CryptoError(format!("ES256 A2A JWK '{name}' is invalid: {error}"))
+            })?;
+        if bytes.len() != 32 {
+            return Err(JacsError::CryptoError(format!(
+                "ES256 A2A JWK '{name}' must decode to 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        Ok(bytes)
+    };
+    let x = decode_coordinate("x", jwk.x.as_deref())?;
+    let y = decode_coordinate("y", jwk.y.as_deref())?;
+    let mut sec1 = Vec::with_capacity(65);
+    sec1.push(0x04);
+    sec1.extend_from_slice(&x);
+    sec1.extend_from_slice(&y);
+    let computed_kid = crate::crypt::es256::rfc7638_thumbprint_p256(&sec1)?;
+    if jwk.kid != computed_kid {
+        return Err(JacsError::CryptoError(format!(
+            "ES256 A2A JWK kid '{}' is not its RFC 7638 thumbprint '{}'",
+            jwk.kid, computed_kid
+        )));
+    }
+
+    use p256::pkcs8::EncodePublicKey;
+    let public = p256::PublicKey::from_sec1_bytes(&sec1).map_err(|error| {
+        JacsError::CryptoError(format!("ES256 A2A JWK point is invalid: {error}"))
+    })?;
+    public
+        .to_public_key_pem(p256::pkcs8::LineEnding::LF)
+        .map_err(|error| {
+            JacsError::CryptoError(format!("ES256 A2A JWK SPKI encoding failed: {error}"))
+        })
 }
 
 /// Create a JWK set document
@@ -188,7 +249,9 @@ pub fn sign_jws(
     let header = json!({
         "alg": match algorithm {
             "ring-Ed25519" => "EdDSA",
-            "ecdsa" | "es256" => return Err(JacsError::CryptoError(ES256_JWS_WALL.to_string())),
+            "ecdsa" | "es256" | "ES256" => {
+                return Err(JacsError::CryptoError(ES256_JWS_WALL.to_string()));
+            }
             _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm))),
         },
         "typ": "JWT",
@@ -209,7 +272,7 @@ pub fn sign_jws(
                 crate::crypt::ringwrapper::sign_string(private_key.to_vec(), &signing_input)?;
             general_purpose::STANDARD.decode(&sig_b64)?
         }
-        "ecdsa" | "es256" => {
+        "ecdsa" | "es256" | "ES256" => {
             // Unreachable in practice (the header match above already
             // returned), kept so both arms state the same FR25 wall.
             return Err(JacsError::CryptoError(ES256_JWS_WALL.to_string()));
@@ -261,12 +324,13 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
     let header_bytes = general_purpose::URL_SAFE_NO_PAD
         .decode(header_b64)
         .map_err(|e| JacsError::CryptoError(format!("Invalid JWS header encoding: {}", e)))?;
-    let header: Value = serde_json::from_slice(&header_bytes)
+    let header: Value = jacs_core::strict_json::parse_strict_json_slice(&header_bytes)
         .map_err(|e| JacsError::CryptoError(format!("Invalid JWS header JSON: {}", e)))?;
 
     // Verify algorithm matches
-    let expected_alg = match algorithm {
-        "ring-Ed25519" => "EdDSA",
+    let (expected_alg, expected_typ) = match algorithm {
+        "ring-Ed25519" => ("EdDSA", "JWT"),
+        "ES256" | "es256" | "ecdsa" => ("ES256", "JOSE"),
         _ => {
             return Err(JacsError::CryptoError(format!(
                 "Unsupported JWS verification algorithm: {}",
@@ -274,12 +338,22 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
             )));
         }
     };
-    if let Some(header_alg) = header.get("alg").and_then(|v| v.as_str())
-        && header_alg != expected_alg
-    {
+    let header_alg = header.get("alg").and_then(Value::as_str).ok_or_else(|| {
+        JacsError::CryptoError("JWS protected header is missing required 'alg'".to_string())
+    })?;
+    if header_alg != expected_alg {
         return Err(JacsError::CryptoError(format!(
             "JWS algorithm mismatch: header says '{}', expected '{}'",
             header_alg, expected_alg
+        )));
+    }
+    let header_typ = header.get("typ").and_then(Value::as_str).ok_or_else(|| {
+        JacsError::CryptoError("JWS protected header is missing required 'typ'".to_string())
+    })?;
+    if header_typ != expected_typ {
+        return Err(JacsError::CryptoError(format!(
+            "JWS type mismatch: header says '{}', expected '{}' for {}",
+            header_typ, expected_typ, expected_alg
         )));
     }
 
@@ -300,6 +374,18 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
                 public_key.to_vec(),
                 &signing_input,
                 &signature_standard_b64,
+            )?;
+        }
+        "ES256" | "es256" | "ecdsa" => {
+            let public_pem = std::str::from_utf8(public_key).map_err(|error| {
+                JacsError::CryptoError(format!(
+                    "ES256 JWS public key must be UTF-8 SPKI PEM: {error}"
+                ))
+            })?;
+            crate::crypt::es256::verify_es256_jose(
+                public_pem,
+                signing_input.as_bytes(),
+                &signature_bytes,
             )?;
         }
         _ => {
@@ -338,5 +424,24 @@ mod tests {
 
         let jwk_set = create_jwk_set(vec![jwk]);
         assert!(jwk_set["keys"].is_array());
+        assert_eq!(jwk_set["keys"][0]["use"], "sig");
+        assert!(jwk_set["keys"][0].get("use_").is_none());
+    }
+
+    #[test]
+    fn es256_jwk_to_pem_requires_valid_thumbprint() {
+        let keys =
+            create_jwk_keys(Some("ring-Ed25519"), Some("ES256")).expect("generate ES256 key");
+        let kid =
+            crate::crypt::es256::rfc7638_thumbprint_p256(&keys.a2a_public_key).expect("thumbprint");
+        let jwk = export_as_jwk(&keys.a2a_public_key, "ES256", &kid).expect("export JWK");
+        let pem = es256_jwk_public_pem(&jwk).expect("valid JWK converts to PEM");
+        assert!(pem.starts_with("-----BEGIN PUBLIC KEY-----"));
+
+        let mut substituted = jwk;
+        substituted.kid = "attacker-key-id".to_string();
+        let error = es256_jwk_public_pem(&substituted)
+            .expect_err("a substituted kid must not select this key");
+        assert!(error.to_string().contains("thumbprint"));
     }
 }

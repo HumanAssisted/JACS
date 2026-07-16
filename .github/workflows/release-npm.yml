@@ -5,45 +5,83 @@ on:
     tags:
       - 'npm/v*'
 
-permissions:
-  contents: write
-  id-token: write
+permissions: {}
+
+concurrency:
+  group: release-npm-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/nodejs.yml
+
   verify-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.extract.outputs.version }}
       matches: ${{ steps.check.outputs.matches }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Extract version from tag
+      - name: Validate and extract release tag
         id: extract
-        run: |
-          TAG="${GITHUB_REF#refs/tags/npm/v}"
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+        run: python3 scripts/release_tag.py --surface npm
 
       - name: Check package.json version matches tag
         id: check
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
+          set -euo pipefail
           PKG_VERSION=$(node -p "require('./jacsnpm/package.json').version")
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
           echo "Package version: $PKG_VERSION"
           echo "Tag version: $TAG_VERSION"
           if [ "$PKG_VERSION" = "$TAG_VERSION" ]; then
-            echo "matches=true" >> $GITHUB_OUTPUT
+            echo "matches=true" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Version mismatch! package.json has $PKG_VERSION but tag is $TAG_VERSION"
-            echo "matches=false" >> $GITHUB_OUTPUT
+            echo "matches=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
-  build:
+  preflight-publish:
     needs: verify-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - name: Validate npm trusted-publishing prerequisites
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
+          python3 scripts/check_npm_publish_metadata.py jacsnpm/package.json
+
+  build:
+    needs: [verify-version, preflight-publish, functional-gate]
     strategy:
       fail-fast: false
       matrix:
@@ -98,18 +136,22 @@ jobs:
             allow_failure: true
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
-          toolchain: nightly
+          toolchain: "1.97"
           target: ${{ matrix.target }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
@@ -119,20 +161,25 @@ jobs:
 
       - name: Install Zig
         if: ${{ matrix.use_zig }}
-        uses: goto-bus-stop/setup-zig@v2
+        uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2
         with:
           version: 0.13.0
 
       - name: Install dependencies
-        run: npm install
+        # Never run this package's postinstall while assembling native
+        # artifacts: it downloads a host CLI that must not enter the portable
+        # npm tarball.
+        run: npm ci --ignore-scripts
         working-directory: jacsnpm
 
       - name: Set musl CC for native ARM builds
         if: contains(matrix.target, 'aarch64') && contains(matrix.target, 'musl') && !matrix.use_zig
         run: |
-          echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
-          echo "AR_aarch64_unknown_linux_musl=ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
+          {
+            echo "CC_aarch64_unknown_linux_musl=musl-gcc"
+            echo "AR_aarch64_unknown_linux_musl=ar"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc"
+          } >> "$GITHUB_ENV"
 
       - name: Build native module
         id: build_native_module
@@ -141,54 +188,59 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.use_zig }}" = "true" ]; then
-            npx napi build --platform --release --target ${{ matrix.target }} --zig
+            npx napi build --platform --release --target "${{ matrix.target }}" --zig --cargo-flags=--locked
           else
-            npx napi build --platform --release --target ${{ matrix.target }}
+            npx napi build --platform --release --target "${{ matrix.target }}" --cargo-flags=--locked
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ steps.build_native_module.conclusion == 'success' }}
         with:
           name: bindings-${{ matrix.target }}
           path: jacsnpm/*.node
 
-  publish:
-    needs: build
+  assemble-package:
+    needs: [verify-version, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
-          toolchain: nightly
+          toolchain: "1.97"
 
       - name: Install dependencies and build JS files
         working-directory: jacsnpm
         run: |
-          npm install
+          npm ci --ignore-scripts
           npm run build
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: jacsnpm/artifacts
 
       - name: Copy binaries
         run: |
           find artifacts -name "*.node" -type f -print -exec cp {} . \;
-          ls -1 *.node
+          ls -1 -- ./*.node
         working-directory: jacsnpm
 
       - name: Verify required package files exist
         run: |
           set -euo pipefail
           REQUIRED_FILES=(
+            "LICENSE"
             "index.js"
             "index.d.ts"
             "simple.js"
@@ -247,6 +299,7 @@ jobs:
           set -euo pipefail
           npm pack --dry-run 2>&1 | tee pack-dry-run.txt
           REQUIRED_PACKED_FILES=(
+            "LICENSE"
             "index.js"
             "index.d.ts"
             "simple.js"
@@ -269,17 +322,261 @@ jobs:
               exit 1
             }
           done
+          if grep -E ' bin/jacs-cli(\.exe)?$' pack-dry-run.txt >/dev/null; then
+            echo "::error::npm tarball contains a host-specific downloaded CLI"
+            exit 1
+          fi
         working-directory: jacsnpm
 
-      - uses: actions/setup-node@v4
+      - name: Build exact npm tarball candidate
+        working-directory: jacsnpm
+        run: |
+          set -euo pipefail
+          mkdir -p ../release-candidates/extracted
+          npm pack --ignore-scripts --json --pack-destination ../release-candidates > /tmp/jacsnpm-release-pack.json
+          node -e 'const p=require("/tmp/jacsnpm-release-pack.json"); if (p.length !== 1) throw new Error("expected one npm tarball, got "+p.length)'
+          tarball="$(node -e 'const p=require("/tmp/jacsnpm-release-pack.json"); process.stdout.write(p[0].filename)')"
+          tar -xzf "../release-candidates/$tarball" -C ../release-candidates/extracted
+          test -f ../release-candidates/extracted/package/bin/jacs-cli.js
+          test ! -e ../release-candidates/extracted/package/bin/jacs-cli
+          test ! -e ../release-candidates/extracted/package/bin/jacs-cli.exe
+          (
+            cd ../release-candidates
+            sha256sum "$tarball" > "$tarball.sha256"
+          )
+
+      - name: Generate exact npm candidate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: release-candidates/extracted/package
+          format: spdx-json
+          output-file: jacsnpm.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate npm SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacsnpm.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacsnpm.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: |
+            release-candidates/*.tgz
+            release-candidates/*.tgz.sha256
+            jacsnpm.spdx.json
+          if-no-files-found: error
+
+  candidate-smoke:
+    needs: [verify-version, assemble-package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release
+
+      - name: Verify exact tarball digest and install without lifecycle downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tarballs < <(find release -type f -name '*.tgz')
+          mapfile -t checksums < <(find release -type f -name '*.tgz.sha256')
+          if [[ "${#tarballs[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
+            echo "::error::expected one npm tarball and one checksum"
+            exit 1
+          fi
+          (
+            cd "$(dirname "${checksums[0]}")"
+            sha256sum -c "$(basename "${checksums[0]}")"
+          )
+          tarball="$(realpath "${tarballs[0]}")"
+          mkdir /tmp/jacs-node-candidate-smoke
+          cd /tmp/jacs-node-candidate-smoke
+          npm init -y >/dev/null
+          npm install --ignore-scripts "$tarball"
+
+      - name: Run exact candidate package postinstall and installed CLI shim
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mapfile -t tarballs < <(find release -type f -name '*.tgz')
+          if [[ "${#tarballs[@]}" -ne 1 ]]; then
+            echo "::error::expected one npm tarball"
+            exit 1
+          fi
+          python3 scripts/smoke-node-package-postinstall.py \
+            --package "$(realpath "${tarballs[0]}")" \
+            --version "$VERSION"
+
+      - name: CJS sign and verify exact candidate
+        working-directory: /tmp/jacs-node-candidate-smoke
+        run: node -e 'const {JacsSimpleAgent}=require("@hai.ai/jacs"); const a=JacsSimpleAgent.ephemeral("ed25519"); const signed=a.signMessage(JSON.stringify({release:true})); const result=JSON.parse(a.verify(signed)); if (!result.valid) process.exit(1);'
+
+      - name: ESM sign and verify exact candidate
+        working-directory: /tmp/jacs-node-candidate-smoke
+        run: node --input-type=module -e 'import {JacsSimpleAgent} from "@hai.ai/jacs"; const a=JacsSimpleAgent.ephemeral("ed25519"); const signed=a.signMessage(JSON.stringify({release:true})); const result=JSON.parse(a.verify(signed)); if (!result.valid) process.exit(1);'
+
+  cli-release-ready:
+    needs: verify-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require the exact matching CLI release and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify-version.outputs.version }}
+          JACS_RELEASE_METADATA_ATTEMPTS: "360"
+          JACS_ATTESTATION_VERIFY_DELAY_SECONDS: "10"
+        run: >-
+          python3 scripts/verify_github_release_attestations.py
+          "cli/v$VERSION"
+          "HumanAssisted/JACS/.github/workflows/release-cli.yml"
+
+  publish:
+    needs: [security-gate, verify-version, assemble-package, candidate-smoke, cli-release-ready]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
-      # NPM_TOKEN must be a granular access token with "Packages: Read and write"
-      # and "Bypass 2FA for automation" enabled (npm → Access Tokens → Generate New Token).
-      - name: Publish to npm
-        run: npm publish --access public --provenance
-        working-directory: jacsnpm
+      - name: Install the trusted-publishing npm CLI
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release
+
+      - name: Publish to npm with OIDC trusted publishing
+        run: |
+          set -euo pipefail
+          mapfile -t tarballs < <(find release -type f -name '*.tgz')
+          mapfile -t checksums < <(find release -type f -name '*.tgz.sha256')
+          if [[ "${#tarballs[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
+            echo "::error::expected one npm release tarball and one checksum"
+            exit 1
+          fi
+          (
+            cd "$(dirname "${checksums[0]}")"
+            sha256sum -c "$(basename "${checksums[0]}")"
+          )
+          npm publish "${tarballs[0]}" --access public --provenance
+
+  post-publish-smoke:
+    needs: [verify-version, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install the provenance-verifying npm CLI
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
+      - name: Wait for registry indexing and install exact release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if [ "$(npm view "@hai.ai/jacs@${VERSION}" version 2>/dev/null || true)" = "$VERSION" ]; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              echo "::error::@hai.ai/jacs@${VERSION} did not become available"
+              exit 1
+            fi
+            sleep 10
+          done
+          mkdir /tmp/jacs-node-release-smoke
+          cd /tmp/jacs-node-release-smoke
+          npm init -y >/dev/null
+          npm install --ignore-scripts "@hai.ai/jacs@${VERSION}"
+      - name: Run exact registry package postinstall and installed CLI shim
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: >-
+          python3 scripts/smoke-node-package-postinstall.py
+          --package "@hai.ai/jacs@$VERSION"
+          --version "$VERSION"
+      - name: CJS sign and verify
+        working-directory: /tmp/jacs-node-release-smoke
+        run: node -e 'const {JacsSimpleAgent}=require("@hai.ai/jacs"); const a=JacsSimpleAgent.ephemeral("ed25519"); const signed=a.signMessage(JSON.stringify({release:true})); const result=JSON.parse(a.verify(signed)); if (!result.valid) process.exit(1);'
+      - name: ESM sign and verify
+        working-directory: /tmp/jacs-node-release-smoke
+        run: node --input-type=module -e 'import {JacsSimpleAgent} from "@hai.ai/jacs"; const a=JacsSimpleAgent.ephemeral("ed25519"); const signed=a.signMessage(JSON.stringify({release:true})); const result=JSON.parse(a.verify(signed)); if (!result.valid) process.exit(1);'
+      - name: Verify npm registry signatures and provenance
+        working-directory: /tmp/jacs-node-release-smoke
+        run: npm audit signatures
+
+  durable-release-evidence:
+    needs: [verify-version, assemble-package, post-publish-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release-evidence
+
+      - name: Attest durable npm release evidence
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            release-evidence/release-candidates/*.tgz.sha256
+            release-evidence/jacsnpm.spdx.json
+
+      - name: Publish durable npm release evidence
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: JACS npm v${{ needs.verify-version.outputs.version }}
+          body: Attested candidate checksum and SPDX SBOM for the npm release.
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release-evidence/release-candidates/*.tgz.sha256
+            release-evidence/jacsnpm.spdx.json

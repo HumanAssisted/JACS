@@ -34,9 +34,10 @@ pub(crate) fn create_agreement_v2_json(
     agent: &mut Agent,
     input_json: &str,
 ) -> BindingResult<String> {
-    let input: CreateAgreementV2 = serde_json::from_str(input_json).map_err(|e| {
-        BindingCoreError::validation(format!("{}: {}", CTX_INVALID_CREATE_INPUT, e))
-    })?;
+    let input: CreateAgreementV2 = jacs_core::strict_json::deserialize_strict_json(input_json)
+        .map_err(|e| {
+            BindingCoreError::validation(format!("{}: {}", CTX_INVALID_CREATE_INPUT, e))
+        })?;
     let document = jacs::agreements::v2::create_with_agent(agent, input)
         .map_err(|e| BindingCoreError::agreement_failed(format!("{}: {}", CTX_CREATE, e)))?;
     serde_json::to_string(&document.value)
@@ -48,8 +49,10 @@ pub(crate) fn apply_agreement_v2_json(
     document_json: &str,
     mutation_json: &str,
 ) -> BindingResult<String> {
-    let mutation: AgreementV2Mutation = serde_json::from_str(mutation_json)
-        .map_err(|e| BindingCoreError::validation(format!("{}: {}", CTX_INVALID_MUTATION, e)))?;
+    let mutation: AgreementV2Mutation =
+        jacs_core::strict_json::deserialize_strict_json(mutation_json).map_err(|e| {
+            BindingCoreError::validation(format!("{}: {}", CTX_INVALID_MUTATION, e))
+        })?;
     let document = apply_with_agent(agent, document_json, mutation)
         .map_err(|e| BindingCoreError::agreement_failed(format!("{}: {}", CTX_APPLY, e)))?;
     serde_json::to_string(&document.value)
@@ -117,9 +120,10 @@ pub(crate) fn resolve_agreement_v2_branch_conflict_json(
     side_branch_document_json: &str,
     mutation_json: &str,
 ) -> BindingResult<String> {
-    let mutation: AgreementV2Mutation = serde_json::from_str(mutation_json).map_err(|e| {
-        BindingCoreError::validation(format!("{}: {}", CTX_INVALID_RESOLUTION_MUTATION, e))
-    })?;
+    let mutation: AgreementV2Mutation =
+        jacs_core::strict_json::deserialize_strict_json(mutation_json).map_err(|e| {
+            BindingCoreError::validation(format!("{}: {}", CTX_INVALID_RESOLUTION_MUTATION, e))
+        })?;
     let document = resolve_branch_conflict_with_agent(
         agent,
         base_document_json,

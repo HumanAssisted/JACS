@@ -14,14 +14,14 @@ fn test_create_dual_keys_ed25519() {
 // ---------------------------------------------------------------------------
 // P2 Task 006 — guardrails on the public jacs::a2a::keys surface (the API
 // haisdk consumes). The Task 004/004b stub carve-out delegates ES256 KEY
-// GENERATION and JWK EXPORT to real code, but the ES256 arms of sign_jws /
-// verify_jws must keep returning errors (FR25 — no generic
-// caller-chosen-algorithm ES256 signing surface).
+// GENERATION, JWK EXPORT, and public verification to real code, but the ES256
+// arms of sign_jws must keep returning errors (FR25 — no generic
+// caller-chosen-algorithm ES256 signing surface). Verification is public by
+// design and does not expose a private-key operation.
 // ---------------------------------------------------------------------------
 
-/// The ES256 arms of the public `sign_jws` AND `verify_jws` still return
-/// errors after Tasks 004/004b — even when handed a REAL ES256 private key
-/// produced by the sanctioned keygen carve-out.
+/// The ES256 arms of public `sign_jws` still return errors even when handed a
+/// real ES256 private key produced by the sanctioned keygen carve-out.
 #[test]
 fn a2a_sign_jws_still_rejects_es256() {
     use jacs::a2a::keys::{sign_jws, verify_jws};
@@ -41,8 +41,8 @@ fn a2a_sign_jws_still_rejects_es256() {
     let es_keys = create_jwk_keys(None, Some("es256")).expect("ES256 A2A keygen carve-out");
     assert_eq!(es_keys.a2a_algorithm, "es256");
 
-    // sign_jws: both spelled arms error, plus the unknown-alias fallthrough.
-    for alg in ["es256", "ecdsa"] {
+    // Every accepted ES256 spelling reaches the named-exporter wall.
+    for alg in ["es256", "ecdsa", "ES256"] {
         let err = sign_jws(payload, &es_keys.a2a_private_key, alg, "kid-es")
             .expect_err("ES256 JWS signing must stay unavailable");
         assert!(
@@ -51,22 +51,15 @@ fn a2a_sign_jws_still_rejects_es256() {
             "sign_jws('{alg}') names the ES256 wall: {err}"
         );
     }
-    let err = sign_jws(payload, &es_keys.a2a_private_key, "ES256", "kid-es")
-        .expect_err("unknown 'ES256' spelling must also fail");
-    assert!(
-        err.to_string().contains("Unsupported"),
-        "sign_jws('ES256') is unsupported: {err}"
-    );
 
-    // verify_jws: no ES256 verification arm either — even a well-formed
-    // JWS is refused before any signature bytes are examined.
+    // Public verification may accept ES256 labels, but an EdDSA JWS cannot be
+    // relabeled as ES256 and must fail before signature acceptance.
     for alg in ["es256", "ecdsa", "ES256"] {
         let err = verify_jws(&jws, &es_keys.a2a_public_key, alg)
-            .expect_err("ES256 JWS verification must stay unavailable");
+            .expect_err("algorithm substitution must fail");
         assert!(
-            err.to_string()
-                .contains("Unsupported JWS verification algorithm"),
-            "verify_jws('{alg}') names the ES256 wall: {err}"
+            err.to_string().contains("algorithm mismatch"),
+            "verify_jws('{alg}') rejects the EdDSA/ES256 mismatch: {err}"
         );
     }
 }

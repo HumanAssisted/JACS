@@ -11,6 +11,9 @@ const { expect } = require('chai');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const sinon = require('sinon');
+const { enableLegacyFixtureCompatibility } = require('./legacy-fixture');
+const { portableSignedDocument } = require('./helpers/signed-document');
 
 // Import the compiled simple module
 // Note: This requires the TypeScript to be compiled first
@@ -56,7 +59,7 @@ function mkRealTempDir(prefix) {
 }
 
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
-function loadSimpleInFixtures() {
+function loadSimpleInFixtures(options) {
   delete require.cache[require.resolve('../simple.js')];
   const freshSimple = require('../simple.js');
 
@@ -64,7 +67,7 @@ function loadSimpleInFixtures() {
   const originalCwd = process.cwd();
   process.chdir(FIXTURES_DIR);
   try {
-    freshSimple.loadSync(TEST_CONFIG);
+    freshSimple.loadSync(TEST_CONFIG, options);
   } finally {
     process.chdir(originalCwd);
   }
@@ -191,8 +194,10 @@ describe('JACS Simple API', function() {
   const simpleExists = simple !== null;
   const fixturesExist = fs.existsSync(TEST_CONFIG);
   let originalPassword;
+  let restoreLegacyFixtureCompatibility;
 
   before(function() {
+    restoreLegacyFixtureCompatibility = enableLegacyFixtureCompatibility();
     originalPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
     if (!originalPassword) {
       process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
@@ -204,6 +209,7 @@ describe('JACS Simple API', function() {
   });
 
   after(() => {
+    restoreLegacyFixtureCompatibility();
     if (originalPassword === undefined) {
       delete process.env.JACS_PRIVATE_KEY_PASSWORD;
     } else {
@@ -417,7 +423,7 @@ describe('JACS Simple API', function() {
   });
 
   describe('verifyStandalone', () => {
-    (simpleExists ? it : it.skip)('should not require load() and return valid/signerId', () => {
+    (simpleExists ? it : it.skip)('should suppress unauthenticated signerId from malformed input', () => {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
       const tampered = '{"jacsSignature":{"agentID":"test-agent"},"jacsSha256":"x"}';
@@ -426,7 +432,7 @@ describe('JACS Simple API', function() {
       expect(result).to.have.property('valid');
       expect(result).to.have.property('signerId');
       expect(result.valid).to.be.false;
-      expect(result.signerId).to.equal('test-agent');
+      expect(result.signerId).to.equal('');
     });
 
     (simpleExists ? it : it.skip)('should return valid false for invalid JSON', () => {
@@ -435,6 +441,37 @@ describe('JACS Simple API', function() {
       const result = freshSimple.verifyStandalone('not json', { keyResolution: 'local' });
       expect(result.valid).to.be.false;
       expect(result.signerId).to.equal('');
+    });
+
+    (simpleExists && bindings ? it : it.skip)('requires a literal true result from native standalone verification', () => {
+      const forged = JSON.stringify(portableSignedDocument(
+        { approved: true },
+        { agentId: 'forged-agent', timestamp: '2099-01-01T00:00:00Z' },
+      ));
+      const originalVerify = bindings.verifyDocumentStandalone;
+
+      try {
+        for (const nativeResult of [false, 'true', 1, {}, null, undefined]) {
+          bindings.verifyDocumentStandalone = () => ({
+            valid: nativeResult,
+            signerId: 'forged-agent',
+            timestamp: '2099-01-01T00:00:00Z',
+            agentVersion: 'forged-version',
+          });
+          delete require.cache[require.resolve('../simple.js')];
+          const freshSimple = require('../simple.js');
+          const result = freshSimple.verifyStandalone(forged);
+
+          expect(result.valid).to.equal(false);
+          expect(result.signerId).to.equal('');
+          expect(result.timestamp).to.equal('');
+          expect(result.errors).to.be.an('array').that.is.not.empty;
+        }
+      } finally {
+        bindings.verifyDocumentStandalone = originalVerify;
+        delete require.cache[require.resolve('../simple.js')];
+        simple = require('../simple.js');
+      }
     });
 
     (simpleExists && fixturesExist ? it : it.skip)('should verify a valid signed document without a loaded agent', () => {
@@ -625,6 +662,7 @@ describe('JACS Simple API', function() {
       const agent1Dir = path.join(root, 'agent1');
       const agent2Dir = path.join(root, 'agent2');
       const originalCwd = process.cwd();
+      const originalTrustStore = process.env.JACS_TRUST_STORE_DIR;
 
       function freshSimpleModule() {
         delete require.cache[modulePath];
@@ -632,6 +670,7 @@ describe('JACS Simple API', function() {
       }
 
       try {
+        process.env.JACS_TRUST_STORE_DIR = path.join(root, 'trusted_agents');
         process.chdir(root);
         fs.mkdirSync(agent1Dir, { recursive: true });
         fs.mkdirSync(agent2Dir, { recursive: true });
@@ -694,6 +733,11 @@ describe('JACS Simple API', function() {
         expect(status.pending).to.be.an('array').that.is.empty;
       } finally {
         process.chdir(originalCwd);
+        if (originalTrustStore === undefined) {
+          delete process.env.JACS_TRUST_STORE_DIR;
+        } else {
+          process.env.JACS_TRUST_STORE_DIR = originalTrustStore;
+        }
         fs.rmSync(root, { recursive: true, force: true });
       }
     });
@@ -840,6 +884,107 @@ describe('JACS Simple API', function() {
 
       expect(result.valid).to.be.false;
     });
+  });
+
+  describe('native boolean verification contract', () => {
+    const forgedV2 = JSON.stringify(portableSignedDocument(
+      { approved: true },
+      { agentId: 'forged-agent', timestamp: '2099-01-01T00:00:00Z' },
+    ));
+
+    for (const nativeResult of [false, 'true', 1, {}, null, undefined]) {
+      (simpleExists && fixturesExist && bindings ? it : it.skip)(
+        `rejects direct and self verification result ${JSON.stringify(nativeResult)}`,
+        async () => {
+          const freshSimple = loadSimpleInFixtures();
+          const sandbox = sinon.createSandbox();
+          sandbox.stub(bindings.JacsAgent.prototype, 'verifyDocument').resolves(nativeResult);
+          sandbox.stub(bindings.JacsAgent.prototype, 'verifyDocumentSync').returns(nativeResult);
+          sandbox.stub(bindings.JacsAgent.prototype, 'verifyAgent').resolves(nativeResult);
+          sandbox.stub(bindings.JacsAgent.prototype, 'verifyAgentSync').returns(nativeResult);
+
+          try {
+            for (const result of [
+              await freshSimple.verify(forgedV2),
+              freshSimple.verifySync(forgedV2),
+              await freshSimple.verifySelf(),
+              freshSimple.verifySelfSync(),
+            ]) {
+              expect(result.valid).to.equal(false);
+              expect(result.signerId).to.equal('');
+              expect(result.timestamp).to.equal('');
+              expect(result.data).to.equal(undefined);
+            }
+          } finally {
+            sandbox.restore();
+            freshSimple.reset();
+          }
+        },
+      );
+    }
+
+    (simpleExists && fixturesExist && bindings ? it : it.skip)(
+      'rejects false/nonboolean by-id results before loading parsed attribution',
+      async () => {
+        for (const nativeResult of [false, 'true', 1, {}, null, undefined]) {
+          const freshSimple = loadSimpleInFixtures();
+          const sandbox = sinon.createSandbox();
+          sandbox.stub(bindings.JacsAgent.prototype, 'verifyDocumentById').resolves(nativeResult);
+          sandbox.stub(bindings.JacsAgent.prototype, 'verifyDocumentByIdSync').returns(nativeResult);
+          const getAsync = sandbox.stub(bindings.JacsAgent.prototype, 'getDocumentById').resolves(forgedV2);
+          const getSync = sandbox.stub(bindings.JacsAgent.prototype, 'getDocumentByIdSync').returns(forgedV2);
+
+          try {
+            for (const result of [
+              await freshSimple.verifyById('forged:1'),
+              freshSimple.verifyByIdSync('forged:1'),
+            ]) {
+              expect(result.valid).to.equal(false);
+              expect(result.signerId).to.equal('');
+              expect(result.timestamp).to.equal('');
+            }
+            expect(getAsync.called).to.equal(false);
+            expect(getSync.called).to.equal(false);
+          } finally {
+            sandbox.restore();
+            freshSimple.reset();
+          }
+        }
+      },
+    );
+
+    (simpleExists && fixturesExist && bindings ? it : it.skip)(
+      'throws on false direct and self verification results in strict mode',
+      async () => {
+        const freshSimple = loadSimpleInFixtures({ strict: true });
+        const sandbox = sinon.createSandbox();
+        sandbox.stub(bindings.JacsAgent.prototype, 'verifyDocument').resolves(false);
+        sandbox.stub(bindings.JacsAgent.prototype, 'verifyDocumentSync').returns(false);
+        sandbox.stub(bindings.JacsAgent.prototype, 'verifyAgent').resolves(false);
+        sandbox.stub(bindings.JacsAgent.prototype, 'verifyAgentSync').returns(false);
+
+        try {
+          for (const operation of [
+            () => freshSimple.verify(forgedV2),
+            () => freshSimple.verifySelf(),
+          ]) {
+            let error;
+            try {
+              await operation();
+            } catch (err) {
+              error = err;
+            }
+            expect(error).to.be.an('error');
+            expect(error.message).to.match(/literal true|strict mode/i);
+          }
+          expect(() => freshSimple.verifySync(forgedV2)).to.throw(/literal true|strict mode/i);
+          expect(() => freshSimple.verifySelfSync()).to.throw(/literal true|strict mode/i);
+        } finally {
+          sandbox.restore();
+          freshSimple.reset();
+        }
+      },
+    );
   });
 
   describe('exportAgent', () => {

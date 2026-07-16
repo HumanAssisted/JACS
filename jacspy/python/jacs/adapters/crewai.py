@@ -37,8 +37,7 @@ def _require_crewai(component: str = "crewai") -> None:
         import crewai  # noqa: F401
     except ImportError:
         raise ImportError(
-            f"crewai is required for {component}. "
-            "Install it with: pip install crewai"
+            f"crewai is required for {component}. Install it with: pip install crewai"
         )
 
 
@@ -46,6 +45,8 @@ def jacs_guardrail(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Callable[[Any], Tuple[bool, Any]]:
     """Create a CrewAI task guardrail that signs task outputs with JACS.
@@ -53,16 +54,21 @@ def jacs_guardrail(
     Returns a callable with the CrewAI guardrail signature:
     ``(TaskOutput) -> Tuple[bool, Any]``.
 
-    In permissive mode (default), signing failures pass the original
-    output through. In strict mode, failures reject the task output.
+    Signing failures reject the task output by default. Legacy passthrough
+    is available only through the dangerous ``allow_unsigned_output``
+    compatibility option; strict mode always overrides that option.
 
     Args:
         client: An existing JacsClient instance. If None, one is
             created from config_path or via quickstart.
         config_path: Path to jacs.config.json (used only if client
             is None).
-        strict: If True, signing failures cause the guardrail to
-            reject the output (return ``(False, error_msg)``).
+        strict: If True, signing failures reject the output and disable
+            all passthrough compatibility options.
+        allow_unsigned_output: Dangerous compatibility option that returns
+            unsigned task output after a signing failure. Default False.
+        allow_plain_signature_fallback: Permit failed attestation creation to
+            downgrade to a plain signature. Default False.
         attest: If True, produce attestation documents.
 
     Returns:
@@ -75,7 +81,14 @@ def jacs_guardrail(
             guardrail=jacs_guardrail(client=jacs_client),
         )
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     def guardrail(result: Any) -> Tuple[bool, Any]:
         raw = getattr(result, "raw", None)
@@ -87,10 +100,10 @@ def jacs_guardrail(
             signed = adapter.sign_output(data)
             return (True, signed)
         except Exception as exc:
-            if strict:
-                return (False, f"JACS signing failed: {exc}")
-            logger.warning("JACS guardrail signing failed (passthrough): %s", exc)
-            return (True, data)
+            logger.warning("JACS guardrail signing failed: %s", exc)
+            if adapter.allow_unsigned_output:
+                return (True, data)
+            return (False, f"JACS signing failed: {exc}")
 
     return guardrail
 
@@ -99,6 +112,8 @@ def signed_task(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
     **task_kwargs: Any,
 ) -> Callable:
@@ -110,7 +125,12 @@ def signed_task(
     Args:
         client: An existing JacsClient instance.
         config_path: Path to jacs.config.json.
-        strict: Whether signing failures should reject the task.
+        strict: Whether signing failures should reject the task and disable
+            passthrough compatibility options.
+        allow_unsigned_output: Dangerous compatibility option that returns
+            unsigned task output after a signing failure. Default False.
+        allow_plain_signature_fallback: Permit failed attestation creation to
+            downgrade to a plain signature. Default False.
         **task_kwargs: Additional keyword arguments forwarded to
             ``crewai.Task``.
 
@@ -137,22 +157,45 @@ def signed_task(
     _require_crewai("signed_task")
     from crewai import Task
 
-    guardrail_fn = jacs_guardrail(client=client, config_path=config_path, strict=strict, attest=attest)
+    guardrail_fn = jacs_guardrail(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     if task_kwargs:
-        task_kwargs.setdefault("guardrail", guardrail_fn)
+        if "guardrail" in task_kwargs:
+            raise ValueError(
+                "signed_task cannot safely replace an existing guardrail; "
+                "compose it with jacs_guardrail explicitly"
+            )
+        task_kwargs["guardrail"] = guardrail_fn
         return Task(**task_kwargs)
 
     def decorator(fn: Callable) -> Callable:
         def wrapper(*args: Any, **kwargs: Any) -> "Task":
             result = fn(*args, **kwargs)
             if isinstance(result, dict):
-                result.setdefault("guardrail", guardrail_fn)
+                if "guardrail" in result:
+                    raise ValueError(
+                        "signed_task cannot safely replace an existing guardrail; "
+                        "compose it with jacs_guardrail explicitly"
+                    )
+                result["guardrail"] = guardrail_fn
                 return Task(**result)
             # If the function already returns a Task, attach guardrail
-            if isinstance(result, Task) and result.guardrail is None:
+            if isinstance(result, Task):
+                if result.guardrail is not None:
+                    raise ValueError(
+                        "signed_task cannot safely replace an existing guardrail; "
+                        "compose it with jacs_guardrail explicitly"
+                    )
                 result.guardrail = guardrail_fn
             return result
+
         wrapper.__name__ = getattr(fn, "__name__", "signed_task")
         wrapper.__doc__ = getattr(fn, "__doc__", None)
         return wrapper
@@ -170,8 +213,9 @@ class JacsSignedTool:
         inner_tool: The CrewAI tool instance to wrap.
         client: An existing JacsClient instance.
         config_path: Path to jacs.config.json.
-        strict: If True, signing failures raise. If False (default),
-            the unsigned output is returned.
+        strict: If True, signing failures raise and passthrough is disabled.
+        allow_unsigned_output: Dangerous compatibility option that returns
+            unsigned tool output after a signing failure. Default False.
         attest: If True, produce attestation documents.
 
     Example:
@@ -185,11 +229,18 @@ class JacsSignedTool:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        allow_unsigned_output: bool = False,
+        allow_plain_signature_fallback: bool = False,
         attest: bool = False,
     ) -> None:
         self._inner = inner_tool
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict, attest=attest
+            client=client,
+            config_path=config_path,
+            strict=strict,
+            allow_unsigned_output=allow_unsigned_output,
+            allow_plain_signature_fallback=allow_plain_signature_fallback,
+            attest=attest,
         )
         # Mirror tool metadata for CrewAI discovery
         self.name = getattr(inner_tool, "name", "unknown_tool")
@@ -222,6 +273,8 @@ class JacsVerifiedInput:
         client: An existing JacsClient instance.
         config_path: Path to jacs.config.json.
         strict: If True, verification failures raise.
+        allow_unverified_passthrough: Dangerous compatibility opt-in that
+            lets unverifiable input reach the wrapped tool. Default False.
     """
 
     def __init__(
@@ -230,10 +283,14 @@ class JacsVerifiedInput:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        allow_unverified_passthrough: bool = False,
     ) -> None:
         self._inner = inner_tool
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict
+            client=client,
+            config_path=config_path,
+            strict=strict,
+            allow_unverified_passthrough=allow_unverified_passthrough,
         )
         self.name = getattr(inner_tool, "name", "unknown_tool")
         self.description = getattr(inner_tool, "description", "")

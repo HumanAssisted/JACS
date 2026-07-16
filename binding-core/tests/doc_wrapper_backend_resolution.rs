@@ -1,8 +1,8 @@
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs_binding_core::{AgentWrapper, DocumentServiceWrapper};
 use serde_json::Value;
 use serial_test::serial;
-use std::fs;
 
 const TEST_PASSWORD: &str = "TestP@ss123!#";
 
@@ -21,28 +21,15 @@ fn agent_with_storage(storage: &str) -> (AgentWrapper, tempfile::TempDir) {
     let params = CreateAgentParams::builder()
         .name("binding-doc-wrapper-backend-test")
         .password(TEST_PASSWORD)
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
-        .default_storage("fs")
+        .default_storage(storage)
         .build();
 
     let (_agent, _info) =
         SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
-
-    // Overwrite the default_storage to the requested backend
-    let mut config_json: Value =
-        serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
-            .expect("parse generated config");
-    config_json["jacs_default_storage"] = Value::String(storage.to_string());
-    // Disable DNS validation so the test works offline (no network key fetch)
-    config_json["jacs_dns_validate"] = Value::Bool(false);
-    fs::write(
-        &config_path,
-        serde_json::to_string_pretty(&config_json).expect("serialize config"),
-    )
-    .expect("write updated config");
 
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
@@ -56,84 +43,91 @@ fn agent_with_storage(storage: &str) -> (AgentWrapper, tempfile::TempDir) {
         .expect("agent load should succeed");
 
     (wrapper, tmp)
+}
+
+fn override_storage(wrapper: &AgentWrapper, storage: &str) {
+    let agent = wrapper.inner_arc();
+    let mut agent = agent.lock().expect("agent lock");
+    let config = agent.config.as_mut().expect("loaded config");
+    config.merge(jacs::config::Config::new(
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(storage.to_string()),
+    ));
 }
 
 fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
-    let tmp = tempfile::TempDir::new().expect("create tempdir");
-    // Canonicalize to resolve macOS /var -> /private/var symlink so that
-    // paths written into the config match the paths the agent sees at runtime.
-    let tmp_canonical = tmp
-        .path()
-        .canonicalize()
-        .unwrap_or_else(|_| tmp.path().to_path_buf());
-    let data_dir = tmp_canonical.join("jacs_data");
-    let key_dir = tmp_canonical.join("jacs_keys");
-    let config_path = tmp_canonical.join("jacs.config.json");
-
-    let params = CreateAgentParams::builder()
-        .name("binding-doc-wrapper-sqlite")
-        .password(TEST_PASSWORD)
-        .algorithm("ring-Ed25519")
-        .data_directory(data_dir.to_str().unwrap())
-        .key_directory(key_dir.to_str().unwrap())
-        .config_path(config_path.to_str().unwrap())
-        .default_storage("fs")
-        .build();
-
-    let (_agent, _info) =
-        SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
-
-    // create_with_params -> create_agent_and_load saves the public key to
-    // data_dir/public_keys/{hash}.pem. However, when the wrapper reloads the
-    // agent from disk, it may produce a different publicKeyHash during signing
-    // due to key representation differences between generation and reload.
-
-    let mut config_json: Value =
-        serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
-            .expect("parse generated config");
-    config_json["jacs_default_storage"] = Value::String("rusqlite".to_string());
-    // Disable DNS validation so the test works offline (no network key fetch)
-    config_json["jacs_dns_validate"] = Value::Bool(false);
-    fs::write(
-        &config_path,
-        serde_json::to_string_pretty(&config_json).expect("serialize config"),
-    )
-    .expect("write updated config");
-
-    unsafe {
-        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
-        // Restrict key resolution to local-only so verification never attempts remote fetch
-        std::env::set_var("JACS_KEY_RESOLUTION", "local");
-    }
-
-    let wrapper = AgentWrapper::new();
-    wrapper
-        .load(config_path.to_string_lossy().into_owned())
-        .expect("agent load should succeed");
-
+    let (wrapper, tmp) = agent_with_storage("fs");
+    override_storage(&wrapper, "rusqlite");
     (wrapper, tmp)
 }
 
-/// Known issue: The sqlite search test fails because the public key hash used
-/// during document signing (by the reloaded AgentWrapper) does not match the
-/// hash stored in public_keys/ during agent creation. The root cause is a
-/// mismatch in how public key bytes are hashed between the creation path
-/// (raw 32-byte Ed25519 key) and the signing path (PEM-loaded key bytes).
-/// This is a pre-existing issue unrelated to the ENV_SECURITY changes.
-/// See ENV_SECURITY_ISSUE_009 for details.
 #[test]
 #[serial]
-#[ignore = "pre-existing: publicKeyHash mismatch between create and reload paths"]
 fn from_agent_wrapper_uses_sqlite_search_backend() {
-    let (agent, _tmp) = sqlite_ready_agent();
+    let (agent, tmp) = sqlite_ready_agent();
 
     let docs = DocumentServiceWrapper::from_agent_wrapper(&agent)
         .expect("document service wrapper should resolve sqlite backend");
+    let expected_db = tmp.path().join("jacs_data/jacs_documents.sqlite3");
+    assert!(
+        expected_db.exists(),
+        "relative sqlite data directory must be rooted at the config directory: {}",
+        expected_db.display()
+    );
 
-    docs.create_json(r#"{"content":"bindingsqliteprobe alpha"}"#, None)
+    let first = docs
+        .create_json(r#"{"content":"bindingsqliteprobe alpha"}"#, None)
         .expect("create first doc");
-    docs.create_json(r#"{"content":"bindingsqliteprobe beta"}"#, None)
+    let second = docs
+        .create_json(r#"{"content":"bindingsqliteprobe beta"}"#, None)
         .expect("create second doc");
+
+    let first: Value = serde_json::from_str(&first).expect("first document JSON");
+    let second: Value = serde_json::from_str(&second).expect("second document JSON");
+    let agent_arc = agent.inner_arc();
+    let agent_guard = agent_arc.lock().expect("agent lock");
+    let current_agent_id = agent_guard.get_id().expect("loaded agent ID");
+    let current_value_id = agent_guard
+        .get_value()
+        .and_then(|value| value["jacsId"].as_str())
+        .expect("loaded agent document ID");
+    let first_signer_id = first["jacsSignature"]["agentID"]
+        .as_str()
+        .expect("first signer ID");
+    let second_signer_id = second["jacsSignature"]["agentID"]
+        .as_str()
+        .expect("second signer ID");
+    assert_eq!(current_agent_id, current_value_id);
+    assert!(first_signer_id.starts_with(&current_agent_id));
+    assert_eq!(first_signer_id, second_signer_id);
+    drop(agent_guard);
+
+    let claimed_hash = first["jacsSignature"]["publicKeyHash"]
+        .as_str()
+        .expect("signed document publicKeyHash");
+    assert_eq!(
+        claimed_hash,
+        second["jacsSignature"]["publicKeyHash"]
+            .as_str()
+            .expect("second signed document publicKeyHash"),
+        "one loaded agent must emit a stable publicKeyHash across documents"
+    );
+    let cached_key = tmp
+        .path()
+        .join("jacs_data/public_keys")
+        .join(format!("{claimed_hash}.pem"));
+    assert!(
+        cached_key.exists(),
+        "signing key must be cached under the exact hash emitted in new documents: {}",
+        cached_key.display()
+    );
 
     let result_json = docs
         .search_json(r#"{"query":"bindingsqliteprobe","limit":10,"offset":0}"#)
@@ -157,19 +151,17 @@ fn from_agent_wrapper_uses_sqlite_search_backend() {
 
 /// Default storage ("fs") resolves to filesystem backend with FieldMatch search.
 ///
-/// The `service_from_agent` function reads `jacs_data_directory` from config,
-/// which `load_by_config` may have rewritten to a relative path. We set the CWD
-/// to the config's parent directory so that `MultiStorage` resolves the path
-/// correctly.
+/// The service must use the authenticated config's origin for relative paths;
+/// the caller's unrelated process CWD must not select a different data store.
 #[test]
 #[serial]
 fn from_agent_wrapper_uses_filesystem_by_default() {
     let (agent, tmp) = agent_with_storage("fs");
-
-    // service_from_agent reads the config's (possibly relative) data dir.
-    // Ensure CWD matches the config parent so the relative path resolves.
-    let saved_cwd = std::env::current_dir().expect("get cwd");
-    std::env::set_current_dir(tmp.path()).expect("set cwd to temp dir");
+    assert_ne!(
+        std::env::current_dir().expect("process cwd"),
+        tmp.path(),
+        "regression requires a CWD unrelated to the config directory"
+    );
 
     let docs = DocumentServiceWrapper::from_agent_wrapper(&agent)
         .expect("document service wrapper should resolve filesystem backend");
@@ -196,9 +188,6 @@ fn from_agent_wrapper_uses_filesystem_by_default() {
         "filesystem search should use FieldMatch method, got: {}",
         result
     );
-
-    // Restore CWD
-    std::env::set_current_dir(saved_cwd).expect("restore cwd");
 }
 
 /// `service_from_agent` resolves a SQLite connection string
@@ -206,7 +195,6 @@ fn from_agent_wrapper_uses_filesystem_by_default() {
 /// to the specified database file.
 #[test]
 #[serial]
-#[cfg(all(not(target_arch = "wasm32"), feature = "attestation"))]
 fn service_from_agent_with_sqlite_connection_string() {
     let tmp = tempfile::TempDir::new().expect("create tempdir");
 
@@ -217,16 +205,9 @@ fn service_from_agent_with_sqlite_connection_string() {
 
     let (agent, _agent_tmp) = agent_with_storage("fs");
 
-    // Patch config to use the connection string
+    override_storage(&agent, &conn_string);
+
     let agent_arc = agent.inner_arc();
-    {
-        let mut agent_guard = agent_arc.lock().unwrap();
-        if let Some(ref mut config) = agent_guard.config {
-            let mut config_val = serde_json::to_value(&*config).unwrap();
-            config_val["jacs_default_storage"] = Value::String(conn_string.clone());
-            *config = serde_json::from_value(config_val).unwrap();
-        }
-    }
 
     let service = jacs::document::service_from_agent(agent_arc)
         .expect("service_from_agent should resolve sqlite connection string");
@@ -253,6 +234,29 @@ fn service_from_agent_with_sqlite_connection_string() {
     );
 }
 
+#[test]
+#[serial]
+fn relative_sqlite_connection_string_is_rooted_at_config_directory() {
+    let (agent, tmp) = agent_with_storage("fs");
+    override_storage(&agent, "sqlite://nested/custom.sqlite3");
+
+    let service = jacs::document::service_from_agent(agent.inner_arc())
+        .expect("relative sqlite connection path should resolve from config directory");
+    service
+        .create(
+            r#"{"data":"relative connection string test"}"#,
+            jacs::document::types::CreateOptions::default(),
+        )
+        .expect("create document through relative sqlite connection path");
+
+    let expected = tmp.path().join("nested/custom.sqlite3");
+    assert!(
+        expected.exists(),
+        "relative sqlite connection path must not depend on process CWD: {}",
+        expected.display()
+    );
+}
+
 /// `service_from_agent` returns a descriptive error when the config specifies
 /// a storage type that has no DocumentService wiring (e.g. "memory").
 ///
@@ -265,18 +269,9 @@ fn service_from_agent_with_sqlite_connection_string() {
 fn service_from_agent_rejects_unsupported_backend() {
     let (agent, _tmp) = agent_with_storage("fs");
 
-    // Patch the in-memory config to say "memory" (which service_from_agent doesn't handle)
-    let agent_arc = agent.inner_arc();
-    {
-        let mut agent_guard = agent_arc.lock().unwrap();
-        if let Some(ref mut config) = agent_guard.config {
-            let mut config_val = serde_json::to_value(&*config).unwrap();
-            config_val["jacs_default_storage"] = Value::String("memory".to_string());
-            *config = serde_json::from_value(config_val).unwrap();
-        }
-    }
+    override_storage(&agent, "memory");
 
-    let result = jacs::document::service_from_agent(agent_arc);
+    let result = jacs::document::service_from_agent(agent.inner_arc());
     let err_msg = match result {
         Err(e) => e.to_string(),
         Ok(_) => panic!("service_from_agent should fail for unsupported backend 'memory'"),

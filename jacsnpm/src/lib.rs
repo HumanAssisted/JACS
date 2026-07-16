@@ -30,7 +30,7 @@ use conversion_utils::{js_value_to_value, value_to_js_value};
 
 /// Convert a BindingCoreError to a napi::Error.
 fn to_napi_err(e: BindingCoreError) -> Error {
-    Error::new(Status::GenericFailure, e.message)
+    Error::new(Status::GenericFailure, e.portable_message())
 }
 
 /// Extension trait to convert BindingResult to napi::Result.
@@ -41,6 +41,14 @@ trait ToNapiResult<T> {
 impl<T> ToNapiResult<T> for BindingResult<T> {
     fn to_napi(self) -> Result<T> {
         self.map_err(to_napi_err)
+    }
+}
+
+fn auth_body_into_vec(body: Either3<String, Buffer, Uint8Array>) -> Vec<u8> {
+    match body {
+        Either3::A(text) => text.into_bytes(),
+        Either3::B(buffer) => buffer.to_vec(),
+        Either3::C(bytes) => bytes.to_vec(),
     }
 }
 
@@ -1012,7 +1020,8 @@ impl JacsAgent {
         self.inner.export_agent_card().to_napi()
     }
 
-    /// Generate the native .well-known A2A document set (sync, blocks event loop).
+    /// Generate the stable, native-root-bound ES256 .well-known A2A document set
+    /// (sync, blocks event loop). Omit the algorithm or pass ES256.
     #[napi(js_name = "generateWellKnownDocumentsSync")]
     pub fn generate_well_known_documents_sync(
         &self,
@@ -1099,7 +1108,8 @@ impl JacsAgent {
         })
     }
 
-    /// Generate the native .well-known A2A document set.
+    /// Generate the stable, native-root-bound ES256 .well-known A2A document set.
+    /// Omit the algorithm or pass ES256; obsolete choices are rejected.
     #[napi(
         js_name = "generateWellKnownDocuments",
         ts_return_type = "Promise<string>"
@@ -1213,10 +1223,28 @@ impl JacsAgent {
     // HAI SDK Methods (sync)
     // =========================================================================
 
-    /// Build a JACS auth header for HTTP requests (sync, blocks event loop).
+    /// Build the legacy unbound auth header (sync, blocks event loop).
+    /// Retained for compatibility; prefer `buildRequestAuthHeaderSync`.
     #[napi(js_name = "buildAuthHeaderSync")]
     pub fn build_auth_header_sync(&self) -> Result<String> {
         self.inner.build_auth_header().to_napi()
+    }
+
+    /// Build a request-bound JACS v2 auth header (sync, blocks event loop).
+    /// Pass the actual method, absolute URL, exact body bytes (Buffer or
+    /// Uint8Array; strings are UTF-8 encoded), and audience.
+    #[napi(js_name = "buildRequestAuthHeaderSync")]
+    pub fn build_request_auth_header_sync(
+        &self,
+        method: String,
+        url: String,
+        body: Either3<String, Buffer, Uint8Array>,
+        audience: String,
+    ) -> Result<String> {
+        let body = auth_body_into_vec(body);
+        self.inner
+            .build_request_auth_header(&method, &url, &body, &audience)
+            .to_napi()
     }
 
     /// Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop).
@@ -1243,7 +1271,8 @@ impl JacsAgent {
         self.inner.decode_verify_payload(&encoded).to_napi()
     }
 
-    /// Extract the document ID from a JACS-signed document (sync).
+    /// Inspect an unverified document ID (sync). Never use the result for
+    /// authorization or trust before separately verifying the document.
     #[napi(js_name = "extractDocumentIdSync")]
     pub fn extract_document_id_sync(&self, document: String) -> Result<String> {
         self.inner.extract_document_id(&document).to_napi()
@@ -1261,17 +1290,53 @@ impl JacsAgent {
             .to_napi()
     }
 
+    /// Verify signed-event cryptography and freshness without releasing data
+    /// or consuming replay state (sync, blocks event loop).
+    #[napi(js_name = "prepareSignedEventReplaySync")]
+    pub fn prepare_signed_event_replay_sync(
+        &self,
+        event_json: String,
+        server_keys_json: String,
+        max_age_seconds: u32,
+    ) -> Result<String> {
+        jacs_binding_core::prepare_signed_event_replay_binding_json(
+            &event_json,
+            &server_keys_json,
+            u64::from(max_age_seconds),
+        )
+        .to_napi()
+    }
+
     // =========================================================================
     // HAI SDK Methods (async)
     // =========================================================================
 
-    /// Build a JACS auth header for HTTP requests.
+    /// Build the legacy unbound auth header.
     #[napi(js_name = "buildAuthHeader", ts_return_type = "Promise<string>")]
     pub fn build_auth_header_async(&self) -> AsyncTask<AgentStringTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| a.build_auth_header())),
+        })
+    }
+
+    /// Build a request-bound JACS v2 auth header.
+    #[napi(js_name = "buildRequestAuthHeader", ts_return_type = "Promise<string>")]
+    pub fn build_request_auth_header_async(
+        &self,
+        method: String,
+        url: String,
+        body: Either3<String, Buffer, Uint8Array>,
+        audience: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        let body = auth_body_into_vec(body);
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.build_request_auth_header(&method, &url, &body, &audience)
+            })),
         })
     }
 
@@ -1315,7 +1380,8 @@ impl JacsAgent {
         })
     }
 
-    /// Extract the document ID from a JACS-signed document.
+    /// Inspect an unverified document ID. Never use the result for
+    /// authorization or trust before separately verifying the document.
     #[napi(js_name = "extractDocumentId", ts_return_type = "Promise<string>")]
     pub fn extract_document_id_async(&self, document: String) -> AsyncTask<AgentStringTask> {
         let agent = self.inner.clone();
@@ -1337,6 +1403,31 @@ impl JacsAgent {
             agent,
             func: Some(Box::new(move |a| {
                 a.unwrap_signed_event(&event_json, &server_keys_json)
+            })),
+        })
+    }
+
+    /// Verify signed-event cryptography and freshness without releasing data
+    /// or consuming replay state. PQ verification runs on the worker pool.
+    #[napi(
+        js_name = "prepareSignedEventReplay",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn prepare_signed_event_replay_async(
+        &self,
+        event_json: String,
+        server_keys_json: String,
+        max_age_seconds: u32,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_a| {
+                jacs_binding_core::prepare_signed_event_replay_binding_json(
+                    &event_json,
+                    &server_keys_json,
+                    u64::from(max_age_seconds),
+                )
             })),
         })
     }
@@ -1560,6 +1651,89 @@ impl JacsSimpleAgent {
     #[napi]
     pub fn diagnostics(&self) -> String {
         self.inner.diagnostics()
+    }
+
+    /// Build the legacy unbound JACS Authorization header.
+    #[napi(js_name = "buildAuthHeader")]
+    pub fn build_auth_header(&self) -> Result<String> {
+        self.inner.build_auth_header().to_napi()
+    }
+
+    /// Build a request-bound JACS v2 Authorization header.
+    #[napi(js_name = "buildRequestAuthHeader")]
+    pub fn build_request_auth_header(
+        &self,
+        method: String,
+        url: String,
+        body: Either3<String, Buffer, Uint8Array>,
+        audience: String,
+    ) -> Result<String> {
+        let body = auth_body_into_vec(body);
+        self.inner
+            .build_request_auth_header(&method, &url, &body, &audience)
+            .to_napi()
+    }
+
+    #[napi(js_name = "canonicalizeJson")]
+    pub fn canonicalize_json(&self, json_string: String) -> Result<String> {
+        self.inner.canonicalize_json(&json_string).to_napi()
+    }
+
+    #[napi(js_name = "signResponse")]
+    pub fn sign_response(&self, payload_json: String) -> Result<String> {
+        self.inner.sign_response(&payload_json).to_napi()
+    }
+
+    #[napi(js_name = "encodeVerifyPayload")]
+    pub fn encode_verify_payload(&self, document: String) -> String {
+        self.inner.encode_verify_payload(&document)
+    }
+
+    #[napi(js_name = "decodeVerifyPayload")]
+    pub fn decode_verify_payload(&self, encoded: String) -> Result<String> {
+        self.inner.decode_verify_payload(&encoded).to_napi()
+    }
+
+    /// Inspect an attacker-controlled document ID without verification.
+    #[napi(js_name = "extractDocumentId")]
+    pub fn extract_document_id(&self, document: String) -> Result<String> {
+        self.inner.extract_document_id(&document).to_napi()
+    }
+
+    #[napi(js_name = "unwrapSignedEvent")]
+    pub fn unwrap_signed_event(
+        &self,
+        event_json: String,
+        server_keys_json: String,
+    ) -> Result<String> {
+        self.inner
+            .unwrap_signed_event(&event_json, &server_keys_json)
+            .to_napi()
+    }
+
+    /// Verify signed-event cryptography and freshness without releasing data
+    /// or consuming replay state. PQ verification runs on the worker pool.
+    #[napi(
+        js_name = "prepareSignedEventReplay",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn prepare_signed_event_replay_async(
+        &self,
+        event_json: String,
+        server_keys_json: String,
+        max_age_seconds: u32,
+    ) -> AsyncTask<SimpleAgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.prepare_signed_event_replay_json(
+                    &event_json,
+                    &server_keys_json,
+                    u64::from(max_age_seconds),
+                )
+            })),
+        })
     }
 
     /// Export this agent's did:wba identifier.
@@ -1967,8 +2141,8 @@ impl JacsSimpleAgent {
     // Key Management
     // =========================================================================
 
-    /// Rotate the agent's cryptographic keys.
-    /// Optionally change the signing algorithm.
+    /// Rotate the agent's cryptographic keys to pq2025. Omit the algorithm or
+    /// pass pq2025; Ed25519 and unknown targets are rejected.
     /// Returns a JSON string of the RotationResult.
     #[napi(js_name = "rotateKeys")]
     pub fn rotate_keys(&self, algorithm: Option<String>) -> Result<String> {
@@ -1983,10 +2157,10 @@ impl JacsSimpleAgent {
         self.inner.add_compat_key_json().to_napi()
     }
 
-    /// Issue (or re-issue) the PQ-root-signed compatibility key binding
+    /// Issue (or re-issue) the native-root-signed compatibility key binding
     /// (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
     /// `agreement-vc`) are never auto-issued: they require this explicit
-    /// grant, signed by the PQ root. Also the re-issue path after
+    /// grant, signed by the current native root. Also the re-issue path after
     /// rotateKeys(). `scopes` omitted/null grants the default identity
     /// scopes; an unknown scope is a validation error. `expiresAt` is an
     /// optional RFC 3339 timestamp. Returns the binding document JSON.
@@ -2010,17 +2184,17 @@ impl JacsSimpleAgent {
     // ES256 compatibility exports (P2 Task 004 / 004b)
     // =========================================================================
 
-    /// Export the agent's compatibility JWKS (ES256 public key only — PQ
-    /// material is never published here). Auto-issues the default identity
+    /// Export the agent's compatibility JWKS (ES256 public key only — native
+    /// root material is never published here). Auto-issues the default identity
     /// binding on first use. Returns a JSON string of the JWKS.
     #[napi(js_name = "exportCompatibilityJwks")]
     pub fn export_compatibility_jwks(&self) -> Result<String> {
         self.inner.export_compatibility_jwks_json().to_napi()
     }
 
-    /// Export the current (verified) PQ-root-signed compatibility key
-    /// binding document, so relying parties can trace the ES256 key back
-    /// to the post-quantum root. Returns a JSON string of the binding.
+    /// Export the current verified native-root-signed compatibility key
+    /// binding document, so relying parties can trace the ES256 key back to
+    /// the agent's native root. Returns a JSON string of the binding.
     #[napi(js_name = "exportCompatibilityKeyBinding")]
     pub fn export_compatibility_key_binding(&self) -> Result<String> {
         self.inner.export_compatibility_key_binding_json().to_napi()
@@ -2931,6 +3105,20 @@ pub fn ensure_network_access_js(capability: String) -> Result<()> {
 #[napi(js_name = "fetchAgentCard")]
 pub fn fetch_agent_card_js(base_url: String, timeout_ms: Option<u32>) -> Result<String> {
     jacs_binding_core::fetch_agent_card(&base_url, timeout_ms.map(u64::from)).to_napi()
+}
+
+/// Fetch an Agent Card off the V8 event-loop thread using the shared secure
+/// trust-boundary transport.
+#[napi(js_name = "fetchAgentCardAsync", ts_return_type = "Promise<string>")]
+pub fn fetch_agent_card_async_js(
+    base_url: String,
+    timeout_ms: Option<u32>,
+) -> AsyncTask<StandaloneStringTask> {
+    AsyncTask::new(StandaloneStringTask {
+        func: Some(Box::new(move || {
+            jacs_binding_core::fetch_agent_card(&base_url, timeout_ms.map(u64::from))
+        })),
+    })
 }
 
 #[napi(js_name = "fetchRemoteKeyLookup")]

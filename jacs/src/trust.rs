@@ -6,7 +6,7 @@
 use crate::agent::{
     AGENT_SIGNATURE_FIELDNAME, SIGNATURE_CONTENT_VERSION_FIELDNAME, SIGNATURE_CONTENT_VERSION_V2,
     SignatureContentMode, build_signature_content, build_signature_content_v2,
-    extract_signature_fields,
+    extract_signature_fields, legacy_signature_content_allowed, legacy_signature_refusal,
 };
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::{
@@ -22,11 +22,8 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
-
-fn default_trust_verified() -> bool {
-    true
-}
 
 /// Validates an agent ID is safe for use in filesystem paths.
 ///
@@ -79,6 +76,7 @@ fn validate_path_within_trust_dir(path: &Path, trust_dir: &Path) -> Result<(), J
 
 /// Information about a trusted agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TrustedAgent {
     /// The agent's unique identifier.
     pub agent_id: String,
@@ -91,7 +89,7 @@ pub struct TrustedAgent {
     /// When this agent was trusted.
     pub trusted_at: String,
     /// Whether this entry was cryptographically verified before being trusted.
-    #[serde(default = "default_trust_verified")]
+    #[serde(default)]
     pub verified: bool,
 }
 
@@ -157,9 +155,11 @@ pub fn trust_agent_with_key(
 ) -> Result<String, JacsError> {
     // Parse the agent JSON
     let agent_value: Value =
-        serde_json::from_str(agent_json).map_err(|e| JacsError::DocumentMalformed {
-            field: "agent_json".to_string(),
-            reason: e.to_string(),
+        jacs_core::strict_json::parse_strict_json(agent_json).map_err(|e| {
+            JacsError::DocumentMalformed {
+                field: "agent_json".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
     // Extract required fields. Canonical agent documents store jacsId and jacsVersion
@@ -473,12 +473,35 @@ pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> 
 
     let agent_json = get_trusted_agent(agent_id)?;
     let agent_value: Value =
-        serde_json::from_str(&agent_json).map_err(|e| JacsError::DocumentMalformed {
-            field: "agent_json".to_string(),
-            reason: e.to_string(),
+        jacs_core::strict_json::parse_strict_json(&agent_json).map_err(|e| {
+            JacsError::DocumentMalformed {
+                field: "agent_json".to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
     agent_value.get_path_str_required(&["jacsSignature", "publicKeyHash"])
+}
+
+/// Load the exact native public-key bytes for a cryptographically verified
+/// trust-store identity.
+///
+/// The key cache is populated only by [`trust_agent_with_key`] after the agent
+/// self-signature verifies. The hash is rechecked on read so a replaced cache
+/// file cannot silently become the trusted key. A2A strict verification uses
+/// this key to validate native-root-signed compatibility bindings.
+#[must_use = "trusted public key bytes must be used for verification"]
+pub fn get_trusted_public_key(agent_id: &str) -> Result<Vec<u8>, JacsError> {
+    let expected_hash = get_trusted_public_key_hash(agent_id)?;
+    let public_key = load_public_key_from_cache(&expected_hash)?;
+    let actual_hash = hash_public_key(&public_key);
+    if actual_hash != expected_hash {
+        return Err(JacsError::TrustError(format!(
+            "Trusted key cache integrity failure for agent '{agent_id}': expected hash \
+             '{expected_hash}', got '{actual_hash}'"
+        )));
+    }
+    Ok(public_key)
 }
 
 /// Outcome of pinning (trust-on-first-use) an A2A verifying-key hash.
@@ -502,6 +525,58 @@ fn a2a_pin_dir() -> std::path::PathBuf {
     trust_store_dir().join("a2a_pins")
 }
 
+const TRUST_PIN_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
+struct TrustPinLockGuard {
+    _file: std::fs::File,
+}
+
+fn with_a2a_pin_lock<T>(
+    directory: &Path,
+    agent_key: &str,
+    operation: impl FnOnce() -> Result<T, JacsError>,
+) -> Result<T, JacsError> {
+    let lock_path = directory.join(format!(".{agent_key}.lock"));
+    let deadline = Instant::now() + TRUST_PIN_LOCK_TIMEOUT;
+    let file = crate::secure_io::open_private_lock_file_no_follow(&lock_path).map_err(|error| {
+        JacsError::FileWriteFailed {
+            path: lock_path.to_string_lossy().into_owned(),
+            reason: format!("failed to open persistent A2A trust pin lock: {error}"),
+        }
+    })?;
+    loop {
+        match file.try_lock() {
+            Ok(()) => {
+                let _guard = TrustPinLockGuard { _file: file };
+                return operation();
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    warn!(
+                        event = "a2a_trust_pin_lock_timeout",
+                        agent_id = agent_key,
+                        path = %lock_path.display(),
+                        timeout_ms = TRUST_PIN_LOCK_TIMEOUT.as_millis() as u64,
+                        "timed out waiting for an A2A trust pin update"
+                    );
+                    return Err(JacsError::TrustError(format!(
+                        "timed out after {} ms waiting for A2A trust pin lock '{}'",
+                        TRUST_PIN_LOCK_TIMEOUT.as_millis(),
+                        lock_path.display()
+                    )));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(JacsError::FileWriteFailed {
+                    path: lock_path.to_string_lossy().into_owned(),
+                    reason: format!("failed to acquire A2A trust pin lock: {error}"),
+                });
+            }
+        }
+    }
+}
+
 /// Record or check an A2A verifying-key hash for `agent_key` on a
 /// trust-on-first-use (TOFU) basis.
 ///
@@ -523,38 +598,185 @@ pub fn pin_a2a_key(agent_key: &str, public_key_hash: &str) -> Result<A2aPinOutco
 
     let dir = a2a_pin_dir();
     let pin_file = dir.join(format!("{}.pin", agent_key));
+    with_a2a_pin_lock(&dir, agent_key, || {
+        if pin_file.exists() {
+            let existing = crate::secure_io::read_to_string_no_follow(&pin_file).map_err(|e| {
+                JacsError::Internal {
+                    message: format!("Failed to read A2A key pin '{}': {}", pin_file.display(), e),
+                }
+            })?;
+            let existing = existing.trim();
+            if existing == public_key_hash {
+                Ok(A2aPinOutcome::Match)
+            } else {
+                Ok(A2aPinOutcome::Mismatch {
+                    pinned: existing.to_string(),
+                })
+            }
+        } else {
+            crate::secure_io::write_atomic_replace_no_symlink(
+                &pin_file,
+                public_key_hash.as_bytes(),
+                0o600,
+                false,
+            )
+            .map_err(|e| JacsError::FileWriteFailed {
+                path: pin_file.to_string_lossy().to_string(),
+                reason: e.to_string(),
+            })?;
+            Ok(A2aPinOutcome::FirstUse)
+        }
+    })
+}
 
-    if pin_file.exists() {
-        let existing = crate::secure_io::read_to_string_no_follow(&pin_file).map_err(|e| {
-            JacsError::Internal {
-                message: format!("Failed to read A2A key pin '{}': {}", pin_file.display(), e),
+/// Result of checking a Strict-mode A2A compatibility-binding lifecycle pin.
+#[cfg(feature = "a2a")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum A2aBindingLifecycleOutcome {
+    /// No binding had been observed for this explicitly trusted identity.
+    FirstUse,
+    /// The same binding remains current.
+    Match,
+    /// A newer native-root-signed binding atomically superseded the old pin.
+    Advanced,
+}
+
+#[cfg(feature = "a2a")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct A2aBindingLifecyclePin {
+    binding_hash: String,
+    kid: String,
+    issued_at: String,
+}
+
+#[cfg(feature = "a2a")]
+fn a2a_binding_pin_dir() -> std::path::PathBuf {
+    trust_store_dir().join("a2a_binding_pins")
+}
+
+/// Enforce monotonic compatibility-binding state for an explicitly trusted
+/// native `id:version`.
+///
+/// The binding has already passed native-root verification before this is
+/// called. First use is pinned durably; a strictly newer signed `issuedAt`
+/// advances the pin; equal/older different bindings fail closed. A filesystem
+/// lock serializes processes so concurrent updates cannot roll the pin back.
+#[cfg(feature = "a2a")]
+pub(crate) fn enforce_a2a_binding_lifecycle(
+    agent_key: &str,
+    binding_hash: &str,
+    kid: &str,
+    issued_at: &str,
+) -> Result<A2aBindingLifecycleOutcome, JacsError> {
+    validate_agent_id_for_path(agent_key)?;
+    let presented_at = chrono::DateTime::parse_from_rfc3339(issued_at).map_err(|error| {
+        JacsError::TrustError(format!(
+            "A2A compatibility binding issuedAt '{issued_at}' is invalid: {error}"
+        ))
+    })?;
+    if binding_hash.trim().is_empty() || kid.trim().is_empty() {
+        return Err(JacsError::TrustError(
+            "A2A compatibility binding lifecycle pin requires non-empty hash and kid".to_string(),
+        ));
+    }
+
+    let dir = a2a_binding_pin_dir();
+    let pin_file = dir.join(format!("{agent_key}.json"));
+    with_a2a_pin_lock(&dir, agent_key, || {
+        let next = A2aBindingLifecyclePin {
+            binding_hash: binding_hash.to_string(),
+            kid: kid.to_string(),
+            issued_at: issued_at.to_string(),
+        };
+        if !pin_file.exists() {
+            let bytes = serde_json::to_vec_pretty(&next)?;
+            crate::secure_io::write_atomic_replace_no_symlink(&pin_file, &bytes, 0o600, false)
+                .map_err(|error| JacsError::FileWriteFailed {
+                    path: pin_file.to_string_lossy().into_owned(),
+                    reason: error.to_string(),
+                })?;
+            info!(
+                event = "a2a_binding_lifecycle_pinned",
+                agent_id = agent_key,
+                binding_hash,
+                kid,
+                issued_at,
+                "pinned the first native-root-verified A2A compatibility binding"
+            );
+            return Ok(A2aBindingLifecycleOutcome::FirstUse);
+        }
+
+        let raw = crate::secure_io::read_to_string_no_follow(&pin_file).map_err(|error| {
+            JacsError::FileReadFailed {
+                path: pin_file.to_string_lossy().into_owned(),
+                reason: error.to_string(),
             }
         })?;
-        let existing = existing.trim();
-        if existing == public_key_hash {
-            Ok(A2aPinOutcome::Match)
-        } else {
-            Ok(A2aPinOutcome::Mismatch {
-                pinned: existing.to_string(),
-            })
+        crate::schema::utils::check_document_size(&raw)?;
+        let pinned: A2aBindingLifecyclePin = jacs_core::strict_json::deserialize_strict_json(&raw)
+            .map_err(|error| {
+                JacsError::TrustError(format!(
+                    "A2A binding lifecycle pin '{}' is invalid: {error}",
+                    pin_file.display()
+                ))
+            })?;
+        let pinned_at =
+            chrono::DateTime::parse_from_rfc3339(&pinned.issued_at).map_err(|error| {
+                JacsError::TrustError(format!(
+                    "A2A binding lifecycle pin '{}' has invalid issuedAt '{}': {error}",
+                    pin_file.display(),
+                    pinned.issued_at
+                ))
+            })?;
+
+        if pinned.binding_hash == binding_hash && pinned.kid == kid {
+            if pinned_at != presented_at {
+                return Err(JacsError::TrustError(format!(
+                    "A2A binding lifecycle pin integrity failure: hash/kid match but issuedAt changed from '{}' to '{}'",
+                    pinned.issued_at, issued_at
+                )));
+            }
+            return Ok(A2aBindingLifecycleOutcome::Match);
         }
-    } else {
-        fs::create_dir_all(&dir).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: dir.to_string_lossy().to_string(),
-            reason: e.to_string(),
-        })?;
-        crate::secure_io::write_atomic_replace_no_symlink(
-            &pin_file,
-            public_key_hash.as_bytes(),
-            0o600,
-            false,
-        )
-        .map_err(|e| JacsError::FileWriteFailed {
-            path: pin_file.to_string_lossy().to_string(),
-            reason: e.to_string(),
-        })?;
-        Ok(A2aPinOutcome::FirstUse)
-    }
+
+        if presented_at > pinned_at {
+            let bytes = serde_json::to_vec_pretty(&next)?;
+            crate::secure_io::write_atomic_replace_no_symlink(&pin_file, &bytes, 0o600, false)
+                .map_err(|error| JacsError::FileWriteFailed {
+                    path: pin_file.to_string_lossy().into_owned(),
+                    reason: error.to_string(),
+                })?;
+            info!(
+                event = "a2a_binding_lifecycle_advanced",
+                agent_id = agent_key,
+                previous_binding_hash = %pinned.binding_hash,
+                previous_kid = %pinned.kid,
+                previous_issued_at = %pinned.issued_at,
+                binding_hash,
+                kid,
+                issued_at,
+                "advanced the A2A compatibility binding lifecycle pin"
+            );
+            Ok(A2aBindingLifecycleOutcome::Advanced)
+        } else {
+            warn!(
+                event = "a2a_binding_rollback_rejected",
+                agent_id = agent_key,
+                pinned_binding_hash = %pinned.binding_hash,
+                pinned_kid = %pinned.kid,
+                pinned_issued_at = %pinned.issued_at,
+                presented_binding_hash = binding_hash,
+                presented_kid = kid,
+                presented_issued_at = issued_at,
+                "rejected an older or ambiguous A2A compatibility binding"
+            );
+            Err(JacsError::TrustError(format!(
+                "A2A compatibility binding rollback rejected for '{agent_key}': presented binding '{binding_hash}' ({issued_at}) is not newer than pinned binding '{}' ({})",
+                pinned.binding_hash, pinned.issued_at
+            )))
+        }
+    })
 }
 
 /// Checks if an agent is in the trust store.
@@ -683,12 +905,14 @@ fn read_trusted_agent_metadata(agent_id: &str) -> Result<Option<TrustedAgent>, J
             }
         })?;
 
-    let metadata =
-        serde_json::from_str::<TrustedAgent>(&metadata_json).map_err(|e| JacsError::Internal {
-            message: format!(
+    crate::schema::utils::check_document_size(&metadata_json)?;
+    let metadata = jacs_core::strict_json::deserialize_strict_json::<TrustedAgent>(&metadata_json)
+        .map_err(|error| JacsError::DocumentMalformed {
+            field: "trust_metadata".to_string(),
+            reason: format!(
                 "Failed to parse trust metadata '{}': {}",
                 metadata_file.display(),
-                e
+                error
             ),
         })?;
 
@@ -897,9 +1121,13 @@ fn verify_agent_self_signature(
             });
         }
         None => {
+            if !legacy_signature_content_allowed() {
+                return Err(legacy_signature_refusal(AGENT_SIGNATURE_FIELDNAME));
+            }
             warn!(
                 event = "legacy_agent_signature_content_verified",
-                "Verifying legacy v1 agent signature content without authenticated metadata"
+                "Verifying explicitly enabled legacy v1 agent signature content without \
+                 authenticated metadata"
             );
             let (payload, _) = build_signature_content(
                 agent_value,
@@ -934,6 +1162,42 @@ mod tests {
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
+
+    const LEGACY_TRUST_METADATA_WITHOUT_VERIFIED: &str = r#"{
+        "agent_id":"550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001",
+        "name":"legacy entry",
+        "public_key_pem":"public-key",
+        "public_key_hash":"hash",
+        "trusted_at":"2026-07-10T00:00:00Z"
+    }"#;
+
+    #[test]
+    fn missing_trust_verification_marker_fails_closed() {
+        let metadata: TrustedAgent =
+            jacs_core::strict_json::deserialize_strict_json(LEGACY_TRUST_METADATA_WITHOUT_VERIFIED)
+                .expect("legacy metadata remains readable for explicit re-trust migration");
+        assert!(
+            !metadata.verified,
+            "missing verified must never elevate a legacy/bookmark entry"
+        );
+    }
+
+    #[test]
+    fn trust_metadata_rejects_duplicate_or_unknown_fields() {
+        let duplicate = LEGACY_TRUST_METADATA_WITHOUT_VERIFIED.replace(
+            "\"trusted_at\":\"2026-07-10T00:00:00Z\"",
+            "\"verified\":false,\"verified\":true,\"trusted_at\":\"2026-07-10T00:00:00Z\"",
+        );
+        assert!(
+            jacs_core::strict_json::deserialize_strict_json::<TrustedAgent>(&duplicate).is_err()
+        );
+
+        let unknown = LEGACY_TRUST_METADATA_WITHOUT_VERIFIED.replace(
+            "\"trusted_at\":\"2026-07-10T00:00:00Z\"",
+            "\"trusted_at\":\"2026-07-10T00:00:00Z\",\"verifiedByAttacker\":true",
+        );
+        assert!(jacs_core::strict_json::deserialize_strict_json::<TrustedAgent>(&unknown).is_err());
+    }
 
     /// RAII guard for test isolation that ensures HOME is restored even on panic.
     ///
@@ -1010,6 +1274,179 @@ mod tests {
     /// environment variable is restored.
     fn setup_test_trust_dir() -> TrustTestGuard {
         TrustTestGuard::new()
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn concurrent_a2a_tofu_first_use_allows_only_one_differing_key() {
+        let _temp = setup_test_trust_dir();
+        let agent_key = "550e8400-e29b-41d4-a716-446655440070:550e8400-e29b-41d4-a716-446655440071";
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let attempt = |key_hash: &'static str, barrier: std::sync::Arc<std::sync::Barrier>| {
+            std::thread::spawn(move || {
+                barrier.wait();
+                pin_a2a_key(agent_key, key_hash)
+            })
+        };
+        let first = attempt("key-hash-one", barrier.clone());
+        let second = attempt("key-hash-two", barrier);
+        let outcomes = [
+            first.join().expect("first pin thread").expect("first pin"),
+            second
+                .join()
+                .expect("second pin thread")
+                .expect("second pin"),
+        ];
+
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, A2aPinOutcome::FirstUse))
+                .count(),
+            1,
+            "exactly one concurrent differing key may win first use: {outcomes:?}"
+        );
+        let winner = outcomes
+            .iter()
+            .find_map(|outcome| match outcome {
+                A2aPinOutcome::Mismatch { pinned } => Some(pinned.as_str()),
+                _ => None,
+            })
+            .expect("the losing attempt reports the durable winner");
+        assert!(matches!(
+            pin_a2a_key(agent_key, winner).expect("winner remains pinned"),
+            A2aPinOutcome::Match
+        ));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[serial(home_env)]
+    fn a2a_pin_lock_rejects_symlink_and_hardlink_targets_without_touching_them() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
+
+        let _temp = setup_test_trust_dir();
+        let pin_dir = a2a_pin_dir();
+        fs::create_dir_all(&pin_dir).expect("create A2A pin directory");
+
+        let symlink_agent =
+            "550e8400-e29b-41d4-a716-446655440074:550e8400-e29b-41d4-a716-446655440075";
+        let symlink_target = pin_dir.join("symlink-sensitive-target");
+        fs::write(&symlink_target, b"symlink target must remain unchanged")
+            .expect("write symlink target");
+        fs::set_permissions(&symlink_target, fs::Permissions::from_mode(0o640))
+            .expect("set symlink target mode");
+        let symlink_lock = pin_dir.join(format!(".{symlink_agent}.lock"));
+        symlink(&symlink_target, &symlink_lock).expect("install malicious lock symlink");
+
+        assert!(
+            pin_a2a_key(symlink_agent, "attacker-key").is_err(),
+            "A2A pinning must reject a symlink lock path"
+        );
+        assert_eq!(
+            fs::read(&symlink_target).expect("read symlink target"),
+            b"symlink target must remain unchanged"
+        );
+        assert_eq!(
+            fs::metadata(&symlink_target)
+                .expect("symlink target metadata")
+                .mode()
+                & 0o777,
+            0o640,
+            "the rejected lock must not chmod its symlink target"
+        );
+
+        let hardlink_agent =
+            "550e8400-e29b-41d4-a716-446655440076:550e8400-e29b-41d4-a716-446655440077";
+        let hardlink_target = pin_dir.join("hardlink-sensitive-target");
+        fs::write(&hardlink_target, b"hardlink target must remain unchanged")
+            .expect("write hardlink target");
+        fs::set_permissions(&hardlink_target, fs::Permissions::from_mode(0o640))
+            .expect("set hardlink target mode");
+        let hardlink_lock = pin_dir.join(format!(".{hardlink_agent}.lock"));
+        fs::hard_link(&hardlink_target, &hardlink_lock).expect("install malicious lock hardlink");
+        assert_eq!(
+            fs::metadata(&hardlink_target)
+                .expect("hardlink target metadata")
+                .nlink(),
+            2
+        );
+
+        assert!(
+            pin_a2a_key(hardlink_agent, "attacker-key").is_err(),
+            "A2A pinning must reject a multiply-linked lock inode"
+        );
+        assert_eq!(
+            fs::read(&hardlink_target).expect("read hardlink target"),
+            b"hardlink target must remain unchanged"
+        );
+        assert_eq!(
+            fs::metadata(&hardlink_target)
+                .expect("hardlink target metadata")
+                .mode()
+                & 0o777,
+            0o640,
+            "the rejected lock must not chmod its hardlink target"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "a2a")]
+    #[serial(home_env)]
+    fn concurrent_a2a_binding_pin_updates_never_roll_back() {
+        let _temp = setup_test_trust_dir();
+        let agent_key = "550e8400-e29b-41d4-a716-446655440072:550e8400-e29b-41d4-a716-446655440073";
+        enforce_a2a_binding_lifecycle(agent_key, "binding-old", "kid-old", "2026-07-10T10:00:00Z")
+            .expect("pin initial binding");
+
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let advance = |binding_hash: &'static str,
+                       kid: &'static str,
+                       issued_at: &'static str,
+                       barrier: std::sync::Arc<std::sync::Barrier>| {
+            std::thread::spawn(move || {
+                barrier.wait();
+                enforce_a2a_binding_lifecycle(agent_key, binding_hash, kid, issued_at)
+            })
+        };
+        let middle = advance(
+            "binding-middle",
+            "kid-middle",
+            "2026-07-10T11:00:00Z",
+            barrier.clone(),
+        );
+        let newest = advance(
+            "binding-newest",
+            "kid-newest",
+            "2026-07-10T12:00:00Z",
+            barrier,
+        );
+        let _ = middle.join().expect("middle update thread");
+        newest
+            .join()
+            .expect("newest update thread")
+            .expect("newest binding must win or remain current");
+
+        assert!(
+            enforce_a2a_binding_lifecycle(
+                agent_key,
+                "binding-middle",
+                "kid-middle",
+                "2026-07-10T11:00:00Z",
+            )
+            .is_err(),
+            "a concurrent older update must never roll the lifecycle pin back"
+        );
+        assert!(matches!(
+            enforce_a2a_binding_lifecycle(
+                agent_key,
+                "binding-newest",
+                "kid-newest",
+                "2026-07-10T12:00:00Z",
+            )
+            .expect("newest binding remains current"),
+            A2aBindingLifecycleOutcome::Match
+        ));
     }
 
     // ==================== Timestamp Validation Tests ====================

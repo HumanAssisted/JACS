@@ -51,15 +51,17 @@ pip install jacs
 
 ### Node.js
 
+{{#include _snippets/node-registry-status.md}}
+
 ```bash
 npm install @hai.ai/jacs
 ```
 
 ### Go
 
-```bash
-go get github.com/HumanAssisted/JACS/jacsgo
-```
+`go get` alone cannot link the CGo wrapper, and no matching native-library
+release existed at the 2026-07-09 baseline. Build the full repository by
+following [Go Installation and Quick Start](go/installation.md).
 
 ## What This Book Does Not Claim
 

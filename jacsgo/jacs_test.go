@@ -422,6 +422,19 @@ func TestJacsAgentCreation(t *testing.T) {
 	})
 }
 
+func TestCanonicalizeJSONRejectsDuplicateDecodedKeys(t *testing.T) {
+	agent, err := NewJacsAgent()
+	if err != nil {
+		t.Fatalf("NewJacsAgent failed: %v", err)
+	}
+	defer agent.Close()
+
+	ambiguous := `{"role":"reader","role":"admin","agentID":"one","agent\u0049D":"two"}`
+	if canonical, err := agent.CanonicalizeJson(ambiguous); err == nil {
+		t.Fatalf("ambiguous JSON canonicalized successfully: %s", canonical)
+	}
+}
+
 // TestJacsAgentErrorsWhenClosed tests that methods return errors after Close
 func TestJacsAgentErrorsWhenClosed(t *testing.T) {
 	agent, err := NewJacsAgent()

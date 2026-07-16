@@ -870,7 +870,7 @@ fn guard_agreement_input_size(raw: &str) -> Result<(), JacsError> {
 
 fn parse_agreement_value(document: &str) -> Result<Value, JacsError> {
     guard_agreement_input_size(document)?;
-    let value: Value = serde_json::from_str(document)?;
+    let value: Value = jacs_core::strict_json::parse_strict_json(document)?;
     assert_agreement_v2(&value)?;
     Ok(value)
 }

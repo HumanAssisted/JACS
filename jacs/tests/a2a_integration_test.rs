@@ -9,7 +9,7 @@ use jacs::crypt::hash::hash_public_key;
 use serde_json::json;
 
 fn create_test_agent() -> jacs::agent::Agent {
-    // New agent creation is PQ-only; these tests are algorithm-agnostic.
+    // These tests are algorithm-agnostic and use the default pq2025 path.
     let mut agent = jacs::agent::Agent::ephemeral("pq2025").expect("create ephemeral agent");
     let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
         .expect("create minimal agent json");
@@ -291,7 +291,8 @@ fn test_create_chain_of_custody() {
 }
 
 #[test]
-fn test_well_known_endpoints_generation() {
+#[allow(deprecated)]
+fn test_unbound_well_known_endpoint_generation_is_rejected() {
     let agent = create_test_agent();
 
     // Export agent card
@@ -310,30 +311,19 @@ fn test_well_known_endpoints_generation() {
     )
     .expect("Failed to sign agent card");
 
-    // Generate well-known documents
-    let documents = generate_well_known_documents(
+    // Caller-generated discovery keys prove possession of a fresh key but do
+    // not bind the claimed JACS identity. The legacy signature is retained as
+    // a fail-closed migration surface; the persisted generator is covered in
+    // a2a_identity_binding.rs.
+    let error = generate_well_known_documents(
         &agent,
         &agent_card,
         &dual_keys.a2a_public_key,
         &dual_keys.a2a_algorithm,
         &jws_signature,
     )
-    .expect("Failed to generate well-known documents");
-
-    // Verify all expected documents are present (v0.4.0 path)
-    let paths: Vec<String> = documents.iter().map(|(path, _)| path.clone()).collect();
-    assert!(paths.contains(&"/.well-known/agent-card.json".to_string()));
-    assert!(paths.contains(&"/.well-known/jwks.json".to_string()));
-    assert!(paths.contains(&"/.well-known/jacs-agent.json".to_string()));
-    assert!(paths.contains(&"/.well-known/jacs-pubkey.json".to_string()));
-
-    // Verify the agent card document has embedded signatures
-    let card_doc = documents
-        .iter()
-        .find(|(p, _)| p == "/.well-known/agent-card.json")
-        .unwrap();
-    assert!(card_doc.1.get("signatures").is_some());
-    assert!(card_doc.1.get("protocolVersions").is_some());
+    .expect_err("unbound caller-generated discovery identity must fail closed");
+    assert!(error.to_string().contains("not bound"));
 }
 
 #[test]

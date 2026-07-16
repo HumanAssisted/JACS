@@ -67,13 +67,10 @@ fn assert_same_path(actual: &Value, expected: &Path) {
 // =============================================================================
 
 fn create_ephemeral_wrapper() -> AgentWrapper {
-    // New agent creation is PQ-only (P2 Task 001): the "ed25519" request
-    // resolves to pq2025 with a WARN. The helper keeps the historical call
-    // shape to prove the alias path still succeeds.
     let wrapper = AgentWrapper::new();
     wrapper
-        .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed (resolved to pq2025)");
+        .ephemeral(Some("pq2025"))
+        .expect("ephemeral(pq2025) should succeed");
     wrapper
 }
 
@@ -90,7 +87,7 @@ fn test_load_with_info_returns_canonical_metadata() {
     let params = jacs::simple::CreateAgentParams::builder()
         .name("binding-agent-wrapper")
         .password("TestP@ss123!#")
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
@@ -135,7 +132,7 @@ fn test_load_with_info_prefers_wrapper_password_and_restores_process_env() {
     let params = jacs::simple::CreateAgentParams::builder()
         .name("binding-password-store")
         .password("CorrectP@ss123!#")
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
@@ -187,7 +184,7 @@ fn create_ephemeral_wrapper_pq() -> AgentWrapper {
 fn test_create_agent_via_wrapper_valid_json() {
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
-        .ephemeral(Some("ed25519"))
+        .ephemeral(Some("pq2025"))
         .expect("ephemeral should succeed");
 
     // The returned string should be valid JSON with agent info
@@ -222,24 +219,23 @@ fn test_create_agent_pq2025() {
 }
 
 // =============================================================================
-// P2 Task 001 — new agent creation is PQ-only; rotation always resolves to
-// pq2025. Existing Ed25519-rooted agents are grandfathered (load-and-sign),
-// which is covered by jacs/tests/config_signing_integration.rs.
+// New-agent creation and key rotation preserve explicit supported algorithm
+// selection. Rotation may upgrade Ed25519 to pq2025 but never downgrade.
 // =============================================================================
 
 #[test]
-fn new_public_agent_creation_rejects_ed25519_algorithm_selection() {
-    // "Rejects" = the selection is not honored: an Ed25519 request resolves
-    // to pq2025 (with a WARN) rather than minting a new Ed25519 root.
+fn new_public_agent_creation_honors_ed25519_algorithm_selection() {
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
         .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) resolves instead of erroring");
-    let info: Value = serde_json::from_str(&info_json).unwrap();
-    assert!(
-        info["algorithm"].as_str().unwrap_or("").contains("pq2025"),
-        "ed25519 request must resolve to pq2025 for NEW agents, got: {}",
-        info["algorithm"]
+        .expect("supported Ed25519 creation");
+    let info: Value = serde_json::from_str(&info_json).expect("agent info");
+    assert_eq!(info["algorithm"], "ring-Ed25519");
+    let exported: Value =
+        serde_json::from_str(&wrapper.get_agent_json().expect("agent JSON")).expect("JSON");
+    assert_eq!(
+        exported["jacsSignature"]["signingAlgorithm"],
+        "ring-Ed25519"
     );
 }
 
@@ -261,6 +257,7 @@ fn new_public_agent_creation_rejects_es256_algorithm_selection() {
 
 fn create_persistent_wrapper_for_rotation(
     name: &str,
+    algorithm: &str,
 ) -> (AgentWrapper, tempfile::TempDir, CwdGuard) {
     let tmp = tempfile::TempDir::new().unwrap();
     let tmp_path = tmp.path().canonicalize().unwrap();
@@ -273,6 +270,7 @@ fn create_persistent_wrapper_for_rotation(
         .key_directory(tmp_path.join("jacs_keys").to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
         .domain("rotation-wall.example.com")
+        .algorithm(algorithm)
         .build();
     let (_agent, _info) =
         jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
@@ -414,7 +412,7 @@ fn issue_compat_binding_json_grants_content_scope_for_ap2_export() {
     // exposed through the wrapper so Python/Node/Go can satisfy the
     // content-scope gate without shelling out to the CLI. This is the
     // wrapper-level happy path for a content export: grant `ap2-mandate`
-    // explicitly (PQ root signs the binding), then the AP2 export SUCCEEDS.
+    // explicitly (the native root signs the binding), then the AP2 export SUCCEEDS.
     let tmp = tempfile::TempDir::new().unwrap();
     let tmp_path = tmp.path().canonicalize().unwrap();
 
@@ -478,15 +476,16 @@ fn issue_compat_binding_json_grants_content_scope_for_ap2_export() {
 
 #[test]
 #[serial]
-fn rotate_keys_rejects_ed25519_selection() {
-    let (wrapper, _tmp, _guard) = create_persistent_wrapper_for_rotation("rotate-wall-reject");
+fn pq_rotate_keys_rejects_ed25519_downgrade() {
+    let (wrapper, _tmp, _guard) =
+        create_persistent_wrapper_for_rotation("rotate-wall-reject", "pq2025");
     for bad in ["ring-Ed25519", "ed25519"] {
         let err = wrapper
             .rotate_keys(Some(bad))
-            .expect_err("rotation to Ed25519 must be a typed error");
+            .expect_err("PQ to Ed25519 downgrade must be a typed error");
         assert!(
-            err.to_string().contains("pq2025"),
-            "rotation error should steer to pq2025, got: {err}"
+            err.to_string().contains("downgrade"),
+            "rotation error should identify the downgrade, got: {err}"
         );
     }
     unsafe {
@@ -496,25 +495,45 @@ fn rotate_keys_rejects_ed25519_selection() {
 
 #[test]
 #[serial]
-fn rotate_keys_defaults_to_pq2025() {
-    let (wrapper, _tmp, _guard) = create_persistent_wrapper_for_rotation("rotate-wall-default");
+fn pq_rotate_keys_preserve_pq2025_by_default() {
+    let (wrapper, _tmp, _guard) =
+        create_persistent_wrapper_for_rotation("rotate-wall-default", "pq2025");
     let result_json = wrapper
         .rotate_keys(None)
-        .expect("no-argument rotation succeeds and resolves to pq2025");
+        .expect("no-argument rotation preserves pq2025");
     let result: Value = serde_json::from_str(&result_json).expect("rotation result JSON");
     assert!(
         result.get("new_version").is_some(),
         "rotation result should carry new_version"
     );
-    // The config on disk must be stamped pq2025 after rotation (rotation is
-    // the Ed25519->PQ migration path; it never re-mints from config).
+    // The config on disk remains aligned with the current PQ key.
     let config: Value =
         serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read config"))
             .expect("parse config");
     assert_eq!(
         config["jacs_agent_key_algorithm"].as_str(),
         Some("pq2025"),
-        "rotation must stamp the config algorithm to pq2025"
+        "rotation must preserve the config algorithm"
+    );
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+}
+
+#[test]
+#[serial]
+fn ed25519_rotate_keys_allow_same_algorithm_replacement() {
+    let (wrapper, _tmp, _guard) =
+        create_persistent_wrapper_for_rotation("rotate-wall-ed25519", "ed25519");
+    wrapper
+        .rotate_keys(Some("ed25519"))
+        .expect("explicit Ed25519 replacement should remain supported");
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read config"))
+            .expect("parse config");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("ring-Ed25519")
     );
     unsafe {
         std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
@@ -658,7 +677,7 @@ fn test_get_agent_id_non_empty() {
 fn test_get_agent_id_consistent_with_ephemeral_info() {
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
-        .ephemeral(Some("ed25519"))
+        .ephemeral(Some("pq2025"))
         .expect("ephemeral should succeed");
 
     let info: Value = serde_json::from_str(&info_json).unwrap();
@@ -723,14 +742,14 @@ fn test_diagnostics_standalone_returns_valid_json() {
 // =============================================================================
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_ed25519_alias() {
+fn test_full_roundtrip_create_sign_verify_pq2025() {
     let wrapper = create_ephemeral_wrapper();
 
     // Sign a document
     let content = json!({
         "jacsType": "document",
         "jacsLevel": "raw",
-        "content": {"roundtrip": "ed25519", "step": 1}
+        "content": {"roundtrip": "pq2025", "step": 1}
     });
 
     let signed = wrapper
@@ -745,14 +764,14 @@ fn test_full_roundtrip_create_sign_verify_ed25519_alias() {
 }
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_ed25519() {
+fn test_full_roundtrip_create_sign_verify_explicit_pq2025() {
     let wrapper = AgentWrapper::new();
     wrapper
-        .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed");
+        .ephemeral(Some("pq2025"))
+        .expect("ephemeral(pq2025) should succeed");
     let signed = wrapper
         .create_document(
-            &serde_json::json!({"curve": "ed25519"}).to_string(),
+            &serde_json::json!({"algorithm": "pq2025"}).to_string(),
             None,
             None,
             true,
@@ -763,12 +782,12 @@ fn test_full_roundtrip_create_sign_verify_ed25519() {
     let valid = wrapper
         .verify_signature(&signed, None)
         .expect("verify_signature should succeed");
-    assert!(valid, "ed25519 roundtrip document should verify");
+    assert!(valid, "pq2025 roundtrip document should verify");
 }
 
 #[cfg(feature = "pq-tests")]
 #[test]
-fn test_full_roundtrip_create_sign_verify_pq2025() {
+fn test_full_roundtrip_create_sign_verify_default_pq2025_feature() {
     let wrapper = create_ephemeral_wrapper_pq();
 
     let content = json!({

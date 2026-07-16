@@ -1,18 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const installer = require('../scripts/install-cli.js');
 
 function binaryPath() {
-  const binaryName = os.platform() === 'win32' ? 'jacs-cli.exe' : 'jacs-cli';
-  return path.join(__dirname, binaryName);
+  return installer.getBinPath();
 }
 
 function runBinary(target, forwardedArgs) {
-  if (!fs.existsSync(target)) {
+  if (!target || !installer.isSafeCachedBinary(target)) {
     return false;
   }
 
@@ -40,6 +38,21 @@ function runInstaller() {
 function main() {
   const args = process.argv.slice(2);
   const target = binaryPath();
+
+  if (args[0] === '--diagnose') {
+    if (!target || !installer.isSafeCachedBinary(target)) {
+      console.error('[jacs] CLI diagnostic failed: binary is absent or unsafe for this exact version/platform.');
+      console.error('[jacs] Reinstall the package or run: cargo install jacs-cli');
+      process.exit(1);
+    }
+    const probe = spawnSync(target, ['--version'], { encoding: 'utf8' });
+    if (probe.error || probe.status !== 0) {
+      console.error(`[jacs] CLI diagnostic failed: ${probe.error?.message || probe.stderr || `exit ${probe.status}`}`);
+      process.exit(1);
+    }
+    process.stdout.write(`[jacs] CLI diagnostic OK: ${String(probe.stdout).trim()}\n`);
+    process.exit(0);
+  }
 
   if (runBinary(target, args)) {
     return;

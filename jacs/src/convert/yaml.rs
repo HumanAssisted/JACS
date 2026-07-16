@@ -5,7 +5,11 @@
 //! after the round-trip.
 
 use crate::error::JacsError;
-use crate::protocol::canonicalize_json;
+use crate::protocol::canonicalize_json_try;
+use serde::Deserialize;
+use serde::de::{Error as DeError, MapAccess, SeqAccess, Visitor};
+use serde_json::{Map, Number, Value};
+use std::fmt;
 
 /// Convert a JSON string to YAML.
 ///
@@ -16,7 +20,7 @@ use crate::protocol::canonicalize_json;
 ///
 /// Returns `JacsError::ConversionError` if the input is not valid JSON.
 pub fn jacs_to_yaml(json_str: &str) -> Result<String, JacsError> {
-    let value: serde_json::Value = serde_json::from_str(json_str)
+    let value: serde_json::Value = jacs_core::strict_json::parse_strict_json(json_str)
         .map_err(|e| JacsError::conversion("JSON", "YAML", format!("invalid JSON input: {}", e)))?;
 
     serde_yaml_ng::to_string(&value).map_err(|e| {
@@ -28,9 +32,29 @@ pub fn jacs_to_yaml(json_str: &str) -> Result<String, JacsError> {
 ///
 /// Shared helper used by [`yaml_to_jacs`] and [`yaml_to_jacs_canonical`] to
 /// avoid duplicating the YAML parsing and validation logic.
-fn parse_yaml_value(yaml_str: &str) -> Result<serde_json::Value, JacsError> {
-    let value: serde_json::Value = serde_yaml_ng::from_str(yaml_str)
+fn parse_yaml_value(yaml_str: &str) -> Result<Value, JacsError> {
+    crate::schema::utils::check_document_size(yaml_str).map_err(|error| {
+        JacsError::conversion(
+            "YAML",
+            "JSON",
+            format!("input size policy rejected: {error}"),
+        )
+    })?;
+
+    let mut documents = serde_yaml_ng::Deserializer::from_str(yaml_str);
+    let first = documents.next().ok_or_else(|| {
+        JacsError::conversion("YAML", "JSON", "invalid YAML input: document is empty")
+    })?;
+    let value = StrictYamlValue::deserialize(first)
+        .map(|strict| strict.0)
         .map_err(|e| JacsError::conversion("YAML", "JSON", format!("invalid YAML input: {}", e)))?;
+    if documents.next().is_some() {
+        return Err(JacsError::conversion(
+            "YAML",
+            "JSON",
+            "invalid YAML input: multiple YAML documents are not allowed",
+        ));
+    }
 
     // Reject bare scalars -- JACS documents must be objects (or at minimum arrays)
     if !value.is_object() && !value.is_array() {
@@ -41,7 +65,140 @@ fn parse_yaml_value(yaml_str: &str) -> Result<serde_json::Value, JacsError> {
         ));
     }
 
+    jacs_core::strict_json::validate_i_json_numbers(&value).map_err(|error| {
+        JacsError::conversion(
+            "YAML",
+            "JSON",
+            format!("non-interoperable numeric value: {error}"),
+        )
+    })?;
+
     Ok(value)
+}
+
+/// JSON-shaped YAML value decoded without ever materializing duplicate map
+/// keys. YAML merge keys are rejected because their override semantics differ
+/// across implementations and therefore cannot define portable signed bytes.
+struct StrictYamlValue(Value);
+
+impl<'de> Deserialize<'de> for StrictYamlValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(StrictYamlVisitor)
+    }
+}
+
+struct StrictYamlVisitor;
+
+impl<'de> Visitor<'de> for StrictYamlVisitor {
+    type Value = StrictYamlValue;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a YAML value representable without ambiguity as JSON")
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::Null))
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::Null))
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        StrictYamlValue::deserialize(deserializer)
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::Bool(value)))
+    }
+
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::Number(Number::from(value))))
+    }
+
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::Number(Number::from(value))))
+    }
+
+    fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        let value =
+            i64::try_from(value).map_err(|_| E::custom("YAML integer exceeds JSON range"))?;
+        self.visit_i64(value)
+    }
+
+    fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        let value =
+            u64::try_from(value).map_err(|_| E::custom("YAML integer exceeds JSON range"))?;
+        self.visit_u64(value)
+    }
+
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Number::from_f64(value)
+            .map(Value::Number)
+            .map(StrictYamlValue)
+            .ok_or_else(|| E::custom("non-finite YAML numbers are not valid JSON"))
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::String(value.to_owned())))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E> {
+        Ok(StrictYamlValue(Value::String(value)))
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut values = Vec::with_capacity(sequence.size_hint().unwrap_or(0));
+        while let Some(value) = sequence.next_element::<StrictYamlValue>()? {
+            values.push(value.0);
+        }
+        Ok(StrictYamlValue(Value::Array(values)))
+    }
+
+    fn visit_map<A>(self, mut mapping: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut values = Map::with_capacity(mapping.size_hint().unwrap_or(0));
+        while let Some(key) = mapping.next_key::<StrictYamlValue>()? {
+            let Value::String(key) = key.0 else {
+                return Err(A::Error::custom(
+                    "YAML mapping keys must be strings for portable JSON conversion",
+                ));
+            };
+            if key == "<<" {
+                return Err(A::Error::custom(
+                    "YAML merge keys ('<<') are not allowed at signing boundaries",
+                ));
+            }
+            if values.contains_key(&key) {
+                return Err(A::Error::custom(format!(
+                    "duplicate YAML mapping key '{key}'"
+                )));
+            }
+            let value = mapping.next_value::<StrictYamlValue>()?;
+            values.insert(key, value.0);
+        }
+        Ok(StrictYamlValue(Value::Object(values)))
+    }
 }
 
 /// Convert a YAML string to pretty-printed JSON.
@@ -72,12 +229,13 @@ pub fn yaml_to_jacs(yaml_str: &str) -> Result<String, JacsError> {
 /// Same as [`yaml_to_jacs`].
 pub fn yaml_to_jacs_canonical(yaml_str: &str) -> Result<String, JacsError> {
     let value = parse_yaml_value(yaml_str)?;
-    Ok(canonicalize_json(&value))
+    canonicalize_json_try(&value).map_err(JacsError::from)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::canonicalize_json;
 
     /// Helper: assert that JSON -> YAML -> JSON round-trip preserves canonical form.
     fn assert_canonical_round_trip(json_str: &str) {
@@ -156,6 +314,37 @@ mod tests {
             msg.contains("Conversion from YAML to JSON failed"),
             "Error should mention conversion direction: {}",
             msg
+        );
+    }
+
+    #[test]
+    fn yaml_to_jacs_rejects_duplicate_mapping_keys_at_every_depth() {
+        for yaml in [
+            "decision: allow\ndecision: deny\n",
+            "outer:\n  id: one\n  id: two\n",
+        ] {
+            let error = yaml_to_jacs(yaml).expect_err("duplicate YAML key must fail closed");
+            assert!(
+                error.to_string().contains("duplicate YAML mapping key"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn yaml_to_jacs_rejects_merge_keys_and_multiple_documents() {
+        let merge = "defaults: &defaults\n  decision: allow\nresult:\n  <<: *defaults\n";
+        let error = yaml_to_jacs(merge).expect_err("merge keys are parser-ambiguous");
+        assert!(
+            error.to_string().contains("merge keys"),
+            "unexpected error: {error}"
+        );
+
+        let multiple = "---\na: 1\n---\nb: 2\n";
+        let error = yaml_to_jacs(multiple).expect_err("multiple documents must fail");
+        assert!(
+            error.to_string().contains("multiple YAML documents"),
+            "unexpected error: {error}"
         );
     }
 
@@ -285,9 +474,8 @@ mod tests {
     }
 
     #[test]
-    fn yaml_large_integer_preserved() {
-        // 2^53 + 1 -- exceeds JS Number.MAX_SAFE_INTEGER
-        let json_str = r#"{"val": 9007199254740993}"#;
+    fn yaml_max_safe_integer_preserved() {
+        let json_str = r#"{"val": 9007199254740991}"#;
         assert_canonical_round_trip(json_str);
     }
 
@@ -341,5 +529,21 @@ mod tests {
     fn yaml_escaped_characters() {
         let json_str = r#"{"val": "tab\there\nnewline"}"#;
         assert_canonical_round_trip(json_str);
+    }
+
+    #[test]
+    fn yaml_rejects_integers_outside_the_i_json_safe_range() {
+        let unsafe_yaml = "amount: 9007199254740993\n";
+
+        for result in [
+            yaml_to_jacs(unsafe_yaml),
+            yaml_to_jacs_canonical(unsafe_yaml),
+        ] {
+            let error = result.expect_err("unsafe YAML integer must not cross into JSON");
+            assert!(
+                error.to_string().contains("safe integer range"),
+                "unexpected unsafe-number conversion error: {error}"
+            );
+        }
     }
 }

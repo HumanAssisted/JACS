@@ -51,7 +51,7 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
     });
 
     // P2 Task 004-B: when the agent has an ES256 compatibility key AND a
-    // valid PQ-root-signed binding granting the `did` scope, the DID
+    // valid native-root-signed binding granting the `did` scope, the DID
     // document additionally lists the compat key TWICE for the same key:
     // a `JsonWebKey` entry (publicKeyJwk, JOSE consumers — not the legacy
     // JsonWebKey2020) and a `Multikey` entry (publicKeyMultibase — the
@@ -268,8 +268,8 @@ mod tests {
     use serde_json::json;
 
     fn test_agent() -> Agent {
-        // Fixture hatch: these tests exercise the Ed25519 OKP JWK path
-        // (32-byte keys); public ephemeral creation is PQ-only.
+        // Fixture path exercises the Ed25519 OKP JWK representation
+        // (32-byte keys) without filesystem state.
         let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures().expect("ephemeral agent");
         let doc = json!({
             "jacsAgentType": "ai",

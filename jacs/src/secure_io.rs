@@ -24,6 +24,13 @@ pub(crate) fn read_no_follow(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
     read_no_follow_with_policy(path, ParentSymlinkPolicy::Reject)
 }
 
+pub(crate) fn read_no_follow_bounded(
+    path: impl AsRef<Path>,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
+    read_no_follow_bounded_with_policy(path, max_bytes, ParentSymlinkPolicy::Reject)
+}
+
 pub(crate) fn read_no_follow_allow_resolved_parent(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
     read_no_follow_with_policy(path, ParentSymlinkPolicy::AllowResolvedParent)
 }
@@ -80,6 +87,61 @@ pub(crate) fn write_atomic_replace_no_symlink_allow_resolved_parent(
     )
 }
 
+/// Open or create a persistent advisory-lock file without following symlinks.
+///
+/// On Unix this operation is anchored to an already-opened, symlink-free
+/// parent directory and uses `O_NOFOLLOW | O_CLOEXEC`. Before permissions are
+/// tightened or callers acquire a lock, the opened inode must be a regular
+/// file owned by the effective user with exactly one hard link. This prevents
+/// a lock path from being used as a chmod/lock oracle for another file.
+///
+/// On Windows, Rust-created handles are non-inheritable and the final component
+/// is opened with `FILE_FLAG_OPEN_REPARSE_POINT` before regular-file
+/// validation. Other non-Unix targets receive the strongest portable
+/// pre/post-open symlink and regular-file checks available in `std`.
+pub(crate) fn open_private_lock_file_no_follow(path: impl AsRef<Path>) -> io::Result<File> {
+    let path = path.as_ref();
+    ensure_parent_exists(path, ParentSymlinkPolicy::Reject).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!(
+                "failed to create or validate advisory-lock parent for '{}': {error}",
+                path.display()
+            ),
+        )
+    })?;
+
+    #[cfg(unix)]
+    {
+        let parent = OpenedParent::open(path, ParentSymlinkPolicy::Reject).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "failed to anchor advisory-lock parent for '{}': {error}",
+                    path.display()
+                ),
+            )
+        })?;
+        run_parent_open_test_hook(path);
+        let file = parent.open_private_lock_file().map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "failed to open advisory-lock file '{}': {error}",
+                    path.display()
+                ),
+            )
+        })?;
+        validate_private_lock_file(&file, path)?;
+        Ok(file)
+    }
+
+    #[cfg(not(unix))]
+    {
+        open_private_lock_file_portable(path)
+    }
+}
+
 fn read_to_string_no_follow_with_policy(
     path: impl AsRef<Path>,
     policy: ParentSymlinkPolicy,
@@ -109,6 +171,47 @@ fn read_no_follow_with_policy(
         file.read_to_end(&mut bytes)?;
         Ok(bytes)
     }
+}
+
+fn read_no_follow_bounded_with_policy(
+    path: impl AsRef<Path>,
+    max_bytes: usize,
+    policy: ParentSymlinkPolicy,
+) -> io::Result<Vec<u8>> {
+    let path = path.as_ref();
+
+    #[cfg(unix)]
+    {
+        let parent = OpenedParent::open(path, policy)?;
+        run_parent_open_test_hook(path);
+        parent.read_no_follow_bounded(max_bytes)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = policy;
+        let file = open_no_follow(path)?;
+        read_file_bounded(file, max_bytes, path)
+    }
+}
+
+fn read_file_bounded(file: File, max_bytes: usize, path: &Path) -> io::Result<Vec<u8>> {
+    let limit = u64::try_from(max_bytes)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024));
+    file.take(limit).read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "refusing to read '{}' because it exceeds the {}-byte limit",
+                path.display(),
+                max_bytes
+            ),
+        ));
+    }
+    Ok(bytes)
 }
 
 fn write_new_file_with_policy(
@@ -277,6 +380,25 @@ impl OpenedParent {
         file.read_to_end(&mut bytes)?;
         Ok(bytes)
     }
+
+    fn read_no_follow_bounded(&self, max_bytes: usize) -> io::Result<Vec<u8>> {
+        validate_final_entry(
+            self.dir.as_raw_fd(),
+            &self.file_name,
+            &self.display_path,
+            true,
+        )?;
+        let fd = openat_existing_file(self.dir.as_raw_fd(), &self.file_name)?;
+        // SAFETY: fd was returned by openat and is now owned by File.
+        let file = unsafe { File::from_raw_fd(fd) };
+        read_file_bounded(file, max_bytes, &self.display_path)
+    }
+
+    fn open_private_lock_file(&self) -> io::Result<File> {
+        let fd = openat_private_lock_file(self.dir.as_raw_fd(), &self.file_name)?;
+        // SAFETY: fd was returned by openat and is now owned by File.
+        Ok(unsafe { File::from_raw_fd(fd) })
+    }
 }
 
 #[cfg(not(unix))]
@@ -290,6 +412,39 @@ fn open_no_follow(path: &Path) -> io::Result<File> {
         )));
     }
     File::open(path)
+}
+
+#[cfg(not(unix))]
+fn open_private_lock_file_portable(path: &Path) -> io::Result<File> {
+    if let Ok(metadata) = fs::symlink_metadata(path)
+        && metadata.file_type().is_symlink()
+    {
+        return Err(io::Error::other(format!(
+            "refusing advisory lock symlink at '{}'",
+            path.display()
+        )));
+    }
+
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // CreateFileW opens the reparse point itself instead of following it.
+        // Rust passes non-inheritable security attributes, the Windows
+        // equivalent of close-on-exec for this handle.
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(io::Error::other(format!(
+            "refusing advisory lock path '{}': opened object is not a regular file",
+            path.display()
+        )));
+    }
+    Ok(file)
 }
 
 #[cfg(not(unix))]
@@ -351,7 +506,16 @@ fn create_dir_all_no_symlink(path: &Path) -> io::Result<()> {
                         }
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        mkdirat(dir.as_raw_fd(), &name, 0o777)?;
+                        // Another process may create this component after the
+                        // no-follow stat and before mkdirat. Treat EEXIST as a
+                        // race winner, then let the anchored O_NOFOLLOW
+                        // open below prove that the resulting entry is a
+                        // directory rather than a symlink or other object.
+                        match mkdirat(dir.as_raw_fd(), &name, 0o777) {
+                            Ok(()) => {}
+                            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                            Err(error) => return Err(error),
+                        }
                     }
                     Err(e) => return Err(e),
                 }
@@ -519,6 +683,114 @@ fn openat_new_file(
 }
 
 #[cfg(unix)]
+fn openat_private_lock_file(
+    dir_fd: libc::c_int,
+    file_name: &std::ffi::CStr,
+) -> io::Result<libc::c_int> {
+    const MAX_CREATE_RACE_RETRIES: usize = 16;
+    let existing_flags = libc::O_RDWR | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK;
+    let create_flags = existing_flags | libc::O_CREAT | libc::O_EXCL;
+
+    // Split "open existing" from "create new" so concurrent creators cannot
+    // hit platform-specific O_CREAT/O_NOFOLLOW ambiguity. Every attempt stays
+    // relative to the same anchored parent descriptor. An attacker that keeps
+    // replacing the final entry can only force this bounded operation to fail.
+    for _ in 0..MAX_CREATE_RACE_RETRIES {
+        // SAFETY: file_name is a valid C string and dir_fd is an open directory.
+        let existing = unsafe { libc::openat(dir_fd, file_name.as_ptr(), existing_flags) };
+        if existing >= 0 {
+            return Ok(existing);
+        }
+        let open_error = io::Error::last_os_error();
+        if open_error.kind() != io::ErrorKind::NotFound {
+            return Err(open_error);
+        }
+
+        // SAFETY: file_name is a valid C string, dir_fd is open, and the mode
+        // uses the promoted C unsigned type required by openat's variadic ABI.
+        let created = unsafe {
+            libc::openat(
+                dir_fd,
+                file_name.as_ptr(),
+                create_flags,
+                0o600 as libc::c_uint,
+            )
+        };
+        if created >= 0 {
+            return Ok(created);
+        }
+        let create_error = io::Error::last_os_error();
+        if create_error.kind() != io::ErrorKind::AlreadyExists {
+            return Err(create_error);
+        }
+        std::thread::yield_now();
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::WouldBlock,
+        "advisory lock entry changed repeatedly while opening",
+    ))
+}
+
+#[cfg(unix)]
+fn validate_private_lock_file(file: &File, path: &Path) -> io::Result<()> {
+    let fd = file.as_raw_fd();
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: fd is owned by `file`; stat points to writable memory.
+    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstat returned success, so stat is initialized.
+    let stat = unsafe { stat.assume_init() };
+    if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(io::Error::other(format!(
+            "refusing advisory lock path '{}': opened object is not a regular file",
+            path.display()
+        )));
+    }
+    // SAFETY: geteuid has no preconditions.
+    let effective_uid = unsafe { libc::geteuid() };
+    if stat.st_uid != effective_uid {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing advisory lock path '{}': file owner uid {} does not match effective uid {}",
+                path.display(),
+                stat.st_uid,
+                effective_uid
+            ),
+        ));
+    }
+    if stat.st_nlink != 1 {
+        return Err(io::Error::other(format!(
+            "refusing advisory lock path '{}': expected one hard link, found {}",
+            path.display(),
+            stat.st_nlink
+        )));
+    }
+
+    // O_CLOEXEC is atomic with open; verify the invariant before returning.
+    // SAFETY: F_GETFD reads flags for the valid owned descriptor.
+    let descriptor_flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if descriptor_flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if descriptor_flags & libc::FD_CLOEXEC == 0 {
+        return Err(io::Error::other(format!(
+            "refusing advisory lock path '{}': descriptor is inheritable",
+            path.display()
+        )));
+    }
+
+    // Validate inode identity/ownership/link count before changing mode.
+    // SAFETY: fchmod operates on the validated owned regular-file descriptor.
+    if unsafe { libc::fchmod(fd, 0o600 as libc::mode_t) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 fn mkdirat(dir_fd: libc::c_int, file_name: &std::ffi::CStr, mode: u32) -> io::Result<()> {
     // SAFETY: file_name is a valid C string and dir_fd is expected to be open.
     let rc = unsafe { libc::mkdirat(dir_fd, file_name.as_ptr(), mode as libc::mode_t) };
@@ -620,6 +892,23 @@ mod tests {
         LOCK.get_or_init(|| std::sync::Mutex::new(()))
             .lock()
             .expect("secure_io test lock")
+    }
+
+    #[test]
+    fn bounded_read_rejects_oversized_regular_file_without_returning_prefix() {
+        let _lock = test_lock();
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let path = tmp
+            .path()
+            .canonicalize()
+            .expect("canonical temp dir")
+            .join("oversized.key");
+        fs::write(&path, vec![0x41; 4097]).expect("write oversized key");
+
+        let error = read_no_follow_bounded(&path, 4096)
+            .expect_err("oversized key material must be rejected");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("4096-byte limit"));
     }
 
     #[test]
@@ -735,6 +1024,85 @@ mod tests {
             fs::read(&requested_path).expect("read requested"),
             b"rewritten"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn private_lock_open_is_owner_only_single_link_and_close_on_exec() {
+        use std::os::unix::fs::MetadataExt;
+        use std::os::unix::io::AsRawFd;
+
+        let _lock = test_lock();
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let lock_path = tmp
+            .path()
+            .canonicalize()
+            .expect("canonical temp dir")
+            .join("state")
+            .join("persistent.lock");
+        let file = open_private_lock_file_no_follow(&lock_path).expect("open private lock");
+        let metadata = file.metadata().expect("lock metadata");
+        assert!(metadata.is_file());
+        assert_eq!(metadata.mode() & 0o777, 0o600);
+        assert_eq!(metadata.nlink(), 1);
+        // SAFETY: geteuid has no preconditions.
+        assert_eq!(metadata.uid(), unsafe { libc::geteuid() });
+        // SAFETY: F_GETFD reads flags for the live descriptor owned by file.
+        let descriptor_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+        assert!(descriptor_flags >= 0, "F_GETFD failed");
+        assert_ne!(
+            descriptor_flags & libc::FD_CLOEXEC,
+            0,
+            "persistent lock descriptors must never leak through exec"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn concurrent_private_lock_openers_share_one_relative_path_inode() {
+        use std::os::unix::fs::MetadataExt;
+
+        let _lock = test_lock();
+        let cwd = std::env::current_dir()
+            .expect("current directory")
+            .canonicalize()
+            .expect("canonical current directory");
+        let tmp = tempfile::tempdir_in(&cwd).expect("temporary directory in cwd");
+        let relative_root = tmp
+            .path()
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .strip_prefix(&cwd)
+            .expect("temporary directory is below cwd")
+            .to_path_buf();
+        assert!(!relative_root.is_absolute());
+        let lock_path = relative_root.join("state").join("persistent.lock");
+
+        let start = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let opened = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let spawn = |start: std::sync::Arc<std::sync::Barrier>,
+                     opened: std::sync::Arc<std::sync::Barrier>| {
+            let lock_path = lock_path.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                let file = open_private_lock_file_no_follow(&lock_path)
+                    .expect("concurrent relative lock open");
+                let metadata = file.metadata().expect("opened lock metadata");
+                opened.wait();
+                (metadata.dev(), metadata.ino(), metadata.nlink())
+            })
+        };
+        let first = spawn(start.clone(), opened.clone());
+        let second = spawn(start.clone(), opened.clone());
+        start.wait();
+        opened.wait();
+        let first = first.join().expect("first opener thread");
+        let second = second.join().expect("second opener thread");
+        assert_eq!(
+            first, second,
+            "both openers must use the same single-link inode"
+        );
+        assert_eq!(first.2, 1);
     }
 
     #[test]

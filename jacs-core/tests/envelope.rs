@@ -6,14 +6,17 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use jacs_core::CoreError;
 use jacs_core::envelope::{
-    self, AES_GCM_NONCE_SIZE, PBKDF2_ITERATIONS, PBKDF2_ITERATIONS_LEGACY, PBKDF2_SALT_SIZE,
-    decrypt_private_key, derive_key_with_iterations, encrypt_private_key,
+    self, AES_GCM_NONCE_SIZE, MAX_ENCRYPTED_PRIVATE_KEY_BYTES, PBKDF2_ITERATIONS,
+    PBKDF2_ITERATIONS_LEGACY, PBKDF2_SALT_SIZE, decrypt_private_key, derive_key_with_iterations,
+    encrypt_private_key,
 };
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
+use argon2::{Algorithm, Argon2, Params, Version};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use std::time::{Duration, Instant};
 
 const TEST_PASSWORD: &str = "Test#Password!2026";
 const FIXTURE_PASSWORD: &str = "Test#Password!2026"; // matches Task 001 regenerator
@@ -50,6 +53,102 @@ fn argon2id_v2_wrong_password_fails() {
     let envelope = encrypt_private_key(plain, TEST_PASSWORD).expect("encrypt");
     let err = decrypt_private_key(&envelope, "wrong-password").expect_err("must fail");
     assert!(matches!(err, CoreError::InvalidPassword), "got {err:?}");
+}
+
+#[test]
+fn argon2id_cost_above_profile_is_rejected_before_kdf_work() {
+    let envelope = encrypt_private_key(b"sensitive material", TEST_PASSWORD).expect("encrypt");
+    let mut json: serde_json::Value = serde_json::from_slice(&envelope).expect("envelope JSON");
+    json["kdf"]["m_cost_kib"] = serde_json::json!(19_457);
+    let mutated = serde_json::to_vec(&json).expect("mutated envelope");
+
+    let started = Instant::now();
+    let err = decrypt_private_key(&mutated, TEST_PASSWORD).expect_err("policy must reject");
+    assert!(started.elapsed() < Duration::from_millis(100));
+    match err {
+        CoreError::MalformedEnvelope(reason) => {
+            assert!(reason.contains("Argon2id parameter policy rejected"));
+            assert!(reason.contains("mCostKib"));
+        }
+        other => panic!("expected a KDF policy rejection, got {other:?}"),
+    }
+}
+
+#[test]
+fn argon2id_time_and_parallelism_above_profile_are_rejected() {
+    let envelope = encrypt_private_key(b"sensitive material", TEST_PASSWORD).expect("encrypt");
+    for (field, value) in [("t_cost", 3), ("p_cost", 2)] {
+        let mut json: serde_json::Value = serde_json::from_slice(&envelope).expect("envelope JSON");
+        json["kdf"][field] = serde_json::json!(value);
+        let mutated = serde_json::to_vec(&json).expect("mutated envelope");
+        let err = decrypt_private_key(&mutated, TEST_PASSWORD).expect_err("policy must reject");
+        assert!(
+            matches!(err, CoreError::MalformedEnvelope(ref reason) if reason.contains("Argon2id parameter policy rejected")),
+            "{field} returned {err:?}"
+        );
+    }
+}
+
+fn synthesize_argon2id_envelope(
+    plain: &[u8],
+    password: &str,
+    m_cost_kib: u32,
+    t_cost: u32,
+    p_cost: u32,
+) -> Vec<u8> {
+    let salt = [0x5au8; 16];
+    let nonce_bytes = [0xa5u8; 12];
+    let params = Params::new(m_cost_kib, t_cost, p_cost, Some(32)).expect("valid test profile");
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = [0u8; 32];
+    argon2
+        .hash_password_into(password.as_bytes(), &salt, &mut key)
+        .expect("derive test key");
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plain)
+        .expect("encrypt test envelope");
+    serde_json::to_vec(&serde_json::json!({
+        "jacsEncryptedPrivateKeyVersion": 2,
+        "cipher": "AES-256-GCM",
+        "kdf": {
+            "name": "Argon2id",
+            "version": 19,
+            "m_cost_kib": m_cost_kib,
+            "t_cost": t_cost,
+            "p_cost": p_cost
+        },
+        "salt": URL_SAFE_NO_PAD.encode(salt),
+        "nonce": URL_SAFE_NO_PAD.encode(nonce_bytes),
+        "ciphertext": URL_SAFE_NO_PAD.encode(ciphertext)
+    }))
+    .expect("serialize test envelope")
+}
+
+#[test]
+fn argon2id_intentional_minimum_profile_decrypts() {
+    let plain = b"minimum accepted profile";
+    let envelope = synthesize_argon2id_envelope(plain, TEST_PASSWORD, 8_192, 1, 1);
+    let decrypted = decrypt_private_key(&envelope, TEST_PASSWORD).expect("minimum profile");
+    assert_eq!(decrypted.as_slice(), plain);
+}
+
+#[test]
+fn argon2id_envelope_rejects_duplicate_kdf_fields() {
+    let envelope = encrypt_private_key(b"sensitive material", TEST_PASSWORD).expect("encrypt");
+    let text = String::from_utf8(envelope).expect("JSON envelope");
+    let duplicated = text.replacen(
+        "\"m_cost_kib\":19456",
+        "\"m_cost_kib\":8192,\"m_cost_kib\":19456",
+        1,
+    );
+    assert_ne!(duplicated, text, "fixture field must be replaced");
+    let err = decrypt_private_key(duplicated.as_bytes(), TEST_PASSWORD)
+        .expect_err("duplicate KDF field must fail");
+    assert!(
+        matches!(err, CoreError::MalformedEnvelope(ref reason) if reason.contains("duplicate JSON object key") || reason.contains("duplicate field")),
+        "got {err:?}"
+    );
 }
 
 fn synthesize_legacy_pbkdf2_envelope(plain: &[u8], password: &str, iterations: u32) -> Vec<u8> {
@@ -96,6 +195,22 @@ fn truncated_envelope_fails_with_malformed_envelope() {
     assert!(
         matches!(err, CoreError::MalformedEnvelope(_)),
         "got {err:?}"
+    );
+}
+
+#[test]
+fn oversized_legacy_input_is_rejected_before_pbkdf2_or_aead_work() {
+    let oversized = vec![0x01; MAX_ENCRYPTED_PRIVATE_KEY_BYTES + 1];
+    let started = Instant::now();
+    let error = decrypt_private_key(&oversized, TEST_PASSWORD)
+        .expect_err("oversized legacy input must fail before KDF work");
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "size rejection unexpectedly performed expensive crypto"
+    );
+    assert!(
+        matches!(error, CoreError::MalformedEnvelope(ref reason) if reason.contains("exceeds")),
+        "unexpected error: {error:?}"
     );
 }
 

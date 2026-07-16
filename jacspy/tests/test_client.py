@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from jacs.client import JacsClient
-from jacs.types import SignedDocument, VerificationResult, AgentInfo, AgentNotLoadedError
+from jacs.types import (
+    SignedDocument,
+    VerificationResult,
+    AgentInfo,
+    AgentNotLoadedError,
+)
 import jacs.simple as jacs_simple
 import jacs.client as jacs_client
 from conftest import TEST_ALGORITHM, TEST_ALGORITHM_INTERNAL
@@ -97,7 +102,6 @@ class TestAgreements:
                 timeout="2026-12-31T23:59:59Z",
                 quorum=1,
             )
-
 
 
 class TestGlobalReset:
@@ -214,9 +218,7 @@ class TestPersistentQuickstart:
         assert client._agent_info.algorithm == simple_info.algorithm
         assert created.agent_id == simple_info.agent_id
 
-    def test_client_load_does_not_reopen_config_in_python(
-        self, tmp_path, monkeypatch
-    ):
+    def test_client_load_does_not_reopen_config_in_python(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#")
         config_path = tmp_path / "native" / "jacs.config.json"
@@ -232,7 +234,9 @@ class TestPersistentQuickstart:
 
         def guarded_open(file, *args, **kwargs):
             if os.path.abspath(str(file)) == os.path.abspath(str(config_path)):
-                raise AssertionError("Python wrapper should not reopen config during load()")
+                raise AssertionError(
+                    "Python wrapper should not reopen config during load()"
+                )
             return real_open(file, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "open", guarded_open)
@@ -240,9 +244,7 @@ class TestPersistentQuickstart:
         client = JacsClient(config_path=str(config_path))
         assert client.agent_id
 
-    def test_simple_load_does_not_reopen_config_in_python(
-        self, tmp_path, monkeypatch
-    ):
+    def test_simple_load_does_not_reopen_config_in_python(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#")
         jacs_simple.reset()
@@ -284,6 +286,7 @@ class TestVerifyByIdUsesNativeStorage:
                             "agentID": "agent-1",
                             "publicKeyHash": "pkh-1",
                             "date": "2026-03-10T00:00:00Z",
+                            "signatureContentVersion": "jacs-signature-v2",
                         }
                     }
                 )
@@ -295,7 +298,9 @@ class TestVerifyByIdUsesNativeStorage:
         client = JacsClient.__new__(JacsClient)
         client._strict = False
         client._agent = FakeAgent()
-        client._agent_info = AgentInfo(agent_id="agent-1", version="1", config_path=None)
+        client._agent_info = AgentInfo(
+            agent_id="agent-1", version="1", config_path=None
+        )
 
         result = client.verify_by_id("doc-1:1")
 
@@ -318,6 +323,7 @@ class TestVerifyByIdUsesNativeStorage:
                             "agentID": "agent-2",
                             "publicKeyHash": "pkh-2",
                             "date": "2026-03-10T00:00:01Z",
+                            "signatureContentVersion": "jacs-signature-v2",
                         }
                     }
                 )
@@ -340,6 +346,212 @@ class TestVerifyByIdUsesNativeStorage:
         assert result.signer_id == "agent-2"
         assert result.signer_public_key_hash == "pkh-2"
         assert result.timestamp == "2026-03-10T00:00:01Z"
+
+    def test_client_verify_never_attributes_legacy_v1_mutable_metadata(self):
+        class FakeAgent:
+            def verify_document(self, _document):
+                return True
+
+        client = JacsClient.__new__(JacsClient)
+        client._strict = False
+        client._agent = FakeAgent()
+        client._agent_info = None
+        legacy = json.dumps(
+            {
+                "content": {"approved": True},
+                "jacsSignature": {
+                    "agentID": "attacker-selected-agent",
+                    "publicKeyHash": "attacker-selected-key",
+                    "date": "2099-01-01T00:00:00Z",
+                },
+            }
+        )
+
+        result = client.verify(legacy)
+
+        assert result.valid is True
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.timestamp == ""
+
+    @pytest.mark.parametrize("surface", ["client", "simple"])
+    def test_invalid_v2_document_never_exposes_parsed_attribution(
+        self, monkeypatch, surface
+    ):
+        class FakeAgent:
+            def verify_document(self, _document):
+                return False
+
+        forged_v2 = json.dumps(
+            {
+                "content": {"approved": False},
+                "jacsSignature": {
+                    "agentID": "attacker-selected-agent",
+                    "publicKeyHash": "attacker-selected-key",
+                    "date": "2099-01-01T00:00:00Z",
+                    "signatureContentVersion": "jacs-signature-v2",
+                },
+            }
+        )
+
+        if surface == "client":
+            client = JacsClient.__new__(JacsClient)
+            client._strict = False
+            client._agent = FakeAgent()
+            client._agent_info = None
+            result = client.verify(forged_v2)
+        else:
+            monkeypatch.setattr(jacs_simple, "_global_agent", FakeAgent())
+            monkeypatch.setattr(jacs_simple, "_strict", False)
+            result = jacs_simple.verify(forged_v2)
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.timestamp == ""
+
+    @pytest.mark.parametrize("surface", ["client", "simple"])
+    def test_verify_by_id_never_attributes_legacy_v1_mutable_metadata(
+        self, monkeypatch, surface
+    ):
+        class FakeAgent:
+            def verify_document_by_id(self, _doc_id):
+                return True
+
+            def get_document_by_id(self, _doc_id):
+                return json.dumps(
+                    {
+                        "jacsSignature": {
+                            "agentID": "attacker-selected-agent",
+                            "publicKeyHash": "attacker-selected-key",
+                            "date": "2099-01-01T00:00:00Z",
+                        }
+                    }
+                )
+
+        if surface == "client":
+            client = JacsClient.__new__(JacsClient)
+            client._strict = False
+            client._agent = FakeAgent()
+            client._agent_info = None
+            result = client.verify_by_id("legacy:1")
+        else:
+            monkeypatch.setattr(jacs_simple, "_global_agent", FakeAgent())
+            monkeypatch.setattr(jacs_simple, "_strict", False)
+            result = jacs_simple.verify_by_id("legacy:1")
+
+        assert result.valid is True
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.timestamp == ""
+
+    @pytest.mark.parametrize("surface", ["client", "simple"])
+    def test_invalid_v2_document_by_id_never_exposes_parsed_attribution(
+        self, monkeypatch, surface
+    ):
+        class FakeAgent:
+            def verify_document_by_id(self, _doc_id):
+                return False
+
+            def get_document_by_id(self, _doc_id):
+                return json.dumps(
+                    {
+                        "jacsSignature": {
+                            "agentID": "attacker-selected-agent",
+                            "publicKeyHash": "attacker-selected-key",
+                            "date": "2099-01-01T00:00:00Z",
+                            "signatureContentVersion": "jacs-signature-v2",
+                        }
+                    }
+                )
+
+        if surface == "client":
+            client = JacsClient.__new__(JacsClient)
+            client._strict = False
+            client._agent = FakeAgent()
+            client._agent_info = None
+            result = client.verify_by_id("forged-v2:1")
+        else:
+            monkeypatch.setattr(jacs_simple, "_global_agent", FakeAgent())
+            monkeypatch.setattr(jacs_simple, "_strict", False)
+            result = jacs_simple.verify_by_id("forged-v2:1")
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.timestamp == ""
+
+
+class TestVerificationResultNormalization:
+    @pytest.mark.parametrize("surface", ["client", "simple"])
+    def test_verify_self_requires_literal_true_before_attribution(
+        self, monkeypatch, surface
+    ):
+        class FalseAgent:
+            def verify_agent(self, _agentfile):
+                return False
+
+        info = AgentInfo(
+            agent_id="attacker-selected-agent",
+            version="1",
+            public_key_hash="attacker-selected-key",
+        )
+        if surface == "client":
+            client = JacsClient.__new__(JacsClient)
+            client._strict = False
+            client._agent = FalseAgent()
+            client._agent_info = info
+            result = client.verify_self()
+        else:
+            monkeypatch.setattr(jacs_simple, "_global_agent", FalseAgent())
+            monkeypatch.setattr(jacs_simple, "_agent_info", info)
+            monkeypatch.setattr(jacs_simple, "_strict", False)
+            result = jacs_simple.verify_self()
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.content_hash_valid is False
+        assert result.signature_valid is False
+
+    def test_attestation_security_booleans_require_literal_true(self):
+        class MalformedAgent:
+            def verify_attestation(self, _document_key):
+                return json.dumps(
+                    {
+                        "valid": "false",
+                        "crypto": {
+                            "signatureValid": "false",
+                            "hashValid": 1,
+                        },
+                        "evidence": [
+                            {
+                                "digestValid": {},
+                                "freshnessValid": "true",
+                            }
+                        ],
+                        "chain": {
+                            "valid": "true",
+                            "links": [{"valid": 1}],
+                        },
+                        "errors": [],
+                    }
+                )
+
+        client = JacsClient.__new__(JacsClient)
+        client._strict = False
+        client._agent = MalformedAgent()
+        client._agent_info = None
+
+        result = client.verify_attestation('{"jacsId":"attestation","jacsVersion":"1"}')
+
+        assert result["valid"] is False
+        assert result["crypto"]["signatureValid"] is False
+        assert result["crypto"]["hashValid"] is False
+        assert result["evidence"][0]["digestValid"] is False
+        assert result["evidence"][0]["freshnessValid"] is False
+        assert result["chain"]["valid"] is False
+        assert result["chain"]["links"][0]["valid"] is False
 
 
 class TestPasswordConfiguration:
@@ -383,7 +595,9 @@ class TestPasswordConfiguration:
             client._load_from_config("./nested/jacs.config.json")
 
             assert captured["password"] == "InnerP@ss123!#"
-            assert captured["config_path"] == os.path.abspath("./nested/jacs.config.json")
+            assert captured["config_path"] == os.path.abspath(
+                "./nested/jacs.config.json"
+            )
             assert os.environ.get("JACS_PRIVATE_KEY_PASSWORD") == "OuterP@ss123!#"
             assert client.agent_id == "agent-3"
         finally:

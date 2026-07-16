@@ -11,8 +11,10 @@ package jacs
 */
 import "C"
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"sync"
 	"unsafe"
 )
@@ -26,11 +28,21 @@ import (
 //
 // For advanced features (agreements, A2A, attestation), use JacsAgent instead.
 
-// JacsSimpleAgent represents a JACS agent via the narrow simple contract.
-// Multiple JacsSimpleAgent instances can be used concurrently.
-type JacsSimpleAgent struct {
+// simpleAgentState owns one native handle and the lock that protects its
+// lifetime. It is heap allocated so value copies of JacsSimpleAgent retain
+// shared ownership instead of duplicating a raw handle and mutex.
+type simpleAgentState struct {
+	noCopy noCopy
 	mu     sync.RWMutex
 	handle C.SimpleAgentHandle
+}
+
+// JacsSimpleAgent represents a JACS agent via the narrow simple contract.
+// Multiple JacsSimpleAgent instances can be used concurrently. A
+// JacsSimpleAgent value is safe to copy: all copies share one native handle,
+// lock, and closed state.
+type JacsSimpleAgent struct {
+	*simpleAgentState
 }
 
 // simpleLastError retrieves the last error message from the Rust FFI layer.
@@ -72,7 +84,7 @@ func NewSimpleAgent(name string, purpose, keyAlgorithm *string) (*JacsSimpleAgen
 	}
 	info.Name = name
 
-	return &JacsSimpleAgent{handle: handle}, &info, nil
+	return &JacsSimpleAgent{simpleAgentState: &simpleAgentState{handle: handle}}, &info, nil
 }
 
 // LoadSimpleAgent loads an existing agent from a config file.
@@ -96,7 +108,7 @@ func LoadSimpleAgent(configPath *string, strict *bool) (*JacsSimpleAgent, error)
 		return nil, simpleLastError("failed to load simple agent")
 	}
 
-	return &JacsSimpleAgent{handle: handle}, nil
+	return &JacsSimpleAgent{simpleAgentState: &simpleAgentState{handle: handle}}, nil
 }
 
 // EphemeralSimpleAgent creates an ephemeral (in-memory) agent.
@@ -118,7 +130,7 @@ func EphemeralSimpleAgent(algorithm *string) (*JacsSimpleAgent, *AgentInfo, erro
 		_ = json.Unmarshal([]byte(infoStr), &info)
 	}
 
-	return &JacsSimpleAgent{handle: handle}, &info, nil
+	return &JacsSimpleAgent{simpleAgentState: &simpleAgentState{handle: handle}}, &info, nil
 }
 
 // CreateSimpleAgentWithParams creates an agent with full programmatic control via JSON parameters.
@@ -140,11 +152,15 @@ func CreateSimpleAgentWithParams(paramsJSON string) (*JacsSimpleAgent, *AgentInf
 		_ = json.Unmarshal([]byte(infoStr), &info)
 	}
 
-	return &JacsSimpleAgent{handle: handle}, &info, nil
+	return &JacsSimpleAgent{simpleAgentState: &simpleAgentState{handle: handle}}, &info, nil
 }
 
-// Close releases resources. After Close, the agent must not be used.
+// Close releases resources. Closing any value copy closes all copies. Close
+// is safe to call repeatedly and concurrently.
 func (a *JacsSimpleAgent) Close() {
+	if a == nil || a.simpleAgentState == nil {
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.handle != nil {
@@ -400,4 +416,183 @@ func (a *JacsSimpleAgent) SignFile(filePath string, embed bool) (*SignedDocument
 		Timestamp:  getNestedStringField(doc, "jacsSignature", "date"),
 		AgentID:    getNestedStringField(doc, "jacsSignature", "agentID"),
 	}, nil
+}
+
+// BuildAuthHeader builds the legacy unbound JACS Authorization header.
+// It remains available for compatibility and emits a WARN. Strict deployments
+// can reject it with JACS_REJECT_UNBOUND_AUTH_HEADER=true.
+func (a *JacsSimpleAgent) BuildAuthHeader() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return "", errSimpleAgentClosed
+	}
+	return simpleStringResult(
+		C.jacs_simple_build_legacy_auth_header(a.handle),
+		"failed to build legacy auth header",
+	)
+}
+
+// BuildRequestAuthHeader builds a request-bound JACS v2 Authorization header
+// over the exact method, absolute URL, body bytes, and audience.
+func (a *JacsSimpleAgent) BuildRequestAuthHeader(method, url string, body []byte, audience string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return "", errSimpleAgentClosed
+	}
+	cMethod, freeMethod := cString(method)
+	defer freeMethod()
+	cURL, freeURL := cString(url)
+	defer freeURL()
+	cAudience, freeAudience := cString(audience)
+	defer freeAudience()
+	var bodyPtr *C.uint8_t
+	if len(body) > 0 {
+		bodyPtr = (*C.uint8_t)(unsafe.Pointer(&body[0]))
+	}
+	return simpleStringResult(
+		C.jacs_simple_build_auth_header(
+			a.handle,
+			cMethod,
+			cURL,
+			bodyPtr,
+			C.size_t(len(body)),
+			cAudience,
+		),
+		"failed to build request auth header",
+	)
+}
+
+// CanonicalizeJSON serializes strict JSON according to RFC 8785.
+func (a *JacsSimpleAgent) CanonicalizeJSON(input string) (string, error) {
+	return a.callProtocolString(input, func(handle C.SimpleAgentHandle, value *C.char) *C.char {
+		return C.jacs_simple_canonicalize_json(handle, value)
+	}, "failed to canonicalize JSON")
+}
+
+// SignResponse signs a fully bound JACS v2 response envelope.
+func (a *JacsSimpleAgent) SignResponse(payloadJSON string) (string, error) {
+	return a.callProtocolString(payloadJSON, func(handle C.SimpleAgentHandle, value *C.char) *C.char {
+		return C.jacs_simple_sign_response(handle, value)
+	}, "failed to sign response")
+}
+
+// EncodeVerifyPayload returns URL-safe base64 without padding.
+func (a *JacsSimpleAgent) EncodeVerifyPayload(document string) (string, error) {
+	return a.callProtocolString(document, func(handle C.SimpleAgentHandle, value *C.char) *C.char {
+		return C.jacs_simple_encode_verify_payload(handle, value)
+	}, "failed to encode verification payload")
+}
+
+// DecodeVerifyPayload decodes a URL-safe verification payload.
+func (a *JacsSimpleAgent) DecodeVerifyPayload(encoded string) (string, error) {
+	return a.callProtocolString(encoded, func(handle C.SimpleAgentHandle, value *C.char) *C.char {
+		return C.jacs_simple_decode_verify_payload(handle, value)
+	}, "failed to decode verification payload")
+}
+
+// ExtractDocumentID inspects the canonical ID without verification. The result
+// is attacker-controlled until the document is separately verified; never use
+// it for authorization, key lookup, replay, or trust decisions.
+func (a *JacsSimpleAgent) ExtractDocumentID(document string) (string, error) {
+	return a.callProtocolString(document, func(handle C.SimpleAgentHandle, value *C.char) *C.char {
+		return C.jacs_simple_extract_document_id(handle, value)
+	}, "failed to extract document ID")
+}
+
+// UnwrapSignedEvent verifies a v2 event against pinned server keys and returns
+// authenticated payload plus provenance JSON.
+func (a *JacsSimpleAgent) UnwrapSignedEvent(eventJSON, serverKeysJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return "", errSimpleAgentClosed
+	}
+	cEvent, freeEvent := cString(eventJSON)
+	defer freeEvent()
+	cKeys, freeKeys := cString(serverKeysJSON)
+	defer freeKeys()
+	return simpleStringResult(
+		C.jacs_simple_unwrap_signed_event(a.handle, cEvent, cKeys),
+		"failed to unwrap signed event",
+	)
+}
+
+// PrepareSignedEventReplay verifies signed-event cryptography and freshness
+// without consuming replay state or returning payload data.
+func (a *JacsSimpleAgent) PrepareSignedEventReplay(eventJSON, serverKeysJSON string, maxAgeSeconds uint64) (*SignedEventReplayPreparation, error) {
+	if a == nil || a.simpleAgentState == nil {
+		return nil, errSimpleAgentClosed
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return nil, errSimpleAgentClosed
+	}
+	cEvent, freeEvent := cString(eventJSON)
+	defer freeEvent()
+	cKeys, freeKeys := cString(serverKeysJSON)
+	defer freeKeys()
+	// Rust records detailed FFI failures in thread-local storage. Keep the
+	// native call and immediate error retrieval on one OS thread so concurrent
+	// goroutines cannot lose or cross-associate their preparation error.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result := C.jacs_simple_prepare_signed_event_replay(
+		a.handle,
+		cEvent,
+		cKeys,
+		C.uint64_t(maxAgeSeconds),
+	)
+	raw, err := simpleStringResult(result, "failed to prepare signed event replay")
+	if err != nil {
+		return nil, err
+	}
+	return decodeSignedEventReplayPreparation(raw)
+}
+
+// UnwrapSignedEventWithReplayStore verifies an event and releases its payload
+// only after the application-owned shared store atomically accepts first use.
+func (a *JacsSimpleAgent) UnwrapSignedEventWithReplayStore(
+	ctx context.Context,
+	eventJSON string,
+	serverKeysJSON string,
+	store SharedReplayStore,
+	options *SignedEventReplayOptions,
+) (*VerifiedSignedEvent, error) {
+	if a == nil || a.simpleAgentState == nil {
+		return nil, errSimpleAgentClosed
+	}
+	a.mu.RLock()
+	closed := a.handle == nil
+	a.mu.RUnlock()
+	if closed {
+		return nil, errSimpleAgentClosed
+	}
+	return unwrapSignedEventWithReplayStore(
+		ctx,
+		eventJSON,
+		serverKeysJSON,
+		store,
+		options,
+		a.PrepareSignedEventReplay,
+	)
+}
+
+type simpleProtocolStringFn func(C.SimpleAgentHandle, *C.char) *C.char
+
+func (a *JacsSimpleAgent) callProtocolString(
+	input string,
+	call simpleProtocolStringFn,
+	fallback string,
+) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return "", errSimpleAgentClosed
+	}
+	cInput, freeInput := cString(input)
+	defer freeInput()
+	return simpleStringResult(call(a.handle, cInput), fallback)
 }

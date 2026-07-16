@@ -192,36 +192,73 @@
 <ul>
 <li><code>JACSMCPClient</code>, <code>JACSMCPServer</code>, and <code>jacs_call()</code> enforce <strong>loopback-only</strong> URLs</li>
 <li>Unsigned fallback is <strong>disabled by default</strong></li>
+<li>Clients must pin the expected server agent ID; servers must allowlist client agent IDs</li>
+<li><code>stdio</code> is rejected because it bypasses the HTTP signing middleware</li>
+<li>JSON POST and response bodies default to a 2 MiB hard limit (<code>JACS_MCP_MAX_MESSAGE_BYTES</code>)</li>
 <li><code>strict=True</code> is about config loading and failure behavior, not an opt-in to security</li>
 </ul>
+<p>A valid signature proves possession of a key, not that the signer is the intended
+peer. The peer-ID policy below is what binds that proof to your deployment. An
+optional <code>expected_peer_public_key_hash</code> also pins one exact server key.
+On the server, the agent-ID allowlist is combined with JACS trust/key
+resolution; operators must maintain rotation and revocation policy for those
+allowed identities.</p>
 <h2 id="1-secure-a-fastmcp-server"><a class="header" href="#1-secure-a-fastmcp-server">1. Secure A FastMCP Server</a></h2>
 <p>The shortest path is the factory:</p>
 <pre><code class="language-python">from jacs.mcp import create_jacs_mcp_server
 
-mcp = create_jacs_mcp_server("My Server", "./jacs.config.json")
+mcp = create_jacs_mcp_server(
+    "My Server",
+    "./jacs.config.json",
+    allowed_peer_agent_ids=["CLIENT_AGENT_ID"],
+)
 
 @mcp.tool()
 def hello(name: str) -&gt; str:
     return f"Hello, {name}!"
+
+mcp.run(transport="sse")
 </code></pre>
 <p>If you already have a <code>FastMCP</code> instance:</p>
 <pre><code class="language-python">from fastmcp import FastMCP
 from jacs.mcp import JACSMCPServer
 
-mcp = JACSMCPServer(FastMCP("Secure Server"), "./jacs.config.json")
+mcp = JACSMCPServer(
+    FastMCP("Secure Server"),
+    "./jacs.config.json",
+    allowed_peer_agent_ids=["CLIENT_AGENT_ID"],
+)
+
+app = mcp.http_app(transport="sse")
 </code></pre>
 <h2 id="2-secure-a-fastmcp-client"><a class="header" href="#2-secure-a-fastmcp-client">2. Secure A FastMCP Client</a></h2>
 <pre><code class="language-python">from jacs.mcp import JACSMCPClient
 
-client = JACSMCPClient("http://localhost:8000/sse", "./jacs.config.json")
+client = JACSMCPClient(
+    "http://localhost:8000/sse",
+    "./jacs.config.json",
+    expected_peer_agent_id="SERVER_AGENT_ID",
+    # Optional stronger rotation policy:
+    # expected_peer_public_key_hash="SERVER_PUBLIC_KEY_HASH",
+)
 
 async with client:
     result = await client.call_tool("hello", {"name": "World"})
 </code></pre>
-<p>To allow unsigned fallback explicitly:</p>
+<p>To accept any valid signer without authenticating which peer signed, use the
+separate dangerous compatibility switch:</p>
 <pre><code class="language-python">client = JACSMCPClient(
     "http://localhost:8000/sse",
     "./jacs.config.json",
+    allow_any_verified_peer=True,
+)
+</code></pre>
+<p>This is proof-of-possession only and is not peer authentication. To allow fully
+unsigned fallback explicitly:</p>
+<pre><code class="language-python">client = JACSMCPClient(
+    "http://localhost:8000/sse",
+    "./jacs.config.json",
+    expected_peer_agent_id="SERVER_AGENT_ID",
     allow_unsigned_fallback=True,
 )
 </code></pre>
@@ -250,6 +287,14 @@ register_trust_tools(mcp, client=client)
 <li><code>jacs_middleware()</code> for explicit Starlette middleware</li>
 <li><code>jacs_call()</code> for one-off authenticated local MCP calls</li>
 </ul>
+<p><code>jacs_tool</code>, <code>jacs_middleware()</code>, and <code>JacsSSETransport</code> refuse unsigned output
+when no agent is loaded or signing fails. The dangerous
+<code>allow_unsigned_fallback=True</code> option restores legacy passthrough explicitly.
+Authenticated transport messages use a schema-valid JSON-RPC carrier whose
+<code>params.envelope</code> is a complete portable-v2 JACS document. Requests receive a
+fresh unpredictable wire ID per session, and responses with unknown IDs fail
+closed, preventing a signed response from being transplanted into another
+client session.</p>
 <h2 id="example-paths-in-this-repo"><a class="header" href="#example-paths-in-this-repo">Example Paths In This Repo</a></h2>
 <ul>
 <li><code>jacspy/examples/mcp/server.py</code></li>

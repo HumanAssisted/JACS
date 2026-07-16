@@ -4,6 +4,8 @@
 
 use jacs_binding_core::AgentWrapper;
 use jacs_mcp::Profile;
+use rmcp::ServerHandler;
+use serial_test::serial;
 
 #[cfg(not(feature = "full-tools"))]
 const CORE_TOOL_COUNT: usize = 25;
@@ -118,47 +120,78 @@ fn runtime_default_profile_is_core() {
 
 #[test]
 fn runtime_profile_parse_case_insensitive() {
-    assert_eq!(Profile::parse("full"), Profile::Full);
-    assert_eq!(Profile::parse("Full"), Profile::Full);
-    assert_eq!(Profile::parse("FULL"), Profile::Full);
-    assert_eq!(Profile::parse("core"), Profile::Core);
-    assert_eq!(Profile::parse("Core"), Profile::Core);
-    assert_eq!(Profile::parse("CORE"), Profile::Core);
+    assert_eq!(Profile::parse("full").unwrap(), Profile::Full);
+    assert_eq!(Profile::parse("Full").unwrap(), Profile::Full);
+    assert_eq!(Profile::parse("FULL").unwrap(), Profile::Full);
+    assert_eq!(Profile::parse("core").unwrap(), Profile::Core);
+    assert_eq!(Profile::parse("Core").unwrap(), Profile::Core);
+    assert_eq!(Profile::parse("CORE").unwrap(), Profile::Core);
 }
 
 #[test]
-fn runtime_unknown_profile_defaults_to_core() {
-    assert_eq!(Profile::parse("unknown"), Profile::Core);
-    assert_eq!(Profile::parse(""), Profile::Core);
-    assert_eq!(Profile::parse("  "), Profile::Core);
+fn runtime_unknown_profile_is_rejected() {
+    for value in ["unknown", "", "  "] {
+        let error = Profile::parse(value).expect_err("invalid profile must fail closed");
+        assert_eq!(error.value(), value.trim());
+        assert!(error.to_string().contains("expected 'core' or 'full'"));
+    }
 }
 
 #[test]
 fn runtime_cli_overrides_env_var() {
-    let profile = Profile::resolve(Some("core"));
+    let profile = Profile::resolve(Some("core")).unwrap();
     assert_eq!(profile, Profile::Core);
 
-    let profile = Profile::resolve(Some("full"));
+    let profile = Profile::resolve(Some("full")).unwrap();
     assert_eq!(profile, Profile::Full);
 }
 
 #[test]
+#[serial(mcp_profile_env)]
 fn runtime_env_var_and_default_resolution() {
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "full") };
-    let profile = Profile::resolve(None);
+    let profile = Profile::resolve(None).unwrap();
     assert_eq!(profile, Profile::Full);
 
-    let profile = Profile::resolve(Some("core"));
+    let profile = Profile::resolve(Some("core")).unwrap();
     assert_eq!(profile, Profile::Core);
 
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
-    let profile = Profile::resolve(None);
+    let profile = Profile::resolve(None).unwrap();
     assert_eq!(profile, Profile::Core);
 
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "") };
-    let profile = Profile::resolve(None);
+    let profile = Profile::resolve(None).unwrap();
     assert_eq!(profile, Profile::Core);
 
+    unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
+}
+
+#[test]
+#[serial(mcp_profile_env)]
+fn runtime_invalid_env_and_cli_profiles_are_rejected() {
+    unsafe { std::env::set_var("JACS_MCP_PROFILE", "nonsense") };
+    let env_error = Profile::resolve(None).expect_err("invalid env profile must fail");
+    assert_eq!(env_error.value(), "nonsense");
+    assert_eq!(
+        Profile::resolve(Some("core")).expect("valid CLI profile must override invalid env"),
+        Profile::Core
+    );
+
+    unsafe { std::env::set_var("JACS_MCP_PROFILE", "full") };
+    let cli_error = Profile::resolve(Some("nonsense"))
+        .expect_err("invalid CLI profile must fail instead of using the env");
+    assert_eq!(cli_error.value(), "nonsense");
+
+    unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
+}
+
+#[test]
+#[serial(mcp_profile_env)]
+fn server_new_is_explicitly_core_even_when_env_requests_full() {
+    unsafe { std::env::set_var("JACS_MCP_PROFILE", "full") };
+    let server = jacs_mcp::JacsMcpServer::new(AgentWrapper::new());
+    assert_eq!(server.profile(), &Profile::Core);
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
 }
 
@@ -217,4 +250,45 @@ fn static_tools_vs_instance_active_tools() {
     let active = core_server.active_tools();
 
     assert!(active.len() <= static_tools.len());
+}
+
+#[test]
+fn server_instructions_are_generated_from_active_tools() {
+    let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
+    let core_instructions = core_server
+        .get_info()
+        .instructions
+        .expect("core instructions");
+    assert!(core_instructions.contains("profile 'core'"));
+    for tool in core_server.active_tools() {
+        assert!(
+            core_instructions.contains(tool.name.as_ref()),
+            "instructions omitted active tool {}",
+            tool.name
+        );
+    }
+
+    for tool in jacs_mcp::JacsMcpServer::tools() {
+        if !core_server
+            .active_tools()
+            .iter()
+            .any(|active| active.name == tool.name)
+        {
+            assert!(
+                !core_instructions.contains(tool.name.as_ref()),
+                "core instructions advertised inactive tool {}",
+                tool.name
+            );
+        }
+    }
+
+    let full_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Full);
+    let full_instructions = full_server
+        .get_info()
+        .instructions
+        .expect("full instructions");
+    assert!(full_instructions.contains("profile 'full'"));
+    for tool in full_server.active_tools() {
+        assert!(full_instructions.contains(tool.name.as_ref()));
+    }
 }

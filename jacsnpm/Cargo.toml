@@ -1,6 +1,7 @@
 [package]
 name = "jacsnpm"
 version = "0.11.4"
+publish = false
 edition = "2024"
 rust-version = "1.97"
 resolver = "3"
@@ -26,7 +27,7 @@ napi = { version = "2.16.17", features = ["async"] }
 napi-derive = "2.16.13"
 
 [features]
-default = ["attestation", "agreements"]
+default = ["a2a", "attestation", "agreements"]
 a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 agreements = ["jacs-binding-core/agreements"]

@@ -19,7 +19,6 @@ const {
   JACSA2AIntegration,
   A2AAgentCard,
   A2AAgentSkill,
-  JACS_ALGORITHMS,
   TRUST_POLICIES,
   DEFAULT_TRUST_POLICY,
 } = require('../src/a2a');
@@ -112,21 +111,16 @@ describe('JacsClient A2A methods', function () {
   // 3. signArtifact round-trip
   // ---------------------------------------------------------------------------
   describe('signArtifact()', () => {
-    (available ? it : it.skip)('should sign an artifact via client._agent.signRequest', async () => {
+    (available ? it : it.skip)('should sign an artifact via the native canonical A2A signer', async () => {
       const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       const artifact = { action: 'approve', data: { amount: 100 } };
       const signed = await client.signArtifact(artifact, 'task');
 
-      // signRequest returns a signed JACS document (string parsed to object by signRequest)
-      expect(signed).to.exist;
-      // The result comes from native signRequest which returns a string;
-      // it may be a string or object depending on the native binding behavior
-      if (typeof signed === 'string') {
-        const parsed = JSON.parse(signed);
-        expect(parsed.jacsSignature).to.exist;
-      } else {
-        expect(signed.jacsSignature || signed.jacsType).to.exist;
-      }
+      expect(signed).to.be.an('object');
+      expect(signed.jacsType).to.equal('a2a-task');
+      expect(signed.a2aArtifact).to.deep.equal(artifact);
+      expect(signed.jacsSignature).to.exist;
+      expect(signed).to.not.have.property('jacs_payload');
     });
   });
 
@@ -134,28 +128,22 @@ describe('JacsClient A2A methods', function () {
   // 4. verifyArtifact
   // ---------------------------------------------------------------------------
   describe('verifyArtifact()', () => {
-    (available ? it : it.skip)('should verify a signed artifact (string input)', async () => {
+    (available ? it : it.skip)('should verify a native canonical signed artifact', async () => {
       const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       const artifact = { action: 'verify-me', data: { x: 1 } };
       const signed = await client.signArtifact(artifact, 'message');
 
-      // Pass the raw string to preserve serialization and hash
       const result = await client.verifyArtifact(signed);
 
       expect(result).to.exist;
-      expect(typeof result.valid).to.equal('boolean');
-      // signRequest wraps in a JACS header; the artifact data
-      // lives in jacs_payload, so top-level jacsType is 'header'
-      expect(result.artifactType).to.equal('header');
+      expect(result.valid).to.equal(true);
+      expect(result.artifactType).to.equal('a2a-message');
       expect(result.signerId).to.be.a('string');
-
-      // The original artifact is inside jacs_payload of the signed doc
-      const doc = JSON.parse(signed);
-      expect(doc.jacs_payload.a2aArtifact).to.deep.equal(artifact);
-      expect(doc.jacs_payload.jacsType).to.equal('a2a-message');
+      expect(result.originalArtifact).to.deep.equal(artifact);
+      expect(result).to.not.have.property('trustAssessment');
     });
 
-    (available ? it : it.skip)('should coerce object verifyResponse results to boolean and expose payload', async () => {
+    (available ? it : it.skip)('rejects arbitrary legacy verifyResponse objects without exposing payload', async () => {
       const client = new clientModule.JacsClient();
       const fakeAgent = {
         verifyResponse: sinon.stub().returns({ payload: { accepted: true } }),
@@ -176,11 +164,85 @@ describe('JacsClient A2A methods', function () {
 
       const result = await client.verifyArtifact(JSON.stringify(wrapped));
 
-      expect(result.valid).to.equal(true);
+      expect(result.valid).to.equal(false);
       expect(typeof result.valid).to.equal('boolean');
-      expect(result.verifiedPayload).to.deep.equal({ accepted: true });
-      expect(result.verificationResult).to.deep.equal({ payload: { accepted: true } });
-      expect(fakeAgent.verifyResponse.calledOnce).to.equal(true);
+      expect(result).to.not.have.property('verifiedPayload');
+      expect(fakeAgent.verifyResponse.called).to.equal(false);
+    });
+
+    (available ? it : it.skip)('rejects canonical success with incomplete parent evidence', async () => {
+      const client = new clientModule.JacsClient();
+      const fakeAgent = {
+        verifyA2aArtifactWithPolicySync: sinon.stub().returns(JSON.stringify({
+          valid: true,
+          status: 'Verified',
+          signerId: 'agent-x',
+          signerVersion: 'version-x',
+          artifactType: 'header',
+          timestamp: '2026-07-10T00:00:00Z',
+          originalArtifact: { accepted: true },
+          parentSignaturesValid: false,
+          parentVerificationResults: [],
+          trustAssessment: {
+            allowed: true,
+            trustLevel: 'JacsVerified',
+            jacsRegistered: true,
+            inTrustStore: false,
+            reason: 'verified',
+            policy: 'verified',
+            firstContact: false,
+          },
+        })),
+      };
+      client.agent = fakeAgent;
+      const wrapped = {
+        jacsType: 'header',
+        jacsVersionDate: '2099-01-01T00:00:00Z',
+        jacsSignature: { agentID: 'attacker-agent', agentVersion: 'attacker-version' },
+        a2aArtifact: { attacker: true },
+        jacsParentSignatures: [{ jacsId: 'missing-parent-evidence' }],
+      };
+
+      const result = await client.verifyArtifact(wrapped);
+
+      expect(result.valid).to.equal(false);
+      expect(result.signerId).to.equal('');
+      expect(result.timestamp).to.equal('');
+    });
+
+    (available ? it : it.skip)('rejects canonical success missing authenticated provenance', async () => {
+      const client = new clientModule.JacsClient();
+      client.agent = {
+        verifyA2aArtifactWithPolicySync: sinon.stub().returns(JSON.stringify({
+          valid: true,
+          status: 'Verified',
+          parentSignaturesValid: true,
+          parentVerificationResults: [],
+          trustAssessment: {
+            allowed: true,
+            trustLevel: 'JacsVerified',
+            jacsRegistered: true,
+            inTrustStore: false,
+            reason: 'verified',
+            policy: 'verified',
+            firstContact: false,
+          },
+        })),
+      };
+      const wrapped = {
+        jacsType: 'header',
+        jacsVersionDate: '2099-01-01T00:00:00Z',
+        jacsSignature: { agentID: 'attacker-agent', agentVersion: 'attacker-version' },
+        a2aArtifact: { attacker: true },
+      };
+
+      const result = await client.verifyArtifact(wrapped);
+
+      expect(result.valid).to.equal(false);
+      expect(result.signerId).to.equal('');
+      expect(result.signerVersion).to.equal('');
+      expect(result.timestamp).to.equal('');
+      expect(result.originalArtifact).to.deep.equal({});
     });
   });
 
@@ -188,7 +250,7 @@ describe('JacsClient A2A methods', function () {
   // 5. generateWellKnownDocuments via client
   // ---------------------------------------------------------------------------
   describe('generateWellKnownDocuments()', () => {
-    (available ? it : it.skip)('should generate well-known documents from a card', () => {
+    (available ? it : it.skip)('fails closed when the loaded native binding lacks the bound generator', () => {
       const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       const card = client.exportAgentCard({
         jacsId: client.agentId,
@@ -197,32 +259,17 @@ describe('JacsClient A2A methods', function () {
         jacsAgentType: 'ai',
       });
 
-      const documents = client.generateWellKnownDocuments(
+      expect(() => client.generateWellKnownDocuments(
         card,
         'mock-jws-sig',
-        'bW9jay1wdWJsaWMta2V5', // base64 of "mock-public-key"
+        'bW9jay1wdWJsaWMta2V5',
         {
           jacsId: client.agentId,
           jacsVersion: '1',
           jacsAgentType: 'ai',
           keyAlgorithm: 'ring-Ed25519',
         },
-      );
-
-      expect(documents).to.have.all.keys(
-        '/.well-known/agent-card.json',
-        '/.well-known/jwks.json',
-        '/.well-known/jacs-agent.json',
-        '/.well-known/jacs-pubkey.json',
-        '/.well-known/jacs-extension.json',
-      );
-
-      // Agent card should have embedded signature
-      expect(documents['/.well-known/agent-card.json'].signatures[0].jws).to.equal('mock-jws-sig');
-
-      // Extension descriptor should have correct algorithms
-      const ext = documents['/.well-known/jacs-extension.json'];
-      expect(ext.capabilities.documentSigning.algorithms).to.deep.equal(JACS_ALGORITHMS);
+      )).to.throw(/requires the native JACS generator|identity-bound A2A discovery/i);
     });
   });
 

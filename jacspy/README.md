@@ -2,11 +2,31 @@
 
 Cryptographic identity, signing, and verification for AI agents from Python.
 
+> **Registry status (observed 2026-07-11):** PyPI serves `jacs==0.11.3`; this
+> branch is source `0.11.4`. Pin the package when exact cross-language contracts
+> matter.
+
 ```bash
 pip install jacs
 ```
 
 Prebuilt native bindings are distributed via maturin. A normal install does not require compiling Rust.
+
+### First use of the `jacs` command
+
+Installing the Python library does not download a CLI. The first invocation of
+the `jacs` command downloads the matching `cli/vX.Y.Z` GitHub Release into an
+exact-version and platform-specific user cache. It fetches `sha256sums.txt`
+first (with a validated per-asset checksum fallback), verifies SHA-256, rejects
+unsafe archive paths, and then executes the cached binary. Linux musl is not a
+published CLI target, so musl systems fail clearly instead of downloading the
+glibc build. Unsupported platforms or failed verification exit nonzero with the
+fallback command `cargo install jacs-cli`. In an active virtual environment the
+Python shim may remain first on `PATH`; invoke Cargo's installed binary directly
+as `~/.cargo/bin/jacs` (or `.cargo\\bin\\jacs.exe` under your Windows user
+profile). If `CARGO_HOME` is set, use its `bin/jacs` executable instead.
+
+Importing or using the Python library performs no CLI download.
 
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
@@ -38,6 +58,74 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 | `verify_agreement_v2()` | Verify Agreement v2 hash, policy, transcript, and status |
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
+
+## Request authentication and signed events
+
+The instance-based `SimpleAgent` exposes the transport protocol helpers. Build
+the header from the exact request values that will be sent:
+
+```python
+import json
+from jacs import SimpleAgent
+
+agent, _ = SimpleAgent.ephemeral(algorithm="ed25519")
+body = '{"action":"approve"}'
+authorization = agent.build_request_auth_header(
+    "POST",
+    "https://api.example.com/v1/jobs?mode=strict",
+    body,
+    "jobs-api",
+)
+assert authorization.startswith("JACS v2.")
+
+envelope = agent.sign_response(json.dumps({"decision": "allow"}))
+signer_id = json.loads(envelope)["jacsSignature"]["agentID"]
+server_keys = json.dumps({signer_id: agent.get_public_key_pem()})
+verified = json.loads(agent.unwrap_signed_event(envelope, server_keys))
+assert verified["verified"] is True
+assert verified["data"]["decision"] == "allow"
+```
+
+`build_request_auth_header()` accepts `bytes` for arbitrary request bodies or `str`
+(encoded as UTF-8), and binds the exact bytes with method, absolute URL
+including query, audience, signer/key, issue time, and nonce. Do not serialize
+the body again after building the header. `sign_response()` emits a `2.0.0`
+envelope whose `jacs-response-v2` signature covers both payload and metadata.
+`unwrap_signed_event()` is fail-closed: plain events, legacy payload-only
+envelopes, unknown signers, and mutations raise instead of returning data.
+
+Multi-replica consumers should release signed-event payloads through their own
+shared atomic replay store:
+
+```python
+from jacs import unwrap_signed_event_with_replay_store
+
+# store.scope must be "shared". consume(key, ttl_seconds) returns True only
+# for the first atomic consumer and False for a duplicate.
+verified = await unwrap_signed_event_with_replay_store(
+    agent,
+    envelope,
+    server_keys,
+    store,
+)
+```
+
+Native verification and freshness checks run before the store is called and
+return no payload. The helper validates the exact-input digest, consumes the
+native replay key once, rechecks expiry, and only then returns `data` with its
+authenticated signer, timestamp, algorithm, and document ID. Store failures,
+timeouts, invalid results, process-local stores, duplicates, and expiry all fail
+closed with a stable `ReplayError.code`.
+
+The `server_keys` object is a trust decision, not discovery: each key must be
+pinned or resolved under the application's configured policy. Successful
+verification proves possession of that key; it does not independently prove a
+person, organization, domain, or other real-world identity.
+
+The old no-argument `build_auth_header()` remains available for source
+compatibility and emits a WARN because it does not bind the request. Migrate
+clients and servers together to `JACS v2`; strict deployments can reject the
+legacy method with `JACS_REJECT_UNBOUND_AUTH_HEADER=true`.
 
 ## Text and image provenance
 

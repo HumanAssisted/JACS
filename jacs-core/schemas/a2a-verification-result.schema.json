@@ -148,9 +148,13 @@
         "policy": {
           "$ref": "#/definitions/A2ATrustPolicy",
           "description": "The trust policy that was applied."
+        },
+        "firstContact": {
+          "type": "boolean",
+          "description": "Whether this assessment durably pinned the verifying key on first contact. True indicates origin/key continuity only, not established real-world or native JACS identity."
         }
       },
-      "required": ["allowed", "trustLevel", "reason", "jacsRegistered", "agentId", "policy"],
+      "required": ["allowed", "trustLevel", "reason", "jacsRegistered", "agentId", "policy", "firstContact"],
       "additionalProperties": false
     },
     "A2ATrustPolicy": {

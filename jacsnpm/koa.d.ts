@@ -34,6 +34,13 @@ export interface JacsKoaMiddlewareOptions {
     configPath?: string;
     /** Auto-sign JSON response bodies after next(). Default: false (opt-in). */
     sign?: boolean;
+    /**
+     * DANGEROUS: keep the original JSON body when response signing fails.
+     * Enabled only by literal `true`; default is fail closed.
+     */
+    allowUnsignedOutput?: boolean;
+    /** Force fail-closed output even if allowUnsignedOutput is true. */
+    strict?: boolean;
     /** Verify incoming POST/PUT/PATCH bodies as JACS documents. Default: true. */
     verify?: boolean;
     /** Allow unsigned/invalid requests to pass through instead of returning 401. Default: false. */

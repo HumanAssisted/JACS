@@ -33,9 +33,9 @@ Trust policies (`open`, `verified`, `strict`) control admission:
 
 | Policy | Requirement |
 |--------|------------|
-| `open` | Accept all agents |
-| `verified` | Agent must have the `urn:jacs:provenance-v1` extension |
-| `strict` | Agent must be in the local trust store |
+| `open` | Accept all agents without identity assurance |
+| `verified` | Valid same-origin Agent Card JWS plus a durable ES256 TOFU pin; proves origin/key continuity, not native identity |
+| `strict` | Explicitly trusted native root plus a valid binding for the exact identity, version, ES256 key, scope, and binding lifecycle |
 
 See [A2A Interoperability](../integrations/a2a.md) for full details.
 

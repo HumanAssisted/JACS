@@ -43,15 +43,15 @@ This guide helps you choose the right JACS API for your use case.
 ## Native Signing vs. Compatibility Exports
 
 Every API above signs **natively**: the output carries a JACS
-`jacsSignature` from the agent's post-quantum root (`pq2025` for new
-agents; grandfathered Ed25519 agents keep signing with a WARN until they
-rotate). Separately, the CLI offers **targeted ecosystem exporters**
+`jacsSignature` from the agent's selected native root (`pq2025` by default,
+or `ring-Ed25519` when explicitly selected). Separately, the CLI offers
+**targeted ecosystem exporters**
 (`jacs agent export-jwks`, `jacs ap2 export-mandate`,
 `jacs agreement-v2 export-vc`, the A2A agent card) that sign derived
 artifacts with the agent's ES256 compatibility key. Exports are one-way
 views: the native document never gains proof or projection fields, and an
 ES256 signature by itself proves possession of the compatibility key only
-— the PQ-signed compatibility key binding is what ties that key to the
+— the native-root-signed compatibility key binding is what ties that key to the
 agent. There is no generic "sign this document with algorithm X" API, and
 verifying incoming AP2/VC artifacts is out of scope. See the
 [Security Model](../advanced/security.md).

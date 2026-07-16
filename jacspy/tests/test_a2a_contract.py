@@ -161,6 +161,10 @@ def _make_integration(*, verify_succeeds: bool = True) -> JACSA2AIntegration:
             return json.dumps(_load_fixture("trust_blocked"))
         if signer_id == "agent-foreign-002":
             return json.dumps(_load_fixture("foreign_verified"))
+        if signer_id == "agent-foreign-003":
+            return json.dumps(_load_fixture("foreign_unverified"))
+        if signer_id == "agent-invalid-004":
+            return json.dumps(_load_fixture("invalid_signature"))
         return json.dumps(
             _build_generic_result(
                 wrapped_artifact,
@@ -591,15 +595,12 @@ class TestContractFixtures:
                 "Parent result must include 'verified' boolean"
             )
 
-    def test_contract_unverified_vs_invalid(self, schema: Dict[str, Any]):
-        """Verify that ``Unverified`` and ``Invalid`` produce distinct status
-        values matching their respective fixture structures.
+    def test_denied_trust_makes_unverified_artifact_invalid(self, schema: Dict[str, Any]):
+        """Policy denial must AND with an otherwise Unverified signature.
 
-        ``Unverified`` means the public key was not available to attempt
-        verification.  ``Invalid`` means the key was available but the
-        signature did not match.
-
-        Fixtures: foreign_unverified.json, invalid_signature.json
+        The raw foreign fixture remains ``Unverified`` because its public key
+        was unavailable. Once the high-level API applies Verified admission,
+        denied trust produces the externally actionable ``Invalid`` result.
         """
         unverified_expected = _load_fixture("foreign_unverified")
         invalid_expected = _load_fixture("invalid_signature")
@@ -615,7 +616,11 @@ class TestContractFixtures:
             timestamp=unverified_expected["timestamp"],
             artifact=unverified_expected["originalArtifact"],
         )
-        unverified_result = integration.verify_wrapped_artifact(unverified_wrapped)
+        unverified_result = integration.verify_wrapped_artifact(
+            unverified_wrapped,
+            assess_trust=True,
+            trust_policy="verified",
+        )
 
         # -- Invalid case --
         invalid_wrapped = _make_wrapped_artifact(
@@ -625,7 +630,11 @@ class TestContractFixtures:
             timestamp=invalid_expected["timestamp"],
             artifact=invalid_expected["originalArtifact"],
         )
-        invalid_result = integration.verify_wrapped_artifact(invalid_wrapped)
+        invalid_result = integration.verify_wrapped_artifact(
+            invalid_wrapped,
+            assess_trust=True,
+            trust_policy="verified",
+        )
 
         # Both must be invalid
         assert unverified_result.get("valid") is False, (
@@ -635,7 +644,6 @@ class TestContractFixtures:
             "Invalid artifact must have valid=False"
         )
 
-        # They must have distinct status structures
         unverified_status = unverified_result.get("status")
         invalid_status = invalid_result.get("status")
 
@@ -646,12 +654,11 @@ class TestContractFixtures:
             "Invalid result must have a 'status' field"
         )
 
-        # Unverified: status should be {"Unverified": {"reason": "..."}}
         assert isinstance(unverified_status, dict), (
-            f"Unverified status must be a dict (got {type(unverified_status).__name__})"
+            f"Policy-denied status must be a dict (got {type(unverified_status).__name__})"
         )
-        assert "Unverified" in unverified_status, (
-            f"Unverified status dict must contain 'Unverified' key, "
+        assert "Invalid" in unverified_status, (
+            f"Policy-denied status dict must contain 'Invalid' key, "
             f"got keys: {list(unverified_status.keys()) if isinstance(unverified_status, dict) else 'N/A'}"
         )
 
@@ -664,10 +671,7 @@ class TestContractFixtures:
             f"got keys: {list(invalid_status.keys()) if isinstance(invalid_status, dict) else 'N/A'}"
         )
 
-        # The two status values must be structurally different
-        assert unverified_status != invalid_status, (
-            "Unverified and Invalid must produce distinct status values"
-        )
+        assert unverified_result.get("trustAssessment", {}).get("allowed") is False
 
     def test_contract_trust_blocked(self, schema: Dict[str, Any]):
         """Verify Python output for a trust-blocked artifact matches the

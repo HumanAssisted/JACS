@@ -40,8 +40,14 @@ pub struct JACSDocument {
 pub const EDITABLE_JACS_DOCS: &[&str] = &["config", "artifact"];
 
 fn decode_embedded_gzip_base64(contents_b64: &str) -> Result<Vec<u8>, JacsError> {
+    decode_embedded_gzip_base64_with_limit(contents_b64, crate::schema::utils::max_document_size())
+}
+
+fn decode_embedded_gzip_base64_with_limit(
+    contents_b64: &str,
+    max_size: usize,
+) -> Result<Vec<u8>, JacsError> {
     let decoded_contents = STANDARD.decode(contents_b64)?;
-    let max_size = crate::schema::utils::max_document_size();
     let limit = u64::try_from(max_size)
         .ok()
         .and_then(|size| size.checked_add(1))
@@ -1177,7 +1183,6 @@ mod tests {
     use super::*;
     use flate2::Compression;
     use flate2::write::GzEncoder;
-    use serial_test::serial;
     use std::io::Write;
 
     fn gzip_base64(input: &[u8]) -> String {
@@ -1197,21 +1202,10 @@ mod tests {
     }
 
     #[test]
-    #[serial(jacs_env)]
     fn decode_embedded_gzip_base64_rejects_oversized_payload() {
-        // SAFETY: serial_test ensures this env mutation is isolated for the test.
-        unsafe {
-            std::env::set_var("JACS_MAX_DOCUMENT_SIZE", "128");
-        }
-
         let oversized = vec![b'A'; 1024];
         let encoded = gzip_base64(&oversized);
-        let result = decode_embedded_gzip_base64(&encoded);
-
-        // SAFETY: paired cleanup for the isolated env mutation above.
-        unsafe {
-            std::env::remove_var("JACS_MAX_DOCUMENT_SIZE");
-        }
+        let result = decode_embedded_gzip_base64_with_limit(&encoded, 128);
 
         match result {
             Err(JacsError::DocumentTooLarge { size, max_size }) => {

@@ -188,7 +188,9 @@ if result["allowed"]:
     print(f"Trusted: {result['card']['name']} ({result['trust_level']})")
 </code></pre>
 <h3 id="add-to-your-trust-store"><a class="header" href="#add-to-your-trust-store">Add to Your Trust Store</a></h3>
-<p>For <code>strict</code> policy, agents must be in your local trust store:</p>
+<p>For <code>strict</code> policy, establish native JACS trust from an authenticated agent
+document and explicit native public key. An Agent Card is self-advertised and
+cannot create strict identity trust by itself:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
@@ -200,8 +202,8 @@ assessment = a2a.assess_remote_agent(remote_card_json)
 print(f"JACS registered: {assessment['jacs_registered']}")
 print(f"Allowed: {assessment['allowed']}")
 
-# Add to trust store (verifies agent's self-signature first)
-a2a.trust_a2a_agent(remote_card_json)
+# Obtain both values through an authenticated out-of-band channel.
+a2a.trust_a2a_agent(remote_native_agent_json, remote_native_public_key_pem)
 </code></pre>
 <h3 id="async-api"><a class="header" href="#async-api">Async API</a></h3>
 <pre><code class="language-python">from jacs.a2a_discovery import discover_agent, discover_and_assess
@@ -237,8 +239,9 @@ const assessment = a2a.assessRemoteAgent(remoteCardJson);
 console.log(`JACS registered: ${assessment.jacsRegistered}`);
 console.log(`Allowed: ${assessment.allowed}`);
 
-// Add to trust store
-a2a.trustA2AAgent(remoteAgentId);
+// Obtain both through an authenticated out-of-band channel. Passing an
+// Agent Card here is rejected.
+a2a.trustA2AAgent(remoteNativeAgentDocument, remoteNativePublicKeyPem);
 </code></pre>
 </div>
 </div>
@@ -246,17 +249,31 @@ a2a.trustA2AAgent(remoteAgentId);
 <h2 id="trust-policies"><a class="header" href="#trust-policies">Trust Policies</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody>
 <tr><td><code>open</code></td><td>Accept all agents without verification</td></tr>
-<tr><td><code>verified</code></td><td>Require the JACS provenance extension (<code>urn:jacs:provenance-v1</code>) in the agent card (<strong>default</strong>)</td></tr>
-<tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td></tr>
+<tr><td><code>verified</code></td><td>Require a valid Agent Card JWS against the same-origin JWKS and a durable <code>jacsId:jacsVersion</code> key pin (<strong>default</strong>). This is origin/key continuity, not proof of the claimed native JACS identity.</td></tr>
+<tr><td><code>strict</code></td><td>Require an explicitly trusted native JACS root. ES256 cards must also carry the fixed-path compatibility binding, whose native signature, identity/version, binding hash, compatibility JWK/kid, scope, expiry, and signed issuance time all verify. Bindings are accepted for at most seven days after <code>issuedAt</code> (with five minutes of future clock skew), and the verifier durably pins the latest observed hash, kid, and <code>issuedAt</code>; a newer root-signed binding advances the pin and older replays fail closed.</td></tr>
 </tbody></table>
 </div>
+<blockquote>
+<p><strong>Lifecycle boundary:</strong> The absolute seven-day freshness check also applies
+on first contact, independently of <code>expiresAt</code>. Local discovery generation
+refreshes an authentic binding after six days under the shared issuance lock,
+preserving its scopes and explicit expiry. Once a newer native-root-signed
+binding is observed, JACS also rejects rollback to the old hash/kid. Use an
+earlier <code>expiresAt</code> when old compatibility keys must stop working sooner, and
+distribute the refreshed binding promptly after rotation or compromise.</p>
+</blockquote>
 <h3 id="how-trust-flows"><a class="header" href="#how-trust-flows">How Trust Flows</a></h3>
 <pre><code>1. Discover  -- Fetch /.well-known/agent-card.json from a remote URL
 2. Assess    -- Check for JACS extension, verify signatures
 3. Decide    -- Trust policy determines if the agent is allowed
 4. Trust     -- Optionally add the agent to your local trust store
 </code></pre>
-<p>With <code>open</code> policy, all agents pass step 3. With <code>verified</code>, agents must have the JACS extension. With <code>strict</code>, agents must be explicitly added to the trust store in step 4 before they pass.</p>
+<p>With <code>open</code>, all agents pass step 3 without identity assurance. With
+<code>verified</code>, the Agent Card JWS must verify against the same-origin JWKS and the
+ES256 key must match its durable TOFU pin; this proves origin/key continuity,
+not native identity. With <code>strict</code>, the native root must be explicitly trusted
+and its signed compatibility binding must authorize the exact card key,
+identity, version, scope, and current binding hash.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><strong><a href="a2a-exchange.html">Exchange Signed Artifacts</a></strong> -- Sign and verify artifacts with trusted agents</li>

@@ -4,7 +4,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { createJACSTransportProxy } from '../mcp.js';
+import { createJACSTransportProxyAsync } from '../mcp.js';
 import * as http from 'node:http';
 import { URL } from 'node:url';
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -12,6 +12,7 @@ import express from 'express'; // Import express
 import { z } from 'zod';
 
 const serverConfigPath = "./jacs.server.config.json";
+const EXPECTED_CLIENT_AGENT_ID = process.env.JACS_EXPECTED_MCP_CLIENT_AGENT_ID;
 const PORT = 3000;
 const SSE_PATH = "/sse";
 const MCP_POST_PATH = '/mcp-sse-post'; // Define the post path
@@ -124,14 +125,21 @@ app.use(async (req, res, next) => {
 
   // Handle GET request to establish SSE connection
   if (req.method === 'GET' && requestUrl.pathname === SSE_PATH) {
+    if (!EXPECTED_CLIENT_AGENT_ID) {
+      throw new Error('Set JACS_EXPECTED_MCP_CLIENT_AGENT_ID to the client jacsSignature.agentID');
+    }
     console.log(`[HTTP_ROUTER] SSE connection request for ${SSE_PATH}`);
     const sseTransport = new SSEServerTransport(MCP_POST_PATH, res); 
     const currentSessionId = sseTransport.sessionId;
     console.log(`[HTTP_ROUTER] SSEServerTransport created for session: ${currentSessionId}`);
     
     console.log(`[HTTP_ROUTER] Creating JACS middleware for session: ${currentSessionId}`);
-    // Use the synchronous factory for JACS transport
-    const secureJacsTransport = createJACSTransportProxy(sseTransport, serverConfigPath, "server");
+    const secureJacsTransport = await createJACSTransportProxyAsync(
+      sseTransport,
+      serverConfigPath,
+      "server",
+      { expectedPeerAgentId: EXPECTED_CLIENT_AGENT_ID },
+    );
     console.log(`[HTTP_ROUTER] JACS middleware created for session: ${currentSessionId}`);
     
     try {

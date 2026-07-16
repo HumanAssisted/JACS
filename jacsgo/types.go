@@ -12,6 +12,24 @@ type AgentInfo struct {
 	PublicKeyPath string `json:"public_key_path"`
 	// ConfigPath is the path to the configuration file.
 	ConfigPath string `json:"config_path"`
+	// Version is the current agent document version.
+	Version string `json:"version"`
+	// Algorithm is the canonical native signing algorithm actually in use.
+	Algorithm string `json:"algorithm"`
+	// PrivateKeyPath is the path to the encrypted private key file.
+	PrivateKeyPath string `json:"private_key_path"`
+	// DataDirectory is the agent's configured data directory.
+	DataDirectory string `json:"data_directory"`
+	// KeyDirectory is the agent's configured key directory.
+	KeyDirectory string `json:"key_directory"`
+	// Domain is the configured discovery domain, when present.
+	Domain string `json:"domain"`
+	// DNSRecord is the generated DNS discovery record, when present.
+	DNSRecord string `json:"dns_record"`
+	// EcosystemKID identifies the optional ES256 compatibility key.
+	EcosystemKID string `json:"ecosystem_kid"`
+	// EcosystemAlgorithm is the optional compatibility-key algorithm.
+	EcosystemAlgorithm string `json:"ecosystem_algorithm"`
 }
 
 // SignedDocument represents a signed JACS document.

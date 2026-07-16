@@ -31,7 +31,8 @@ Sign it with JACS:
 jacs document create -f my-document.json
 ```
 
-This adds JACS headers and signature, producing a signed document.
+This adds JACS headers and a signature, saves the document, and prints the
+exact path. Pass `--json` for a machine-readable document key/path result.
 
 ### From a Directory
 

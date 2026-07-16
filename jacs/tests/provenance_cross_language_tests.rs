@@ -30,7 +30,7 @@ use support::generate_provenance_fixtures::{
 };
 
 fn ephemeral_ed25519() -> SimpleAgent {
-    SimpleAgent::ephemeral(Some("ed25519"))
+    SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
         .expect("ephemeral")
         .0
 }

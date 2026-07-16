@@ -2,15 +2,23 @@ import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { JacsAgent } from './index.js';
 import { JacsClient } from './client.js';
+/** Reserved JSON-RPC notification carrying one serialized JACS envelope. */
+export declare const JACS_MCP_SIGNED_CARRIER_METHOD = "notifications/jacs/signed";
+/** Wire version for the reserved signed-envelope carrier. */
+export declare const JACS_MCP_SIGNED_CARRIER_VERSION = 1;
 /**
  * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
  *
  * Outgoing messages are signed with `signRequest()`.
- * Incoming messages are verified with `verifyResponse()`.
+ * Incoming messages are verified with `verifyResponseWithAgentId()` and are
+ * dispatched only when the authenticated signer matches the configured peer
+ * identity policy.
  *
  * Security defaults:
  * - local-only transport enforcement (`stdio` or loopback URL)
  * - fail-closed on signing/verification errors
+ * - fail-closed until an expected/allowed peer signer is configured
+ * - randomized, one-use wire IDs for request/response correlation
  *
  * Local-only mode is mandatory and cannot be disabled.
  *
@@ -23,6 +31,8 @@ export declare class JACSTransportProxy implements Transport {
     private proxyId;
     private debug;
     private allowUnsignedFallback;
+    private peerIdentityPolicy;
+    private pendingRequests;
     onclose?: () => void;
     onerror?: (error: Error) => void;
     onmessage?: (message: JSONRPCMessage) => void;
@@ -35,6 +45,11 @@ export declare class JACSTransportProxy implements Transport {
     close(): Promise<void>;
     send(message: JSONRPCMessage): Promise<void>;
     get sessionId(): string | undefined;
+    private cleanupExpiredPendingRequests;
+    private prepareOutgoingMessage;
+    private rollbackPendingRequest;
+    private restoreCorrelatedResponse;
+    private verifySignedEnvelope;
     private handleIncoming;
     /**
      * Removes null and undefined values from JSON objects to prevent MCP schema
@@ -55,9 +70,31 @@ export interface JACSTransportProxyOptions {
     localOnly?: boolean;
     /**
      * Allow fallback to unsigned/plain MCP messages when JACS signing or
-     * verification fails. Default: false (fail closed).
+     * verification fails, including parsed JSON-RPC objects that no longer carry
+     * a verifiable serialized JACS envelope. Default: false (fail closed).
      */
     allowUnsignedFallback?: boolean;
+    /**
+     * Exact JACS agent ID expected to sign every incoming authenticated message.
+     * This is the recommended endpoint-identity policy for one peer.
+     */
+    expectedPeerAgentId?: string;
+    /**
+     * Exact allowlist of JACS agent IDs permitted to sign incoming messages.
+     * Use this only when one transport intentionally serves multiple peers.
+     */
+    allowedPeerAgentIds?: readonly string[];
+    /**
+     * Optional exact authenticated `jacsSignature.publicKeyHash` pin. It can be
+     * used only with `expectedPeerAgentId`.
+     */
+    expectedPeerPublicKeyHash?: string;
+    /**
+     * Dangerous compatibility mode: accept any cryptographically valid signer
+     * resolvable by the local JACS agent. This proves key possession only and
+     * does not authenticate the intended MCP endpoint. Must be literal `true`.
+     */
+    dangerouslyAllowAnyValidSigner?: boolean;
 }
 /**
  * Create a transport proxy from a pre-loaded JacsClient or JacsAgent.

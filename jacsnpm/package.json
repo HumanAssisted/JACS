@@ -85,9 +85,9 @@
     "jacs-cli": "bin/jacs-cli.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install-cli.js || true",
-    "build": "napi build --platform --release && npm run build:ts",
-    "build:debug": "napi build --platform && npm run build:ts",
+    "postinstall": "node scripts/install-cli.js",
+    "build": "napi build --platform --release --cargo-flags=--locked && npm run build:ts",
+    "build:debug": "napi build --platform --cargo-flags=--locked && npm run build:ts",
     "build:ts": "tsc",
     "test": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/**/*.test.js'",
     "test:parallel": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --parallel --jobs 4 --timeout 15000 'test/**/*.test.js' --ignore 'test/cross-language.test.js' && JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'",
@@ -114,10 +114,7 @@
     "test:cross-language": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'",
     "test:cross-language-provenance": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 60000 'test/cross-language-provenance.test.js'"
   },
-  "dependencies": {
-    "@napi-rs/cli": "^2.16.3",
-    "uuid": "^13.0.1"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@ai-sdk/provider": ">=1.0.0",
     "@langchain/core": ">=0.3.0",
@@ -156,9 +153,10 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@napi-rs/cli": "^2.16.3",
     "@types/node": "^22.15",
     "ajv": "^8.17.1",
-    "chai": "^6.2.2",
+    "chai": "4.5.0",
     "js-yaml": "^4.1.1",
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
@@ -176,16 +174,22 @@
   },
   "author": "HAI.AI",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/HumanAssisted/JACS",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HumanAssisted/JACS.git"
+    "url": "https://github.com/HumanAssisted/JACS"
   },
   "files": [
+    "LICENSE",
+    "THIRD-PARTY-NOTICES",
     "index.js",
     "index.d.ts",
     "simple.js",
     "simple.d.ts",
+    "simple.js.map",
     "a2a.js",
     "a2a.d.ts",
     "a2a.js.map",
@@ -213,16 +217,25 @@
     "vercel-ai.js.map",
     "client.js",
     "client.d.ts",
+    "client.js.map",
+    "verification.js",
+    "verification.d.ts",
+    "verification.js.map",
+    "output-policy.js",
+    "output-policy.d.ts",
+    "output-policy.js.map",
     "testing.js",
     "testing.d.ts",
+    "testing.js.map",
     "langchain.js",
     "langchain.d.ts",
     "langchain.js.map",
     "deprecation.js",
     "deprecation.d.ts",
+    "deprecation.js.map",
     "jacs.*.node",
     "scripts/install-cli.js",
-    "bin/"
+    "bin/jacs-cli.js"
   ],
   "keywords": [
     "jacs",

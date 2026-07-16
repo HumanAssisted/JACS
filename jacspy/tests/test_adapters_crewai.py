@@ -7,6 +7,8 @@ without crewai installed.
 
 import json
 import logging
+import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -103,16 +105,38 @@ class TestJacsGuardrail:
         assert ok is False
         assert "JACS signing failed" in result
 
-    def test_guardrail_permissive_passthrough_on_failure(self):
-        """Permissive guardrail returns (True, original) when signing fails."""
+    def test_guardrail_fails_closed_by_default(self):
+        """Signing failure rejects output even when strict is not requested."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         gd = jacs_guardrail(client=client, strict=False)
         client.reset()
 
         task_output = FakeTaskOutput("original data")
         ok, result = gd(task_output)
+        assert ok is False
+        assert "JACS signing failed" in result
+
+    def test_guardrail_unsigned_passthrough_requires_explicit_opt_in(self):
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        gd = jacs_guardrail(client=client, allow_unsigned_output=True)
+        client.reset()
+
+        ok, result = gd(FakeTaskOutput("original data"))
         assert ok is True
         assert result == "original data"
+
+    def test_guardrail_strict_overrides_unsigned_opt_in(self):
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        gd = jacs_guardrail(
+            client=client,
+            strict=True,
+            allow_unsigned_output=True,
+        )
+        client.reset()
+
+        ok, result = gd(FakeTaskOutput("original data"))
+        assert ok is False
+        assert "JACS signing failed" in result
 
     def test_guardrail_permissive_logs_warning(self, caplog):
         """Permissive guardrail logs a warning on failure."""
@@ -157,11 +181,24 @@ class TestJacsSignedTool:
         parsed = json.loads(result)
         assert "jacsSignature" in parsed or "jacsHash" in parsed
 
-    def test_run_passthrough_on_failure(self):
-        """When signing fails in permissive mode, return original output."""
+    def test_run_fails_closed_by_default(self):
+        """Signing failure does not expose the original tool output."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         inner = FakeTool(output="fallback output")
         wrapped = JacsSignedTool(inner, client=client, strict=False)
+        client.reset()
+
+        with pytest.raises(Exception):
+            wrapped._run()
+
+    def test_run_unsigned_passthrough_requires_explicit_opt_in(self):
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        inner = FakeTool(output="fallback output")
+        wrapped = JacsSignedTool(
+            inner,
+            client=client,
+            allow_unsigned_output=True,
+        )
         client.reset()
 
         result = wrapped._run()
@@ -215,18 +252,34 @@ class TestJacsVerifiedInput:
 
         # Create signed data to pass in
         signed = client.sign_message("hello").raw_json
-        result = wrapped._run(signed_input=signed)
+        wrapped._run(signed_input=signed)
         assert inner._run.called
 
-    def test_passthrough_on_bad_input(self, client):
-        """Permissive mode passes through unverifiable input."""
+    def test_bad_input_fails_closed_by_default(self, client):
+        """A verification-named wrapper must not execute unverifiable input."""
         inner = MagicMock()
         inner.name = "mock_tool"
         inner.description = "mock"
         inner.args_schema = None
         inner._run.return_value = "ok"
 
-        wrapped = JacsVerifiedInput(inner, client=client, strict=False)
+        wrapped = JacsVerifiedInput(inner, client=client)
+        with pytest.raises(Exception, match="Verification failed"):
+            wrapped._run(signed_input="not signed json")
+        assert inner._run.called is False
+
+    def test_passthrough_on_bad_input_requires_explicit_opt_in(self, client):
+        inner = MagicMock()
+        inner.name = "mock_tool"
+        inner.description = "mock"
+        inner.args_schema = None
+        inner._run.return_value = "ok"
+
+        wrapped = JacsVerifiedInput(
+            inner,
+            client=client,
+            allow_unverified_passthrough=True,
+        )
         wrapped._run(signed_input="not signed json")
         assert inner._run.called
 
@@ -289,9 +342,27 @@ class TestSignedTask:
         """signed_task should fail with ImportError if crewai not installed."""
         try:
             import crewai  # noqa: F401
+
             pytest.skip("crewai is installed, cannot test ImportError")
         except ImportError:
             from jacs.adapters.crewai import signed_task
 
             with pytest.raises(ImportError, match="crewai is required"):
                 signed_task(description="test")
+
+    def test_existing_guardrail_cannot_suppress_jacs(self, client, monkeypatch):
+        """A preexisting guardrail is rejected instead of silently winning."""
+
+        class FakeTask:
+            def __init__(self, **kwargs):
+                self.guardrail = kwargs.get("guardrail")
+
+        monkeypatch.setitem(sys.modules, "crewai", SimpleNamespace(Task=FakeTask))
+        from jacs.adapters.crewai import signed_task
+
+        with pytest.raises(ValueError, match="existing guardrail"):
+            signed_task(
+                client=client,
+                description="must be signed",
+                guardrail=lambda value: (True, value),
+            )

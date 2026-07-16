@@ -14,14 +14,18 @@
 package jacs
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -41,6 +45,109 @@ func provenanceFixturesDir(t *testing.T) string {
 
 func provenanceKeysDir(t *testing.T) string {
 	return filepath.Join(provenanceFixturesDir(t), "keys")
+}
+
+func provenanceCLIBinary(t *testing.T) string {
+	t.Helper()
+	if configured := os.Getenv("JACS_CLI_BIN"); configured != "" {
+		if !filepath.IsAbs(configured) {
+			t.Fatalf("JACS_CLI_BIN must be an absolute path, got %q", configured)
+		}
+		path := filepath.Clean(configured)
+		if info, err := os.Stat(path); err != nil || info.IsDir() {
+			t.Fatalf("JACS_CLI_BIN must name a prebuilt CLI executable: %q (%v)", path, err)
+		}
+		return path
+	}
+
+	workspaceRoot := filepath.Clean(filepath.Join(provenanceFixturesDir(t), "..", "..", "..", ".."))
+	name := "jacs"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	candidate := filepath.Join(workspaceRoot, "target", "debug", name)
+	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		return candidate
+	}
+	t.Skipf(
+		"prebuilt JACS CLI not found; run `cargo build -p jacs-cli --bin jacs` and set JACS_CLI_BIN (looked for %s)",
+		candidate,
+	)
+	return ""
+}
+
+const provenanceCommandOutputLimit = 1 << 20
+
+type cappedCommandOutput struct {
+	buffer    bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func newCappedCommandOutput(limit int) *cappedCommandOutput {
+	return &cappedCommandOutput{limit: limit}
+}
+
+func (output *cappedCommandOutput) Write(data []byte) (int, error) {
+	written := len(data)
+	remaining := output.limit - output.buffer.Len()
+	if remaining > 0 {
+		if remaining < len(data) {
+			output.truncated = true
+			data = data[:remaining]
+		}
+		_, _ = output.buffer.Write(data)
+	} else if len(data) > 0 {
+		output.truncated = true
+	}
+	return written, nil
+}
+
+func (output *cappedCommandOutput) String() string {
+	captured := output.buffer.String()
+	if !output.truncated {
+		return captured
+	}
+	return fmt.Sprintf(
+		"%s\n[truncated: command output exceeded %d-byte capture limit]",
+		captured,
+		output.limit,
+	)
+}
+
+func runBoundedCommand(
+	ctx context.Context,
+	path string,
+	args []string,
+	dir string,
+	env []string,
+) (stdout string, stderr string, err error) {
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Dir = dir
+	cmd.Env = env
+	stdoutBuffer := newCappedCommandOutput(provenanceCommandOutputLimit)
+	stderrBuffer := newCappedCommandOutput(provenanceCommandOutputLimit)
+	cmd.Stdout = stdoutBuffer
+	cmd.Stderr = stderrBuffer
+	err = cmd.Run()
+	stdout = stdoutBuffer.String()
+	stderr = stderrBuffer.String()
+	if ctx.Err() != nil {
+		return stdout, stderr, fmt.Errorf(
+			"JACS CLI timed out or was cancelled: %w; stderr: %s",
+			ctx.Err(),
+			strings.TrimSpace(stderr),
+		)
+	}
+	if stdoutBuffer.truncated || stderrBuffer.truncated {
+		return stdout, stderr, fmt.Errorf(
+			"JACS CLI output exceeded %d-byte capture limit (stdout=%t, stderr=%t)",
+			provenanceCommandOutputLimit,
+			stdoutBuffer.truncated,
+			stderrBuffer.truncated,
+		)
+	}
+	return stdout, stderr, err
 }
 
 type provenanceMetadata struct {
@@ -394,10 +501,6 @@ func TestProvenanceStrictRustSignedMarkdownDoesNotError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestProvenanceGoSignsRustVerifies(t *testing.T) {
-	if _, err := exec.LookPath("cargo"); err != nil {
-		t.Skip("cargo not on PATH; skipping Go→Rust round-trip")
-	}
-
 	tmp := t.TempDir()
 	target := filepath.Join(tmp, "go_signed.md")
 	if err := os.WriteFile(target, []byte("# Go-signed\n\nVerify me from Rust.\n"), 0o644); err != nil {
@@ -430,25 +533,24 @@ func TestProvenanceGoSignsRustVerifies(t *testing.T) {
 	}
 
 	workspaceRoot := filepath.Clean(filepath.Join(provenanceFixturesDir(t), "..", "..", "..", ".."))
-
-	cmd := exec.Command(
-		"cargo", "run", "-q", "--bin", "jacs", "--",
-		"verify-text", target,
-		"--key-dir", keyDir,
-		"--json",
+	cliPath := provenanceCLIBinary(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stdout, stderr, err := runBoundedCommand(
+		ctx,
+		cliPath,
+		[]string{
+			"verify-text", target,
+			"--key-dir", keyDir,
+			"--json",
+		},
+		workspaceRoot,
+		append(os.Environ(), "JACS_MAX_IAT_SKEW_SECONDS=0"),
 	)
-	cmd.Dir = workspaceRoot
-	cmd.Env = append(os.Environ(), "JACS_MAX_IAT_SKEW_SECONDS=0")
-	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("cargo verify-text failed: %v\noutput: %s", err, out)
+		t.Fatalf("JACS CLI verify-text failed: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
 	}
 
-	// Filter out warning lines that cargo may emit before the JSON payload.
-	jsonStart := strings.Index(string(out), "{")
-	if jsonStart < 0 {
-		t.Fatalf("no JSON payload in cargo output: %s", out)
-	}
 	var parsed struct {
 		Status     string `json:"status"`
 		Signatures []struct {
@@ -456,8 +558,8 @@ func TestProvenanceGoSignsRustVerifies(t *testing.T) {
 			SignerID string `json:"signer_id"`
 		} `json:"signatures"`
 	}
-	if err := json.Unmarshal(out[jsonStart:], &parsed); err != nil {
-		t.Fatalf("unmarshal cli output: %v\noutput: %s", err, out)
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("unmarshal CLI stdout: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
 	}
 	if parsed.Status != "signed" {
 		t.Fatalf("status=%q, want signed", parsed.Status)
@@ -471,5 +573,90 @@ func TestProvenanceGoSignsRustVerifies(t *testing.T) {
 	}
 	if sig.SignerID != signerID {
 		t.Fatalf("sig signer_id=%q, want %q", sig.SignerID, signerID)
+	}
+}
+
+func TestProvenanceBoundedCommandPreservesStderrOnTimeout(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("resolve test executable: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, stderr, err := runBoundedCommand(
+		ctx,
+		executable,
+		[]string{"-test.run=TestProvenanceCLIHelperProcess", "--", "hang"},
+		"",
+		append(os.Environ(), "GO_WANT_PROVENANCE_CLI_HELPER=1"),
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline-exceeded error, got %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("bounded command returned too slowly: %s", elapsed)
+	}
+	if !strings.Contains(stderr, "fake JACS CLI started") {
+		t.Fatalf("timeout diagnostics lost child stderr: %q", stderr)
+	}
+}
+
+func TestProvenanceBoundedCommandCapsChildOutput(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("resolve test executable: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stdout, stderr, err := runBoundedCommand(
+		ctx,
+		executable,
+		[]string{"-test.run=TestProvenanceCLIHelperProcess", "--", "flood"},
+		"",
+		append(os.Environ(), "GO_WANT_PROVENANCE_CLI_HELPER=1"),
+	)
+	if err == nil {
+		t.Fatal("expected output-limit error")
+	}
+	const captureLimit = 1 << 20
+	const truncationMarker = "[truncated: command output exceeded 1048576-byte capture limit]"
+	if got, want := err.Error(), "JACS CLI output exceeded 1048576-byte capture limit (stdout=true, stderr=true)"; got != want {
+		t.Fatalf("unexpected output-limit error:\n got: %q\nwant: %q", got, want)
+	}
+	for name, output := range map[string]string{"stdout": stdout, "stderr": stderr} {
+		if !strings.HasSuffix(output, truncationMarker) {
+			t.Errorf("%s lacks deterministic truncation diagnostic", name)
+		}
+		if len(output) > captureLimit+len(truncationMarker)+1 {
+			t.Errorf("%s capture is not bounded: got %d bytes", name, len(output))
+		}
+	}
+}
+
+func TestProvenanceCLIHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_PROVENANCE_CLI_HELPER") != "1" {
+		return
+	}
+	mode := ""
+	for i, arg := range os.Args[:len(os.Args)-1] {
+		if arg == "--" {
+			mode = os.Args[i+1]
+			break
+		}
+	}
+	switch mode {
+	case "hang":
+		fmt.Fprintln(os.Stderr, "fake JACS CLI started")
+		select {}
+	case "flood":
+		chunk := strings.Repeat("x", 64<<10)
+		for i := 0; i < 32; i++ {
+			fmt.Fprint(os.Stdout, chunk)
+			fmt.Fprint(os.Stderr, chunk)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "unknown helper mode %q", mode)
+		os.Exit(2)
 	}
 }

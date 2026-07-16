@@ -1,7 +1,7 @@
 //! P2 Task 004-A — ES256 identity exports (JWKS + binding export).
 //!
 //! Identity exports are ES256 compatibility views of the agent, gated by
-//! the PQ-root-signed binding scopes. PQ material is never published in
+//! the native-root-signed binding scopes. Native-root material is never published in
 //! the JWKS; JACS-aware relying parties use the exported binding to trace
 //! the ES256 key back to the post-quantum root.
 
@@ -316,6 +316,13 @@ fn a2a_agent_card_uses_bound_es256_key() {
         .expect("sig b64");
     jacs::crypt::es256::verify_es256_jose(&public_pem, signing_input.as_bytes(), &sig_bytes)
         .expect("ES256 card signature verifies");
+
+    let typed_card: jacs::a2a::AgentCard =
+        serde_json::from_value(card).expect("decode exported Agent Card");
+    assert!(
+        jacs::a2a::extension::verify_agent_card_jws(&typed_card, public_pem.as_bytes(), "ES256",)
+            .expect("public A2A verifier supports the generated ES256/JCS contract")
+    );
 }
 
 /// FR14: the JWS payload segment is the JCS (RFC 8785) canonicalization

@@ -209,7 +209,7 @@ jacs init
 <h2 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h2>
 <p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
 <pre><code class="language-bash"># Start the MCP server (stdio transport)
-jacs mcp
+JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
 </code></pre>
 <h2 id="configuration-commands"><a class="header" href="#configuration-commands">Configuration Commands</a></h2>
 <h3 id="create-configuration"><a class="header" href="#create-configuration">Create Configuration</a></h3>

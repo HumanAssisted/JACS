@@ -58,7 +58,10 @@ pub fn canonical_contract_snapshot() -> JacsMcpContractSnapshot {
 
     tools.sort_by(|left, right| left.name.cmp(&right.name));
 
-    let info = JacsMcpServer::new(AgentWrapper::new()).get_info();
+    // The canonical contract serializes the complete compiled-in tool surface,
+    // so its instructions must be generated from that same full inventory.
+    let info =
+        JacsMcpServer::with_profile(AgentWrapper::new(), crate::profile::Profile::Full).get_info();
 
     JacsMcpContractSnapshot {
         schema_version: 1,

@@ -184,6 +184,11 @@
 <li><strong>Trust ID canonicalization</strong>: Trust-store operations normalize canonical agent docs (<code>jacsId</code> + <code>jacsVersion</code>) into a safe <code>UUID:VERSION_UUID</code> identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.</li>
 <li><strong>Filesystem schema policy</strong>: Local schema loading is disabled by default and requires <code>JACS_ALLOW_FILESYSTEM_SCHEMAS=true</code>. When enabled, schema paths must remain within configured roots (<code>JACS_DATA_DIRECTORY</code> and/or <code>JACS_SCHEMA_DIRECTORY</code>) after normalized/canonical path checks.</li>
 <li><strong>Network endpoint policy</strong>: Registry verification requires HTTPS for <code>JACS_REGISTRY_URL</code> (legacy alias: <code>HAI_API_URL</code>). Localhost HTTP is allowed for local testing only.</li>
+<li><strong>Strict JSON ingress</strong>: Raw JSON crossing a signing, verification, hashing,
+schema, or protocol boundary must pass the shared <code>jacs-core</code> strict decoder.
+Duplicate decoded object names are rejected recursively before a
+<code>serde_json::Value</code> can collapse them; escape-equivalent names are duplicates,
+while repeated array elements remain valid.</li>
 <li><strong>No secrets in config</strong>: Config files must not contain passwords or other secrets. The example config (<code>jacs.config.example.json</code>) does not include <code>jacs_private_key_password</code>.</li>
 <li><strong>Dependency auditing</strong>: Run <code>cargo audit</code> (Rust), <code>npm audit</code> (Node.js), or <code>pip audit</code> (Python) to check for known vulnerabilities.</li>
 </ul>
@@ -203,11 +208,10 @@
   }
 }
 </code></pre>
-<p>Native signing is post-quantum only for new agents: new agents sign with
-<code>pq2025</code> (ML-DSA-87 / FIPS-204). Existing Ed25519-rooted agents are
-grandfathered — they keep signing (each native signature logs a WARN
-<code>native_legacy_ed25519_sign</code>) until they rotate, and every rotation
-converges to <code>pq2025</code>.</p>
+<p>Native signing defaults to post-quantum <code>pq2025</code> (ML-DSA-87 / FIPS-204).
+Explicit <code>ed25519</code> creation is supported and emits the canonical
+<code>ring-Ed25519</code> label. Routine rotation preserves the current algorithm;
+Ed25519 can explicitly upgrade to <code>pq2025</code>, while PQ-to-Ed25519 downgrade is rejected.</p>
 <h3 id="2-document-integrity"><a class="header" href="#2-document-integrity">2. Document Integrity</a></h3>
 <p>All documents include cryptographic guarantees:</p>
 <ul>
@@ -258,7 +262,7 @@ console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
 <div class="table-wrapper"><table><thead><tr><th>Threat</th><th>Protection</th></tr></thead><tbody>
 <tr><td><strong>Tampering</strong></td><td>Content hashes detect modifications</td></tr>
 <tr><td><strong>Impersonation</strong></td><td>Cryptographic signatures verify identity</td></tr>
-<tr><td><strong>Replay Attacks</strong></td><td>Timestamps and version IDs ensure freshness; future timestamps rejected; optional signature expiration via <code>JACS_MAX_SIGNATURE_AGE_SECONDS</code></td></tr>
+<tr><td><strong>Replay Attacks</strong></td><td>HTTP/RPC payload and W3C request proofs use timestamp validation plus atomic nonce consumption; document signatures remain durable by design</td></tr>
 <tr><td><strong>Man-in-the-Middle</strong></td><td>DNS verification via DNSSEC; TLS certificate validation</td></tr>
 <tr><td><strong>Key Compromise</strong></td><td>Key rotation through versioning</td></tr>
 <tr><td><strong>Weak Passwords</strong></td><td>Minimum 28-bit entropy enforcement (35-bit for single class)</td></tr>
@@ -270,6 +274,106 @@ console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
 <li>Cryptographic algorithms are sound</li>
 <li>DNS infrastructure (when used) is trustworthy</li>
 </ol>
+<h3 id="replay-store-deployment"><a class="header" href="#replay-store-deployment">Replay Store Deployment</a></h3>
+<p>The default replay backend is a bounded, atomic, process-local Moka cache. It
+accepts exactly one concurrent use of a nonce within one process and is suitable
+for local development or a genuinely single-process service.</p>
+<p>Multi-replica production services must install an implementation of the Rust
+<code>ReplayStore</code> trait backed by a shared atomic primitive (for example Redis
+<code>SET key value NX EX ttl</code> or a database unique insert), then set
+<code>JACS_REQUIRE_SHARED_REPLAY_STORE=true</code>. With that setting JACS fails closed
+if the installed backend reports itself as process-local or returns an error.
+The library never silently falls back to memory after a shared-store failure.</p>
+<p>Replay decisions emit structured events without nonce contents and increment
+<code>jacs_replay_checks_total{backend,outcome}</code>. Use
+<code>JACS_PAYLOAD_MAX_REPLAY_SECONDS</code> to configure the default payload window. For
+an accepted future-skewed payload, JACS retains its nonce through the signed
+timestamp plus that window, not merely for a fixed interval from verification.</p>
+<h3 id="remote-jwks-retrieval"><a class="header" href="#remote-jwks-retrieval">Remote JWKS Retrieval</a></h3>
+<p>A2A Agent Card verification keeps JWKS network access disabled unless
+<code>JACS_ALLOW_JWKS_FETCH=true</code> (or the broader <code>JACS_ALLOW_NETWORK=true</code>) is set.
+Even after that opt-in, JACS accepts only HTTPS origins, resolves and validates
+every redirect hop, rejects private/reserved IP answers, pins the validated DNS
+answer into the HTTP client, disables proxy resolution, allows at most three
+same-origin redirects, and requires a JSON Content-Type. The whole operation is
+limited to five seconds and 256 KiB.</p>
+<p>Loopback HTTP remains available for deliberate local development only when
+both the network capability and <code>JACS_ALLOW_PRIVATE_JWKS=true</code> are set. Do not
+enable the private-JWKS override in a service that assesses Agent Cards supplied
+by untrusted callers.</p>
+<h3 id="request-bound-http-authorization"><a class="header" href="#request-bound-http-authorization">Request-Bound HTTP Authorization</a></h3>
+<p>Use the request builder exposed by your API with the actual HTTP method,
+absolute URL, exact body bytes (empty bytes for no body), and a
+service-specific audience:</p>
+<div class="table-wrapper"><table><thead><tr><th>API</th><th>Request-bound builder</th></tr></thead><tbody>
+<tr><td>Rust <code>SimpleAgent</code></td><td><code>build_request_auth_header(method, url, body, audience)</code></td></tr>
+<tr><td>Python <code>SimpleAgent</code></td><td><code>build_request_auth_header(method, url, body, audience)</code></td></tr>
+<tr><td>Node <code>JacsSimpleAgent</code></td><td><code>buildRequestAuthHeader(method, url, body, audience)</code></td></tr>
+<tr><td>Go <code>JacsSimpleAgent</code></td><td><code>BuildRequestAuthHeader(method, url, body, audience)</code></td></tr>
+</tbody></table>
+</div>
+<p>The resulting <code>JACS v2...</code> header authenticates the signer/key ID, normalized
+scheme/authority/path/query, SHA-256 content digest, audience, timestamp, and
+nonce. <code>verify_request_auth_header</code> requires the trusted key and the actual
+request context; any method, endpoint, query, body, signer, or audience
+substitution fails before replay state is consumed.</p>
+<p>Build the header after the final body serialization and send those same bytes.
+On verification, reconstruct the absolute URL from trusted server/framework
+configuration rather than trusting an attacker-controlled forwarding header.
+The standard Rust verifier atomically consumes replay state after all other
+checks pass. Servers with an application-owned shared store use
+<code>verify_request_auth_header_with_trusted_key_without_replay</code>, then grant access
+only if an atomic insert such as Redis <code>SET ... NX EX ...</code> accepts the returned
+nonce. Use <code>request_auth_replay_ttl(&amp;verified_claims, max_age)</code> for the Redis
+expiry (or retain it longer). A fixed <code>max_age</code> TTL is insufficient when the
+signer's accepted clock skew is positive: the credential's absolute expiry is
+<code>issued_at + max_age</code>.</p>
+<p>The older no-argument Rust <code>build_auth_header</code> and equivalent legacy class
+methods sign only identity, time, and nonce. They remain available for source
+compatibility and emit a WARN because a first-use credential could be moved to
+a different request. The additive request-bound methods require method, URL,
+body, and audience and emit v2. Strict deployments can reject legacy
+construction with <code>JACS_REJECT_UNBOUND_AUTH_HEADER=true</code>.</p>
+<h3 id="encrypted-key-kdf-resource-policy"><a class="header" href="#encrypted-key-kdf-resource-policy">Encrypted-Key KDF Resource Policy</a></h3>
+<p>V2 private-key envelopes accept only the versioned Argon2id resource profile:
+8,192–19,456 KiB memory, one or two passes, and parallelism one. JACS validates
+these values before base64 allocation or Argon2 execution, and also caps the
+serialized envelope/ciphertext and enforces exact salt/nonce sizes. A policy
+rejection emits <code>encrypted_key_kdf_policy_rejected</code> at WARN and increments
+<code>jacs_kdf_policy_rejections_total{kdf="Argon2id",profile="v2"}</code>; neither signal
+contains passwords, key bytes, or ciphertext.</p>
+<h3 id="signed-response-and-event-contract"><a class="header" href="#signed-response-and-event-contract">Signed Response and Event Contract</a></h3>
+<p><code>sign_response</code> emits response envelope version <code>2.0.0</code> with signature scope
+<code>jacs-response-v2</code>. Its domain-separated signature authenticates the complete
+envelope except for the signature bytes themselves: payload, protocol
+version/type, issuer, document ID, payload hash, timestamp, signer, algorithm,
+public-key hash, and any additional fields. This is a protocol-specific
+contract; do not replace it with generic document verification or verification
+of <code>data</code> alone.</p>
+<p>Use <code>verify_response_json_with_key</code> in Rust or <code>unwrap_signed_event</code> /
+<code>unwrapSignedEvent</code> in a native binding with a trusted map from signer ID to
+public key. Trusted keys may be raw bytes/base64 or canonical PEM, depending on
+the binding. On success the bindings return only verified data plus provenance:</p>
+<pre><code class="language-json">{
+  "data": {"decision": "allow"},
+  "verified": true,
+  "status": "verified",
+  "signerId": "agent-id:version",
+  "timestamp": "2026-07-09T12:00:00Z",
+  "algorithm": "pq2025",
+  "documentId": "2f1e2bdb-55f4-4c99-8f42-d45249808f4b"
+}
+</code></pre>
+<p>Plain events, legacy payload-only response envelopes, unknown signers, and
+invalid signatures are errors. There is no successful <code>verified: false</code> result;
+callers must never dispatch an event by catching that error and reparsing its
+untrusted input.</p>
+<p>These protocols authenticate control of the private key corresponding to the
+public key that the verifier selected. Signed <code>agentID</code>, name, domain, and time
+fields are not independent proof of a person, organization, service, or DNS
+identity. Establish that association through a pinned key, strict local trust
+configuration, or another explicitly chosen verification policy before making
+an authorization decision.</p>
 <h2 id="signature-process"><a class="header" href="#signature-process">Signature Process</a></h2>
 <h3 id="signing-a-document"><a class="header" href="#signing-a-document">Signing a Document</a></h3>
 <ol>
@@ -305,10 +409,10 @@ is_signature_valid = agent.verify_signature(doc_json)
 <h3 id="compatibility-key-binding-p2"><a class="header" href="#compatibility-key-binding-p2">Compatibility key binding (P2)</a></h3>
 <p>An agent's ES256 <code>ecosystem_signing</code> key is authorized per-export by a
 <strong>compatibility key binding</strong>: a <code>compatibilityKeyBinding</code> JACS document
-signed by the <strong>native (PQ) root</strong>, persisted as one canonical-JSON file
+signed by the <strong>current native root</strong>, persisted as one canonical-JSON file
 (<code>jacs_keys/jacs.compat-binding.json</code>). Lifecycle rules:</p>
 <ul>
-<li>granting or widening a scope always requires the PQ root's signature —
+<li>granting or widening a scope always requires the native root's signature —
 the ES256 holder cannot self-escalate;</li>
 <li>re-issue replaces the file (latest <code>issuedAt</code> wins; no version chains);</li>
 <li>native key rotation supersedes the binding — verification fails with a
@@ -322,7 +426,7 @@ the ES256 holder cannot self-escalate;</li>
 authorization policy</strong> and an auditable delegation record for relying
 parties — not isolation. Both private keys live in the same directory
 under the same password; a compromised host is outside this model. The
-sound property is non-self-escalation via the PQ signature requirement.</p>
+sound property is non-self-escalation via the native-root signature requirement.</p>
 <p>The ES256 private key is encrypted at rest with the same AES-256-GCM +
 Argon2id envelope as the native root key — the post-quantum library is a
 signing primitive, not an encryption primitive, so compatibility keys
@@ -337,11 +441,11 @@ through purpose-built, schema-pinned paths — there is no generic
 <li><strong>Classical verification is not PQ trust.</strong> A stock JOSE/Data
 Integrity verifier can check the ES256 signature with nothing but the
 public key; that proves possession of the compatibility key, not the
-agent's post-quantum identity. Tracing the export to the PQ root
-additionally requires verifying the PQ-signed compatibility key
+agent's native identity. Tracing the export to that root additionally
+requires verifying the native-root-signed compatibility key
 binding (<code>jacs agent export-compat-binding</code>).</li>
 <li><strong>Native documents are never mutated.</strong> Exports are derived views;
-the native <code>jacsSignature</code> stays <code>pq2025</code> and the source document's
+the native <code>jacsSignature</code> keeps the agent's selected algorithm and the source document's
 bytes and verification are unchanged after every export. These are
 targeted ecosystem artifacts, not JACS projections — native documents
 never gain <code>proof</code> or other projection fields.</li>
@@ -419,10 +523,10 @@ chmod 600 ./jacs_keys/private.pem
 <li>Sign new version with old key</li>
 <li>Update configuration to use new keys</li>
 </ol>
-<p>Every rotation resolves to <code>pq2025</code>, including rotation of a
-grandfathered Ed25519 agent — rotation is the designated
+<p>Every rotation resolves to <code>pq2025</code>, including rotation of an
+Ed25519 agent — rotation is the designated
 Ed25519 → post-quantum migration path. Rotation also supersedes the
-ES256 compatibility key binding: re-issue it under the new PQ root
+ES256 compatibility key binding: re-issue it under the new native root
 (<code>jacs agent issue-compat-binding</code>) before the next ecosystem export.</p>
 <h2 id="tls-certificate-validation"><a class="header" href="#tls-certificate-validation">TLS Certificate Validation</a></h2>
 <p>JACS includes configurable TLS certificate validation for secure network communication.</p>
@@ -628,42 +732,30 @@ except AgentNotTrusted as e:
 <li><strong>Timestamp</strong>: Records when each party signed</li>
 </ol>
 <h2 id="requestresponse-security"><a class="header" href="#requestresponse-security">Request/Response Security</a></h2>
-<p>For MCP and HTTP communication:</p>
-<h3 id="request-signing"><a class="header" href="#request-signing">Request Signing</a></h3>
-<pre><code class="language-python">signed_request = agent.sign_request({
-    'method': 'tools/call',
-    'params': {'name': 'echo', 'arguments': {'text': 'hello'}}
-})
-</code></pre>
-<p>The signed request includes:</p>
-<ul>
-<li>Full JACS document structure</li>
-<li>Agent signature</li>
-<li>Timestamp</li>
-<li>Content hash</li>
-</ul>
-<h3 id="response-verification"><a class="header" href="#response-verification">Response Verification</a></h3>
-<pre><code class="language-python">result = agent.verify_response(response_string)
-payload = result.get('payload')
-agent_id = result.get('agentId')  # Who signed the response
-</code></pre>
+<p>For HTTP, use the <a href="#request-bound-http-authorization">request-bound authorization</a>
+and <a href="#signed-response-and-event-contract">signed response/event</a> contracts
+above. Generic document signing does not bind an HTTP method, URL, audience, or
+request body, and generic verification of only the response payload does not
+authenticate the v2 envelope metadata.</p>
+<p>MCP messages that need portable artifact integrity can carry ordinary signed
+JACS documents. That is separate from HTTP request authentication: the MCP
+stdio transport has no HTTP target to bind, and authorization remains the MCP
+host's responsibility.</p>
 <h2 id="algorithm-security"><a class="header" href="#algorithm-security">Algorithm Security</a></h2>
 <h3 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Type</th><th>Role</th></tr></thead><tbody>
-<tr><td><code>pq2025</code></td><td>Post-Quantum (FIPS-204 ML-DSA-87)</td><td>Native root for all new agents; every rotation resolves to it</td></tr>
-<tr><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>Verification always; signing only for grandfathered pre-existing agents (logs WARN <code>native_legacy_ed25519_sign</code>)</td></tr>
+<tr><td><code>pq2025</code></td><td>Post-Quantum (FIPS-204 ML-DSA-87)</td><td>Default native root; every rotation resolves to it</td></tr>
+<tr><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>Supported native creation, signing, and verification; user-facing input alias: <code>ed25519</code></td></tr>
 <tr><td>ES256</td><td>Elliptic Curve (P-256)</td><td>Compatibility key for targeted ecosystem exports only — never a valid native <code>jacsSignature</code> algorithm</td></tr>
 </tbody></table>
 </div>
 <h3 id="algorithm-selection"><a class="header" href="#algorithm-selection">Algorithm Selection</a></h3>
-<p>Native JACS signing is PQ-only for new agents — there is no algorithm
-choice at creation time. Existing Ed25519-rooted agents are grandfathered
-and keep signing with a WARN until they rotate; rotation always converges
-to <code>pq2025</code>.</p>
+<p>Native JACS signing defaults to <code>pq2025</code>; explicit Ed25519 creation is
+supported without substitution. Rotation always converges to <code>pq2025</code>.</p>
 <p>An ES256 content signature does <strong>not</strong> create native JACS trust:
 classical verification proves possession of the compatibility key only.
-The PQ-signed compatibility key binding is what ties that key to the
-agent — see <a href="#compatibility-key-binding-p2">Compatibility key binding (P2)</a>.</p>
+The native-root-signed compatibility key binding is what ties that key to
+the agent — see <a href="#compatibility-key-binding-p2">Compatibility key binding (P2)</a>.</p>
 <h2 id="security-best-practices"><a class="header" href="#security-best-practices">Security Best Practices</a></h2>
 <h3 id="1-key-storage"><a class="header" href="#1-key-storage">1. Key Storage</a></h3>
 <pre><code class="language-bash"># Never commit keys to version control
@@ -686,8 +778,11 @@ export JACS_KEYCHAIN_BACKEND=disabled
 <h3 id="3-transport-security"><a class="header" href="#3-transport-security">3. Transport Security</a></h3>
 <p>Always use TLS for network communication:</p>
 <pre><code class="language-python"># HTTPS for web transport
-client = JACSMCPClient("https://localhost:8000/sse")  # Good
-# client = JACSMCPClient("http://localhost:8000/sse")  # Avoid in production
+client = JACSMCPClient(
+    "https://localhost:8000/sse",
+    expected_peer_agent_id="SERVER_AGENT_ID",
+)  # TLS plus an explicit signer pin
+# Plain HTTP remains loopback-only and should not be exposed remotely.
 </code></pre>
 <h3 id="4-verification-policies"><a class="header" href="#4-verification-policies">4. Verification Policies</a></h3>
 <pre><code class="language-json">{
@@ -815,7 +910,7 @@ Validate DNS records when required</li>
 <li>If this is a test/development scenario, start fresh</li>
 </ol>
 <pre><code class="language-bash"># Create a new agent instead
-jacs create --type ai --claim unverified
+jacs quickstart --name replacement-agent --domain replacement.example.com
 </code></pre>
 <h4 id="dns-fingerprint-mismatch"><a class="header" href="#dns-fingerprint-mismatch">"DNS fingerprint mismatch"</a></h4>
 <p><strong>Problem</strong>: The public key hash in DNS doesn't match your agent's key.</p>

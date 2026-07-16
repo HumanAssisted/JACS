@@ -214,14 +214,45 @@ class TestVerifyStandalone:
         assert result.valid is False
         assert result.signer_id == ""
 
-    def test_verify_standalone_tampered_returns_valid_false_with_signer_id(self):
-        """verify_standalone() with tampered doc should return valid=False and signer_id from doc."""
+    def test_verify_standalone_rejects_truthy_non_boolean_valid(self, monkeypatch):
+        monkeypatch.setattr(
+            simple,
+            "_verify_document_standalone",
+            lambda *_args, **_kwargs: {"valid": "false", "signer_id": "attacker"},
+        )
+
+        result = simple.verify_standalone("{}", key_resolution="local")
+
+        assert result.valid is False
+        assert result.signer_id == ""
+
+    def test_verification_result_from_dict_rejects_non_boolean_security_flags(self):
+        result = VerificationResult.from_dict(
+            {
+                "valid": "false",
+                "signer_id": "attacker-selected-agent",
+                "signer_public_key_hash": "attacker-selected-key",
+                "timestamp": "2099-01-01T00:00:00Z",
+                "content_hash_valid": 1,
+                "signature_valid": "yes",
+            }
+        )
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.timestamp == ""
+        assert result.content_hash_valid is False
+        assert result.signature_valid is False
+
+    def test_verify_standalone_tampered_suppresses_unauthenticated_signer_id(self):
+        """Malformed input must not promote its attacker-controlled signer ID."""
         import importlib
         importlib.reload(simple)
         tampered = '{"jacsSignature":{"agentID":"test-agent"},"jacsSha256":"x"}'
         result = simple.verify_standalone(tampered, key_resolution="local")
         assert result.valid is False
-        assert result.signer_id == "test-agent"
+        assert result.signer_id == ""
 
     def test_verify_standalone_extracts_signer_id(self, loaded_agent, in_fixtures_dir):
         """verify_standalone() with a real signed doc should extract signer_id even if key not resolvable."""
@@ -340,6 +371,23 @@ class TestVerifyDns:
         result = simple.verify_dns('{"not": "an agent"}', "example.com")
         assert isinstance(result, VerificationResult)
         assert result.valid is False
+
+    def test_verify_dns_rejects_truthy_non_boolean_verified(self, monkeypatch):
+        monkeypatch.setattr(
+            simple,
+            "_verify_agent_dns",
+            lambda *_args, **_kwargs: {
+                "verified": "false",
+                "agent_id": "attacker",
+                "message": "not verified",
+            },
+        )
+
+        result = simple.verify_dns("{}", "example.com")
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.errors == ["not verified"]
 
 
 # Test DNS helpers
@@ -700,6 +748,19 @@ class TestAgreementTypes:
         assert status.signers[1].signed is False
         assert status.pending == ["agent-2"]
 
+    @pytest.mark.parametrize("malformed", ["false", 1, {}, None])
+    def test_agreement_security_booleans_require_literal_true(self, malformed):
+        status = AgreementStatus.from_dict(
+            {
+                "complete": malformed,
+                "signers": [{"agent_id": "agent-1", "signed": malformed}],
+                "pending": ["agent-1"],
+            }
+        )
+
+        assert status.complete is False
+        assert status.signers[0].signed is False
+
 
 class TestCreateAgreement:
     """Test create_agreement function."""
@@ -921,7 +982,7 @@ class TestAllAlgorithms:
 
     Each parametrized test creates two agents and exercises sign, verify,
     trust, and two-party agreement in a single test to minimize agent
-    creation overhead (pq2025 keygen is ~30-60s per agent).
+    creation overhead (pq2025 keygen is more expensive than Ed25519).
     """
 
     @pytest.mark.parametrize("algo", ["ring-Ed25519", "pq2025"])

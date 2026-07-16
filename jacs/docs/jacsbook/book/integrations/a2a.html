@@ -246,6 +246,18 @@ assert result["valid"]
 const result = await client.verifyArtifact(signed);
 console.log(result.valid);
 </code></pre>
+<p>Both SDKs require the canonical native A2A verifier for an affirmative result.
+The generic <code>verify_response()</code> / <code>verifyResponse()</code> document API is not an A2A
+fallback: even a literal success boolean yields an invalid result with blank
+signer, version, type, timestamp, and payload provenance, and cannot elevate
+trust. This prevents parsed attacker-controlled wrapper fields from being
+presented as authenticated A2A evidence.</p>
+<p>The Node signing wrapper also validates the native return contract before
+releasing it: the document must carry complete portable-v2 signature metadata,
+its payload and type must match the request, and its ordered parent chain must
+exactly match the caller's input. If no parents were requested, only an absent
+or empty returned chain is accepted. This prevents a malformed native result
+from injecting, dropping, reordering, or changing chain-of-custody evidence.</p>
 <h2 id="trust-policies"><a class="header" href="#trust-policies">Trust Policies</a></h2>
 <p>Trust policy answers a different question from cryptographic verification.</p>
 <ul>
@@ -255,11 +267,22 @@ console.log(result.valid);
 <p>The current policy meanings are:</p>
 <div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody>
 <tr><td><code>open</code></td><td>Accept all agents without verification</td></tr>
-<tr><td><code>verified</code></td><td>Require the JACS provenance extension (<code>urn:jacs:provenance-v1</code>) in the agent card (<strong>default</strong>)</td></tr>
-<tr><td><code>strict</code></td><td>Require the signer to be in the local trust store</td></tr>
+<tr><td><code>verified</code></td><td>Require a valid Agent Card JWS against the same-origin JWKS and a durable <code>jacsId:jacsVersion</code> key pin (<strong>default</strong>). This is origin/key continuity, not proof of the claimed native JACS identity.</td></tr>
+<tr><td><code>strict</code></td><td>Require an explicitly trusted native JACS root. ES256 cards must also carry the fixed-path compatibility binding, whose native signature, identity/version, binding hash, compatibility JWK/kid, scope, expiry, and signed issuance time all verify. Bindings are accepted for at most seven days after <code>issuedAt</code> (with five minutes of future clock skew), and the verifier durably pins the latest observed hash, kid, and <code>issuedAt</code>; a newer root-signed binding advances the pin and older replays fail closed.</td></tr>
 </tbody></table>
 </div>
-<p>That means <code>verified</code> is about <strong>JACS provenance on the Agent Card</strong>, not about a promise that every foreign key has already been resolved.</p>
+<blockquote>
+<p><strong>Lifecycle boundary:</strong> The absolute seven-day freshness check also applies
+on first contact, independently of <code>expiresAt</code>. Local discovery generation
+refreshes an authentic binding after six days under the shared issuance lock,
+preserving its scopes and explicit expiry. Once a newer native-root-signed
+binding is observed, JACS also rejects rollback to the old hash/kid. Use an
+earlier <code>expiresAt</code> when old compatibility keys must stop working sooner, and
+distribute the refreshed binding promptly after rotation or compromise.</p>
+</blockquote>
+<p><code>verified</code> means the card signature and a durable same-origin key pin verified.
+It proves origin/key continuity, not that the self-asserted <code>jacsId</code> is a
+real-world or explicitly trusted identity. <code>strict</code> is the identity-bound mode.</p>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <pre><code class="language-python">a2a = client.get_a2a()
 assessment = a2a.assess_remote_agent(remote_card_json, policy="strict")
@@ -289,17 +312,28 @@ compatibility key (<code>export_a2a_agent_card</code> in the Rust core and bindi
 feature <code>a2a</code>). This is a card-typed exporter, not a generic JWS API:</p>
 <ul>
 <li>The JWS protected header is pinned to <code>{"alg": "ES256", "typ": "JOSE", "kid": "&lt;compat-key kid&gt;"}</code> — <code>typ</code> is <code>JOSE</code>, not <code>JWT</code>.</li>
-<li>The export is gated by the <code>a2a-agent-card</code> scope of the PQ-root-signed
+<li>The export is gated by the <code>a2a-agent-card</code> scope of the native-root-signed
 compatibility key binding (an identity scope, granted by default).</li>
-<li>The card's <code>metadata</code> carries <code>jacsCompatKid</code> and
-<code>jacsCompatBindingHash</code> so a relying party can locate the binding.</li>
+<li>The card's <code>metadata</code> carries <code>jacsCompatKid</code>,
+<code>jacsCompatBindingHash</code>, and the fixed same-origin
+<code>jacsCompatBindingPath</code> (<code>/.well-known/jacs-compat-binding.json</code>).</li>
 </ul>
 <p>A stock JOSE verifier can check the ES256 signature against the agent's
 JWKS (<code>jacs agent export-jwks</code>), but that proves possession of the
-compatibility key only. Tracing the card to the agent's post-quantum root
-requires verifying the PQ-signed compatibility key binding
-(<code>jacs agent export-compat-binding</code>) — see the
+compatibility key only. Tracing the card to the agent's native root requires
+verifying the native-root-signed compatibility key binding
+(<code>jacs agent export-compat-binding</code>). Native <code>generate_well_known_documents</code>
+publishes the binding at the fixed path and reuses the same persisted ES256 key
+across calls and restarts. An obsolete explicit <code>ring-Ed25519</code> discovery-key
+choice is rejected rather than silently ignored — see the
 <a href="../advanced/security.html#compatibility-key-binding-p2">Security Model</a>.</p>
+<p>Under <code>strict</code>, the verifier checks the trusted native root signature, expected
+<code>jacsId</code> and <code>jacsVersion</code>, binding content hash, compatibility <code>kid</code> and JWK,
+the <code>a2a-agent-card</code> scope, expiry, and a signed <code>issuedAt</code> no more than seven
+days old or five minutes in the future. This absolute freshness check applies
+on first contact; local discovery generation refreshes an authentic binding at
+six days while preserving its scopes and explicit expiry. A self-advertised
+JWKS key by itself can never establish the claimed JACS identity.</p>
 <h2 id="current-runtime-differences"><a class="header" href="#current-runtime-differences">Current Runtime Differences</a></h2>
 <ul>
 <li><strong>Python</strong>: <code>jacs.a2a_server</code> is the clearest full discovery story.</li>

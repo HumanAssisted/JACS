@@ -12,9 +12,7 @@ use utils::{create_ring_test_agent, read_new_agent_fixture};
 #[allow(non_snake_case, deprecated)]
 fn test_ring_Ed25519_create_and_verify_signature() {
     let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
-    // This test exists to exercise the grandfathered Ed25519 key path; new
-    // key creation resolves to pq2025 (FR1), so the legacy fixture hatch is
-    // required to mint a genuine Ed25519 keypair here.
+    // This test exercises the historical Ed25519 fixture path directly.
     agent.allow_legacy_ed25519_keygen_for_fixtures();
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let _result = agent.create_agent_and_load(&json_data, true, None);

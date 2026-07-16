@@ -82,6 +82,7 @@ from .types import (
 from ._runtime import (
     EphemeralAgentAdapter as _EphemeralAgentAdapter,
 )
+from ._verification import authenticated_signature_metadata
 
 # Import the Rust bindings
 try:
@@ -242,15 +243,6 @@ def _call_with_agent_password(func, *args, **kwargs):
     return func(*args, **kwargs)
 
 
-def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
-    sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
-    return (
-        sig_info.get("agentId", sig_info.get("agentID", "")),
-        sig_info.get("publicKeyHash", ""),
-        sig_info.get("date", ""),
-    )
-
-
 def _parse_signed_document(json_str: str) -> SignedDocument:
     """Parse a JSON string into a SignedDocument."""
     try:
@@ -325,7 +317,8 @@ def create(
         name: Human-readable name for the agent
         password: Password for encrypting the private key.
                   If not provided, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
-        algorithm: Signing algorithm ("pq2025", "ring-Ed25519").
+        algorithm: Signing algorithm ("pq2025" or "ed25519").
+                   "ring-Ed25519" remains accepted as a legacy input alias.
         data_directory: Directory for data storage (default: "./jacs_data")
         key_directory: Directory for keys (default: "./jacs_keys")
         config_path: Where to save the config (default: "./jacs.config.json")
@@ -528,8 +521,10 @@ def verify_self() -> VerificationResult:
     agent = _get_agent()
 
     try:
-        # verify_agent returns True on success, raises on failure
-        agent.verify_agent(None)
+        if agent.verify_agent(None) is not True:
+            raise VerificationError(
+                "Agent verification did not return literal true"
+            )
 
         return VerificationResult(
             valid=True,
@@ -800,16 +795,9 @@ def check_agreement(
         result_json = agent.check_agreement(doc_str, field_name)
         result_data = json.loads(result_json)
 
-        # Parse signers
-        signers = []
-        for signer_data in result_data.get("signers", []):
-            signers.append(SignerStatus.from_dict(signer_data))
-
-        return AgreementStatus(
-            complete=result_data.get("complete", False),
-            signers=signers,
-            pending=result_data.get("pending", []),
-        )
+        if not isinstance(result_data, dict):
+            raise ValueError("agreement status result must be a JSON object")
+        return AgreementStatus.from_dict(result_data)
     except json.JSONDecodeError as e:
         raise JacsError(f"Invalid agreement status response: {e}")
     except Exception as e:
@@ -1087,9 +1075,10 @@ def verify_standalone(
             key_directory=key_directory,
         )
         # Native returns dict with valid, signer_id
+        valid = d.get("valid") is True
         return VerificationResult(
-            valid=bool(d.get("valid", False)),
-            signer_id=str(d.get("signer_id", "")),
+            valid=valid,
+            signer_id=str(d.get("signer_id", "")) if valid else "",
         )
     except Exception as e:
         return VerificationResult(valid=False, errors=[str(e)])
@@ -1145,18 +1134,22 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
 
         # Parse to get signer info
         doc_data = json.loads(doc_str)
-        sig_info = doc_data.get("jacsSignature", {})
-        signer_id = sig_info.get("agentId", sig_info.get("agentID", ""))
+        signer_id, signer_public_key_hash, timestamp = (
+            authenticated_signature_metadata(
+                doc_data,
+                verified=is_valid is True,
+            )
+        )
 
         logger.info("Document verified: valid=%s, signer=%s", is_valid, signer_id)
 
         return VerificationResult(
-            valid=is_valid,
+            valid=is_valid is True,
             signer_id=signer_id,
-            signer_public_key_hash=sig_info.get("publicKeyHash", ""),
-            content_hash_valid=is_valid,
-            signature_valid=is_valid,
-            timestamp=sig_info.get("date", ""),
+            signer_public_key_hash=signer_public_key_hash,
+            content_hash_valid=is_valid is True,
+            signature_valid=is_valid is True,
+            timestamp=timestamp,
         )
 
     except Exception as e:
@@ -1206,14 +1199,19 @@ def verify_by_id(document_id: str) -> VerificationResult:
         doc_data = json.loads(doc_json) if doc_json else None
         if not isinstance(doc_data, dict):
             doc_data = None
-        signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
+        signer_id, signer_public_key_hash, timestamp = (
+            authenticated_signature_metadata(
+                doc_data,
+                verified=is_valid is True,
+            )
+        )
 
         return VerificationResult(
-            valid=is_valid,
+            valid=is_valid is True,
             signer_id=signer_id,
             signer_public_key_hash=signer_public_key_hash,
-            content_hash_valid=is_valid,
-            signature_valid=is_valid,
+            content_hash_valid=is_valid is True,
+            signature_valid=is_valid is True,
             timestamp=timestamp,
         )
     except Exception as e:
@@ -1657,10 +1655,11 @@ def verify_dns(
     doc_str = json.dumps(agent_document) if isinstance(agent_document, dict) else agent_document
     try:
         d = _verify_agent_dns(doc_str, domain)
+        verified = d.get("verified") is True
         return VerificationResult(
-            valid=bool(d.get("verified", False)),
-            signer_id=str(d.get("agent_id", "")),
-            errors=[d["message"]] if not d.get("verified") and d.get("message") else [],
+            valid=verified,
+            signer_id=str(d.get("agent_id", "")) if verified else "",
+            errors=[d["message"]] if not verified and d.get("message") else [],
         )
     except Exception as e:
         return VerificationResult(valid=False, errors=[str(e)])

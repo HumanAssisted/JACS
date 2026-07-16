@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { expect } = require('chai');
 
 const FIXTURE_PATH = path.resolve(
@@ -52,6 +53,15 @@ const NODE_NAME_MAP = {
   'sign_message_json': 'signMessage',
   'sign_raw_bytes_base64': 'signRawBytes',
   'sign_file_json': 'signFile',
+  'build_auth_header': 'buildAuthHeader',
+  'build_request_auth_header': 'buildRequestAuthHeader',
+  'canonicalize_json': 'canonicalizeJson',
+  'sign_response': 'signResponse',
+  'encode_verify_payload': 'encodeVerifyPayload',
+  'decode_verify_payload': 'decodeVerifyPayload',
+  'extract_document_id': 'extractDocumentId',
+  'prepare_signed_event_replay_json': 'prepareSignedEventReplay',
+  'unwrap_signed_event': 'unwrapSignedEvent',
   'to_yaml': 'toYaml',
   'from_yaml': 'fromYaml',
   'to_html': 'toHtml',
@@ -153,6 +163,50 @@ describe('Node.js method enumeration parity', function () {
     }
 
     expect(missing, `Missing methods:\n${missing.join('\n')}`).to.be.empty;
+  });
+
+  it('public simple protocol helpers perform a strict roundtrip', function () {
+    const legacy = agent.buildAuthHeader();
+    expect(legacy).to.match(/^JACS /);
+    const body = '{"include_test":false}';
+    const header = agent.buildRequestAuthHeader(
+      'POST',
+      'https://hai.ai/api/v1/agents/hello',
+      body,
+      'hai.ai'
+    );
+    expect(header).to.match(/^JACS v2\./);
+
+    const envelope = agent.signResponse('{"type":"connected"}');
+    const parsed = JSON.parse(envelope);
+    const signerId = parsed.jacsSignature.agentID;
+    const verified = JSON.parse(agent.unwrapSignedEvent(
+      envelope,
+      JSON.stringify({ [signerId]: agent.getPublicKeyPem() })
+    ));
+    expect(verified.verified).to.equal(true);
+    expect(verified.data.type).to.equal('connected');
+  });
+
+  it('request auth hashes exact Buffer and Uint8Array body bytes', function () {
+    const backing = new Uint8Array([0xaa, 0x10, 0x00, 0xff, 0x20, 0xbb]);
+    const bodies = [
+      Buffer.from([0x00, 0xff, 0x62, 0x00, 0x79]),
+      new Uint8Array([0x80, 0x00, 0xfe, 0x7f]),
+      backing.subarray(1, 5),
+    ];
+    for (const body of bodies) {
+      const header = agent.buildRequestAuthHeader(
+        'POST',
+        'https://hai.ai/api/v1/jobs',
+        body,
+        'hai.ai',
+      );
+      const claimsSegment = header.slice('JACS v2.'.length).split('.', 1)[0];
+      const claims = JSON.parse(Buffer.from(claimsSegment, 'base64url').toString('utf8'));
+      const expected = crypto.createHash('sha256').update(body).digest('base64');
+      expect(claims.contentDigest).to.equal(`sha-256=:${expected}:`);
+    }
   });
 
   it('exclusions are all valid fixture methods', function () {

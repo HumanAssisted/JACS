@@ -13,7 +13,7 @@ pub mod pq2025;
 pub mod private_key;
 pub mod ringwrapper;
 
-use constants::{ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE};
+use constants::{ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE};
 
 use crate::agent::Agent;
 use crate::error::JacsError;
@@ -108,6 +108,28 @@ pub fn supported_pq_algorithms() -> Vec<&'static str> {
     vec!["pq2025"]
 }
 
+/// Verify a detached JACS signature with an explicitly declared algorithm.
+///
+/// This stateless entry point is for trust boundaries that already possess a
+/// trusted public key. It deliberately does not infer an algorithm from key
+/// shape and does not require constructing an unrelated [`Agent`].
+pub fn verify_string_with_algorithm(
+    public_key: Vec<u8>,
+    data: &str,
+    signature_base64: &str,
+    algorithm: &str,
+) -> Result<(), JacsError> {
+    let algorithm = CryptoSigningAlgorithm::from_str(algorithm)
+        .map_err(|_| JacsError::CryptoError(format!("Unknown signing algorithm: {algorithm}")))?;
+
+    match algorithm {
+        CryptoSigningAlgorithm::RingEd25519 => {
+            ringwrapper::verify_string(public_key, data, signature_base64)
+        }
+        CryptoSigningAlgorithm::Pq2025 => pq2025::verify_string(public_key, data, signature_base64),
+    }
+}
+
 fn rsa_private_key_operations_disabled(algorithm: &str) -> bool {
     matches!(
         algorithm.trim().to_ascii_lowercase().as_str(),
@@ -130,13 +152,12 @@ pub fn ensure_private_key_operation_allowed(
     Ok(())
 }
 
-/// Resolve the signing algorithm for a NEW agent: new creation is PQ-only.
+/// Resolve the signing algorithm for a new agent without substitution.
 ///
-/// Ed25519 requests are honored as `pq2025` with a WARN — existing
-/// Ed25519-rooted agents are unaffected (grandfathered): they continue to
-/// load and sign (see the `native_legacy_ed25519_sign` event) until they
-/// rotate, and rotation always migrates them to `pq2025`. Unknown
-/// algorithms are a typed error.
+/// `pq2025` remains the default. Explicit Ed25519 aliases create genuine
+/// Ed25519 keys, so the requested label, returned metadata, public-key shape,
+/// and emitted signature algorithm agree. Unknown algorithms are a typed
+/// error. Loading and verification retain the same two-algorithm support.
 ///
 /// Lives in `crypt` (next to `ensure_private_key_operation_allowed`) so the
 /// low-level `Agent` creation paths and the `simple`/binding layers all
@@ -145,25 +166,55 @@ pub fn ensure_private_key_operation_allowed(
 pub fn resolve_new_agent_algorithm(requested: &str) -> Result<String, JacsError> {
     match requested {
         "" | "pq2025" => Ok("pq2025".to_string()),
-        "ed25519" | "ring-Ed25519" => {
-            warn!(
-                event = "native_non_pq_sign_rejected",
-                requested_algorithm = requested,
-                "New agent creation is PQ-only; requested Ed25519 resolved to pq2025. \
-                 Existing Ed25519-rooted agents remain grandfathered until rotation."
-            );
-            crate::observability::metrics::increment_counter(
-                "jacs_native_non_pq_sign_rejected_total",
-                1,
-                None,
-            );
-            Ok("pq2025".to_string())
-        }
+        "ed25519" | "ring-Ed25519" => Ok("ring-Ed25519".to_string()),
         other => Err(JacsError::ConfigError(format!(
-            "Unsupported algorithm '{}' for new agent creation. New agents use pq2025.",
+            "Unsupported algorithm '{}' for new agent creation. Use pq2025 (default) or ed25519.",
             other
         ))),
     }
+}
+
+/// Resolve a rotation target from the authenticated current algorithm.
+///
+/// Rotation without an override preserves the current algorithm. An Ed25519
+/// identity may explicitly upgrade to `pq2025`; a `pq2025` identity may not
+/// downgrade to Ed25519. This keeps routine key replacement compatible while
+/// making a security-level change deliberate and one-way.
+pub fn resolve_rotation_algorithm(
+    current: &str,
+    requested: Option<&str>,
+) -> Result<String, JacsError> {
+    fn canonical(label: &str) -> Option<&'static str> {
+        match label {
+            "ed25519" | "ring-Ed25519" => Some("ring-Ed25519"),
+            "pq2025" => Some("pq2025"),
+            _ => None,
+        }
+    }
+
+    let current = canonical(current).ok_or_else(|| {
+        JacsError::ConfigError(format!(
+            "Cannot rotate an agent with unsupported current algorithm '{}'.",
+            current
+        ))
+    })?;
+    let target = match requested {
+        None | Some("") => current,
+        Some(label) => canonical(label).ok_or_else(|| {
+            JacsError::ConfigError(format!(
+                "Unsupported key rotation algorithm '{}'. Use ed25519 or pq2025.",
+                label
+            ))
+        })?,
+    };
+
+    if current == "pq2025" && target == "ring-Ed25519" {
+        return Err(JacsError::ConfigError(
+            "Refusing post-quantum to Ed25519 key rotation downgrade; keep pq2025.".to_string(),
+        ));
+    }
+
+    Ok(target.to_string())
 }
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
@@ -175,8 +226,8 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 /// Prefer using the explicit `signingAlgorithm` field from the signature document.
 /// This function should only be used as a fallback for legacy documents.
 ///
-/// Each supported algorithm has unique characteristics in its public keys:
-/// - Ed25519: Fixed length of 32 bytes, contains non-ASCII characters
+/// Each supported algorithm has a distinct public-key length:
+/// - Ed25519: exactly 32 bytes (every byte string is possible)
 /// - Pq2025 (ML-DSA-87): 2592-byte public keys
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
@@ -185,12 +236,11 @@ pub fn detect_algorithm_from_public_key(
         public_key_len = public_key.len(),
         "Detecting algorithm from public key"
     );
-    // Count non-ASCII bytes in the key
-    let non_ascii_count = public_key.iter().filter(|&&b| b > 127).count();
-    let non_ascii_ratio = non_ascii_count as f32 / public_key.len() as f32;
-
-    // Ed25519 public keys are exactly 32 bytes and typically contain non-ASCII characters
-    if public_key.len() == ED25519_PUBLIC_KEY_SIZE && non_ascii_ratio > ED25519_NON_ASCII_RATIO {
+    // Ed25519 encodes an arbitrary group element as exactly 32 bytes. A
+    // content heuristic (such as a minimum non-ASCII ratio) rejects valid
+    // randomly generated keys and cannot add authenticity; cryptographic
+    // verification remains the validity check.
+    if public_key.len() == ED25519_PUBLIC_KEY_SIZE {
         debug!(
             algorithm = "RingEd25519",
             "Detected Ed25519 from public key format"
@@ -207,19 +257,8 @@ pub fn detect_algorithm_from_public_key(
         return Ok(CryptoSigningAlgorithm::Pq2025);
     }
 
-    // If we have a high proportion of non-ASCII characters but don't match other criteria,
-    // it's more likely to be Ed25519.
-    if non_ascii_ratio > ED25519_NON_ASCII_RATIO {
-        debug!(
-            algorithm = "RingEd25519",
-            "Detected Ed25519 from public key format (fallback)"
-        );
-        return Ok(CryptoSigningAlgorithm::RingEd25519);
-    }
-
     warn!(
         public_key_len = public_key.len(),
-        non_ascii_ratio = non_ascii_ratio,
         "Could not determine algorithm from public key format"
     );
     Err(JacsError::CryptoError(
@@ -332,10 +371,9 @@ impl Agent {
     /// For ephemeral agents, uses set_keys_raw (no AES encryption).
     /// For persistent agents, uses set_keys (AES-encrypts private key).
     ///
-    /// Generating NEW key material is PQ-only (FR1): a config requesting
-    /// Ed25519 resolves to `pq2025` with a WARN and the config is updated
-    /// to match the keys actually minted. Loading EXISTING keys never goes
-    /// through here, so grandfathered Ed25519 agents are unaffected.
+    /// Resolve new key material without substitution. `pq2025` is the
+    /// default; an explicit Ed25519 request mints Ed25519 keys. The config is
+    /// updated only when a canonical alias differs from the requested label.
     pub fn generate_keys_with_store(&mut self, ks: &dyn KeyStore) -> Result<(), JacsError> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let requested_algorithm = config.get_key_algorithm()?;
@@ -653,14 +691,7 @@ impl KeyManager for Agent {
         };
 
         let algo_str = algo.to_string();
-        let result = match algo {
-            CryptoSigningAlgorithm::RingEd25519 => {
-                ringwrapper::verify_string(public_key, data, signature_base64)
-            }
-            CryptoSigningAlgorithm::Pq2025 => {
-                pq2025::verify_string(public_key, data, signature_base64)
-            }
-        };
+        let result = verify_string_with_algorithm(public_key, data, signature_base64, &algo_str);
 
         let verify_duration_ms = verify_start.elapsed().as_millis() as u64;
         let valid = result.is_ok();
@@ -678,7 +709,57 @@ impl KeyManager for Agent {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_public_key_pem;
+    use super::{
+        CryptoSigningAlgorithm, detect_algorithm_from_public_key, normalize_public_key_pem,
+        resolve_rotation_algorithm,
+    };
+
+    #[test]
+    fn rotation_policy_preserves_or_upgrades_without_downgrading() {
+        assert_eq!(
+            resolve_rotation_algorithm("ring-Ed25519", None).unwrap(),
+            "ring-Ed25519"
+        );
+        assert_eq!(
+            resolve_rotation_algorithm("ring-Ed25519", Some("ed25519")).unwrap(),
+            "ring-Ed25519"
+        );
+        assert_eq!(
+            resolve_rotation_algorithm("ring-Ed25519", Some("pq2025")).unwrap(),
+            "pq2025"
+        );
+        assert_eq!(
+            resolve_rotation_algorithm("pq2025", None).unwrap(),
+            "pq2025"
+        );
+        assert_eq!(
+            resolve_rotation_algorithm("pq2025", Some("pq2025")).unwrap(),
+            "pq2025"
+        );
+
+        let downgrade = resolve_rotation_algorithm("pq2025", Some("ed25519"))
+            .expect_err("PQ to Ed25519 rotation must be rejected");
+        assert!(downgrade.to_string().contains("downgrade"));
+        assert!(resolve_rotation_algorithm("pq2025", Some("rsa-pss")).is_err());
+    }
+
+    #[test]
+    fn detects_every_exact_length_ed25519_public_key() {
+        // Ed25519 public keys are arbitrary 32-byte strings. Requiring a
+        // particular proportion of non-ASCII bytes rejects valid keys based
+        // on random key material; this low-high-bit fixture reproduces the
+        // committed cross-language provenance key that exposed the bug.
+        let key = [0x41_u8; 32];
+        assert!(matches!(
+            detect_algorithm_from_public_key(&key).expect("32-byte Ed25519 key"),
+            CryptoSigningAlgorithm::RingEd25519,
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_key_lengths_even_when_bytes_are_non_ascii() {
+        assert!(detect_algorithm_from_public_key(&[0xff_u8; 64]).is_err());
+    }
 
     #[test]
     fn normalize_public_key_pem_wraps_raw_bytes() {

@@ -2,7 +2,7 @@
  * JACS A2A Express Middleware
  *
  * Middleware factory that serves A2A .well-known discovery endpoints
- * from an existing Express app. All 5 standard endpoints are cached
+ * from an existing Express app. All 6 identity-bound endpoints are cached
  * after first generation.
  *
  * @example
@@ -40,7 +40,7 @@ const CORS_HEADERS = {
 };
 
 /**
- * Build all 5 well-known document payloads from a JacsClient and options.
+ * Build all 6 identity-bound well-known document payloads from a JacsClient.
  *
  * @param {import('../client').JacsClient} client
  * @param {Object} options
@@ -79,11 +79,36 @@ function buildWellKnownDocuments(client, options = {}) {
     });
   }
 
-  // 2. Extension descriptor
-  const extensionJson = integration.createExtensionDescriptor();
+  // The compatibility arguments are ignored by the integration when the
+  // required native generator is present. They remain here only for API
+  // source compatibility with older callers.
   const documents = integration.generateWellKnownDocuments(cardJson, '', '', agentData);
-  documents['/.well-known/agent-card.json'] = cardJson;
-  documents['/.well-known/jacs-extension.json'] = extensionJson;
+
+  // Caller-side mutation after signing would invalidate the JWS. Optional
+  // server overrides are therefore assertions about already-configured agent
+  // data, never rewrites of the native signed card.
+  const nativeCard = documents['/.well-known/agent-card.json'];
+  if (options.skills && JSON.stringify(nativeCard.skills || []) !== JSON.stringify(cardJson.skills || [])) {
+    throw new Error(
+      "Cannot override A2A skills after the Agent Card is signed; configure the agent's skills before generation"
+    );
+  }
+  if (options.url) {
+    const interfaceUrl = nativeCard.supportedInterfaces?.[0]?.url;
+    if (typeof interfaceUrl !== 'string' || !interfaceUrl.includes(options.url)) {
+      throw new Error(
+        'Cannot override the A2A interface URL after the Agent Card is signed; configure the agent domain before generation'
+      );
+    }
+  }
+  if (options.keyAlgorithm) {
+    const nativeAlgorithm = documents['/.well-known/jacs-agent.json']?.keyAlgorithm;
+    if (nativeAlgorithm !== options.keyAlgorithm) {
+      throw new Error(
+        'Cannot relabel the native JACS algorithm in signed discovery documents; use the agent configuration value'
+      );
+    }
+  }
   return documents;
 }
 
@@ -105,6 +130,7 @@ function slugify(name) {
  * Registers routes for:
  * - `/.well-known/agent-card.json`
  * - `/.well-known/jwks.json`
+ * - `/.well-known/jacs-compat-binding.json`
  * - `/.well-known/jacs-agent.json`
  * - `/.well-known/jacs-pubkey.json`
  * - `/.well-known/jacs-extension.json`

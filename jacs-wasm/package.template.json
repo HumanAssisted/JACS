@@ -16,7 +16,9 @@
     "worker/index.js",
     "worker/index.d.ts",
     "worker/jacs-worker.js",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES"
   ],
   "exports": {
     ".": {

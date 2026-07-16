@@ -11,6 +11,7 @@
 const { expect } = require('chai');
 const path = require('path');
 const fs = require('fs');
+const { withLegacyFixtureCompatibility } = require('./legacy-fixture');
 
 let bindings;
 try {
@@ -128,7 +129,7 @@ describe('Format Conversion (JacsAgent sync)', function () {
     process.chdir(FIXTURES_DIR);
     try {
       agent = new bindings.JacsAgent();
-      agent.loadSync(TEST_CONFIG);
+      withLegacyFixtureCompatibility(() => agent.loadSync(TEST_CONFIG));
     } finally {
       process.chdir(originalCwd);
     }
@@ -235,7 +236,7 @@ describe('Format Conversion (JacsAgent async)', function () {
     process.chdir(FIXTURES_DIR);
     try {
       agent = new bindings.JacsAgent();
-      agent.loadSync(TEST_CONFIG);
+      withLegacyFixtureCompatibility(() => agent.loadSync(TEST_CONFIG));
     } finally {
       process.chdir(originalCwd);
     }

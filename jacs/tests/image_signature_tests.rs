@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 
 fn ephemeral_ed25519() -> SimpleAgent {
-    SimpleAgent::ephemeral(Some("ed25519"))
+    SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
         .expect("ephemeral")
         .0
 }
@@ -319,7 +319,7 @@ fn verify_image_strict_keynotfound_does_not_escalate() {
 
     // Agent B (different ephemeral, no key_dir, no trust store entry for A,
     // no DNS) tries to verify in strict mode.
-    let (agent_b, _info_b) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let (agent_b, _info_b) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
     let result = verify_image(
         &agent_b,
         out_path.to_str().unwrap(),
@@ -1142,7 +1142,7 @@ fn verify_image_cross_agent_path_ed25519() {
 
     // Agent B is a different ephemeral. We populate B's key_dir with A's
     // public PEM so the resolver can find A's key.
-    let (agent_b, _info_b) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let (agent_b, _info_b) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
     let key_dir = TempDir::new().unwrap();
     let signer_id_a = agent_a.get_agent_id().unwrap();
     let encoded = jacs::simple::advanced::encode_signer_id_for_filename(&signer_id_a);

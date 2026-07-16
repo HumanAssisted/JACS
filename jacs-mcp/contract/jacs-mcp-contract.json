@@ -5,7 +5,7 @@
     "title": "JACS MCP Server",
     "version": "0.11.4",
     "website_url": "https://humanassisted.github.io/JACS/",
-    "instructions": "This MCP server provides data provenance and cryptographic signing for signed documents, agreements, A2A artifacts, agents, and configuration. Document signing: jacs_sign_document (sign JSON content), jacs_verify_document (verify a signed JACS document). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). W3C interop: jacs_w3c_export_did (export did:wba identifier), jacs_w3c_export_did_document (export DID document), jacs_w3c_export_agent_description (export agent description), jacs_w3c_generate_well_known (generate W3C discovery documents), jacs_w3c_sign_request (create request-bound DID proof), jacs_w3c_verify_request (verify request-bound DID proof). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Search: jacs_search (unified search across all signed documents). Inline text and media: jacs_sign_text (sign a markdown/text file in place), jacs_verify_text (verify inline JACS signatures), jacs_sign_image (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
+    "instructions": "JACS MCP profile 'full' exposes 42 active tools for local data provenance, signing, and verification. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n- jacs_apply_agreement_v2\n- jacs_assess_a2a_agent\n- jacs_attest_create\n- jacs_attest_export_dsse\n- jacs_attest_lift\n- jacs_attest_verify\n- jacs_check_agreement\n- jacs_create_agent\n- jacs_create_agreement\n- jacs_create_agreement_v2\n- jacs_detect_agreement_v2_branch_conflict\n- jacs_export_agent\n- jacs_export_agent_card\n- jacs_extract_media_signature\n- jacs_generate_well_known\n- jacs_get_trusted_agent\n- jacs_is_trusted\n- jacs_list_trusted_agents\n- jacs_merge_agreement_v2_transcript_branches\n- jacs_reencrypt_key\n- jacs_resolve_agreement_v2_branch_conflict\n- jacs_rotate_keys\n- jacs_search\n- jacs_sign_agreement\n- jacs_sign_agreement_v2\n- jacs_sign_document\n- jacs_sign_image\n- jacs_sign_text\n- jacs_trust_agent\n- jacs_untrust_agent\n- jacs_verify_a2a_artifact\n- jacs_verify_agreement_v2\n- jacs_verify_document\n- jacs_verify_image\n- jacs_verify_text\n- jacs_w3c_export_agent_description\n- jacs_w3c_export_did\n- jacs_w3c_export_did_document\n- jacs_w3c_generate_well_known\n- jacs_w3c_sign_request\n- jacs_w3c_verify_request\n- jacs_wrap_a2a_artifact"
   },
   "tools": [
     {
@@ -183,7 +183,7 @@
             ]
           },
           "algorithm": {
-            "description": "Cryptographic algorithm: 'pq2025' (default, post-quantum) or 'ring-Ed25519'",
+            "description": "Cryptographic algorithm: 'pq2025' (default, post-quantum) or 'ed25519'; 'ring-Ed25519' is accepted as a legacy input alias and returned as the canonical Ed25519 wire label",
             "type": [
               "string",
               "null"
@@ -401,13 +401,13 @@
     },
     {
       "name": "jacs_generate_well_known",
-      "description": "Generate all .well-known documents for A2A discovery. Returns an array of {path, document} objects that can be served at each path for agent discovery.",
+      "description": "Generate the identity-bound .well-known documents for A2A discovery: the stable ES256-signed Agent Card, compatibility JWKS, native-root-signed binding, and JACS descriptors. Returns {path, document} entries for serving.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "Parameters for generating well-known documents.",
         "properties": {
           "a2a_algorithm": {
-            "description": "A2A signing algorithm override (default: ring-Ed25519)",
+            "description": "Compatibility-only algorithm selector: omit or pass ES256. Other values are rejected; discovery always uses the persisted native-root-bound compatibility key.",
             "type": [
               "string",
               "null"
@@ -552,13 +552,13 @@
     },
     {
       "name": "jacs_rotate_keys",
-      "description": "Rotate the agent's cryptographic keys. Generates a new keypair, signs a transition proof with the old key, re-signs the agent document and config with the new key. Optionally change the signing algorithm.",
+      "description": "Rotate the agent's cryptographic keys to pq2025. Generates a new keypair, signs a transition proof with the old key, and re-signs the agent document and config with the new key. Omit algorithm or pass pq2025; Ed25519 and unknown targets are rejected.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "Parameters for rotating the agent's cryptographic keys.",
         "properties": {
           "algorithm": {
-            "description": "Signing algorithm for the new keys. Rotation always resolves to pq2025 (omit or pass pq2025); Ed25519-rooted agents migrate to pq2025 on rotation.",
+            "description": "Signing algorithm for the new keys. Omit to preserve the current algorithm; Ed25519 may upgrade to pq2025, but pq2025 cannot downgrade.",
             "type": [
               "string",
               "null"

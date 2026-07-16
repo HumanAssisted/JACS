@@ -112,9 +112,10 @@ pub fn verify_html_inline_email_document(
     check_email_size(raw_email)?;
 
     let envelope = extract_topmost_inline_jacs_envelope(raw_email)?;
-    let envelope_value: serde_json::Value = serde_json::from_str(&envelope).map_err(|e| {
-        EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
-    })?;
+    let envelope_value: serde_json::Value = jacs_core::strict_json::parse_strict_json(&envelope)
+        .map_err(|e| {
+            EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
+        })?;
     let jacs_envelope = envelope_value.get("jacsEnvelope").ok_or_else(|| {
         EmailError::InvalidJacsDocument("inline JACS envelope missing jacsEnvelope".to_string())
     })?;
@@ -147,9 +148,10 @@ fn verify_jacs_email_document_json(
         )));
     }
 
-    let jacs_value: serde_json::Value = serde_json::from_str(jacs_json).map_err(|e| {
-        EmailError::InvalidJacsDocument(format!("failed to parse JACS document: {e}"))
-    })?;
+    let jacs_value: serde_json::Value = jacs_core::strict_json::parse_strict_json(jacs_json)
+        .map_err(|e| {
+            EmailError::InvalidJacsDocument(format!("failed to parse JACS document: {e}"))
+        })?;
 
     let content = jacs_value.get("content").ok_or_else(|| {
         EmailError::InvalidJacsDocument("JACS document missing 'content' field".to_string())
@@ -340,7 +342,7 @@ fn expected_logo_header_from_inline_envelope(envelope: &str) -> Option<String> {
         return None;
     }
 
-    serde_json::from_str::<serde_json::Value>(trimmed)
+    jacs_core::strict_json::parse_strict_json(trimmed)
         .ok()
         .and_then(|value| {
             value
@@ -657,8 +659,9 @@ fn build_parent_chain(parent_hash: &str, parts: &ParsedEmailParts, chain: &mut V
             }
 
             // Fallback: legacy JacsEmailSignatureDocument format (v1).
-            if let Ok(parent_doc) =
-                serde_json::from_slice::<JacsEmailSignatureDocument>(&jacs_att.content)
+            if let Ok(parent_doc) = jacs_core::strict_json::deserialize_strict_json_slice::<
+                JacsEmailSignatureDocument,
+            >(&jacs_att.content)
             {
                 let is_forwarded = parent_doc.payload.parent_signature_hash.is_some();
                 chain.push(ChainEntry {
@@ -684,7 +687,7 @@ fn build_parent_chain(parent_hash: &str, parts: &ParsedEmailParts, chain: &mut V
 ///
 /// Returns the extracted `EmailSignaturePayload` and signer ID on success.
 fn try_parse_jacs_document(raw: &[u8]) -> Option<(super::types::EmailSignaturePayload, String)> {
-    let value: serde_json::Value = serde_json::from_slice(raw).ok()?;
+    let value: serde_json::Value = jacs_core::strict_json::parse_strict_json_slice(raw).ok()?;
 
     // Real JACS documents have a `content` field containing the payload
     let content = value.get("content")?;
@@ -1006,7 +1009,8 @@ mod tests {
             .config_path(&format!("{}/jacs.config.json", tmp_path))
             .build();
 
-        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
+        let (agent, _info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
+            .expect("create test agent");
 
         // Set env vars needed by the keystore at signing time and restore on drop.
         let env_guard = crate::email::EmailTestEnvGuard::set(&[

@@ -22,8 +22,13 @@ use tempfile::TempDir;
 // Helper: create an ephemeral agent for tests that don't need disk
 // =============================================================================
 
+fn ephemeral_fixture() -> (SimpleAgent, jacs::simple::AgentInfo) {
+    SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("grandfathered Ed25519 fixture should succeed")
+}
+
 fn ephemeral_ed25519() -> (SimpleAgent, jacs::simple::AgentInfo) {
-    SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral(ed25519) should succeed")
+    ephemeral_fixture()
 }
 
 #[cfg(feature = "pq-tests")]
@@ -71,8 +76,12 @@ fn persistent_agent_in(dir: &TempDir, algorithm: &str) -> (SimpleAgent, jacs::si
     // create_with_params sets env vars inside a mutex guard and restores them
     // on return. The persistent agent needs JACS_PRIVATE_KEY_PASSWORD to be
     // set for subsequent sign operations, so we set it after creation.
-    let result =
-        SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
+    let result = if algorithm == "ed25519" {
+        SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
+            .expect("legacy fixture creation should succeed")
+    } else {
+        SimpleAgent::create_with_params(params).expect("create_with_params should succeed")
+    };
 
     // Re-set password env var so signing can decrypt the private key.
     // Also re-set key/data directories so the agent can find its files.
@@ -240,18 +249,19 @@ fn test_create_with_params_refuses_dangling_symlink_config_path() {
 
 #[test]
 #[serial]
-fn test_create_with_params_ed25519_resolves_pq2025() {
-    // P2 Task 001: new agent creation is PQ-only — an ed25519 request
-    // resolves to pq2025 (with a WARN) rather than minting an Ed25519 root.
+fn test_create_with_params_honors_ed25519() {
     let tmp = TempDir::new().unwrap();
     let (agent, info) = persistent_agent_in(&tmp, "ed25519");
-    assert!(
-        info.algorithm.contains("pq2025"),
-        "new-agent ed25519 request must resolve to pq2025, got: {}",
-        info.algorithm
+    assert_eq!(info.algorithm, "ring-Ed25519");
+    assert_eq!(agent.get_public_key().expect("public key").len(), 32);
+    let signed = agent
+        .sign_message(&json!({"algo": "ed25519"}))
+        .expect("Ed25519 agent should sign");
+    let document: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+    assert_eq!(
+        document["jacsSignature"]["signingAlgorithm"],
+        "ring-Ed25519"
     );
-    let signed = agent.sign_message(&json!({"algo": "resolved"}));
-    assert!(signed.is_ok(), "resolved agent should sign successfully");
 }
 
 #[cfg(feature = "pq-tests")]
@@ -345,7 +355,7 @@ fn test_ephemeral_creates_agent_no_disk_writes() {
     let tmp = TempDir::new().unwrap();
     let before_count = fs::read_dir(tmp.path()).unwrap().count();
 
-    let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
+    let (agent, info) = SimpleAgent::ephemeral(None).expect("ephemeral should succeed");
 
     let after_count = fs::read_dir(tmp.path()).unwrap().count();
     assert_eq!(
@@ -383,29 +393,15 @@ fn test_ephemeral_default_algorithm() {
 }
 
 #[test]
-fn test_ephemeral_ed25519_request_resolves_pq2025() {
-    // P2 Task 001: ephemeral creation is PQ-only like every creation path.
-    let (agent, info) = ephemeral_ed25519();
-    assert!(!info.agent_id.is_empty());
-    assert!(
-        info.algorithm.contains("pq2025"),
-        "ephemeral ed25519 request must resolve to pq2025, got: {}",
-        info.algorithm
-    );
-    let signed = agent.sign_message(&json!({"resolved": true}));
-    assert!(signed.is_ok());
-}
-
-#[test]
-fn test_ephemeral_ed25519_request_signs_and_verifies() {
-    let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).expect("ed25519 request resolves");
-    assert!(
-        info.algorithm.contains("pq2025"),
-        "new-agent ed25519 request must resolve to pq2025, got: {}",
-        info.algorithm
-    );
-    let signed = agent.sign_message(&json!({"curve": "resolved"})).unwrap();
-    assert!(agent.verify(&signed.raw).unwrap().valid);
+fn test_ephemeral_ed25519_request_is_honored_without_substitution() {
+    let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).expect("supported Ed25519");
+    assert_eq!(info.algorithm, "ring-Ed25519");
+    assert_eq!(agent.get_public_key().expect("public key").len(), 32);
+    let signed = agent
+        .sign_message(&json!({"algorithm": "ed25519"}))
+        .expect("sign");
+    let value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+    assert_eq!(value["jacsSignature"]["signingAlgorithm"], "ring-Ed25519");
 }
 
 // =============================================================================
@@ -414,7 +410,7 @@ fn test_ephemeral_ed25519_request_signs_and_verifies() {
 
 #[test]
 fn test_verify_self_on_fresh_ephemeral() {
-    let (agent, _info) = ephemeral_ed25519();
+    let (agent, _info) = ephemeral_fixture();
     let result = agent.verify_self().expect("verify_self should not error");
     assert!(
         result.valid,
@@ -442,7 +438,7 @@ fn test_verify_self_on_persistent_agent() {
 
 #[test]
 fn test_sign_message_produces_verifiable_output() {
-    let (agent, _info) = ephemeral_ed25519();
+    let (agent, _info) = ephemeral_fixture();
     let data = json!({"action": "test", "value": 42});
     let signed = agent
         .sign_message(&data)
@@ -709,9 +705,8 @@ fn test_get_public_key_pem_returns_pem_format() {
 }
 
 #[test]
-fn test_get_public_key_pem_ed25519() {
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
+fn test_get_public_key_pem_grandfathered_ed25519_fixture() {
+    let (agent, _info) = ephemeral_fixture();
     let pem = agent.get_public_key_pem().expect("public key pem");
     assert!(
         pem.contains("BEGIN PUBLIC KEY"),
@@ -725,7 +720,7 @@ fn test_get_public_key_pem_ed25519() {
 
 #[test]
 fn test_get_agent_id_returns_non_empty() {
-    let (agent, _info) = ephemeral_ed25519();
+    let (agent, _info) = ephemeral_fixture();
 
     // get_agent_id() looks for "jacsId" (canonical) in the exported agent JSON.
     // If this test fails, it means get_agent_id() regressed — both the core and

@@ -493,6 +493,9 @@ struct RegistryApiResponse {
     public_key_hash: Option<String>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_REGISTRY_RESPONSE_BYTES: usize = 64 * 1024;
+
 /// Check if an agent is registered with a registry.
 ///
 /// This function queries the registry API to verify that an agent claiming
@@ -555,41 +558,35 @@ pub fn verify_registry_registration_sync(
                 .to_string(),
         )
     })?;
-    let parsed = url::Url::parse(&api_url).map_err(|e| {
-        JacsError::ConfigError(format!("Invalid JACS_REGISTRY_URL '{}': {}", api_url, e))
-    })?;
-    let host = parsed.host_str().unwrap_or_default();
-    let http_localhost = parsed.scheme() == "http"
-        && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1");
-    if parsed.scheme() != "https" && !http_localhost {
-        return Err(JacsError::ConfigError(format!(
-            "JACS_REGISTRY_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
-            api_url
-        )));
-    }
+    let parsed = url::Url::parse(&api_url)
+        .map_err(|e| JacsError::ConfigError(format!("Invalid JACS_REGISTRY_URL: {}", e)))?;
+    let allow_loopback = crate::secure_fetch::is_exact_textual_loopback_endpoint(&api_url);
+    crate::secure_fetch::validate_transport_url(&parsed, allow_loopback, "registry API")
+        .map_err(|_| {
+            JacsError::ConfigError(
+                "JACS_REGISTRY_URL must use HTTPS. Only an exact textual loopback endpoint is allowed over HTTP for testing, and credentials/fragments are forbidden."
+                    .to_string(),
+            )
+        })?;
     ensure_network_access(NetworkCapability::RegistryLookup)?;
     let url = format!("{}/v1/agents/{}", api_url.trim_end_matches('/'), agent_id);
 
-    // Build blocking HTTP client with TLS
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
-
-    // Make request to registry API
-    let response = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .map_err(|e| {
+    let policy = crate::secure_fetch::SecureFetchPolicy::new(
+        "registry API",
+        MAX_REGISTRY_RESPONSE_BYTES,
+        &["application/json"],
+    )
+    .allow_exact_loopback(allow_loopback);
+    let response =
+        crate::secure_fetch::secure_get(&url, "application/json", &policy).map_err(|e| {
             JacsError::NetworkError(format!(
-                "Registry verification failed: unable to reach API at {}: {}",
-                url, e
+                "Registry verification failed: unable to reach configured API: {}",
+                e
             ))
         })?;
 
     // Check response status
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
+    if response.status == reqwest::StatusCode::NOT_FOUND {
         return Err(JacsError::RegistrationFailed {
             reason: format!(
                 "Agent '{}' is not registered with the registry. \
@@ -599,17 +596,18 @@ pub fn verify_registry_registration_sync(
         });
     }
 
-    if !response.status().is_success() {
+    if !response.status.is_success() {
         return Err(JacsError::NetworkError(format!(
             "Registry API returned error status {}: agent verification failed",
-            response.status()
+            response.status
         )));
     }
 
     // Parse response
-    let api_response: RegistryApiResponse = response.json().map_err(|e| {
-        JacsError::NetworkError(format!("Failed to parse registry API response: {}", e))
-    })?;
+    let api_response: RegistryApiResponse =
+        jacs_core::strict_json::deserialize_strict_json_slice(&response.body).map_err(|e| {
+            JacsError::NetworkError(format!("Failed to parse registry API response: {}", e))
+        })?;
 
     // Verify the agent is actually verified
     if !api_response.verified {
@@ -704,9 +702,11 @@ pub fn verify_agent_dns(
     domain: &str,
 ) -> Result<DnsVerificationResult, JacsError> {
     let parsed: serde_json::Value =
-        serde_json::from_str(agent_json).map_err(|e| JacsError::DocumentMalformed {
-            field: "agent_json".to_string(),
-            reason: format!("Invalid agent JSON: {}", e),
+        jacs_core::strict_json::parse_strict_json(agent_json).map_err(|e| {
+            JacsError::DocumentMalformed {
+                field: "agent_json".to_string(),
+                reason: format!("Invalid agent JSON: {}", e),
+            }
         })?;
 
     let sig = parsed

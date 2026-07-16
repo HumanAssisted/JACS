@@ -1,10 +1,10 @@
 {
-  "agent_id": "a6572aa2-ef17-498c-9ec2-1bd1d5bfb2cb",
+  "agent_id": "780709a9-3fbf-4b09-8e82-a8e57d2571f2",
   "algorithm": "ed25519",
-  "document_id": "28e34936-010c-4f4f-b671-795e07eec325",
+  "document_id": "443ab52d-211f-45c3-ab50-6b87b0ced672",
   "generated_by": "rust",
-  "jacs_version": "0.8.0",
-  "public_key_hash": "bd1865817721cef405fd0f9b791c7dca2adc217915ee22e72c84bbdf261e8e35",
+  "jacs_version": "0.11.4",
+  "public_key_hash": "c133720a59a57e6b7eba6a87e3f6e1f3543c8d0c2f47fa1b701fd130b341ad64",
   "signing_algorithm": "ring-Ed25519",
-  "timestamp": "2026-02-19T22:26:21.644642+00:00"
+  "timestamp": "2026-07-10T07:27:57.663883+00:00"
 }

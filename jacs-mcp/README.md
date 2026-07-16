@@ -6,9 +6,16 @@ Uses **stdio transport only** for security. The server holds the agent's private
 
 The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
-Ecosystem compatibility exports (ES256 JWKS, the PQ-root-signed compatibility key binding, ES256-signed A2A agent cards, AP2 mandates, and Agreement-v2 Verifiable Credentials) are CLI and language-binding surfaces only — by design there are no MCP tools for them.
+Ecosystem compatibility exports (ES256 JWKS, the native-root-signed compatibility key binding, ES256-signed A2A agent cards, AP2 mandates, and Agreement-v2 Verifiable Credentials) are CLI and language-binding surfaces only — by design there are no MCP tools for them.
 
 ## What can it do?
+
+The default `core` profile exposes document, inline text/media, trust, search,
+key/agent, A2A discovery, and W3C tools. The `full` profile adds Agreement v2,
+A2A artifact, and attestation tools. Select it with `jacs mcp --profile full`
+or, when the CLI flag is absent, `JACS_MCP_PROFILE=full`. An explicit flag
+wins over the environment, and values other than `core` or `full` fail
+startup.
 
 The server exposes tools in these categories:
 
@@ -27,7 +34,7 @@ The server exposes tools in these categories:
 | `jacs_reencrypt_key` | Re-encrypt the agent's private key with a new password |
 | `jacs_rotate_keys` | Rotate the active agent key material |
 
-### Agreements
+### Agreements (`full` profile)
 
 | Tool | Description |
 |------|-------------|
@@ -35,12 +42,12 @@ The server exposes tools in these categories:
 | `jacs_sign_agreement` | Co-sign an existing agreement |
 | `jacs_check_agreement` | Check agreement status, quorum, expiration, and missing signatures |
 
-### A2A Discovery and Artifacts
+### A2A Discovery (`core`) and Artifacts (`full`)
 
 | Tool | Description |
 |------|-------------|
 | `jacs_export_agent_card` | Export the local agent's A2A Agent Card |
-| `jacs_generate_well_known` | Generate A2A `.well-known` documents |
+| `jacs_generate_well_known` | Generate the six stable ES256/native-root-bound A2A `.well-known` documents |
 | `jacs_export_agent` | Export the local agent's full JACS JSON document |
 | `jacs_wrap_a2a_artifact` | Wrap an A2A artifact with JACS provenance |
 | `jacs_verify_a2a_artifact` | Verify a JACS-wrapped A2A artifact |
@@ -67,7 +74,7 @@ The server exposes tools in these categories:
 | `jacs_is_trusted` | Check whether an agent is trusted |
 | `jacs_get_trusted_agent` | Retrieve a trusted agent JSON document |
 
-### Attestation
+### Attestation (`full` profile)
 
 | Tool | Description |
 |------|-------------|
@@ -118,8 +125,9 @@ jacs mcp
       "command": "jacs",
       "args": ["mcp"],
       "env": {
-        "JACS_CONFIG": "/path/to/jacs.config.json",
-        "JACS_PRIVATE_KEY_PASSWORD": "your-secure-password"
+        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
+        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
+        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
       }
     }
   }
@@ -131,13 +139,29 @@ jacs mcp
 Required:
 
 - `JACS_CONFIG` - Path to your `jacs.config.json` file
-- `JACS_PRIVATE_KEY_PASSWORD` - Password for decrypting your private key
+- One private-key password source. Prefer an owner-readable
+  `JACS_PASSWORD_FILE` (for example, mode `0600`) or the OS keychain.
+  `JACS_PRIVATE_KEY_PASSWORD` is supported but should not be committed in
+  desktop-client JSON.
 
 Optional:
 
 - `RUST_LOG` - Logging level, default `info,rmcp=warn`
+- `JACS_MCP_PROFILE` - `core` (default) or `full`; used only when
+  `--profile` is absent
+- `JACS_MCP_BASE_DIR` - Base directory for all caller-supplied file paths;
+  defaults to the launch working directory
+- `JACS_MCP_OVERWRITE_OK=1` - Explicitly allow file tools to overwrite an
+  existing output (disabled by default)
 - `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `jacs_create_agent`
 - `JACS_MCP_ALLOW_UNTRUST` - Set to `true` to enable `jacs_untrust_agent`
+
+### File path policy
+
+File-tool arguments are relative paths beneath `JACS_MCP_BASE_DIR`. Absolute
+paths, `.`/`..` traversal, NULs, and symlinks are rejected. Existing output
+files are refused unless the operator opts in with
+`JACS_MCP_OVERWRITE_OK=1`; callers cannot enable overwrite themselves.
 
 ## Core Document Tools
 

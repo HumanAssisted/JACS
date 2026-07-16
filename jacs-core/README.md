@@ -6,8 +6,7 @@
 It holds the cryptographic primitives, canonical JSON serializer, embedded
 schemas, encrypted-key envelope codec, and agreement payload helpers that
 both the native [`jacs`](https://crates.io/crates/jacs) crate and the
-browser-side [`jacs-wasm`](https://www.npmjs.com/package/@jacs/wasm) wrapper
-share.
+browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
 
 ## What it is
 
@@ -16,6 +15,9 @@ share.
 - The single source of truth for canonical JACS bytes — signatures and
   agreements produced by `jacs_core::CoreAgent::sign_message` round-trip
   through native `jacs::Agent::verify_string` and back.
+- The strict raw-JSON decoder (`strict_json`) used before cryptographic
+  processing. It enforces RFC 8785's I-JSON input requirement by rejecting
+  duplicate decoded object names recursively; repeated array values are valid.
 - The home of `Ed25519DalekSigner`, `Pq2025Signer`, the `DetachedSigner`
   trait, `CoreAgent`, the AES-256-GCM + Argon2id encrypted-key envelope,
   the embedded JSON schema set (Draft 7), and the multi-party agreement
@@ -33,8 +35,9 @@ share.
   [`jacs-mcp`](https://crates.io/crates/jacs-mcp), both built on `jacs`.
 
 If you want the full native JACS experience (storage backends, A2A,
-attestation, MCP, observability), use `jacs`. If you want to sign or
-verify a JACS document in the browser, use `@jacs/wasm`.
+attestation, MCP, observability), use `jacs`. If you want to sign or verify a
+JACS document in the browser, build `@jacs/wasm` from source; it was not yet
+published on npm at the 2026-07-09 distribution baseline.
 
 ## Quick start
 

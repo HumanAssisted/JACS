@@ -17,7 +17,7 @@ MAX_AGE_SECONDS = 4_000_000_000
 
 
 def test_python_w3c_did_discovery_and_request_proof_round_trip():
-    agent, _info = SimpleAgent.ephemeral("ed25519")
+    agent, _info = SimpleAgent.ephemeral("pq2025")
 
     did = agent.export_w3c_did(ORIGIN)
     assert did.startswith("did:wba:agent.example.com:agent:")

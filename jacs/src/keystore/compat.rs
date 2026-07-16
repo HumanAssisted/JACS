@@ -1,7 +1,7 @@
 //! Role-based keyring metadata + ecosystem (ES256) compatibility key storage.
 //!
 //! P2 Task 002. One agent, two roles:
-//! - `native_root` — the pq2025 (or grandfathered ring-Ed25519) key that
+//! - `native_root` — the pq2025 (or explicitly selected ring-Ed25519) key that
 //!   signs native JACS documents. Managed by the existing keystore paths.
 //! - `ecosystem_signing` — the ES256 compatibility key used ONLY for
 //!   targeted ecosystem exports (Tasks 004/004b/004c). It never signs
@@ -84,7 +84,7 @@ pub fn ecosystem_public_key_path(key_directory: &str) -> String {
 pub fn read_keyring(key_directory: &str) -> Result<Keyring, JacsError> {
     let path = keyring_path(key_directory);
     match std::fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
+        Ok(raw) => jacs_core::strict_json::deserialize_strict_json(&raw).map_err(|e| {
             JacsError::ValidationError(format!("keyring metadata parse failed ({path}): {e}"))
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Keyring::default()),

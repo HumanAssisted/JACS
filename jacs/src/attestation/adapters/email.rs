@@ -1,9 +1,11 @@
 //! Email evidence adapter.
 //!
-//! Normalizes signed email data into attestation evidence.
+//! Normalizes bytes described as email into digest-addressed attestation
+//! evidence. This adapter does not verify DKIM, S/MIME, PGP, JACS, or any other
+//! email signature or sender identity.
 //! Zero new dependencies -- reuses existing jacs/src/email/ module.
 
-use crate::attestation::adapters::EvidenceAdapter;
+use crate::attestation::adapters::{EvidenceAdapter, digest_recorded_claim};
 use crate::attestation::digest::{compute_digest_set_bytes, should_embed_with_sensitivity};
 use crate::attestation::types::*;
 use crate::error::JacsError;
@@ -36,14 +38,9 @@ impl EvidenceAdapter for EmailAdapter {
             None
         };
 
-        let claims = vec![Claim {
-            name: "email-signature-verified".into(),
-            value: Value::Bool(true),
-            confidence: Some(0.8),
-            assurance_level: Some(AssuranceLevel::Verified),
-            issuer: None,
-            issued_at: Some(crate::time_utils::now_rfc3339()),
-        }];
+        // Raw bytes and caller-controlled metadata cannot establish email
+        // signature validity. Record only what this adapter actually computed.
+        let claims = vec![digest_recorded_claim("email", &digests)];
 
         let evidence = EvidenceRef {
             kind: EvidenceKind::Email,
@@ -89,8 +86,9 @@ impl EvidenceAdapter for EmailAdapter {
 
         info!(
             target: "jacs::attestation::adapters",
-            event = "evidence_verified",
+            event = "evidence_digest_checked",
             adapter = "email",
+            verification_scope = "digest_only",
             digest_valid = digest_valid,
         );
 
@@ -99,9 +97,9 @@ impl EvidenceAdapter for EmailAdapter {
             digest_valid,
             freshness_valid: true,
             detail: if digest_valid {
-                "Embedded email evidence digest verified".into()
+                "Embedded email evidence bytes match the recorded digest; email signature and sender identity were not verified".into()
             } else {
-                "Email evidence digest could not be verified".into()
+                "Email evidence digest could not be verified; email signature and sender identity were not verified".into()
             },
         })
     }
@@ -120,14 +118,45 @@ mod tests {
     }
 
     #[test]
-    fn email_normalize_valid_data() {
+    fn email_normalize_records_digest_only_claim() {
         let adapter = EmailAdapter;
         let raw = b"From: test@example.com\r\nSubject: Test\r\n\r\nBody";
         let (claims, evidence) = adapter.normalize(raw, &json!({})).unwrap();
 
         assert!(!claims.is_empty());
-        assert_eq!(claims[0].name, "email-signature-verified");
+        assert_eq!(claims[0].name, "email-evidence-digest-recorded");
+        assert_eq!(claims[0].value, evidence.digests.sha256);
+        assert_eq!(
+            claims[0].assurance_level,
+            Some(AssuranceLevel::SelfAsserted)
+        );
         assert_eq!(evidence.kind, EvidenceKind::Email);
+    }
+
+    #[test]
+    fn email_normalize_never_claims_arbitrary_bytes_have_a_verified_signature() {
+        let adapter = EmailAdapter;
+        let raw = b"not an email and not signed";
+        let metadata = json!({
+            "verified": true,
+            "signatureVerified": true,
+            "assuranceLevel": "verified"
+        });
+
+        let (claims, _) = adapter.normalize(raw, &metadata).unwrap();
+
+        assert!(
+            claims
+                .iter()
+                .all(|claim| claim.assurance_level != Some(AssuranceLevel::Verified)),
+            "normalizing bytes and checking a digest is not email signature verification"
+        );
+        assert!(
+            claims
+                .iter()
+                .all(|claim| claim.name != "email-signature-verified"),
+            "unverified input must not produce a signature-verification claim"
+        );
     }
 
     #[test]
@@ -185,6 +214,8 @@ mod tests {
             "Embedded email evidence digest should verify: {}",
             result.detail
         );
+        assert!(result.detail.contains("not verified"));
+        assert!(result.detail.contains("email signature"));
     }
 
     #[test]

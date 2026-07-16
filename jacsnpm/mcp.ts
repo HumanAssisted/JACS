@@ -3,15 +3,19 @@
 // Two integration patterns:
 //
 // 1. Transport proxy: wrap any MCP transport with JACS signing/verification.
+//    Signed envelopes travel inside the schema-valid reserved JSON-RPC
+//    notification `notifications/jacs/signed` (carrier wire version 1).
 //    `createJACSTransportProxy(transport, client)`
 //
 // 2. Tool registration: expose JACS operations as MCP tools in your server.
 //    `registerJacsTools(server, client)`
 //
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { JSONRPCMessage, JSONRPCMessageSchema } from "@modelcontextprotocol/sdk/types.js";
+import { randomUUID } from 'node:crypto';
 import { JacsAgent, fetchRemoteKeyLookup, jacsMcpResolveInputPath } from './index.js';
 import { JacsClient } from './client.js';
+import { allowUnsignedOutput, requireSignedEnvelope } from './output-policy.js';
 
 // PRD §4.2.6 / Issue 022 — single source of truth for MCP file-path
 // validation across Rust + Python + Node. Every Wave-3 MCP tool below
@@ -31,6 +35,198 @@ const isStdioTransport = (transport: any): boolean => {
 };
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+/** Reserved JSON-RPC notification carrying one serialized JACS envelope. */
+export const JACS_MCP_SIGNED_CARRIER_METHOD = 'notifications/jacs/signed';
+/** Wire version for the reserved signed-envelope carrier. */
+export const JACS_MCP_SIGNED_CARRIER_VERSION = 1;
+
+interface JacsMcpSignedCarrier {
+  jsonrpc: '2.0';
+  method: typeof JACS_MCP_SIGNED_CARRIER_METHOD;
+  params: {
+    version: typeof JACS_MCP_SIGNED_CARRIER_VERSION;
+    envelope: string;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
+}
+
+function createSignedCarrier(envelope: string): JacsMcpSignedCarrier {
+  return {
+    jsonrpc: '2.0',
+    method: JACS_MCP_SIGNED_CARRIER_METHOD,
+    params: {
+      version: JACS_MCP_SIGNED_CARRIER_VERSION,
+      envelope,
+    },
+  };
+}
+
+function parseSignedCarrier(value: unknown): JacsMcpSignedCarrier {
+  if (
+    !isRecord(value)
+    || !hasExactKeys(value, ['jsonrpc', 'method', 'params'])
+    || value.jsonrpc !== '2.0'
+    || value.method !== JACS_MCP_SIGNED_CARRIER_METHOD
+    || !isRecord(value.params)
+    || !hasExactKeys(value.params, ['version', 'envelope'])
+    || value.params.version !== JACS_MCP_SIGNED_CARRIER_VERSION
+    || typeof value.params.envelope !== 'string'
+    || value.params.envelope.trim().length === 0
+  ) {
+    throw new TypeError('Malformed JACS MCP signed-envelope carrier');
+  }
+  return value as unknown as JacsMcpSignedCarrier;
+}
+
+function parseJsonRpcMessage(value: unknown, context: string): JSONRPCMessage {
+  try {
+    return JSONRPCMessageSchema.parse(value);
+  } catch (error) {
+    throw new TypeError(`${context} did not contain a valid JSON-RPC message: ${String(error)}`);
+  }
+}
+
+function recoverVerifiedJsonRpcMessage(result: unknown): JSONRPCMessage {
+  const candidate = isRecord(result) && Object.prototype.hasOwnProperty.call(result, 'payload')
+    ? result.payload
+    : result;
+  return parseJsonRpcMessage(candidate, 'Verified JACS MCP envelope');
+}
+
+type JsonRpcId = string | number;
+
+interface ResolvedPeerIdentityPolicy {
+  mode: 'missing' | 'expected' | 'allowlist' | 'any-valid-signer';
+  allowedAgentIds: ReadonlySet<string>;
+  expectedPublicKeyHash?: string;
+}
+
+interface AuthenticatedEnvelopeIdentity {
+  agentId: string;
+  agentVersion: string;
+  publicKeyHash: string;
+}
+
+interface PendingRequest {
+  localId: JsonRpcId;
+  createdAtMs: number;
+}
+
+const MAX_PENDING_REQUESTS = 1024;
+const PENDING_REQUEST_TTL_MS = 5 * 60 * 1000;
+
+function requireExactNonEmptyString(value: unknown, optionName: string): string {
+  if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
+    throw new TypeError(`${optionName} must be a non-empty, whitespace-exact string`);
+  }
+  return value;
+}
+
+function resolvePeerIdentityPolicy(options: JACSTransportProxyOptions): ResolvedPeerIdentityPolicy {
+  const dangerous = options.dangerouslyAllowAnyValidSigner;
+  if (dangerous !== undefined && typeof dangerous !== 'boolean') {
+    throw new TypeError('dangerouslyAllowAnyValidSigner must be a literal boolean');
+  }
+
+  const hasExpected = options.expectedPeerAgentId !== undefined;
+  const hasAllowlist = options.allowedPeerAgentIds !== undefined;
+  if (hasExpected && hasAllowlist) {
+    throw new TypeError(
+      'Configure either expectedPeerAgentId or allowedPeerAgentIds, not both peer policies',
+    );
+  }
+  if (dangerous === true && (hasExpected || hasAllowlist)) {
+    throw new TypeError(
+      'dangerouslyAllowAnyValidSigner cannot be combined with a peer identity policy',
+    );
+  }
+
+  const expectedPublicKeyHash = options.expectedPeerPublicKeyHash === undefined
+    ? undefined
+    : requireExactNonEmptyString(
+      options.expectedPeerPublicKeyHash,
+      'expectedPeerPublicKeyHash',
+    );
+
+  if (hasExpected) {
+    const expected = requireExactNonEmptyString(
+      options.expectedPeerAgentId,
+      'expectedPeerAgentId',
+    );
+    return {
+      mode: 'expected',
+      allowedAgentIds: new Set([expected]),
+      expectedPublicKeyHash,
+    };
+  }
+
+  if (expectedPublicKeyHash !== undefined) {
+    throw new TypeError(
+      'expectedPeerPublicKeyHash requires one exact expectedPeerAgentId peer',
+    );
+  }
+
+  if (hasAllowlist) {
+    if (!Array.isArray(options.allowedPeerAgentIds) || options.allowedPeerAgentIds.length === 0) {
+      throw new TypeError('allowedPeerAgentIds must be a non-empty peer agent ID array');
+    }
+    const allowed = options.allowedPeerAgentIds.map((agentId) => (
+      requireExactNonEmptyString(agentId, 'allowedPeerAgentIds entry')
+    ));
+    const allowedAgentIds = new Set(allowed);
+    if (allowedAgentIds.size !== allowed.length) {
+      throw new TypeError('allowedPeerAgentIds must not contain duplicate peer agent IDs');
+    }
+    return { mode: 'allowlist', allowedAgentIds };
+  }
+
+  if (dangerous === true) {
+    return { mode: 'any-valid-signer', allowedAgentIds: new Set() };
+  }
+  return { mode: 'missing', allowedAgentIds: new Set() };
+}
+
+function authenticatedEnvelopeIdentity(envelope: string): AuthenticatedEnvelopeIdentity {
+  const parsed = JSON.parse(envelope) as Record<string, unknown>;
+  const signature = parsed.jacsSignature as Record<string, unknown>;
+  const rawAgentId = signature.agentID ?? signature.agentId;
+  if (
+    typeof rawAgentId !== 'string'
+    || typeof signature.agentVersion !== 'string'
+    || typeof signature.publicKeyHash !== 'string'
+  ) {
+    throw new TypeError('Verified JACS MCP envelope omitted authenticated signer metadata');
+  }
+  return {
+    agentId: rawAgentId,
+    agentVersion: signature.agentVersion,
+    publicKeyHash: signature.publicKeyHash,
+  };
+}
+
+function isJsonRpcRequest(message: JSONRPCMessage): boolean {
+  return isRecord(message)
+    && 'method' in message
+    && typeof message.method === 'string'
+    && Object.prototype.hasOwnProperty.call(message, 'id');
+}
+
+function isJsonRpcResponse(message: JSONRPCMessage): boolean {
+  return isRecord(message)
+    && Object.prototype.hasOwnProperty.call(message, 'id')
+    && (Object.prototype.hasOwnProperty.call(message, 'result')
+      || Object.prototype.hasOwnProperty.call(message, 'error'));
+}
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (!value) return undefined;
@@ -133,11 +329,15 @@ function extractNativeAgent(clientOrAgent: JacsClient | JacsAgent): JacsAgent {
  * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
  *
  * Outgoing messages are signed with `signRequest()`.
- * Incoming messages are verified with `verifyResponse()`.
+ * Incoming messages are verified with `verifyResponseWithAgentId()` and are
+ * dispatched only when the authenticated signer matches the configured peer
+ * identity policy.
  *
  * Security defaults:
  * - local-only transport enforcement (`stdio` or loopback URL)
  * - fail-closed on signing/verification errors
+ * - fail-closed until an expected/allowed peer signer is configured
+ * - randomized, one-use wire IDs for request/response correlation
  *
  * Local-only mode is mandatory and cannot be disabled.
  *
@@ -149,6 +349,8 @@ export class JACSTransportProxy implements Transport {
   private proxyId: string;
   private debug: boolean;
   private allowUnsignedFallback: boolean;
+  private peerIdentityPolicy: ResolvedPeerIdentityPolicy;
+  private pendingRequests = new Map<string, PendingRequest>();
 
   // MCP SDK sets these
   onclose?: () => void;
@@ -169,7 +371,10 @@ export class JACSTransportProxy implements Transport {
     this.nativeAgent = extractNativeAgent(clientOrAgent);
     this.proxyId = `JACS_${role.toUpperCase()}_PROXY`;
     const localOnly = resolveLocalOnly(options.localOnly);
-    this.allowUnsignedFallback = resolveAllowUnsignedFallback(options.allowUnsignedFallback);
+    this.allowUnsignedFallback = allowUnsignedOutput(
+      resolveAllowUnsignedFallback(options.allowUnsignedFallback),
+    );
+    this.peerIdentityPolicy = resolvePeerIdentityPolicy(options);
 
     if (localOnly) {
       assertLocalTransport(transport);
@@ -185,6 +390,7 @@ export class JACSTransportProxy implements Transport {
 
     // Forward transport lifecycle events
     this.transport.onclose = () => {
+      this.pendingRequests.clear();
       if (this.onclose) this.onclose();
     };
     this.transport.onerror = (error: Error) => {
@@ -202,37 +408,51 @@ export class JACSTransportProxy implements Transport {
   }
 
   async close(): Promise<void> {
+    this.pendingRequests.clear();
     return this.transport.close();
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
-    // Skip signing for error responses
-    if ('error' in message) {
-      debugLog(this.proxyId, this.debug, 'OUTGOING: error response, skipping signing');
-      await this.transport.send(message);
-      return;
+    // Clean null params before signing (MCP SDK sometimes sends null params).
+    const cleanMessage = { ...message } as Record<string, unknown>;
+    if ('params' in cleanMessage && cleanMessage.params === null) {
+      delete cleanMessage.params;
     }
+    const validatedMessage = parseJsonRpcMessage(cleanMessage, 'JACS MCP outgoing message');
+    const prepared = this.prepareOutgoingMessage(validatedMessage);
 
+    let carrier: JSONRPCMessage;
     try {
-      // Clean null params before signing (MCP SDK sometimes sends null params)
-      const cleanMessage = { ...message };
-      if ('params' in cleanMessage && cleanMessage.params === null) {
-        delete cleanMessage.params;
-      }
-
       debugLog(this.proxyId, this.debug, 'OUTGOING: signing message');
-      const signed = this.nativeAgent.signRequest(cleanMessage);
-      await this.transport.send(signed as any);
+      const signed = this.nativeAgent.signRequest(prepared.message);
+      const envelope = requireSignedEnvelope(signed, 'JACS MCP request signing');
+      carrier = parseJsonRpcMessage(
+        createSignedCarrier(envelope),
+        'JACS MCP signed carrier',
+      );
     } catch (signError) {
       if (this.allowUnsignedFallback) {
         console.error(`[${this.proxyId}] Signing failed, sending plain message:`, signError);
-        await this.transport.send(message);
+        try {
+          await this.transport.send(prepared.message);
+        } catch (transportError) {
+          this.rollbackPendingRequest(prepared.wireId);
+          throw transportError;
+        }
         return;
       }
+      this.rollbackPendingRequest(prepared.wireId);
       const error = signError instanceof Error ? signError : new Error(String(signError));
       throw new Error(
         `[${this.proxyId}] JACS signing failed and unsigned fallback is disabled: ${error.message}`
       );
+    }
+
+    try {
+      await this.transport.send(carrier);
+    } catch (transportError) {
+      this.rollbackPendingRequest(prepared.wireId);
+      throw transportError;
     }
   }
 
@@ -244,6 +464,119 @@ export class JACSTransportProxy implements Transport {
   // Internal
   // -------------------------------------------------------------------------
 
+  private cleanupExpiredPendingRequests(nowMs = Date.now()): void {
+    for (const [wireId, pending] of this.pendingRequests) {
+      if (nowMs - pending.createdAtMs >= PENDING_REQUEST_TTL_MS) {
+        this.pendingRequests.delete(wireId);
+      }
+    }
+  }
+
+  private prepareOutgoingMessage(message: JSONRPCMessage): {
+    message: JSONRPCMessage;
+    wireId?: string;
+  } {
+    if (!isJsonRpcRequest(message)) {
+      return { message };
+    }
+    this.cleanupExpiredPendingRequests();
+    if (this.pendingRequests.size >= MAX_PENDING_REQUESTS) {
+      throw new Error(
+        `JACS MCP pending request limit (${MAX_PENDING_REQUESTS}) exceeded`,
+      );
+    }
+
+    const localId = (message as Record<string, unknown>).id;
+    if (typeof localId !== 'string' && typeof localId !== 'number') {
+      throw new TypeError('JACS MCP request id must be a string or number');
+    }
+
+    let wireId: string;
+    do {
+      wireId = `jacs-${randomUUID()}`;
+    } while (this.pendingRequests.has(wireId));
+    this.pendingRequests.set(wireId, { localId, createdAtMs: Date.now() });
+    return {
+      message: { ...message, id: wireId } as JSONRPCMessage,
+      wireId,
+    };
+  }
+
+  private rollbackPendingRequest(wireId?: string): void {
+    if (wireId !== undefined) {
+      this.pendingRequests.delete(wireId);
+    }
+  }
+
+  private restoreCorrelatedResponse(message: JSONRPCMessage): JSONRPCMessage {
+    if (!isJsonRpcResponse(message)) {
+      return message;
+    }
+    this.cleanupExpiredPendingRequests();
+    const wireId = (message as Record<string, unknown>).id;
+    if (typeof wireId !== 'string') {
+      throw new Error('Unknown or expired MCP response id');
+    }
+    const pending = this.pendingRequests.get(wireId);
+    if (!pending) {
+      throw new Error('Unknown or expired MCP response id');
+    }
+    this.pendingRequests.delete(wireId);
+    return { ...message, id: pending.localId } as JSONRPCMessage;
+  }
+
+  private verifySignedEnvelope(envelope: string): JSONRPCMessage {
+    const portableEnvelope = requireSignedEnvelope(
+      envelope,
+      'Incoming JACS MCP verification',
+    );
+    const verifier = (this.nativeAgent as unknown as Record<string, unknown>)
+      .verifyResponseWithAgentId;
+    if (typeof verifier !== 'function') {
+      throw new Error(
+        'JACS MCP peer verification requires native verifyResponseWithAgentId()',
+      );
+    }
+    const result = verifier.call(this.nativeAgent, portableEnvelope);
+    if (!isRecord(result) || typeof result.agent_id !== 'string' || result.agent_id.length === 0) {
+      throw new Error(
+        'JACS MCP peer verifier did not return an authenticated agent_id',
+      );
+    }
+
+    const envelopeIdentity = authenticatedEnvelopeIdentity(portableEnvelope);
+    // The native payload API currently returns `agentID:agentVersion`; older
+    // bindings documented the return as the stable `agentID`. Both forms must
+    // still agree exactly with the authenticated v2 metadata.
+    const authenticatedNativeIds = new Set([
+      envelopeIdentity.agentId,
+      `${envelopeIdentity.agentId}:${envelopeIdentity.agentVersion}`,
+    ]);
+    if (!authenticatedNativeIds.has(result.agent_id)) {
+      throw new Error('JACS MCP verifier signer did not match authenticated envelope metadata');
+    }
+
+    if (this.peerIdentityPolicy.mode === 'missing') {
+      throw new Error(
+        'JACS MCP peer identity policy is required before authenticated messages can be dispatched',
+      );
+    }
+    if (
+      this.peerIdentityPolicy.mode !== 'any-valid-signer'
+      && !this.peerIdentityPolicy.allowedAgentIds.has(envelopeIdentity.agentId)
+    ) {
+      throw new Error(`Unexpected MCP peer agent: ${envelopeIdentity.agentId}`);
+    }
+    if (
+      this.peerIdentityPolicy.expectedPublicKeyHash !== undefined
+      && envelopeIdentity.publicKeyHash !== this.peerIdentityPolicy.expectedPublicKeyHash
+    ) {
+      throw new Error('Unexpected MCP peer public key hash');
+    }
+
+    return recoverVerifiedJsonRpcMessage(result);
+  }
+
   private handleIncoming(incomingData: string | JSONRPCMessage | object): void {
     try {
       let messageForSDK: JSONRPCMessage;
@@ -252,10 +585,7 @@ export class JACSTransportProxy implements Transport {
         // Try JACS verification first
         try {
           debugLog(this.proxyId, this.debug, 'INCOMING: attempting JACS verification');
-          const result = this.nativeAgent.verifyResponse(incomingData);
-          messageForSDK = (result && typeof result === 'object' && 'payload' in result)
-            ? (result as any).payload as JSONRPCMessage
-            : result as JSONRPCMessage;
+          messageForSDK = this.verifySignedEnvelope(incomingData);
         } catch (verifyError) {
           if (!this.allowUnsignedFallback) {
             const error = verifyError instanceof Error ? verifyError : new Error(String(verifyError));
@@ -266,16 +596,41 @@ export class JACSTransportProxy implements Transport {
 
           // Not a JACS artifact (or verification failure), parse as plain JSON
           debugLog(this.proxyId, this.debug, 'INCOMING: verification failed, parsing as plain JSON');
-          messageForSDK = JSON.parse(incomingData) as JSONRPCMessage;
+          messageForSDK = parseJsonRpcMessage(
+            JSON.parse(incomingData),
+            'Unsigned JACS MCP fallback',
+          );
         }
-      } else if (typeof incomingData === 'object' && incomingData !== null && 'jsonrpc' in incomingData) {
-        messageForSDK = incomingData as JSONRPCMessage;
+      } else if (
+        isRecord(incomingData)
+        && (incomingData as Record<string, unknown>).method === JACS_MCP_SIGNED_CARRIER_METHOD
+      ) {
+        const carrier = parseSignedCarrier(incomingData);
+        try {
+          debugLog(this.proxyId, this.debug, 'INCOMING: verifying signed-envelope carrier');
+          messageForSDK = this.verifySignedEnvelope(carrier.params.envelope);
+        } catch (verifyError) {
+          const error = verifyError instanceof Error ? verifyError : new Error(String(verifyError));
+          throw new Error(`JACS MCP carrier verification failed: ${error.message}`);
+        }
+      } else if (isRecord(incomingData) && 'jsonrpc' in incomingData) {
+        // MCP transports normally deliver already-parsed JSONRPCMessage objects.
+        // At that point no signed JACS envelope remains to verify, so accepting
+        // the object would silently bypass the proxy's fail-closed default.
+        if (!this.allowUnsignedFallback) {
+          throw new Error(
+            'JACS verification failed and unsigned fallback is disabled: '
+            + 'received a parsed unsigned JSON-RPC object instead of a serialized JACS envelope',
+          );
+        }
+        messageForSDK = parseJsonRpcMessage(incomingData, 'Unsigned JACS MCP fallback');
       } else {
         throw new Error(`Unexpected incoming data type: ${typeof incomingData}`);
       }
 
+      const correlatedMessage = this.restoreCorrelatedResponse(messageForSDK);
       if (this.onmessage) {
-        this.onmessage(messageForSDK);
+        this.onmessage(correlatedMessage);
       }
     } catch (error) {
       console.error(`[${this.proxyId}] Error processing incoming message:`, error);
@@ -320,9 +675,31 @@ export interface JACSTransportProxyOptions {
   localOnly?: boolean;
   /**
    * Allow fallback to unsigned/plain MCP messages when JACS signing or
-   * verification fails. Default: false (fail closed).
+   * verification fails, including parsed JSON-RPC objects that no longer carry
+   * a verifiable serialized JACS envelope. Default: false (fail closed).
    */
   allowUnsignedFallback?: boolean;
+  /**
+   * Exact JACS agent ID expected to sign every incoming authenticated message.
+   * This is the recommended endpoint-identity policy for one peer.
+   */
+  expectedPeerAgentId?: string;
+  /**
+   * Exact allowlist of JACS agent IDs permitted to sign incoming messages.
+   * Use this only when one transport intentionally serves multiple peers.
+   */
+  allowedPeerAgentIds?: readonly string[];
+  /**
+   * Optional exact authenticated `jacsSignature.publicKeyHash` pin. It can be
+   * used only with `expectedPeerAgentId`.
+   */
+  expectedPeerPublicKeyHash?: string;
+  /**
+   * Dangerous compatibility mode: accept any cryptographically valid signer
+   * resolvable by the local JACS agent. This proves key possession only and
+   * does not authenticate the intended MCP endpoint. Must be literal `true`.
+   */
+  dangerouslyAllowAnyValidSigner?: boolean;
 }
 
 /**

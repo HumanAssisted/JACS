@@ -148,18 +148,20 @@ mod elliptic_curve_private_key_operations {
     use jacs::simple::SimpleAgent;
 
     #[test]
-    fn ed25519_ephemeral_request_resolves_pq2025() {
-        // P2 Task 001: new agent creation is PQ-only; the ed25519 request
-        // resolves to pq2025. (Raw Ed25519 keygen coverage lives in
-        // creates_ed25519_keystore_key below — the keystore layer is where
-        // grandfathered agents' keys still exercise Ed25519.)
+    fn ed25519_ephemeral_request_matches_keys_and_signature() {
         let (agent, info) =
-            SimpleAgent::ephemeral(Some("ed25519")).expect("ed25519 request resolves");
-        assert!(info.algorithm.contains("pq2025"));
+            SimpleAgent::ephemeral(Some("ed25519")).expect("supported Ed25519 creation");
+        assert_eq!(info.algorithm, "ring-Ed25519");
+        assert_eq!(agent.get_public_key().expect("public key").len(), 32);
+
         let signed = agent
-            .sign_message(&serde_json::json!({"curve": "resolved"}))
-            .expect("sign");
-        assert!(agent.verify(&signed.raw).expect("verify").valid);
+            .sign_message(&serde_json::json!({"algorithm": "ed25519"}))
+            .expect("Ed25519 signing");
+        let document: serde_json::Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+        assert_eq!(
+            document["jacsSignature"]["signingAlgorithm"],
+            "ring-Ed25519"
+        );
     }
 
     #[test]
@@ -206,7 +208,8 @@ mod signature_v2_binding {
     use serde_json::{Value, json};
 
     fn signed_doc() -> (SimpleAgent, Value) {
-        let (agent, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral agent");
+        let (agent, _) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+            .expect("grandfathered Ed25519 fixture");
         let signed = agent
             .sign_message(&json!({
                 "amount": 100,
@@ -328,9 +331,15 @@ mod signature_v2_binding {
             let (agent, mut value) = signed_doc();
             match pointer {
                 "/jacsSignature/signingAlgorithm" => {
-                    // The doc is pq2025-signed (creation is PQ-only), so the
-                    // tampered value must be the OTHER native algorithm.
-                    value["jacsSignature"]["signingAlgorithm"] = json!("ring-Ed25519")
+                    let original = value["jacsSignature"]["signingAlgorithm"]
+                        .as_str()
+                        .expect("signed document algorithm");
+                    let other = if original == "ring-Ed25519" {
+                        "pq2025"
+                    } else {
+                        "ring-Ed25519"
+                    };
+                    value["jacsSignature"]["signingAlgorithm"] = json!(other)
                 }
                 "/jacsSignature/publicKeyHash" => {
                     value["jacsSignature"]["publicKeyHash"] = json!("00")
@@ -354,6 +363,10 @@ mod signature_v2_binding {
     #[serial_test::serial(jacs_env)]
     fn missing_algorithm_fails_unless_legacy_detection_is_explicitly_enabled() {
         let (agent, mut value) = signed_doc();
+        // This test isolates the separate legacy algorithm-detection switch.
+        // Legacy signature-content verification itself must also be enabled
+        // explicitly; it remains denied by default elsewhere.
+        let _content_guard = EnvVarGuard::set("JACS_ALLOW_LEGACY_SIGNATURE_CONTENT", "true");
         let _allow_guard = EnvVarGuard::unset("JACS_ALLOW_LEGACY_ALGORITHM_DETECTION");
         value["jacsSignature"]
             .as_object_mut()

@@ -179,13 +179,15 @@
 <h2 id="choose-the-mcp-path"><a class="header" href="#choose-the-mcp-path">Choose The MCP Path</a></h2>
 <p>There are three supported ways to use JACS with MCP today:</p>
 <ol>
-<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
+<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server. The default
+<code>core</code> profile is the safer everyday surface; select <code>--profile full</code> when
+you need the advanced tool families.</li>
 <li><strong>Wrap an existing MCP transport</strong> when you already have an MCP server or client and want signed JSON-RPC.</li>
 <li><strong>Register JACS as MCP tools</strong> when you want the model to call signing, verification, agreement, A2A, or trust operations directly.</li>
 </ol>
 <h2 id="best-fit-by-runtime"><a class="header" href="#best-fit-by-runtime">Best Fit By Runtime</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Runtime</th><th>Best starting point</th><th>What it gives you</th></tr></thead><tbody>
-<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Full MCP server with document, agreement, trust, A2A, audit, text, and image tools</td></tr>
+<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Core document, text/media, trust, search, key/agent, A2A discovery, and W3C tools; <code>--profile full</code> adds Agreement v2, A2A artifact, and attestation tools</td></tr>
 <tr><td>Python</td><td><code>jacs.mcp</code> or <code>jacs.adapters.mcp</code></td><td>Local SSE transport security or FastMCP tool registration</td></tr>
 <tr><td>Node.js</td><td><code>@hai.ai/jacs/mcp</code></td><td>Transport proxy or MCP tool registration for existing SDK-based servers</td></tr>
 </tbody></table>
@@ -195,25 +197,52 @@
 <li><strong>Python MCP wrappers are local-only.</strong> <code>JACSMCPClient</code>, <code>JACSMCPServer</code>, and <code>jacs_call()</code> enforce loopback URLs.</li>
 <li><strong>Unsigned fallback is off by default.</strong> Both Python and Node fail closed unless you explicitly allow unsigned fallback.</li>
 <li><strong>Node has two factories.</strong> <code>createJACSTransportProxy()</code> takes a loaded <code>JacsClient</code> or <code>JacsAgent</code>; <code>createJACSTransportProxyAsync()</code> is the config-path variant.</li>
+<li><strong>The Rust server requires explicit agent configuration.</strong> Set <code>JACS_CONFIG</code>
+and exactly one usable private-key password source before startup.</li>
 </ul>
 <h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs mcp</code></a></h2>
 <p>Install the unified binary and start the MCP server:</p>
 <pre><code class="language-bash">cargo install jacs-cli
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+jacs quickstart --name mcp-agent --domain mcp.local
+export JACS_CONFIG="$PWD/jacs.config.json"
 jacs mcp
 </code></pre>
-<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, security audit tools, and text/image provenance tools. The crate-level MCP README in the repo has the full contract details.</p>
+<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no
+HTTP). Its default <code>core</code> profile exposes 25 tools. The <code>full</code> profile exposes
+all 42 source-head tools by adding Agreement v2, A2A artifact, and attestation
+families:</p>
+<pre><code class="language-bash">jacs mcp --profile full
+# Equivalent only when --profile is absent:
+JACS_MCP_PROFILE=full jacs mcp
+</code></pre>
+<p>An explicit <code>--profile</code> overrides <code>JACS_MCP_PROFILE</code>; unknown values fail
+startup. For production, prefer an owner-readable <code>JACS_PASSWORD_FILE</code> or the
+OS keychain over embedding <code>JACS_PRIVATE_KEY_PASSWORD</code> in client JSON. File
+tools are confined beneath <code>JACS_MCP_BASE_DIR</code> (the launch directory by
+default), reject traversal and symlinks, and refuse overwrite unless the
+operator sets <code>JACS_MCP_OVERWRITE_OK=1</code>. The crate-level MCP README in the repo
+has the complete contract.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
 <pre><code class="language-python">from fastmcp import FastMCP
 from jacs.mcp import JACSMCPServer
 
-mcp = JACSMCPServer(FastMCP("Secure Server"), "./jacs.config.json")
+mcp = JACSMCPServer(
+    FastMCP("Secure Server"),
+    "./jacs.config.json",
+    allowed_peer_agent_ids=["CLIENT_AGENT_ID"],
+)
 </code></pre>
 <p>For clients:</p>
 <pre><code class="language-python">from jacs.mcp import JACSMCPClient
 
-client = JACSMCPClient("http://localhost:8000/sse", "./jacs.config.json")
+client = JACSMCPClient(
+    "http://localhost:8000/sse",
+    "./jacs.config.json",
+    expected_peer_agent_id="SERVER_AGENT_ID",
+)
 </code></pre>
 <p>Helpful utilities in the same module:</p>
 <ul>
@@ -223,6 +252,13 @@ client = JACSMCPClient("http://localhost:8000/sse", "./jacs.config.json")
 </ul>
 <p>See <a href="../python/mcp.html">Python MCP Integration</a> for the detailed patterns.</p>
 <h3 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h3>
+<blockquote>
+<p><strong>Registry status (observed 2026-07-11):</strong> npm serves
+<code>@hai.ai/jacs@0.10.1</code>, while these pages describe source <code>0.11.4</code>. The
+registry package does not expose every method shown here. Pin the version and
+inspect its exports; use a source build only when that is an explicit
+deployment choice.</p>
+</blockquote>
 <p>Use the transport proxy when you already have an MCP transport:</p>
 <pre><code class="language-typescript">import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { JacsClient } from '@hai.ai/jacs/client';

@@ -1,5 +1,7 @@
 # Express Middleware
 
+{{#include ../_snippets/node-registry-status.md}}
+
 **Sign it. Prove it.** -- in your Express app.
 
 JACS provides `jacsMiddleware` for Express v4/v5 that verifies incoming signed request bodies and optionally auto-signs JSON responses. No body-parser gymnastics, no monkey-patching.

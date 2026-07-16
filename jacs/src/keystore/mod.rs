@@ -314,7 +314,7 @@ impl FsEncryptedStore {
     pub fn archived_key_obsolescence(&self, old_version: &str) -> Option<serde_json::Value> {
         let path = self.obsolescence_marker_path(old_version);
         let bytes = crate::secure_io::read_no_follow(&path).ok()?;
-        serde_json::from_slice(&bytes).ok()
+        jacs_core::strict_json::parse_strict_json_slice(&bytes).ok()
     }
 
     /// Whether the archived key for `old_version` has been marked obsolete.
@@ -822,8 +822,8 @@ impl KeyStore for InMemoryKeyStore {
 ///
 /// Created before rotation begins, updated at each stage, and deleted on
 /// successful completion. If the process crashes mid-rotation, the journal
-/// file remains on disk so that the next agent load can detect the incomplete
-/// rotation and auto-repair (see `warn_if_config_tampered` in agent/mod.rs).
+/// file remains on disk so that the next agent load can authenticate the exact
+/// recovery state before performing a bounded auto-repair.
 ///
 /// Stages: `started` -> `keys_rotated` -> `agent_saved` -> `config_signed` -> (deleted)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -900,50 +900,53 @@ impl RotationJournal {
     /// journal, permission issues, schema changes). This ensures crash
     /// recovery failures are visible rather than silently swallowed.
     pub fn load(file_path: &str) -> Option<Self> {
-        let path = std::path::Path::new(file_path);
-        if !path.exists() {
-            return None;
-        }
-        match std::fs::symlink_metadata(path) {
-            Ok(metadata) if metadata.file_type().is_file() => {}
-            Ok(_) => {
+        match Self::load_strict(file_path) {
+            Ok(journal) => journal,
+            Err(error) => {
                 warn!(
-                    "Rotation journal path '{}' is not a regular file. Crash recovery may not work.",
-                    file_path
-                );
-                return None;
-            }
-            Err(e) => {
-                warn!(
-                    "Rotation journal exists at '{}' but could not be stat'ed: {}. Crash recovery may not work.",
-                    file_path, e
-                );
-                return None;
-            }
-        }
-        let data = match std::fs::read_to_string(file_path) {
-            Ok(d) => d,
-            Err(e) => {
-                warn!(
-                    "Rotation journal exists at '{}' but cannot be read: {}. Crash recovery may not work.",
-                    file_path, e
-                );
-                return None;
-            }
-        };
-        match serde_json::from_str::<Self>(&data) {
-            Ok(mut journal) => {
-                journal.file_path = file_path.to_string();
-                Some(journal)
-            }
-            Err(e) => {
-                warn!(
-                    "Rotation journal at '{}' is corrupted: {}. Crash recovery may not work.",
-                    file_path, e
+                    "Rotation journal '{}' could not be loaded safely: {}. Crash recovery may not work.",
+                    file_path, error
                 );
                 None
             }
         }
+    }
+
+    /// Load a rotation journal without collapsing a present-but-invalid file
+    /// into the same state as an absent journal. Trust-boundary callers use
+    /// this variant so corruption, permissions, and symlinks fail closed.
+    pub fn load_strict(file_path: &str) -> Result<Option<Self>, JacsError> {
+        let path = std::path::Path::new(file_path);
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_file() => {}
+            Ok(_) => {
+                return Err(JacsError::ConfigError(format!(
+                    "Rotation journal path '{}' is not a regular file.",
+                    file_path
+                )));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(JacsError::ConfigError(format!(
+                    "Rotation journal '{}' could not be inspected: {}",
+                    file_path, error
+                )));
+            }
+        }
+        let data = crate::secure_io::read_to_string_no_follow(path).map_err(|error| {
+            JacsError::ConfigError(format!(
+                "Rotation journal '{}' could not be read safely: {}",
+                file_path, error
+            ))
+        })?;
+        let mut journal = serde_json::from_str::<Self>(&data).map_err(|error| {
+            JacsError::ConfigError(format!(
+                "Rotation journal '{}' is invalid JSON: {}",
+                file_path, error
+            ))
+        })?;
+        journal.file_path = file_path.to_string();
+        Ok(Some(journal))
     }
 
     /// Advance the journal to the next stage and write the update to disk.

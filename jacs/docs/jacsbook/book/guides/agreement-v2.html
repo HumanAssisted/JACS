@@ -409,11 +409,11 @@ jacs agreement-v2 export-vc --agreement agreement.json &gt; vc_export.json
 <code>verificationMethod</code> references the <strong>Multikey</strong> entry of the agent's DID
 document (conformant <code>ecdsa-jcs-2019</code> verifiers reject JWK-typed methods).
 The export is a derived view: the native agreement's bytes, <code>jacsSignature</code>
-(pq2025), and verification are unchanged.</p>
+(using the agent's selected native algorithm), and verification are unchanged.</p>
 <p>A stock Data Integrity verifier can check the proof classically — see
 <code>scripts/smoke/verify_di_vc.mjs</code>. That proves possession of the ES256 key
-only; tracing the credential to the agent's post-quantum root requires the
-PQ-signed compatibility key binding (<code>jacs agent export-compat-binding</code>).
+only; tracing the credential to the agent's native root requires the
+native-root-signed compatibility key binding (<code>jacs agent export-compat-binding</code>).
 Verifying incoming VCs is out of scope for JACS in P2.</p>
 <h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
 <ul>

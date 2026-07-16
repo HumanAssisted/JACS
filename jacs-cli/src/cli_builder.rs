@@ -4,7 +4,7 @@
 //! in `tests/cli_command_snapshot.rs`) can pick it up without dragging in the
 //! full binary entry point. See `src/lib.rs` for the public re-export.
 
-use clap::{Arg, ArgAction, Command, crate_name, value_parser};
+use clap::{Arg, ArgAction, ArgGroup, Command, crate_name, value_parser};
 
 use crate::password_bootstrap::quickstart_password_bootstrap_help;
 
@@ -116,7 +116,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("export-compat-binding")
-                        .about("Export the PQ-root-signed compatibility key binding (traces the ES256 key to the post-quantum root)")
+                        .about("Export the native-root-signed compatibility key binding (traces the ES256 key to the agent's native root)")
                         .arg(
                             Arg::new("config")
                                 .long("config")
@@ -126,7 +126,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("issue-compat-binding")
-                        .about("Issue (or re-issue) the PQ-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command")
+                        .about("Issue (or re-issue) the native-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command")
                         .arg(
                             Arg::new("scopes")
                                 .long("scopes")
@@ -214,7 +214,7 @@ pub fn build_cli() -> Command {
                             Arg::new("algorithm")
                                 .long("algorithm")
                                 .value_parser(["pq2025"])
-                                .help("Signing algorithm for the new keys (rotation always resolves to pq2025; Ed25519-rooted agents migrate to pq2025 on rotation)"),
+                                .help("Signing algorithm for the new keys (defaults to the current algorithm; Ed25519 may upgrade to pq2025, but pq2025 cannot downgrade)"),
                         )
                         .arg(
                             Arg::new("config")
@@ -266,6 +266,8 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("output")
                                 .short('o')
+                                .long("output")
+                                .conflicts_with("directory")
                                 .help("Output filename. ")
                                 .value_parser(value_parser!(String)),
                         )
@@ -279,6 +281,12 @@ pub fn build_cli() -> Command {
                             Arg::new("verbose")
                                 .short('v')
                                 .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output a machine-readable result with document keys and saved paths")
                                 .action(ArgAction::SetTrue),
                         )
                         .arg(
@@ -307,6 +315,11 @@ pub fn build_cli() -> Command {
                                 .help("Embed documents or keep the documents external")
                                 .long("embed")
                                 .value_parser(value_parser!(bool)),
+                        )
+                        .group(
+                            ArgGroup::new("document-input")
+                                .args(["filename", "directory", "attach"])
+                                .required(true),
                         ),
                 )
                 .subcommand(
@@ -790,11 +803,10 @@ pub fn build_cli() -> Command {
                 .arg(
                     Arg::new("profile")
                         .long("profile")
-                        .default_value("core")
                         .help(
-                            "Tool profile: 'core' (default; document, trust, search, key, w3c tools) or \
-                             'full' (adds agreement, a2a, and attestation tools). Agreement v2 tools are \
-                             only registered under 'full' (or JACS_MCP_PROFILE=full).",
+                            "Tool profile: 'core' (default; document, trust, search, key, and W3C tools) or \
+                             'full' (adds agreement, A2A, and attestation tools). When omitted, \
+                             JACS_MCP_PROFILE is used before falling back to core.",
                         ),
                 )
                 .subcommand(
@@ -902,6 +914,12 @@ pub fn build_cli() -> Command {
                                 .long("host")
                                 .default_value("127.0.0.1")
                                 .help("Host to bind to (default: 127.0.0.1)"),
+                        )
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Canonical origin embedded in the signed Agent Card. Defaults to the exact loopback HTTP listener; non-loopback binds require an explicit HTTPS origin (for example, a TLS reverse proxy)"),
                         ),
                 )
                 .subcommand(
@@ -942,11 +960,17 @@ pub fn build_cli() -> Command {
                                 .help("Host to bind to (default: 127.0.0.1)"),
                         )
                         .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Canonical origin embedded in the signed Agent Card. Defaults to the exact loopback HTTP listener; pass the public HTTPS reverse-proxy origin in production"),
+                        )
+                        .arg(
                             Arg::new("algorithm")
                                 .long("algorithm")
                                 .short('a')
-                                .value_parser(["pq2025", "ring-Ed25519"])
-                                .help("Signing algorithm (default: pq2025)"),
+                                .value_parser(["pq2025", "ed25519", "ring-Ed25519"])
+                                .help("Signing algorithm: pq2025 (default) or ed25519; ring-Ed25519 remains accepted as a legacy alias"),
                         ),
                 ),
         )
@@ -1153,9 +1177,9 @@ pub fn build_cli() -> Command {
                     Arg::new("algorithm")
                         .long("algorithm")
                         .short('a')
-                        .value_parser(["ed25519", "pq2025"])
+                        .value_parser(["ed25519", "pq2025", "ring-Ed25519"])
                         .default_value("pq2025")
-                        .help("Signing algorithm (default: pq2025)"),
+                        .help("Signing algorithm: pq2025 (default) or ed25519; ring-Ed25519 remains accepted as a legacy alias"),
                 )
                 .arg(
                     Arg::new("sign")

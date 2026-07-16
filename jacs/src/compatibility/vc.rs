@@ -94,10 +94,11 @@ pub fn export_agreement_v2_as_vc(
     key_directory: &str,
     agreement_json: &str,
 ) -> Result<Value, JacsError> {
-    let agreement: Value = serde_json::from_str(agreement_json).map_err(|e| {
-        super::record_export_error("agreement-vc", "invalid_input");
-        JacsError::ValidationError(format!("agreement input is not JSON: {e}"))
-    })?;
+    let agreement: Value =
+        jacs_core::strict_json::parse_strict_json(agreement_json).map_err(|e| {
+            super::record_export_error("agreement-vc", "invalid_input");
+            JacsError::ValidationError(format!("agreement input is not JSON: {e}"))
+        })?;
     // Typed boundary: a valid Agreement-v2 document, not arbitrary JSON.
     crate::agreements::v2::assert_agreement_v2(&agreement)
         .inspect_err(|_| super::record_export_error("agreement-vc", "invalid_input"))?;

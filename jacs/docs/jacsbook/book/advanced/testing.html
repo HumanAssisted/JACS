@@ -486,6 +486,10 @@ try {
 }
 </code></pre>
 <h3 id="testing-requestresponse-signing"><a class="header" href="#testing-requestresponse-signing">Testing Request/Response Signing</a></h3>
+<p>The following tests the legacy generic document wrapper only. It is not an
+HTTP-authentication test because method, target, body bytes, audience, trusted
+key mapping, and atomic replay consumption are absent. New HTTP security tests
+must exercise <code>JACS v2</code> and independently mutate every bound request value.</p>
 <pre><code class="language-python">def test_request_signing(test_agent):
     """Test signing a request payload."""
     payload = {
@@ -518,7 +522,10 @@ def mcp_server(test_agent):
     def echo(text: str) -&gt; str:
         return f"Echo: {text}"
 
-    return JACSMCPServer(mcp)
+    return JACSMCPServer(
+        mcp,
+        allowed_peer_agent_ids=["TEST_CLIENT_AGENT_ID"],
+    )
 
 @pytest.mark.asyncio
 async def test_mcp_tool_call(mcp_server, test_agent):
@@ -575,6 +582,12 @@ describe('JACS Express Middleware', () =&gt; {
 });
 </code></pre>
 <h3 id="testing-http-endpoints"><a class="header" href="#testing-http-endpoints">Testing HTTP Endpoints</a></h3>
+<blockquote>
+<p>This historical example accepts a generic signed document. Do not treat it
+as an authorization test. Production endpoint tests must verify the v2
+request context against a trusted key and prove that a simultaneous replay is
+accepted exactly once by the shared nonce store.</p>
+</blockquote>
 <pre><code class="language-python">import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient

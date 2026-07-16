@@ -1,6 +1,9 @@
-# Dependency security policy
+# Dependency and release security policy
 
-Primary Rust, Python, Node, and Go dependency graphs are audited. A known advisory may be ignored only with a named owner, a bounded exposure statement, and a review date.
+Security CI audits every primary lockfile, rejects mutable GitHub Action tags,
+scans full Git history for secrets, and checks Node, Python, Go, and Rust
+dependencies. A known advisory may be ignored only with a named owner, a
+bounded exposure statement, and a review date.
 
 ## Temporary advisory dispositions
 
@@ -12,4 +15,12 @@ Primary Rust, Python, Node, and Go dependency graphs are audited. A known adviso
 | RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless`; it is not cryptographic code and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. | JACS storage maintainers | 2026-10-09 |
 | RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is in SurrealDB's `surrealmx` graph. The advisory declares maintenance status and does not report an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-10-09 |
 
-Any new advisory is blocking. Review dates are deadlines, not automatic renewals.
+Any new advisory fails CI. Review dates are deadlines, not automatic renewals.
+The exact secret-history allowlist is in `.gitleaksignore`; broader path or rule
+allowlists are prohibited.
+
+The two allowlisted private-key findings are deterministic public test fixtures
+that remain at `jacs/tests/fixtures/keys/agent-{one,two}.private.pem`. They must
+never be used as trusted identities or production credentials; the allowlist
+applies only to the exact historical fingerprints, not the current paths or the
+private-key detector generally.

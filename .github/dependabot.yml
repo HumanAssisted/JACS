@@ -1,0 +1,86 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      rust-security-and-maintenance:
+        patterns: ["*"]
+
+  # These Cargo roots are intentionally outside the top-level workspace and
+  # therefore have independent lockfiles and advisory lifecycles.
+  - package-ecosystem: cargo
+    directory: "/jacs-surrealdb"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: cargo
+    directory: "/jacs/examples/observability"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: "/jacsnpm"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: "/jacsnpm/examples"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: "/jacsnpm/examples/langchain"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: "/jacs-wasm/examples/vite-smoke"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: "/jacspy"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: "/jacspy/examples/jacs-mcp"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: "/jacspy/examples/http"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: "/jacspy/examples/mcp"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: "/jacspy/examples/langchain"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: "/jacspy"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: "/jacs/examples/observability"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: "/jacsgo"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

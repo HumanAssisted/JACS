@@ -226,7 +226,7 @@ impl Schema {
         default_schema_name: &str,
         invalid_json_prefix: &str,
     ) -> Result<Value, JacsError> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
+        let instance: serde_json::Value = match jacs_core::strict_json::parse_strict_json(json) {
             Ok(value) => {
                 debug!("validate json {:?}", value);
                 value
@@ -553,7 +553,7 @@ impl Schema {
 
     /// Validate an ES256 compatibility-key binding document (P2 Task 003).
     pub fn validate_compat_binding(&self, json: &str) -> Result<Value, JacsError> {
-        let value: Value = serde_json::from_str(json)
+        let value: Value = jacs_core::strict_json::parse_strict_json(json)
             .map_err(|e| JacsError::SchemaError(format!("binding JSON parse failed: {e}")))?;
         match self.compatbindingschema.validate(&value) {
             Ok(_) => Ok(value),
@@ -659,7 +659,8 @@ impl Schema {
     /// document is reeturned
     pub fn create(&self, json: &str) -> Result<Value, JacsError> {
         // create json string
-        let mut instance: serde_json::Value = match serde_json::from_str(json) {
+        let mut instance: serde_json::Value = match jacs_core::strict_json::parse_strict_json(json)
+        {
             Ok(value) => {
                 debug!("validate json {:?}", value);
                 value
@@ -756,6 +757,37 @@ mod tests {
         assert!(
             err.to_string().contains("Invalid JSON for agent"),
             "expected agent-specific parse error"
+        );
+    }
+
+    #[test]
+    fn create_rejects_duplicate_json_object_keys_at_every_depth() {
+        let schema = build_schema();
+
+        for input in [
+            r#"{"content":"trusted","content":"attacker"}"#,
+            r#"{"nested":{"role":"reader","role":"admin"}}"#,
+            r#"{"agentID":"trusted","agent\u0049D":"attacker"}"#,
+        ] {
+            let err = schema
+                .create(input)
+                .expect_err("ambiguous JSON must be rejected before document creation");
+            assert!(
+                err.to_string().contains("duplicate JSON object key"),
+                "unexpected error for {input}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_header_rejects_nested_duplicate_json_object_keys() {
+        let schema = build_schema();
+        let err = schema
+            .validate_header(r#"{"outer":{"nonce":"one","nonce":"two"}}"#)
+            .expect_err("ambiguous JSON must be rejected before schema validation");
+        assert!(
+            err.to_string().contains("duplicate JSON object key"),
+            "unexpected error: {err}"
         );
     }
 }

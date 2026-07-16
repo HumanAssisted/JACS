@@ -9,7 +9,7 @@ use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
 use crate::crypt::hash::hash_string;
 use crate::error::JacsError;
-use crate::protocol::canonicalize_json;
+use crate::protocol::canonicalize_json_try;
 use crate::schema::utils::ValueExt;
 use crate::simple::SimpleAgent;
 use crate::simple::types::*;
@@ -44,29 +44,17 @@ pub fn reencrypt_key(
     old_password: &str,
     new_password: &str,
 ) -> Result<(), JacsError> {
-    // Find the private key file
-    let key_path = if let Some(ref config_path) = agent.config_path {
-        // Try to read config to find key directory
-        let config_str = crate::secure_io::read_to_string_no_follow(config_path).map_err(|e| {
-            JacsError::FileReadFailed {
-                path: config_path.clone(),
-                reason: e.to_string(),
-            }
+    // Reuse the authenticated, config-relative paths installed on the loaded
+    // agent. Re-reading raw config here would select a path without repeating
+    // signed-config preflight and would resolve relative to process CWD.
+    let key_path = {
+        let inner = agent.agent.lock().map_err(|error| JacsError::Internal {
+            message: format!("Failed to lock agent for key re-encryption: {error}"),
         })?;
-        let config: Value =
-            serde_json::from_str(&config_str).map_err(|e| JacsError::ConfigInvalid {
-                field: "json".to_string(),
-                reason: e.to_string(),
-            })?;
-        let key_dir = config["jacs_key_directory"]
-            .as_str()
-            .unwrap_or("./jacs_keys");
-        let key_filename = config["jacs_agent_private_key_filename"]
-            .as_str()
-            .unwrap_or("jacs.private.pem.enc");
-        format!("{}/{}", key_dir, key_filename)
-    } else {
-        "./jacs_keys/jacs.private.pem.enc".to_string()
+        inner
+            .key_paths()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .private_key_enc_path()
     };
 
     info!("Re-encrypting private key at: {}", key_path);
@@ -254,29 +242,19 @@ pub fn rotate_with_mutex(
     })?;
     let old_key_hash = hash_public_key(&old_public_key);
 
-    // Resolve algorithm — rotation ALWAYS resolves to pq2025: it is the
-    // designated Ed25519→PQ migration path. An explicit non-PQ argument is
-    // a typed error, and the old config fallback is gone so a grandfathered
-    // Ed25519 agent's no-argument rotation migrates to PQ instead of
-    // silently re-minting Ed25519.
-    let effective_algorithm = match algorithm {
-        None | Some("pq2025") => "pq2025".to_string(),
-        Some(other) => {
-            return Err(JacsError::ConfigError(format!(
-                "Key rotation always resolves to pq2025; rotating to '{}' is not supported. \
-                 Ed25519-rooted agents migrate to pq2025 on rotation.",
-                other
-            )));
-        }
-    };
+    let current_algorithm = inner
+        .get_key_algorithm()
+        .ok_or_else(|| JacsError::ConfigError("Agent key algorithm is not loaded".to_string()))?;
+    let effective_algorithm =
+        crate::crypt::resolve_rotation_algorithm(current_algorithm, algorithm)?;
 
     // 1a. Write rotation journal (non-ephemeral only)
     let mut journal = if !inner.is_ephemeral() {
         let key_dir = inner
-            .config
-            .as_ref()
-            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
-            .unwrap_or_else(|| "./jacs_keys".to_string());
+            .key_paths()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .key_directory
+            .clone();
         let config_path_str = config_path.unwrap_or("./jacs.config.json");
         Some(RotationJournal::create(
             &key_dir,
@@ -324,8 +302,8 @@ pub fn rotate_with_mutex(
                         message: format!("Failed to read config for rotation update: {}", e),
                     }
                 })?;
-            let mut config_value: Value =
-                serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
+            let mut config_value: Value = jacs_core::strict_json::parse_strict_json(&config_str)
+                .map_err(|e| JacsError::Internal {
                     message: format!("Failed to parse config: {}", e),
                 })?;
 
@@ -467,6 +445,15 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
             field: "config".to_string(),
             reason: format!("Could not load configuration from '{}': {}", path, e),
         })?;
+    crate::agent::Agent::verify_existing_config_before_use(&config).map_err(|error| {
+        JacsError::ConfigInvalid {
+            field: "config".to_string(),
+            reason: format!(
+                "Refusing migration path selection from an unverified config '{}': {}",
+                path, error
+            ),
+        }
+    })?;
 
     let id_and_version = config
         .jacs_agent_id_and_version()
@@ -526,7 +513,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
     })?;
 
     let mut agent_value: Value =
-        serde_json::from_str(&raw_json).map_err(|e| JacsError::Internal {
+        jacs_core::strict_json::parse_strict_json(&raw_json).map_err(|e| JacsError::Internal {
             message: format!(
                 "Failed to parse agent JSON from '{}': {}",
                 agent_file.display(),
@@ -579,7 +566,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
         if let Some(obj) = hash_copy.as_object_mut() {
             obj.remove(SHA256_FIELDNAME);
         }
-        let canonical = canonicalize_json(&hash_copy);
+        let canonical = canonicalize_json_try(&hash_copy).map_err(JacsError::from)?;
         let new_hash = hash_string(&canonical);
         agent_value[SHA256_FIELDNAME] = json!(new_hash);
         patched_fields.push(SHA256_FIELDNAME.to_string());
@@ -611,17 +598,23 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
         info!("Migration: no fields needed patching, agent already has iat and jti");
     }
 
-    // Step 6: Load the agent normally (should now pass schema validation).
-    let simple_agent = SimpleAgent::load(Some(path), None)?;
-
-    // Step 7: Export current agent doc, then call update_agent to re-sign
-    let agent_doc = simple_agent.export_agent()?;
-    let updated_json = update_agent(&simple_agent, &agent_doc)?;
+    // Steps 6-7: loading and updating necessarily inspect the legacy
+    // signature. Authorize that compatibility only for this explicit
+    // migration call and only on the current thread; normal verification
+    // remains deny-by-default.
+    let (simple_agent, updated_json) = crate::agent::with_legacy_signature_migration_scope(|| {
+        let simple_agent = SimpleAgent::load(Some(path), None)?;
+        let agent_doc = simple_agent.export_agent()?;
+        let updated_json = update_agent(&simple_agent, &agent_doc)?;
+        Ok::<_, JacsError>((simple_agent, updated_json))
+    })?;
 
     // Step 8: Parse new version from the updated document
     let updated_value: Value =
-        serde_json::from_str(&updated_json).map_err(|e| JacsError::Internal {
-            message: format!("Failed to parse updated agent JSON: {}", e),
+        jacs_core::strict_json::parse_strict_json(&updated_json).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to parse updated agent JSON: {}", e),
+            }
         })?;
     let new_version = updated_value["jacsVersion"]
         .as_str()
@@ -647,8 +640,8 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
                     message: format!("Failed to read config for migration update: {}", e),
                 }
             })?;
-        let mut config_value: Value =
-            serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
+        let mut config_value: Value = jacs_core::strict_json::parse_strict_json(&config_str)
+            .map_err(|e| JacsError::Internal {
                 message: format!("Failed to parse config: {}", e),
             })?;
 
@@ -792,8 +785,8 @@ pub fn quickstart(
     // Resolve password from env var, OS keychain, or fail with helpful message.
     let password = crate::crypt::aes_encrypt::resolve_private_key_password(None, None)?;
 
-    // Use create_with_params for full control. New agent creation is
-    // PQ-only; Ed25519 requests resolve to pq2025 with a WARN.
+    // Use create_with_params for full control. pq2025 is the default and an
+    // explicit Ed25519 request is preserved end to end.
     let algo = crate::simple::core::resolve_new_agent_algorithm(algorithm.unwrap_or(""))?;
     crate::crypt::ensure_private_key_operation_allowed(&algo, "key generation")?;
 
@@ -931,8 +924,7 @@ impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
             let raw = self.agent.get_public_key().ok()?;
             let algorithm = crate::crypt::detect_algorithm_from_public_key(&raw)
                 .ok()
-                .map(inline_algorithm_tag)
-                .unwrap_or_else(|| "ed25519".to_string());
+                .map(inline_algorithm_tag)?;
             return Some(crate::inline::ResolvedKey {
                 public_key_pem: raw,
                 algorithm,
@@ -962,7 +954,7 @@ impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
 
         // 3. Local trust store.
         if let Ok(json) = crate::trust::get_trusted_agent(signer_id)
-            && let Ok(value) = serde_json::from_str::<serde_json::Value>(&json)
+            && let Ok(value) = jacs_core::strict_json::parse_strict_json(&json)
         {
             let pem_str = value
                 .get("jacsAgentPublicKey")
@@ -1035,7 +1027,15 @@ fn resolve_via_dns_and_https(signer_id: &str) -> Option<crate::inline::ResolvedK
     }
 
     for domain in &domains {
-        let owner = record_owner(domain);
+        let well_known_base = match validated_well_known_base(domain) {
+            Some(url) => url,
+            None => continue,
+        };
+        let dns_domain = match well_known_base.host_str() {
+            Some(host) => host,
+            None => continue,
+        };
+        let owner = record_owner(dns_domain);
         let txt = match resolve_txt_insecure(&owner) {
             Ok(t) => t,
             Err(_) => {
@@ -1060,7 +1060,7 @@ fn resolve_via_dns_and_https(signer_id: &str) -> Option<crate::inline::ResolvedK
         }
 
         // Fetch key bytes via .well-known/.
-        let pem_bytes = match fetch_well_known_pem(domain, signer_id) {
+        let pem_bytes = match fetch_well_known_pem(&well_known_base, signer_id) {
             Some(p) => p,
             None => continue,
         };
@@ -1082,45 +1082,84 @@ fn resolve_via_dns_and_https(signer_id: &str) -> Option<crate::inline::ResolvedK
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn fetch_well_known_pem(domain: &str, signer_id: &str) -> Option<Vec<u8>> {
+fn validated_well_known_base(domain: &str) -> Option<url::Url> {
+    let domain = domain.trim();
+    if domain.is_empty() || domain.contains('/') {
+        return None;
+    }
+    let url = url::Url::parse(&format!("https://{domain}/")).ok()?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+        || !matches!(url.host(), Some(url::Host::Domain(_)))
+    {
+        return None;
+    }
+    let parsed_host = url.host_str()?.trim_end_matches('.');
+    if !parsed_host.eq_ignore_ascii_case(domain.trim_end_matches('.')) {
+        return None;
+    }
+    Some(url)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_well_known_pem(base: &url::Url, signer_id: &str) -> Option<Vec<u8>> {
     use crate::config::{NetworkCapability, ensure_network_access};
 
     if ensure_network_access(NetworkCapability::RemoteKeyFetch).is_err() {
         return None;
     }
 
-    let domain_trimmed = domain.trim().trim_end_matches('/');
-    if domain_trimmed.is_empty() {
-        return None;
-    }
-    // .well-known schema: `https://<domain>/.well-known/jacs/agents/<signer>.public.pem`.
-    let url = format!(
-        "https://{}/.well-known/jacs/agents/{}.public.pem",
-        domain_trimmed, signer_id
+    let mut url = base.clone();
+    url.path_segments_mut()
+        .ok()?
+        .extend([".well-known", "jacs", "agents"])
+        .push(&format!("{signer_id}.public.pem"));
+    let policy = crate::secure_fetch::SecureFetchPolicy::new(
+        "DNS well-known public key",
+        16 * 1024,
+        &["application/x-pem-file", "text/plain"],
+    )
+    .max_redirects(2)
+    .timeouts(
+        std::time::Duration::from_secs(10),
+        std::time::Duration::from_secs(3),
+        std::time::Duration::from_secs(2),
     );
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .ok()?;
-
-    let response = client
-        .get(&url)
-        .header(
-            reqwest::header::ACCEPT,
-            "application/x-pem-file, text/plain",
-        )
-        .send()
-        .ok()?;
-    if !response.status().is_success() {
+    let response = crate::secure_fetch::secure_get(
+        url.as_str(),
+        "application/x-pem-file, text/plain",
+        &policy,
+    )
+    .ok()?;
+    if !response.status.is_success() {
         return None;
     }
-    let bytes = response.bytes().ok()?;
-    // Cap at 16 KiB — public keys are tiny; anything bigger is suspicious.
-    if bytes.len() > 16 * 1024 {
-        return None;
+    Some(response.body)
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod well_known_url_tests {
+    use super::validated_well_known_base;
+
+    #[test]
+    fn accepts_only_bare_dns_domains() {
+        assert_eq!(
+            validated_well_known_base("agents.example.com")
+                .unwrap()
+                .as_str(),
+            "https://agents.example.com/"
+        );
+        assert!(validated_well_known_base("user@agents.example.com").is_none());
+        assert!(validated_well_known_base("agents.example.com/path").is_none());
+        assert!(validated_well_known_base("agents.example.com?next=evil").is_none());
+        assert!(validated_well_known_base("127.0.0.1").is_none());
+        assert!(validated_well_known_base("[::1]").is_none());
     }
-    Some(bytes.to_vec())
 }
 
 /// Whether `pem_bytes` (the bytes fetched from `.well-known`) hashes to the
@@ -1156,8 +1195,7 @@ fn resolved_from_pem_or_raw(pem_bytes: &[u8]) -> Option<crate::inline::ResolvedK
     };
     let algorithm = crate::crypt::detect_algorithm_from_public_key(&inner)
         .ok()
-        .map(inline_algorithm_tag)
-        .unwrap_or_else(|| "ed25519".to_string());
+        .map(inline_algorithm_tag)?;
     Some(crate::inline::ResolvedKey {
         public_key_pem: inner,
         algorithm,
@@ -1626,18 +1664,19 @@ pub fn verify_image(
     };
 
     // Parse signed document.
-    let signed_doc_value: serde_json::Value = match serde_json::from_str(&payload) {
-        Ok(v) => v,
-        Err(e) => {
-            return Ok(MediaVerificationResult {
-                status: MediaVerifyStatus::Malformed(format!("payload not JSON: {}", e)),
-                signer_id: None,
-                algorithm: None,
-                format: Some(format_str.to_string()),
-                embedding_channels: None,
-            });
-        }
-    };
+    let signed_doc_value: serde_json::Value =
+        match jacs_core::strict_json::parse_strict_json(&payload) {
+            Ok(v) => v,
+            Err(e) => {
+                return Ok(MediaVerificationResult {
+                    status: MediaVerifyStatus::Malformed(format!("payload not JSON: {}", e)),
+                    signer_id: None,
+                    algorithm: None,
+                    format: Some(format_str.to_string()),
+                    embedding_channels: None,
+                });
+            }
+        };
 
     // Schema validation: read inner content (the SignedMediaClaim).
     let claim = match signed_doc_value.pointer("/content") {
@@ -2026,4 +2065,14 @@ fn sha256_bytes_local(data: &[u8]) -> Vec<u8> {
 fn base64url_nopad_local(data: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(data)
+}
+
+#[cfg(test)]
+mod key_resolution_tests {
+    use super::resolved_from_pem_or_raw;
+
+    #[test]
+    fn malformed_key_bytes_do_not_silently_become_ed25519() {
+        assert!(resolved_from_pem_or_raw(b"not-a-supported-public-key").is_none());
+    }
 }

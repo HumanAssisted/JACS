@@ -1,5 +1,7 @@
 # Vercel AI SDK
 
+{{#include ../_snippets/node-registry-status.md}}
+
 **Sign it. Prove it.** -- for every AI model output.
 
 The JACS Vercel AI SDK adapter adds cryptographic provenance to AI-generated text and tool results using the `LanguageModelV3Middleware` pattern. Works with `generateText`, `streamText`, and any model provider (OpenAI, Anthropic, etc.).

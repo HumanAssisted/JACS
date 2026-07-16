@@ -2,16 +2,29 @@
 
 **JACS sign + verify in the browser. No backend required.**
 
+> **Distribution status (observed 2026-07-11):** `@jacs/wasm` is not yet
+> published on npm. The API below is available from a source build and becomes
+> an install contract only after the release workflow publishes and smoke-tests
+> the package.
+
 `@jacs/wasm` is the WebAssembly bindings for [JACS](https://github.com/HumanAssisted/JACS).
-Install one package, await one init call, and you can create JACS agents,
-sign messages, verify signed documents, and run multi-party agreements
+From a source-built package, await one init call and you can create JACS
+agents, sign messages, verify signed documents, and run multi-party agreements
 entirely client-side.
 
-## Install
+## Build and install today
 
 ```sh
-npm install @jacs/wasm
+git clone https://github.com/HumanAssisted/JACS.git
+cd JACS
+make build-wasm
+# From your consuming project:
+npm install /absolute/path/to/JACS/jacs-wasm/pkg
 ```
+
+After the first registry publication, the consumer command becomes
+`npm install @jacs/wasm`. Do not use that registry command until an npm version
+exists.
 
 ## Quick start
 
@@ -39,8 +52,9 @@ console.log(result.valid); // true
   generate a fresh keypair. Public key is wrapped in a minimal agent
   document (`jacsId`, `jacsVersion`, `name`, `algorithm`).
 - `importEncryptedAgent(materialJson: string, password: string): Promise<CoreAgentHandle>` —
-  unlock an `AgentMaterial` bundle produced by `localStore.saveEncryptedAgent`
-  or the native `jacs` CLI.
+  unlock an `AgentMaterial` bundle produced by `exportEncryptedAgent(password)`
+  or the native `jacs` CLI, including a value loaded from
+  `localStore.loadEncryptedAgent`.
 - `importEncryptedAgentFiles(args, password): Promise<CoreAgentHandle>` —
   same as `importEncryptedAgent` but takes the four constituent files
   separately (matches the shape browser file pickers hand you).
@@ -57,7 +71,13 @@ console.log(result.valid); // true
 - `verifyWithKeyJson(signed, publicKeyBase64, algorithm): string` —
   static verify path. Useful when the verifier doesn't hold any private
   key (e.g. dashboard pages).
-- `exportAgent(): string` — JSON string of the agent document.
+- `exportAgent(): string` — JSON string of the public agent document. It does
+  not contain private-key material and cannot be used to restore a signing
+  handle.
+- `exportEncryptedAgent(password: string): string` — JSON `AgentMaterial`
+  bundle whose private key is encrypted with the current V2 Argon2id +
+  AES-256-GCM envelope. Pass this result to
+  `localStore.saveEncryptedAgent`; restore it with `importEncryptedAgent`.
 - `getPublicKeyBase64(): string` — raw public-key bytes, base64-encoded.
 - `algorithm(): "ed25519" | "pq2025"` — algorithm tag.
 - `isUnlocked(): boolean` — whether the handle still holds a private key.
@@ -131,6 +151,11 @@ the page's JS.
   the user is done signing. It zeroes the in-memory private key;
   subsequent sign calls throw `{ code: "Locked" }`. Verification
   continues to work.
+- **JavaScript password strings cannot be wiped by WebAssembly.**
+  `exportEncryptedAgent(password)` zeroizes its owned Rust/WASM password
+  copy and plaintext private-key export buffer, but the original string
+  remains managed by the JavaScript engine. Avoid retaining it in
+  application state longer than necessary.
 - **Tab isolation is not a security boundary.** Two tabs on the same
   origin share `localStorage`. Set short-lived passwords + force
   re-unlock between tab visits if you need stronger separation.
@@ -147,11 +172,15 @@ and the [`JACS_WASM_PRD.md`](../docs/jacs/JACS_WASM_PRD.md).
 namespaces every key under `jacs:` and refuses plaintext-secret payloads:
 
 ```ts
-import { localStore } from "@jacs/wasm";
+import { importEncryptedAgent, localStore } from "@jacs/wasm";
 
-localStore.saveEncryptedAgent("alice", agent.exportAgent()); // OK — encrypted material
+const password = prompt("Protect this signing key with a strong password")!;
+const encryptedMaterial = agent.exportEncryptedAgent(password);
+localStore.saveEncryptedAgent("alice", encryptedMaterial);
 localStore.saveDocument("doc-1", signed);                    // OK — signed JACS document
-const restored = localStore.loadEncryptedAgent("alice");
+const storedMaterial = localStore.loadEncryptedAgent("alice");
+if (!storedMaterial) throw new Error("saved agent not found");
+const restoredAgent = await importEncryptedAgent(storedMaterial, password);
 localStore.listKeys("doc-");
 localStore.remove("doc-1");
 localStore.clearAll();                                       // only removes `jacs:`-prefixed keys
@@ -194,15 +223,15 @@ const signed = await signMessageInWorker(agent, JSON.stringify({ hello: "world" 
 ## Differences from `jacsnpm`
 
 If you reached this README looking for the Node.js native bindings, you
-want a different package: [`jacsnpm`](https://www.npmjs.com/package/jacsnpm)
+want a different package: [`@hai.ai/jacs`](https://www.npmjs.com/package/@hai.ai/jacs)
 is the napi-rs build with the full native JACS surface (storage backends,
 DNS, observability, MCP). `@jacs/wasm` is browser-only — no filesystem,
 no DNS, no MCP — and ships a wasm artifact, not a `.node` binary.
 
-| | `@jacs/wasm` | `jacsnpm` |
+| | `@jacs/wasm` | `@hai.ai/jacs` |
 |---|---|---|
 | Runtime | Browser | Node.js native |
-| Install | `npm install @jacs/wasm` | `npm install jacsnpm` |
+| Install | Source build today; `npm install @jacs/wasm` only after publication | `npm install @hai.ai/jacs` |
 | Build artifact | `.wasm` + `.js` | `.node` (per platform) |
 | Sign / verify | Yes | Yes |
 | Filesystem / DNS | No | Yes |

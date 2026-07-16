@@ -1,5 +1,7 @@
 # LangChain.js Integration
 
+{{#include ../_snippets/node-registry-status.md}}
+
 Use the LangChain.js adapter when the model already runs inside your Node.js app and you want provenance at the tool boundary.
 
 ## Choose The Pattern

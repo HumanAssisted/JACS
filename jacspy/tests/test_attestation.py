@@ -15,7 +15,7 @@ import pytest
 try:
     from jacs import SimpleAgent as _SimpleAgent
 
-    _agent, _ = _SimpleAgent.ephemeral("ed25519")
+    _agent, _ = _SimpleAgent.ephemeral("pq2025")
     _agent.create_attestation  # attribute check
     _HAS_ATTESTATION = True
 except (ImportError, AttributeError):
@@ -64,7 +64,7 @@ class TestSimpleAgentAttestation:
 
     def test_create_attestation_basic(self):
         """Create an attestation with subject + claims, returns JSON with attestation key."""
-        agent, _ = _SimpleAgent.ephemeral("ed25519")
+        agent, _ = _SimpleAgent.ephemeral("pq2025")
         params = {"subject": _make_subject(), "claims": _make_claims()}
         result = agent.create_attestation(json.dumps(params))
 
@@ -75,7 +75,7 @@ class TestSimpleAgentAttestation:
 
     def test_verify_attestation_local(self):
         """Create then verify (local tier). Result should be valid."""
-        agent, _ = _SimpleAgent.ephemeral("ed25519")
+        agent, _ = _SimpleAgent.ephemeral("pq2025")
         params = {"subject": _make_subject(), "claims": _make_claims()}
         raw = agent.create_attestation(json.dumps(params))
         doc = json.loads(raw)
@@ -89,7 +89,7 @@ class TestSimpleAgentAttestation:
 
     def test_verify_attestation_full(self):
         """Create then full-verify. Evidence list should be present."""
-        agent, _ = _SimpleAgent.ephemeral("ed25519")
+        agent, _ = _SimpleAgent.ephemeral("pq2025")
         params = {"subject": _make_subject(), "claims": _make_claims()}
         raw = agent.create_attestation(json.dumps(params))
         doc = json.loads(raw)
@@ -102,7 +102,7 @@ class TestSimpleAgentAttestation:
 
     def test_lift_to_attestation(self):
         """Sign a message then lift to attestation."""
-        agent, _ = _SimpleAgent.ephemeral("ed25519")
+        agent, _ = _SimpleAgent.ephemeral("pq2025")
         signed = agent.sign_message({"content": "Original document"})
         signed_raw = signed["raw"]
 
@@ -114,14 +114,14 @@ class TestSimpleAgentAttestation:
 
     def test_create_attestation_invalid_claims(self):
         """Empty claims should raise."""
-        agent, _ = _SimpleAgent.ephemeral("ed25519")
+        agent, _ = _SimpleAgent.ephemeral("pq2025")
         params = {"subject": _make_subject(), "claims": []}
         with pytest.raises(RuntimeError):
             agent.create_attestation(json.dumps(params))
 
     def test_export_dsse(self):
         """Export DSSE envelope from a created attestation."""
-        agent, _ = _SimpleAgent.ephemeral("ed25519")
+        agent, _ = _SimpleAgent.ephemeral("pq2025")
         params = {"subject": _make_subject(), "claims": _make_claims()}
         raw = agent.create_attestation(json.dumps(params))
 
@@ -221,6 +221,51 @@ class TestJacsClientAttestation:
         result = client.verify_attestation('{"jacsId":"fake","jacsVersion":"v1"}')
         assert result["valid"] is False
         assert len(result.get("errors", [])) > 0
+
+    def test_client_verify_attestation_normalizes_malformed_security_booleans(self):
+        class MalformedAgent:
+            def verify_attestation(self, _document_key):
+                return json.dumps(
+                    {
+                        "valid": "false",
+                        "crypto": {
+                            "signatureValid": "false",
+                            "hashValid": 1,
+                            "signerId": "attacker",
+                            "algorithm": "pq2025",
+                        },
+                        "evidence": [
+                            {
+                                "kind": "custom",
+                                "digestValid": {},
+                                "freshnessValid": "true",
+                                "detail": "malformed",
+                            }
+                        ],
+                        "chain": {
+                            "valid": "true",
+                            "links": [{"valid": 1}],
+                        },
+                        "errors": [],
+                    }
+                )
+
+        client = JacsClient.__new__(JacsClient)
+        client._strict = False
+        client._agent = MalformedAgent()
+        client._agent_info = None
+
+        result = client.verify_attestation(
+            '{"jacsId":"attestation","jacsVersion":"1"}'
+        )
+
+        assert result["valid"] is False
+        assert result["crypto"]["signatureValid"] is False
+        assert result["crypto"]["hashValid"] is False
+        assert result["evidence"][0]["digestValid"] is False
+        assert result["evidence"][0]["freshnessValid"] is False
+        assert result["chain"]["valid"] is False
+        assert result["chain"]["links"][0]["valid"] is False
 
     def test_client_create_with_policy_context(self):
         """Create attestation with policy context."""

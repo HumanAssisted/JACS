@@ -4,7 +4,7 @@
 //! OUTSIDE ecosystems (W3C DID/VC, JOSE, A2A, AP2) without touching the
 //! native signing contract: native `jacsSignature` stays PQ, and the
 //! ES256 `ecosystem_signing` key is authorized per-export by the
-//! PQ-root-signed binding in [`binding`].
+//! native-root-signed binding in [`binding`].
 
 pub mod ap2;
 pub mod binding;

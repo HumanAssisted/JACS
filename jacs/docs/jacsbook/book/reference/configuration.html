@@ -204,6 +204,10 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 }
 </code></pre>
 <p>All other settings use sensible defaults (<code>./jacs_data</code>, <code>./jacs_keys</code>, <code>fs</code> storage). Override only what you need.</p>
+<h2 id="signed-config-integrity"><a class="header" href="#signed-config-integrity">Signed-config integrity</a></h2>
+<p>Persistent agent configs are verified before JACS applies any config-controlled key path, storage backend, database URL, or network setting. A bad hash, signature, signer/identity mismatch, algorithm mismatch, unsafe key path, or invalid rotation journal stops the load; JACS does not continue with the tampered settings.</p>
+<p>An unsigned file may be used as a template while creating a new identity. Loading an existing identity from an unsigned file is rejected by default. For a one-time, audited legacy migration only, set <code>JACS_ALLOW_UNSIGNED_AGENT_CONFIG=true</code>, load and immediately re-sign the config, then remove the variable. This compatibility path emits a <code>security_outcome</code> WARN event and increments <code>jacs_security_outcomes_total</code> with <code>source="config"</code>, <code>outcome="unverified"</code>, and <code>policy="permissive"</code>.</p>
+<p>Config signatures prove integrity relative to the locally resolved signing key. They do not by themselves prove a real-world identity; deployments that need that guarantee must also pin or independently trust the agent key and protect the config/key directories from replacement.</p>
 <h2 id="complete-example-configuration"><a class="header" href="#complete-example-configuration">Complete Example Configuration</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
@@ -477,7 +481,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <ul>
 <li><code>jacs_data_directory</code> - Where agent/document data is stored (default: <code>./jacs_data</code>)</li>
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
-<li><code>jacs_agent_key_algorithm</code> - The agent's signing algorithm (default: <code>pq2025</code>). This field records the algorithm of an existing agent's keys; it is <strong>not</strong> a selector for new agents — new agent creation is always <code>pq2025</code> (a config requesting <code>ring-Ed25519</code> for a new agent logs a WARN and resolves to <code>pq2025</code>), and key rotation always stamps this field to <code>pq2025</code>. <code>ring-Ed25519</code> appears here only for grandfathered pre-existing agents.</li>
+<li><code>jacs_agent_key_algorithm</code> - The agent's native signing algorithm (default: <code>pq2025</code>). New creation honors <code>pq2025</code>, <code>ed25519</code>, or the legacy input alias <code>ring-Ed25519</code>, then records the canonical value actually minted (<code>pq2025</code> or <code>ring-Ed25519</code>). Rotation preserves this value unless an Ed25519 identity explicitly upgrades to <code>pq2025</code>; PQ-to-Ed25519 downgrade is rejected.</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
 <li><code>jacs_keychain_backend</code> - OS keychain backend for password storage (default: <code>"auto"</code>). See below.</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>
@@ -507,7 +511,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Value</th><th>Description</th><th>Use Case</th></tr></thead><tbody>
 <tr><td><strong>Filesystem</strong></td><td><code>"fs"</code></td><td>Signed JSON documents on local disk</td><td>Default, development, single-node deployments</td></tr>
 <tr><td><strong>Local Indexed SQLite</strong></td><td><code>"rusqlite"</code></td><td>Signed documents in SQLite with FTS search</td><td>Local search, bindings, MCP</td></tr>
-<tr><td><strong>AWS S3</strong></td><td><code>"aws"</code></td><td>Amazon S3 object storage</td><td>Remote object storage</td></tr>
+<tr><td><strong>AWS S3</strong></td><td><code>"aws"</code></td><td>Amazon S3 object storage (requires the Rust <code>s3</code> feature)</td><td>Remote object storage</td></tr>
 <tr><td><strong>Memory</strong></td><td><code>"memory"</code></td><td>In-memory object storage (non-persistent)</td><td>Testing, temporary data</td></tr>
 <tr><td><strong>Web Local</strong></td><td><code>"local"</code></td><td>Browser local storage (WASM only)</td><td>Web applications</td></tr>
 </tbody></table>
@@ -535,6 +539,11 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <strong>Database path:</strong> <code>&lt;jacs_data_directory&gt;/jacs_documents.sqlite3</code>
 <strong>Best for:</strong> Local full-text search, MCP/binding document operations, single-machine deployments that want indexed reads</p>
 <h4 id="aws-s3-storage-aws"><a class="header" href="#aws-s3-storage-aws">AWS S3 Storage (<code>"aws"</code>)</a></h4>
+<p>AWS support is not compiled into the default JACS build. Enable it explicitly:</p>
+<pre><code class="language-bash">cargo add jacs --features s3
+</code></pre>
+<p>Without that feature, selecting <code>"aws"</code> fails with an actionable configuration
+error instead of silently activating the cloud dependency stack.</p>
 <pre><code class="language-json">{
   "jacs_default_storage": "aws"
 }
@@ -578,6 +587,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 }
 </code></pre>
 <p><strong>Production Setup (AWS S3)</strong></p>
+<p>Build the application with <code>jacs</code>'s <code>s3</code> feature before selecting this backend.</p>
 <pre><code class="language-json">{
   "jacs_default_storage": "aws"
 }

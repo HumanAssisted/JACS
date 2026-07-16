@@ -103,6 +103,19 @@ fn create_stores_document_and_returns_it_signed() {
 
 #[test]
 #[serial]
+fn create_rejects_duplicate_payload_keys() {
+    let (svc, _tmp, _agent) = create_test_service();
+    let error = svc
+        .create(
+            r#"{"content":"trusted","content":"attacker"}"#,
+            CreateOptions::default(),
+        )
+        .expect_err("ambiguous document payload must not be signed");
+    assert!(error.to_string().contains("duplicate JSON object key"));
+}
+
+#[test]
+#[serial]
 fn get_retrieves_a_created_document_by_key() {
     let (svc, _tmp, _agent) = create_test_service();
 
@@ -173,6 +186,24 @@ fn update_creates_a_new_version_linked_to_prior() {
         Some(v1.version.as_str()),
         "v2 should link to v1's version as previous version"
     );
+}
+
+#[test]
+#[serial]
+fn update_rejects_duplicate_payload_keys() {
+    let (svc, _tmp, _agent) = create_test_service();
+    let original = svc
+        .create(r#"{"content":"original"}"#, CreateOptions::default())
+        .expect("create original document");
+
+    let error = svc
+        .update(
+            &original.id,
+            r#"{"content":"trusted","content":"attacker"}"#,
+            UpdateOptions::default(),
+        )
+        .expect_err("ambiguous update must not be signed");
+    assert!(error.to_string().contains("duplicate JSON object key"));
 }
 
 #[test]

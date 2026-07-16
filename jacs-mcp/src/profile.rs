@@ -10,6 +10,9 @@
 //! 1. `--profile <name>` CLI flag (highest priority)
 //! 2. `JACS_MCP_PROFILE` environment variable
 //! 3. Default: `core`
+//!
+//! Only `core` and `full` are valid. Unknown explicit values are rejected;
+//! they never silently fall back to a different capability set.
 
 use crate::tools::{ClassifiedTool, ToolFamily, all_classified_tools};
 use rmcp::model::Tool;
@@ -18,7 +21,7 @@ use rmcp::model::Tool;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Profile {
     /// Core tools only (default). Includes the standard families:
-    /// document, trust, search, key.
+    /// document, trust, search, key, and W3C.
     #[default]
     Core,
 
@@ -27,12 +30,50 @@ pub enum Profile {
     Full,
 }
 
+/// Error returned when a runtime profile selector is not one of the supported
+/// values. Invalid selectors are never coerced to `core`, because doing so can
+/// silently expose a different capability set than the operator requested.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileError {
+    value: String,
+}
+
+impl ProfileError {
+    fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+        }
+    }
+
+    /// The normalized invalid value supplied by the caller.
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+impl std::fmt::Display for ProfileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid MCP profile '{}'; expected 'core' or 'full'",
+            self.value
+        )
+    }
+}
+
+impl std::error::Error for ProfileError {}
+
 impl Profile {
-    /// Parse a profile from a string. Unrecognised values default to `Core`.
-    pub fn parse(s: &str) -> Self {
+    /// Parse a profile from a string.
+    ///
+    /// Values are case-insensitive and surrounding whitespace is ignored.
+    /// Unknown or empty values are rejected rather than silently becoming
+    /// `Core`.
+    pub fn parse(s: &str) -> Result<Self, ProfileError> {
         match s.trim().to_lowercase().as_str() {
-            "full" => Profile::Full,
-            _ => Profile::Core,
+            "core" => Ok(Profile::Core),
+            "full" => Ok(Profile::Full),
+            _ => Err(ProfileError::new(s.trim())),
         }
     }
 
@@ -42,18 +83,19 @@ impl Profile {
     /// 1. `cli_profile` argument (from `--profile` flag)
     /// 2. `JACS_MCP_PROFILE` environment variable
     /// 3. Defaults to `Core`
-    pub fn resolve(cli_profile: Option<&str>) -> Self {
+    ///
+    /// An empty environment value is treated as absent. Any other unknown
+    /// value returns [`ProfileError`].
+    pub fn resolve(cli_profile: Option<&str>) -> Result<Self, ProfileError> {
         if let Some(p) = cli_profile {
             return Self::parse(p);
         }
 
-        if let Ok(env_val) = std::env::var("JACS_MCP_PROFILE")
-            && !env_val.trim().is_empty()
-        {
-            return Self::parse(&env_val);
+        match std::env::var("JACS_MCP_PROFILE") {
+            Ok(env_val) if !env_val.trim().is_empty() => Self::parse(&env_val),
+            Ok(_) | Err(std::env::VarError::NotPresent) => Ok(Profile::Core),
+            Err(std::env::VarError::NotUnicode(_)) => Err(ProfileError::new("<non-unicode>")),
         }
-
-        Profile::Core
     }
 
     /// Filter compiled-in tools based on this profile.
@@ -97,6 +139,7 @@ pub const CORE_FAMILIES: &[ToolFamily] = &[
     ToolFamily::Trust,
     ToolFamily::Search,
     ToolFamily::Key,
+    ToolFamily::W3c,
 ];
 
 /// Names of all advanced tool families for documentation/logging.
@@ -112,34 +155,37 @@ mod tests {
 
     #[test]
     fn parse_core() {
-        assert_eq!(Profile::parse("core"), Profile::Core);
-        assert_eq!(Profile::parse("Core"), Profile::Core);
-        assert_eq!(Profile::parse("CORE"), Profile::Core);
+        assert_eq!(Profile::parse("core").unwrap(), Profile::Core);
+        assert_eq!(Profile::parse("Core").unwrap(), Profile::Core);
+        assert_eq!(Profile::parse("CORE").unwrap(), Profile::Core);
     }
 
     #[test]
     fn parse_full() {
-        assert_eq!(Profile::parse("full"), Profile::Full);
-        assert_eq!(Profile::parse("Full"), Profile::Full);
-        assert_eq!(Profile::parse("FULL"), Profile::Full);
+        assert_eq!(Profile::parse("full").unwrap(), Profile::Full);
+        assert_eq!(Profile::parse("Full").unwrap(), Profile::Full);
+        assert_eq!(Profile::parse("FULL").unwrap(), Profile::Full);
     }
 
     #[test]
-    fn parse_unknown_defaults_to_core() {
-        assert_eq!(Profile::parse("unknown"), Profile::Core);
-        assert_eq!(Profile::parse(""), Profile::Core);
+    fn parse_rejects_unknown_and_empty_values() {
+        for value in ["unknown", "", "  "] {
+            let error = Profile::parse(value).expect_err("invalid profile must be rejected");
+            assert!(error.to_string().contains("core"));
+            assert!(error.to_string().contains("full"));
+        }
     }
 
     #[test]
     fn resolve_cli_core_overrides_anything() {
         // CLI flag always wins regardless of env state.
-        let profile = Profile::resolve(Some("core"));
+        let profile = Profile::resolve(Some("core")).unwrap();
         assert_eq!(profile, Profile::Core);
     }
 
     #[test]
     fn resolve_cli_full() {
-        let profile = Profile::resolve(Some("full"));
+        let profile = Profile::resolve(Some("full")).unwrap();
         assert_eq!(profile, Profile::Full);
     }
 

@@ -99,10 +99,11 @@ pub fn export_ap2_mandate(
     key_directory: &str,
     checkout_json: &str,
 ) -> Result<Value, JacsError> {
-    let checkout: Value = serde_json::from_str(checkout_json).map_err(|e| {
-        super::record_export_error("ap2-mandate", "invalid_input");
-        JacsError::ValidationError(format!("mandate input is not JSON: {e}"))
-    })?;
+    let checkout: Value =
+        jacs_core::strict_json::parse_strict_json(checkout_json).map_err(|e| {
+            super::record_export_error("ap2-mandate", "invalid_input");
+            JacsError::ValidationError(format!("mandate input is not JSON: {e}"))
+        })?;
     if !checkout.is_object() {
         super::record_export_error("ap2-mandate", "invalid_input");
         return Err(JacsError::ValidationError(

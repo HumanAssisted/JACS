@@ -249,7 +249,7 @@ export declare class JacsClient {
      * Generates a new keypair, archives the old keys, creates a new agent
      * version, and re-signs the config file.
      *
-     * @param options - Optional. `{ algorithm?: string }` to change the signing algorithm.
+     * @param options - Optional. Omit `algorithm` or pass `"pq2025"`; Ed25519 and unknown targets are rejected.
      * @returns Rotation result with old_version, new_version, transition_proof, etc.
      */
     rotateKeys(options?: {
@@ -338,9 +338,9 @@ export declare class JacsClient {
     /**
      * Verify a JACS-signed A2A artifact.
      *
-     * Accepts the raw JSON string from signArtifact() or a parsed object.
-     * When a string is given it is passed directly to verifyResponse to
-     * preserve the original serialization and hash.
+     * `signArtifact()` returns the direct canonical `a2a-*` document as an
+     * object. Raw JSON for the same document is also accepted. Cryptographic
+     * verification does not synthesize identity trust from artifact claims.
      *
      * @param wrappedArtifact - The signed artifact (string or object).
      */

@@ -9,7 +9,7 @@ def agent():
     """Create an ephemeral SimpleAgent for testing."""
     import jacs
 
-    agent, _info = jacs.SimpleAgent.ephemeral("ed25519")
+    agent, _info = jacs.SimpleAgent.ephemeral("pq2025")
     return agent
 
 

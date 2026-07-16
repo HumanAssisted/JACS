@@ -56,8 +56,16 @@ class JacsMiddleware(BaseHTTPMiddleware):
         client: An existing JacsClient instance. If None, one will be
             created via BaseJacsAdapter's default logic.
         config_path: Path to jacs.config.json (used only if client is None).
-        strict: If True, verification failures return 401. If False
-            (default), failures are logged and the request passes through.
+        strict: If True, signing failures raise. Verification failures return
+            401 by default regardless of this setting.
+        allow_unverified_passthrough: Dangerous compatibility opt-in that lets
+            a request claiming a JACS signature continue after verification
+            fails. Default False.
+        allow_unsigned_output: Dangerous compatibility opt-in that lets a
+            downstream JSON body escape unsigned after signing fails.
+            Default False.
+        allow_plain_signature_fallback: Compatibility option that permits an
+            attestation request to downgrade to a plain signature. Default False.
         sign_responses: If True (default), outgoing JSON responses are signed.
         verify_requests: If True (default), incoming POST bodies with a
             ``jacsSignature`` field are verified.
@@ -87,12 +95,21 @@ class JacsMiddleware(BaseHTTPMiddleware):
         auth_replay_protection: bool = False,
         auth_max_age_seconds: int = 30,
         auth_clock_skew_seconds: int = 5,
+        allow_unverified_passthrough: bool = False,
+        allow_unsigned_output: bool = False,
+        allow_plain_signature_fallback: bool = False,
         a2a: bool = False,
         a2a_skills: Optional[List[Dict[str, Any]]] = None,
         attest: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict, attest=attest
+            client=client,
+            config_path=config_path,
+            strict=strict,
+            allow_unverified_passthrough=allow_unverified_passthrough,
+            allow_unsigned_output=allow_unsigned_output,
+            allow_plain_signature_fallback=allow_plain_signature_fallback,
+            attest=attest,
         )
         self.sign_responses = sign_responses
         self.verify_requests = verify_requests
@@ -134,10 +151,9 @@ class JacsMiddleware(BaseHTTPMiddleware):
                 agent_data["skills"] = skills
 
             card = integration.export_agent_card(agent_data)
-            card_dict = integration.agent_card_to_dict(card)
-            extension_dict = integration.create_extension_descriptor()
 
-            # Build the full set
+            # Build the full native card/JWKS/binding set. Never replace its
+            # signed card or fall back to wrapper-created discovery data.
             public_key_b64 = agent_data.get("jacsPublicKey", "")
             well_known = integration.generate_well_known_documents(
                 agent_card=card,
@@ -145,13 +161,22 @@ class JacsMiddleware(BaseHTTPMiddleware):
                 public_key_b64=public_key_b64 or "",
                 agent_data=agent_data,
             )
-            # Override with our clean versions
-            well_known["/.well-known/agent-card.json"] = card_dict
-            well_known["/.well-known/jacs-extension.json"] = extension_dict
+            if skills is not None:
+                native_skills = well_known["/.well-known/agent-card.json"].get(
+                    "skills", []
+                )
+                if native_skills != skills:
+                    raise RuntimeError(
+                        "Cannot override A2A skills after the Agent Card is signed; "
+                        "configure agent skills before middleware initialization"
+                    )
 
             self._a2a_docs = well_known
         except Exception as e:
-            logger.warning("Failed to build A2A documents: %s", e)
+            logger.warning("Failed closed while building A2A documents: %s", e)
+            raise RuntimeError(
+                f"Cannot enable identity-bound A2A discovery middleware: {e}"
+            ) from e
 
     _CORS_HEADERS = {
         "access-control-allow-origin": "*",
@@ -199,9 +224,9 @@ class JacsMiddleware(BaseHTTPMiddleware):
                         try:
                             verify_result = self._adapter.client.verify(raw_body)
                             is_valid = (
-                                verify_result.get("valid", False)
+                                verify_result.get("valid") is True
                                 if isinstance(verify_result, dict)
-                                else bool(getattr(verify_result, "valid", False))
+                                else getattr(verify_result, "valid", False) is True
                             )
                             errors = (
                                 verify_result.get("errors", [])
@@ -228,7 +253,10 @@ class JacsMiddleware(BaseHTTPMiddleware):
                                             status_code=401,
                                             media_type="application/json",
                                         )
-                            elif self._adapter.strict:
+                            elif not self._adapter.allow_unverified_passthrough:
+                                logger.warning(
+                                    "JACS signature verification failed: %s", errors
+                                )
                                 return Response(
                                     content=json.dumps(
                                         {
@@ -245,7 +273,8 @@ class JacsMiddleware(BaseHTTPMiddleware):
                                     errors,
                                 )
                         except Exception as exc:
-                            if self._adapter.strict:
+                            logger.warning("JACS signature verification failed: %s", exc)
+                            if not self._adapter.allow_unverified_passthrough:
                                 return Response(
                                     content=json.dumps(
                                         {"error": "JACS signature verification failed"}
@@ -253,9 +282,6 @@ class JacsMiddleware(BaseHTTPMiddleware):
                                     status_code=401,
                                     media_type="application/json",
                                 )
-                            logger.warning(
-                                "JACS verification failed (passthrough): %s", exc
-                            )
 
         response = await call_next(request)
 
@@ -281,14 +307,14 @@ class JacsMiddleware(BaseHTTPMiddleware):
                         headers=headers,
                         media_type=response.media_type,
                     )
-                except Exception:
-                    # If signing fails in permissive mode the adapter already
-                    # logged; return the original body.
+                except Exception as exc:
+                    logger.warning("JACS response signing failed: %s", exc)
+                    failure = b'{"error":"JACS response signing failed"}'
                     return Response(
-                        content=body,
-                        status_code=response.status_code,
-                        headers=dict(response.headers),
-                        media_type=response.media_type,
+                        content=failure,
+                        status_code=500,
+                        headers={"content-length": str(len(failure))},
+                        media_type="application/json",
                     )
 
         return response
@@ -298,6 +324,8 @@ def jacs_route(
     client: Any = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ):
     """Decorator that signs a single FastAPI endpoint's response.
@@ -309,9 +337,18 @@ def jacs_route(
         client: JacsClient instance (or None to auto-create).
         config_path: Path to jacs.config.json.
         strict: Raise on signing failure if True.
+        allow_plain_signature_fallback: Permit failed attestation creation to
+            downgrade to a plain signature. Default False.
         attest: If True, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     def decorator(func):
         @wraps(func)
@@ -321,7 +358,9 @@ def jacs_route(
                 result = await result
             signed = adapter.sign_output_or_passthrough(result)
             return json.loads(signed)
+
         return wrapper
+
     return decorator
 
 

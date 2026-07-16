@@ -44,6 +44,52 @@
       "data_base64": "AAECBA=="
     }
   ],
+  "canonicalization_vectors": [
+    {
+      "name": "rfc8785_serialization_sample",
+      "data": {
+        "numbers": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
+        "string": "\u20ac$\u000F\u000aA'B\"\\\\\"/",
+        "literals": [null, true, false]
+      },
+      "expected": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+    },
+    {
+      "name": "rfc8785_property_sorting_sample",
+      "data": {
+        "\u20ac": "Euro Sign",
+        "\r": "Carriage Return",
+        "\ufb33": "Hebrew Letter Dalet With Dagesh",
+        "1": "One",
+        "\ud83d\ude00": "Emoji: Grinning Face",
+        "\u0080": "Control",
+        "\u00f6": "Latin Small Letter O With Diaeresis"
+      },
+      "expected": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+    }
+  ],
+  "canonicalization_rejections": [
+    {
+      "name": "positive_integer_above_i_json_safe_range",
+      "input": "{\"amount\":9007199254740992}",
+      "message_pattern": "safe integer range"
+    },
+    {
+      "name": "negative_integer_below_i_json_safe_range",
+      "input": "{\"amount\":-9007199254740992}",
+      "message_pattern": "safe integer range"
+    }
+  ],
+  "canonicalization_equivalences": [
+    {
+      "name": "binary64_equivalent_exponent_spellings",
+      "inputs": [
+        "{\"amount\":9007199254740992e0}",
+        "{\"amount\":9007199254740993e0}"
+      ],
+      "expected": "{\"amount\":9007199254740992}"
+    }
+  ],
   "expected_signed_document_fields": {
     "_description": "Every signed document must contain these fields (exact values vary)",
     "required_top_level": ["jacsId", "jacsSignature"],
@@ -53,6 +99,35 @@
     "_description": "Every verification result must contain these fields",
     "required": ["valid"],
     "optional": ["signer_id", "timestamp", "errors", "data", "attachments"]
+  },
+  "response_v2_generic_verification": {
+    "_description": "Generic explicit-key verification must auto-dispatch fully bound response-v2 envelopes. Invalid envelopes never release payload or unauthenticated provenance.",
+    "algorithm": "ed25519",
+    "signature_content_version": "jacs-response-v2",
+    "payload": {
+      "decision": "allow",
+      "context": {
+        "request_id": "parity-response-v2"
+      }
+    },
+    "tamper_cases": [
+      {
+        "name": "payload",
+        "pointer": "/data/decision",
+        "replacement": "deny"
+      },
+      {
+        "name": "metadata_issuer",
+        "pointer": "/metadata/issuer",
+        "replacement": "attacker"
+      }
+    ],
+    "invalid_result": {
+      "valid": false,
+      "data": null,
+      "signer_id": "",
+      "timestamp": ""
+    }
   },
   "sign_message_invalid_json_behavior": {
     "_description": "Documents a known cross-language behavioral difference for sign_message with invalid JSON input. Python's sign_message takes any Python object and serializes it to JSON first (so a raw string becomes a valid JSON string value). Node's signMessage takes a JSON string directly and rejects invalid JSON. Both behaviors are correct for their API contracts.",
@@ -78,5 +153,12 @@
     "TrustFailed",
     "Validation",
     "VerificationFailed"
-  ]
+  ],
+  "portable_error_contract": {
+    "message_prefix": "JACS_ERROR_KIND=",
+    "removed_algorithm": {
+      "input": "pq-dilithium",
+      "kind": "AgentLoad"
+    }
+  }
 }

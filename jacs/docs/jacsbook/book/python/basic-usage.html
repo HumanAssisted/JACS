@@ -358,9 +358,19 @@ signed_agent_json = agent.sign_agent(
     'ring-Ed25519'
 )
 </code></pre>
-<h2 id="requestresponse-signing"><a class="header" href="#requestresponse-signing">Request/Response Signing</a></h2>
+<h2 id="generic-requestresponse-documents"><a class="header" href="#generic-requestresponse-documents">Generic Request/Response Documents</a></h2>
+<blockquote>
+<p><strong>Not HTTP authentication:</strong> <code>JacsAgent.sign_request()</code> and
+<code>verify_response()</code> wrap and verify a generic signed JACS document. They do
+not bind the HTTP method, absolute URL, query, exact body bytes, or audience.
+For an authorization credential use
+<code>SimpleAgent.build_request_auth_header(method, url, body, audience)</code>. For v2 response
+envelopes use <code>SimpleAgent.sign_response()</code> and fail-closed
+<code>SimpleAgent.unwrap_signed_event()</code> with pinned server keys. See
+<a href="../advanced/security.html#request-bound-http-authorization">Security</a>.</p>
+</blockquote>
 <h3 id="sign-a-request"><a class="header" href="#sign-a-request">Sign a Request</a></h3>
-<pre><code class="language-python"># Sign request parameters as a JACS document
+<pre><code class="language-python"># Sign request-like data as a durable JACS document (not an HTTP credential)
 signed_request = agent.sign_request({
     "method": "GET",
     "path": "/api/resource",
@@ -369,7 +379,7 @@ signed_request = agent.sign_request({
 })
 </code></pre>
 <h3 id="verify-a-response"><a class="header" href="#verify-a-response">Verify a Response</a></h3>
-<pre><code class="language-python"># Verify a signed response
+<pre><code class="language-python"># Verify a generic signed document (not a jacs-response-v2 event)
 result = agent.verify_response(signed_response_json)
 print('Response valid:', result)
 

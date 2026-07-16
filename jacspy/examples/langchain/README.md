@@ -27,11 +27,11 @@ pip install -r requirements.txt
 ```bash
 # Create a new agent in this directory
 cd examples/langchain
-jacs init
-jacs create
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+jacs quickstart --name langchain-agent --domain langchain.local
 
 # Or set the config path if you have an existing agent
-export JACS_CONFIG_PATH=/path/to/your/jacs.config.json
+export JACS_CONFIG=/path/to/your/jacs.config.json
 ```
 
 3. **Set up your LLM API key:**

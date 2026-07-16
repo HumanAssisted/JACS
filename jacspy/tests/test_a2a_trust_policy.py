@@ -5,7 +5,7 @@ param, and verify_wrapped_artifact with assess_trust=True.
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -83,6 +83,57 @@ class TestTrustPolicyConstructor:
 
 
 class TestAssessRemoteAgent:
+    def test_native_assessment_surfaces_first_contact_tofu_state(self):
+        client = _make_mock_client()
+        client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": True,
+            "trustLevel": "JacsVerified",
+            "jacsRegistered": True,
+            "reason": "origin key pinned on first contact",
+            "policy": "Verified",
+            "firstContact": True,
+        })
+        a2a = JACSA2AIntegration(client)
+
+        result = a2a.assess_remote_agent(_card_with_jacs())
+        assert result["allowed"] is True
+        assert result["first_contact"] is True
+
+    def test_native_assessment_truthy_strings_do_not_become_security_booleans(self):
+        client = _make_mock_client()
+        client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": "false",
+            "trustLevel": "JacsVerified",
+            "jacsRegistered": "true",
+            "reason": "malformed native result",
+            "policy": "Verified",
+            "firstContact": "true",
+        })
+        a2a = JACSA2AIntegration(client)
+
+        result = a2a.assess_remote_agent(_card_with_jacs())
+
+        assert result["allowed"] is False
+        assert result["jacs_registered"] is False
+        assert result["first_contact"] is False
+
+    def test_denied_native_assessment_cannot_report_trusted_level(self):
+        client = _make_mock_client()
+        client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": False,
+            "trustLevel": "ExplicitlyTrusted",
+            "jacsRegistered": True,
+            "reason": "policy denied",
+            "policy": "Strict",
+            "firstContact": False,
+        })
+        a2a = JACSA2AIntegration(client, trust_policy="strict")
+
+        result = a2a.assess_remote_agent(_card_with_jacs())
+
+        assert result["allowed"] is False
+        assert result["trust_level"] == "untrusted"
+
     def test_open_always_allows(self):
         client = _make_mock_client()
         a2a = JACSA2AIntegration(client, trust_policy="open")
@@ -92,14 +143,15 @@ class TestAssessRemoteAgent:
         assert result["jacs_registered"] is False
         assert result["trust_level"] == "untrusted"
 
-    def test_verified_allows_jacs_registered(self):
+    def test_verified_fails_closed_without_native_cryptographic_assessment(self):
         client = _make_mock_client()
         a2a = JACSA2AIntegration(client)  # default "verified"
 
         result = a2a.assess_remote_agent(_card_with_jacs())
-        assert result["allowed"] is True
+        assert result["allowed"] is False
         assert result["jacs_registered"] is True
-        assert result["trust_level"] == "jacs_registered"
+        assert result["trust_level"] == "untrusted"
+        assert "native cryptographic assessment" in result["reason"]
 
     def test_verified_rejects_non_jacs(self):
         client = _make_mock_client()
@@ -109,15 +161,15 @@ class TestAssessRemoteAgent:
         assert result["allowed"] is False
         assert result["jacs_registered"] is False
 
-    def test_strict_requires_trust_store(self):
+    def test_strict_does_not_accept_an_unverified_trust_store_boolean(self):
         client = _make_mock_client()
         client.is_trusted.return_value = True
         a2a = JACSA2AIntegration(client, trust_policy="strict")
 
         result = a2a.assess_remote_agent(_card_with_jacs(agent_id="trusted-id"))
-        assert result["allowed"] is True
-        assert result["trust_level"] == "trusted"
-        client.is_trusted.assert_called_once_with("trusted-id")
+        assert result["allowed"] is False
+        assert result["trust_level"] == "untrusted"
+        assert "native cryptographic assessment" in result["reason"]
 
     def test_strict_denies_when_not_in_store(self):
         client = _make_mock_client()
@@ -126,7 +178,7 @@ class TestAssessRemoteAgent:
 
         result = a2a.assess_remote_agent(_card_with_jacs(agent_id="unknown-id"))
         assert result["allowed"] is False
-        assert result["trust_level"] == "jacs_registered"
+        assert result["trust_level"] == "untrusted"
 
     def test_policy_override(self):
         """Passing policy= overrides the instance trust_policy."""
@@ -162,21 +214,42 @@ class TestAssessRemoteAgent:
 
 
 class TestTrustA2AAgent:
-    def test_trusts_agent_with_jacs_id(self):
+    def test_requires_native_agent_document_and_explicit_key(self):
         client = _make_mock_client()
-        client.trust_agent.return_value = "ok"
+        client.trust_agent_with_key.return_value = "ok"
         a2a = JACSA2AIntegration(client)
 
-        result = a2a.trust_a2a_agent(_card_with_jacs(agent_id="agent-to-trust"))
+        native_agent = json.dumps({
+            "jacsId": "agent-to-trust",
+            "jacsVersion": "version-1",
+            "jacsSignature": {"publicKeyHash": "sha256-placeholder"},
+        })
+        public_key = "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----"
+        result = a2a.trust_a2a_agent(native_agent, public_key)
         assert result == "ok"
-        client.trust_agent.assert_called_once()
+        client.trust_agent.assert_not_called()
+        client.trust_agent_with_key.assert_called_once_with(native_agent, public_key)
 
-    def test_raises_when_no_jacs_id(self):
+    def test_rejects_unauthenticated_agent_card(self):
         client = _make_mock_client()
         a2a = JACSA2AIntegration(client)
 
-        with pytest.raises(ValueError, match="no jacsId"):
-            a2a.trust_a2a_agent(_card_without_jacs())
+        with pytest.raises(ValueError, match="full native JACS agent document"):
+            a2a.trust_a2a_agent(_card_with_jacs(), "public-key")
+        client.trust_agent_with_key.assert_not_called()
+
+    def test_rejects_missing_explicit_public_key(self):
+        client = _make_mock_client()
+        a2a = JACSA2AIntegration(client)
+        native_agent = json.dumps({
+            "jacsId": "agent-to-trust",
+            "jacsVersion": "version-1",
+            "jacsSignature": {},
+        })
+
+        with pytest.raises(ValueError, match="explicit public key"):
+            a2a.trust_a2a_agent(native_agent, "")
+        client.trust_agent_with_key.assert_not_called()
 
 
 # ------------------------------------------------------------------
@@ -219,7 +292,9 @@ class TestVerifyWithTrustAssessment:
             assess_trust=True,
         )
         assert "trust" in result
-        assert result["trust"]["allowed"] is True
+        assert result["trust"]["allowed"] is False
+        assert result["trust"]["trust_level"] == "untrusted"
+        assert "cannot elevate trust" in result["trust"]["reason"]
 
     def test_with_assess_trust_verified_policy(self):
         client = _make_mock_client()
@@ -229,10 +304,10 @@ class TestVerifyWithTrustAssessment:
         artifact = self._make_fake_artifact()
         result = a2a.verify_wrapped_artifact(artifact, assess_trust=True)
 
-        # The artifact has jacsType "a2a-task" so the synthetic card
-        # will have the JACS extension, making it jacs_registered.
-        assert result["trust"]["jacs_registered"] is True
-        assert result["trust"]["allowed"] is True
+        # A synthetic card may declare the extension, but without native
+        # card/JWKS/binding assessment it cannot establish identity trust.
+        assert result["trust"]["jacs_registered"] is False
+        assert result["trust"]["allowed"] is False
 
     def test_with_assess_trust_policy_override(self):
         client = _make_mock_client()
@@ -244,4 +319,20 @@ class TestVerifyWithTrustAssessment:
             assess_trust=True,
             trust_policy="open",
         )
-        assert result["trust"]["allowed"] is True
+        assert result["trust"]["allowed"] is False
+        assert result["trust"]["trust_level"] == "untrusted"
+
+    @pytest.mark.parametrize("policy", ["verified", "strict"])
+    def test_identity_policy_never_uses_legacy_artifact_verifier(self, policy):
+        client = _make_mock_client()
+        client._agent.verify_response.return_value = True
+        a2a = JACSA2AIntegration(client, trust_policy=policy)
+
+        result = a2a.verify_wrapped_artifact(
+            self._make_fake_artifact(),
+            assess_trust=True,
+        )
+
+        assert result["valid"] is False
+        assert result["trust"]["allowed"] is False
+        client._agent.verify_response.assert_not_called()

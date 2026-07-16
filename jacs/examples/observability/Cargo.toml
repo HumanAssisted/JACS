@@ -3,8 +3,11 @@
 [package]
 name = "jacs-observability-demo"
 version = "0.2.0"
+publish = false
 edition = "2021"
 rust-version = "1.97"
+license = "Apache-2.0"
+repository = "https://github.com/HumanAssisted/JACS"
 
 [dependencies]
 jacs = { path = "../../", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }

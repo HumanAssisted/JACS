@@ -24,9 +24,7 @@ fn write_temp_file(contents: &str) -> (TempDir, PathBuf) {
 }
 
 fn ephemeral_ed25519() -> SimpleAgent {
-    // Genuine Ed25519 signer for fixture/mixed-algorithm coverage: public
-    // ephemeral creation is PQ-only (P2 Task 001), so use the doc-hidden
-    // legacy hatch (grandfathered agents still sign Ed25519).
+    // Historical Ed25519 fixture for mixed-algorithm coverage.
     SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
         .expect("ephemeral ed25519")
         .0
@@ -604,7 +602,7 @@ fn key_dir_symlink_escape_fails_canonical_check() {
     symlink(&attacker_key, &link_path).unwrap();
 
     // A different agent verifies with the planted key_dir.
-    let (verifier, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let (verifier, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
     let result = verify_text_file(
         &verifier,
         path.to_str().unwrap(),
@@ -993,7 +991,7 @@ fn verify_text_dns_arm_unset_env_yields_keynotfound_permissive() {
 
     // A different agent does the verification — the signer's key is unknown
     // (no key_dir, no trust store, no DNS domains).
-    let (verifier, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let (verifier, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
     let result = verify_text_file(&verifier, path.to_str().unwrap(), VerifyOptions::default())
         .expect("permissive verify ok");
     match result {
@@ -1026,7 +1024,7 @@ fn verify_text_dns_arm_unreachable_domain_soft_fails() {
     let (_d, path) = write_temp_file("# Invalid DNS domain\n\nhello\n");
     sign_text_file(&signer, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
 
-    let (verifier, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let (verifier, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
     let result = verify_text_file(&verifier, path.to_str().unwrap(), VerifyOptions::default())
         .expect("permissive verify ok");
 

@@ -2879,8 +2879,8 @@ fn generated_ed25519_agent(name: &str) -> Agent {
 }
 
 fn generated_ed25519_agent_with_type(name: &str, agent_type: &str) -> Agent {
-    // Fixture hatch: these agents model grandfathered Ed25519 signers in
-    // mixed-algorithm agreements; public ephemeral creation is PQ-only.
+    // Fixture hatch preserves historical Ed25519 signer shape for
+    // mixed-algorithm agreement coverage.
     let mut agent =
         Agent::ephemeral_legacy_ed25519_for_fixtures().expect("create ephemeral Ed25519 agent");
     let agent_json = jacs::create_minimal_blank_agent(

@@ -77,9 +77,20 @@ app.add_middleware(JacsMiddleware, client=client)
 
 Useful options:
 
-- `strict=True` to reject verification failures instead of passing through
+- Signing and verification failures fail closed by default
 - `sign_responses=False` or `verify_requests=False` to narrow the behavior
 - `a2a=True` to also expose A2A discovery routes from the same FastAPI app
+
+Legacy compatibility options are explicit and dangerous:
+
+- `allow_unsigned_output=True` permits raw output after signing fails
+- `allow_unverified_passthrough=True` permits unverifiable input to continue
+- `allow_plain_signature_fallback=True` permits an attestation request to
+  downgrade to a plain signature, dropping attestation claims
+
+`strict=True` always disables all three fallbacks. Do not use these options at
+a trust boundary unless the caller separately marks the data as unsigned or
+unverified.
 
 For auth-style endpoints, replay protection is available:
 
@@ -121,6 +132,8 @@ task = Task(
 ```
 
 If you build tasks with factories, `signed_task()` can pre-attach the guardrail.
+It rejects an existing guardrail rather than silently allowing that guardrail
+to suppress JACS signing; compose guardrails explicitly when both are needed.
 
 ## Anthropic / Claude SDK
 

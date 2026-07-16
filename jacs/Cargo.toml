@@ -20,6 +20,7 @@ include = [
     "README.md",
     "LICENSE",
     "LICENSE-APACHE",
+    "THIRD-PARTY-NOTICES",
     "build.rs",
     "CHANGELOG.md",
     "basic-schemas.png",
@@ -138,7 +139,7 @@ crate-type = ["cdylib", "rlib"]
 ring = "0.17.9"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 walkdir = "2.5.0"
-object_store = { version ="0.14.1", features = ["serde","serde_json", "aws", "http"] }
+object_store = { version ="0.14.1", default-features = false, features = ["fs"] }
 # Post-quantum 2025 standards (ML-DSA and ML-KEM)
 fips203 = "0.4.3"
 fips204 = "0.4.6"
@@ -207,8 +208,12 @@ conflict = []
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []
 
+# AWS S3 storage is opt-in so the default signing library does not ship cloud
+# XML parsers or TLS stacks that it does not use.
+s3 = ["object_store/aws"]
+
 # S3 conformance tests (require Docker/MinIO). Omit for fast test runs.
-s3-tests = []
+s3-tests = ["s3"]
 
 # OS keychain integration for password storage (macOS Keychain, Linux Secret Service)
 keychain = ["dep:keyring"]

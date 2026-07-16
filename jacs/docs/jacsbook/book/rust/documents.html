@@ -197,7 +197,8 @@
 <p>Sign it with JACS:</p>
 <pre><code class="language-bash">jacs document create -f my-document.json
 </code></pre>
-<p>This adds JACS headers and signature, producing a signed document.</p>
+<p>This adds JACS headers and a signature, saves the document, and prints the
+exact path. Pass <code>--json</code> for a machine-readable document key/path result.</p>
 <h3 id="from-a-directory"><a class="header" href="#from-a-directory">From a Directory</a></h3>
 <p>Process multiple documents at once:</p>
 <pre><code class="language-bash">jacs document create -d ./documents/

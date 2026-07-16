@@ -2,7 +2,7 @@
 A2A Server — FastAPI routes for well-known A2A discovery documents.
 
 Provides ``jacs_a2a_routes()`` which returns an ``APIRouter`` serving
-all five ``.well-known`` endpoints required for A2A agent discovery,
+all six identity-bound ``.well-known`` endpoints required for A2A discovery,
 plus a top-level ``serve_a2a()`` convenience function.
 
 Usage — mount into an existing app::
@@ -54,10 +54,11 @@ def jacs_a2a_routes(
 ) -> APIRouter:
     """Build a FastAPI ``APIRouter`` serving A2A well-known documents.
 
-    The router exposes five endpoints under ``/.well-known/``:
+    The router exposes six identity-bound endpoints under ``/.well-known/``:
 
     - ``agent-card.json`` — A2A Agent Card (v0.4.0)
     - ``jwks.json`` — JWK Set for external verifiers
+    - ``jacs-compat-binding.json`` — native-root-signed ES256 key binding
     - ``jacs-agent.json`` — JACS agent descriptor
     - ``jacs-pubkey.json`` — JACS public key
     - ``jacs-extension.json`` — JACS provenance extension descriptor
@@ -92,11 +93,8 @@ def jacs_a2a_routes(
         agent_data["skills"] = skills
 
     card = integration.export_agent_card(agent_data)
-    card_dict = integration.agent_card_to_dict(card)
-    extension_dict = integration.create_extension_descriptor()
-
-    # Build the full well-known document set if we can; otherwise
-    # serve what we have (agent card + extension are always available).
+    # Identity-bearing discovery is an atomic native card/JWKS/binding unit.
+    # Never downgrade to an unsigned wrapper card when native generation fails.
     try:
         well_known_docs = integration.generate_well_known_documents(
             agent_card=card,
@@ -104,17 +102,22 @@ def jacs_a2a_routes(
             public_key_b64="",
             agent_data=agent_data,
         )
-    except Exception:
-        logger.debug("Could not generate full well-known set; serving partial")
-        well_known_docs = {
-            "/.well-known/agent-card.json": card_dict,
-            "/.well-known/jacs-extension.json": extension_dict,
-        }
+    except Exception as exc:
+        logger.warning(
+            "A2A discovery route initialization failed closed: %s",
+            exc,
+        )
+        raise RuntimeError(
+            f"Cannot build identity-bound A2A routes: {exc}"
+        ) from exc
 
-    # Override agent-card with our freshly-built version (it may have
-    # a JWS stub from generate_well_known_documents).
-    well_known_docs["/.well-known/agent-card.json"] = card_dict
-    well_known_docs["/.well-known/jacs-extension.json"] = extension_dict
+    if skills is not None:
+        native_skills = well_known_docs["/.well-known/agent-card.json"].get("skills", [])
+        if native_skills != skills:
+            raise RuntimeError(
+                "Cannot override A2A skills after the Agent Card is signed; configure the "
+                "agent's skills before generating discovery documents"
+            )
 
     # --- Route handlers ---
 
@@ -132,40 +135,39 @@ def jacs_a2a_routes(
     def agent_card_endpoint(signed: Optional[str] = Query(default=None)):
         """Return the A2A Agent Card.
 
-        Pass ``?signed=true`` to get the card with a JWS signature
-        envelope (if available).
+        The returned card is always the native ES256-signed, identity-bound
+        card. The legacy ``signed`` query parameter is accepted but no longer
+        changes the response.
         """
-        if signed and signed.lower() == "true":
-            # Return the version from generate_well_known_documents
-            # which may include a signatures field.
-            full_card = well_known_docs.get(
-                "/.well-known/agent-card.json", card_dict
-            )
-            return _json_response(full_card)
-        return _json_response(card_dict)
+        _ = signed
+        return _json_response(well_known_docs["/.well-known/agent-card.json"])
 
     @router.get("/.well-known/jwks.json")
     def jwks_endpoint():
         """Return the JWK Set for external verifiers."""
-        content = well_known_docs.get("/.well-known/jwks.json", {"keys": []})
-        return _json_response(content)
+        return _json_response(well_known_docs["/.well-known/jwks.json"])
+
+    @router.get("/.well-known/jacs-compat-binding.json")
+    def compatibility_binding_endpoint():
+        """Return the native-root-signed ES256 compatibility binding."""
+        return _json_response(
+            well_known_docs["/.well-known/jacs-compat-binding.json"]
+        )
 
     @router.get("/.well-known/jacs-agent.json")
     def jacs_agent_endpoint():
         """Return the JACS agent descriptor."""
-        content = well_known_docs.get("/.well-known/jacs-agent.json", {})
-        return _json_response(content)
+        return _json_response(well_known_docs["/.well-known/jacs-agent.json"])
 
     @router.get("/.well-known/jacs-pubkey.json")
     def jacs_pubkey_endpoint():
         """Return the JACS public key document."""
-        content = well_known_docs.get("/.well-known/jacs-pubkey.json", {})
-        return _json_response(content)
+        return _json_response(well_known_docs["/.well-known/jacs-pubkey.json"])
 
     @router.get("/.well-known/jacs-extension.json")
     def jacs_extension_endpoint():
         """Return the JACS provenance extension descriptor."""
-        return _json_response(extension_dict)
+        return _json_response(well_known_docs["/.well-known/jacs-extension.json"])
 
     return router
 

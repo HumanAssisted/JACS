@@ -12,6 +12,8 @@ It complements, not duplicates, test_parity.py.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from pathlib import Path
 
@@ -67,6 +69,15 @@ PYTHON_NAME_MAP = {
     "sign_message_json": "sign_message",
     "sign_raw_bytes_base64": "sign_string",
     "sign_file_json": "sign_file",
+    "build_auth_header": "build_auth_header",
+    "build_request_auth_header": "build_request_auth_header",
+    "canonicalize_json": "canonicalize_json",
+    "sign_response": "sign_response",
+    "encode_verify_payload": "encode_verify_payload",
+    "decode_verify_payload": "decode_verify_payload",
+    "extract_document_id": "extract_document_id",
+    "prepare_signed_event_replay_json": "prepare_signed_event_replay",
+    "unwrap_signed_event": "unwrap_signed_event",
     "to_yaml": "to_yaml",
     "from_yaml": "from_yaml",
     "to_html": "to_html",
@@ -162,6 +173,57 @@ def test_python_method_parity_against_fixture(method_parity: dict):
         + "\n\nIf a method was intentionally excluded, add it to EXCLUDED_FROM_PYTHON. "
         + "If it has a different name in Python, add it to PYTHON_NAME_MAP."
     )
+
+
+def test_public_simple_protocol_roundtrip(monkeypatch):
+    """Protocol helpers must be functional on the public SimpleAgent class."""
+    monkeypatch.delenv("JACS_REJECT_UNBOUND_AUTH_HEADER", raising=False)
+    agent, _ = SimpleAgent.ephemeral("ed25519")
+    legacy = agent.build_auth_header()
+    assert legacy.startswith("JACS ")
+    body = '{"include_test":false}'
+    header = agent.build_request_auth_header(
+        "POST", "https://hai.ai/api/v1/agents/hello", body, "hai.ai"
+    )
+    assert header.startswith("JACS v2.")
+
+    envelope = agent.sign_response('{"type":"connected"}')
+    parsed = json.loads(envelope)
+    signer_id = parsed["jacsSignature"]["agentID"]
+    verified = json.loads(
+        agent.unwrap_signed_event(
+            envelope, json.dumps({signer_id: agent.get_public_key_pem()})
+        )
+    )
+    assert verified["verified"] is True
+    assert verified["data"]["type"] == "connected"
+
+
+def test_request_auth_hashes_exact_binary_body_bytes():
+    agent, _ = SimpleAgent.ephemeral("ed25519")
+    body = b"\x00\xffbinary\x00body"
+    for bytes_like in (body, bytearray(body), memoryview(body)):
+        header = agent.build_request_auth_header(
+            "POST", "https://hai.ai/api/v1/jobs", bytes_like, "hai.ai"
+        )
+        claims_segment = header.removeprefix("JACS v2.").split(".", 1)[0]
+        claims = json.loads(
+            base64.urlsafe_b64decode(
+                claims_segment + "=" * (-len(claims_segment) % 4)
+            )
+        )
+        expected = base64.b64encode(hashlib.sha256(body).digest()).decode()
+        assert claims["contentDigest"] == f"sha-256=:{expected}:"
+
+    with pytest.raises(TypeError, match="contiguous"):
+        agent.build_request_auth_header(
+            "POST", "https://hai.ai/api/v1/jobs", memoryview(body)[::2], "hai.ai"
+        )
+
+    with pytest.raises(TypeError, match="str or a contiguous bytes-like object"):
+        agent.build_request_auth_header(
+            "POST", "https://hai.ai/api/v1/jobs", 123, "hai.ai"
+        )
 
 
 def test_python_exclusions_are_valid(method_parity: dict):

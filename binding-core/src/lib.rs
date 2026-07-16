@@ -18,9 +18,9 @@ use jacs::agent::{
 use jacs::config::Config;
 use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
+use reqwest::Url;
 use reqwest::blocking::Client as BlockingClient;
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
-use reqwest::{StatusCode, Url};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -52,6 +52,10 @@ pub struct BindingCoreError {
     pub message: String,
     pub kind: ErrorKind,
 }
+
+/// Stable prefix used when a native error crosses a language FFI boundary.
+/// The human-readable message follows the machine-readable `ErrorKind`.
+pub const PORTABLE_ERROR_KIND_PREFIX: &str = "JACS_ERROR_KIND=";
 
 /// Categories of errors for better handling by bindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,12 +91,45 @@ pub enum ErrorKind {
     Generic,
 }
 
+impl ErrorKind {
+    /// Stable cross-language spelling for this error category.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LockFailed => "LockFailed",
+            Self::AgentLoad => "AgentLoad",
+            Self::Validation => "Validation",
+            Self::SigningFailed => "SigningFailed",
+            Self::VerificationFailed => "VerificationFailed",
+            Self::DocumentFailed => "DocumentFailed",
+            Self::AgreementFailed => "AgreementFailed",
+            Self::SerializationFailed => "SerializationFailed",
+            Self::InvalidArgument => "InvalidArgument",
+            Self::TrustFailed => "TrustFailed",
+            Self::NetworkFailed => "NetworkFailed",
+            Self::KeyNotFound => "KeyNotFound",
+            Self::MissingSignature => "MissingSignature",
+            Self::Generic => "Generic",
+        }
+    }
+}
+
 impl BindingCoreError {
     pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             kind,
         }
+    }
+
+    /// Render an error with a stable category that survives Python, Node, and
+    /// Go FFI conversion without exposing implementation-specific details.
+    pub fn portable_message(&self) -> String {
+        format!(
+            "{}{}: {}",
+            PORTABLE_ERROR_KIND_PREFIX,
+            self.kind.as_str(),
+            self.message
+        )
     }
 
     pub fn lock_failed(message: impl Into<String>) -> Self {
@@ -172,6 +209,79 @@ impl<T> From<PoisonError<T>> for BindingCoreError {
 
 /// Result type for binding core operations.
 pub type BindingResult<T> = Result<T, BindingCoreError>;
+
+/// Reject oversized binding inputs before any JSON parser allocates from
+/// attacker-controlled structure. All FFI surfaces share the native JACS
+/// document-size policy (`JACS_MAX_DOCUMENT_SIZE`, 10 MiB by default).
+pub(crate) fn check_binding_json_size(input: &str, context: &str) -> BindingResult<()> {
+    jacs::schema::utils::check_document_size(input).map_err(|error| {
+        BindingCoreError::validation(format!("{context} exceeds the JSON input limit: {error}"))
+    })
+}
+
+/// Parse the cross-language `agent_id -> PEM-or-base64-key` map once for every
+/// protocol binding. Strict JSON parsing rejects duplicate names before a
+/// language-specific parser can collapse them differently.
+pub(crate) fn parse_server_public_keys_json(
+    input: &str,
+    context: &str,
+) -> BindingResult<HashMap<String, Vec<u8>>> {
+    check_binding_json_size(input, "server keys JSON")?;
+    let encoded: HashMap<String, String> = jacs_core::strict_json::deserialize_strict_json(input)
+        .map_err(|error| {
+        BindingCoreError::serialization_failed(format!(
+            "Failed to parse server keys JSON for {context}: {error}"
+        ))
+    })?;
+
+    encoded
+        .into_iter()
+        .map(|(agent_id, key)| {
+            if agent_id.trim().is_empty() {
+                return Err(BindingCoreError::invalid_argument(format!(
+                    "Server key ID for {context} must be non-empty"
+                )));
+            }
+            if key.is_empty() {
+                return Err(BindingCoreError::invalid_argument(format!(
+                    "Server public key for {agent_id} must be non-empty"
+                )));
+            }
+            let bytes = general_purpose::STANDARD
+                .decode(&key)
+                .unwrap_or_else(|_| key.into_bytes());
+            Ok((agent_id, bytes))
+        })
+        .collect()
+}
+
+/// Stateless helper for full-agent language adapters. The canonical public
+/// binding method remains on [`SimpleAgentWrapper`].
+///
+/// Replay preparation depends only on the exact signed-event bytes, pinned
+/// server keys, and freshness window; it must not load or imply a local agent
+/// identity.
+#[doc(hidden)]
+pub fn prepare_signed_event_replay_binding_json(
+    event_json: &str,
+    server_keys_json: &str,
+    max_age_seconds: u64,
+) -> BindingResult<String> {
+    check_binding_json_size(event_json, "signed event JSON")?;
+    let keys = parse_server_public_keys_json(server_keys_json, "prepare_signed_event_replay")?;
+    let prepared =
+        jacs::protocol::prepare_signed_event_replay_json(event_json, &keys, max_age_seconds)
+            .map_err(|error| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to prepare signed event replay: {error}"
+                ))
+            })?;
+    serde_json::to_string(&prepared).map_err(|error| {
+        BindingCoreError::serialization_failed(format!(
+            "Failed to serialize signed event replay preparation: {error}"
+        ))
+    })
+}
 
 fn serialize_agent_info(info: &jacs::simple::AgentInfo) -> BindingResult<String> {
     serde_json::to_string(info).map_err(|e| {
@@ -449,7 +559,7 @@ fn parse_json_object_body(
     invalid_json_message: String,
     non_object_message: String,
 ) -> BindingResult<String> {
-    let value: Value = serde_json::from_str(body)
+    let value: Value = jacs_core::strict_json::parse_strict_json(body)
         .map_err(|e| BindingCoreError::validation(format!("{}: {}", invalid_json_message, e)))?;
     if !value.is_object() {
         return Err(BindingCoreError::validation(non_object_message));
@@ -563,6 +673,22 @@ fn resolve_password_context(
                         e
                     ))
                 })?;
+            let has_identity = config
+                .jacs_agent_id_and_version()
+                .as_deref()
+                .is_some_and(|lookup| !lookup.trim().is_empty());
+            let integrity_result = if has_identity {
+                jacs::agent::Agent::verify_existing_config_before_use(&config)
+            } else {
+                jacs::agent::Agent::verify_new_config_before_use(&config)
+            };
+            integrity_result.map_err(|error| {
+                BindingCoreError::agent_load(format!(
+                    "Refusing password-path resolution from unverified config {}: {}",
+                    resolved_config_path.display(),
+                    error
+                ))
+            })?;
             let configured_key_dir = config
                 .jacs_key_directory()
                 .as_deref()
@@ -741,7 +867,7 @@ fn ensure_editable_agreement_document(
             }
         }
         Err(load_err) => {
-            if let Ok(parsed) = serde_json::from_str::<Value>(document_string)
+            if let Ok(parsed) = jacs_core::strict_json::parse_strict_json(document_string)
                 && (parsed.get("jacsId").is_some() || parsed.get("jacsVersion").is_some())
             {
                 return Err(BindingCoreError::document_failed(format!(
@@ -749,7 +875,7 @@ fn ensure_editable_agreement_document(
                     load_err
                 )));
             }
-            let payload = serde_json::from_str::<Value>(document_string)
+            let payload = jacs_core::strict_json::parse_strict_json(document_string)
                 .unwrap_or_else(|_| Value::String(document_string.to_string()));
             create_editable_agreement_document(agent, payload)
         }
@@ -788,8 +914,7 @@ impl<'a> jacs::inline::KeyResolver for AgentWrapperInlineResolver<'a> {
         let public_key = agent.get_public_key().ok()?;
         let algorithm = jacs::crypt::detect_algorithm_from_public_key(&public_key)
             .ok()
-            .map(binding_inline_algorithm_tag)
-            .unwrap_or_else(|| "ed25519".to_string());
+            .map(binding_inline_algorithm_tag)?;
         Some(jacs::inline::ResolvedKey {
             public_key_pem: public_key,
             algorithm,
@@ -1724,27 +1849,14 @@ impl AgentWrapper {
     /// Reads the encrypted private key file, decrypts with old_password,
     /// validates new_password, re-encrypts, and writes the updated file.
     pub fn reencrypt_key(&self, old_password: &str, new_password: &str) -> BindingResult<()> {
-        // Find key directory + filename from config
+        // Use the agent's resolved key paths. Raw config values may be
+        // relative to the config file rather than the process working directory.
         let agent = self.lock()?;
-        let (key_dir, key_file) = if let Some(config) = &agent.config {
-            (
-                config
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys")
-                    .to_string(),
-                config
-                    .jacs_agent_private_key_filename()
-                    .as_deref()
-                    .unwrap_or("jacs.private.pem.enc")
-                    .to_string(),
-            )
-        } else {
-            (
-                "./jacs_keys".to_string(),
-                "jacs.private.pem.enc".to_string(),
-            )
-        };
+        let key_paths = agent.key_paths().ok_or_else(|| {
+            BindingCoreError::agent_load("Agent has no resolved key paths. Call load() first.")
+        })?;
+        let key_dir = key_paths.key_directory.clone();
+        let key_file = key_paths.private_key_filename.clone();
         drop(agent);
 
         // SECURITY (KM-1): reject path traversal in the config-derived filename,
@@ -1770,8 +1882,10 @@ impl AgentWrapper {
 
     /// Rotate the agent's cryptographic keys.
     ///
-    /// Optionally change the signing algorithm. Uses the full rotation
-    /// pipeline (journal, save, config re-sign) via `advanced::rotate_with_mutex`.
+    /// Rotation always creates a `pq2025` native root. Omit `algorithm` or pass
+    /// `pq2025`; Ed25519 and unknown targets are rejected. Uses the full
+    /// rotation pipeline (journal, save, config re-sign) via
+    /// `advanced::rotate_with_mutex`.
     pub fn rotate_keys(&self, algorithm: Option<&str>) -> BindingResult<String> {
         // Resolve config path from the agent's config_dir
         let config_path = {
@@ -1804,9 +1918,8 @@ impl AgentWrapper {
     /// lives entirely in memory. Returns a JSON string with agent info
     /// (agent_id, name, version, algorithm). Default algorithm is `pq2025`.
     pub fn ephemeral(&self, algorithm: Option<&str>) -> BindingResult<String> {
-        // New agent creation is PQ-only: Ed25519 requests resolve to pq2025
-        // with a WARN, unknown algorithms are a typed error (same policy as
-        // jacs::simple creation paths).
+        // pq2025 is the default; supported Ed25519 aliases are honored and
+        // unknown algorithms are typed errors (same policy as SimpleAgent).
         let algo = jacs::simple::core::resolve_new_agent_algorithm(algorithm.unwrap_or(""))
             .map_err(|e| BindingCoreError::invalid_argument(e.to_string()))?;
         let algo = algo.as_str();
@@ -2043,14 +2156,28 @@ impl AgentWrapper {
         })
     }
 
-    /// Generate all .well-known documents for A2A discovery.
+    /// Generate the stable, identity-bound .well-known A2A document set.
+    ///
+    /// The card and JWKS reuse the persisted ES256 compatibility key and the
+    /// set includes its native-root-signed binding at the deterministic
+    /// compatibility-binding path. `a2a_algorithm` is compatibility-only:
+    /// omit it or pass `ES256`; obsolete choices are rejected.
     ///
     /// Returns a JSON string containing an array of [path, document] pairs.
     pub fn generate_well_known_documents(
         &self,
         a2a_algorithm: Option<&str>,
     ) -> BindingResult<String> {
-        let agent = self.lock()?;
+        if let Some(requested) = a2a_algorithm
+            && !requested.eq_ignore_ascii_case("ES256")
+        {
+            return Err(BindingCoreError::invalid_argument(format!(
+                "A2A well-known discovery uses the persisted compatibility key and fixed ES256 \
+                 algorithm; obsolete or unsupported explicit choice '{requested}' is rejected"
+            )));
+        }
+
+        let mut agent = self.lock()?;
         let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
         })?;
@@ -2058,29 +2185,18 @@ impl AgentWrapper {
             card.skills = explicit_a2a_skills(agent_value);
         }
 
-        let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
-        let dual_keys = jacs::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
-            BindingCoreError::generic(format!("Failed to generate A2A keys: {}", e))
-        })?;
+        let key_directory = agent
+            .key_paths()
+            .ok_or_else(|| {
+                BindingCoreError::agent_load("Agent has no resolved key paths. Call load() first.")
+            })?
+            .key_directory
+            .clone();
 
-        let agent_id = agent
-            .get_id()
-            .map_err(|e| BindingCoreError::generic(format!("Failed to get agent ID: {}", e)))?;
-
-        let jws = jacs::a2a::extension::sign_agent_card_jws(
-            &card,
-            &dual_keys.a2a_private_key,
-            &dual_keys.a2a_algorithm,
-            &agent_id,
-        )
-        .map_err(|e| BindingCoreError::generic(format!("Failed to sign Agent Card: {}", e)))?;
-
-        let documents = jacs::a2a::extension::generate_well_known_documents(
-            &agent,
-            &card,
-            &dual_keys.a2a_public_key,
-            &dual_keys.a2a_algorithm,
-            &jws,
+        let documents = jacs::a2a::extension::generate_bound_well_known_documents(
+            &mut agent,
+            &key_directory,
+            Some(card),
         )
         .map_err(|e| {
             BindingCoreError::generic(format!("Failed to generate well-known documents: {}", e))
@@ -2113,18 +2229,20 @@ impl AgentWrapper {
             tracing::warn!("wrap_a2a_artifact is deprecated, use sign_artifact instead");
         }
 
-        let artifact: Value = serde_json::from_str(artifact_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid artifact JSON: {}", e))
-        })?;
+        let artifact: Value =
+            jacs_core::strict_json::parse_strict_json(artifact_json).map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid artifact JSON: {}", e))
+            })?;
 
         let parent_signatures: Option<Vec<Value>> = match parent_signatures_json {
             Some(json_str) => {
-                let parsed: Vec<Value> = serde_json::from_str(json_str).map_err(|e| {
-                    BindingCoreError::invalid_argument(format!(
-                        "Invalid parent signatures JSON array: {}",
-                        e
-                    ))
-                })?;
+                let parsed: Vec<Value> = jacs_core::strict_json::deserialize_strict_json(json_str)
+                    .map_err(|e| {
+                        BindingCoreError::invalid_argument(format!(
+                            "Invalid parent signatures JSON array: {}",
+                            e
+                        ))
+                    })?;
                 Some(parsed)
             }
             None => None,
@@ -2165,9 +2283,10 @@ impl AgentWrapper {
     ///
     /// Returns the verification result as a JSON string.
     pub fn verify_a2a_artifact(&self, wrapped_json: &str) -> BindingResult<String> {
-        let wrapped: Value = serde_json::from_str(wrapped_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
-        })?;
+        let wrapped: Value =
+            jacs_core::strict_json::parse_strict_json(wrapped_json).map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
+            })?;
 
         let agent = self.lock()?;
         let result =
@@ -2192,9 +2311,10 @@ impl AgentWrapper {
         use jacs::a2a::AgentCard;
         use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
-        let card: AgentCard = serde_json::from_str(agent_card_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
-        })?;
+        let card: AgentCard = jacs_core::strict_json::deserialize_strict_json(agent_card_json)
+            .map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
+            })?;
 
         let trust_policy = A2ATrustPolicy::from_str_loose(policy).map_err(|e| {
             BindingCoreError::invalid_argument(format!("Invalid trust policy '{}': {}", policy, e))
@@ -2235,13 +2355,15 @@ impl AgentWrapper {
         use jacs::a2a::AgentCard;
         use jacs::a2a::trust::A2ATrustPolicy;
 
-        let wrapped: Value = serde_json::from_str(wrapped_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
-        })?;
+        let wrapped: Value =
+            jacs_core::strict_json::parse_strict_json(wrapped_json).map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
+            })?;
 
-        let card: AgentCard = serde_json::from_str(agent_card_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
-        })?;
+        let card: AgentCard = jacs_core::strict_json::deserialize_strict_json(agent_card_json)
+            .map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
+            })?;
 
         let trust_policy = A2ATrustPolicy::from_str_loose(policy).map_err(|e| {
             BindingCoreError::invalid_argument(format!("Invalid trust policy '{}': {}", policy, e))
@@ -2290,13 +2412,14 @@ impl AgentWrapper {
         use jacs::attestation::AttestationTraits;
         use jacs::attestation::types::*;
 
-        let params: Value = serde_json::from_str(params_json).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to parse attestation params JSON: {}. \
+        let params: Value =
+            jacs_core::strict_json::parse_strict_json(params_json).map_err(|e| {
+                BindingCoreError::serialization_failed(format!(
+                    "Failed to parse attestation params JSON: {}. \
                  Provide a valid JSON object with 'subject' and 'claims' fields.",
-                e
-            ))
-        })?;
+                    e
+                ))
+            })?;
 
         // Parse subject (required)
         let subject: AttestationSubject =
@@ -2424,13 +2547,14 @@ impl AgentWrapper {
     ) -> BindingResult<String> {
         use jacs::attestation::types::Claim;
 
-        let claims: Vec<Claim> = serde_json::from_str(claims_json).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to parse claims JSON: {}. \
+        let claims: Vec<Claim> = jacs_core::strict_json::deserialize_strict_json(claims_json)
+            .map_err(|e| {
+                BindingCoreError::serialization_failed(format!(
+                    "Failed to parse claims JSON: {}. \
                  Provide a valid JSON array of claim objects.",
-                e
-            ))
-        })?;
+                    e
+                ))
+            })?;
 
         let mut agent = self.lock()?;
         let jacs_doc =
@@ -2455,12 +2579,13 @@ impl AgentWrapper {
     /// Takes the attestation JSON string and returns a DSSE envelope JSON string.
     #[cfg(feature = "attestation")]
     pub fn export_attestation_dsse(&self, attestation_json: &str) -> BindingResult<String> {
-        let att_value: Value = serde_json::from_str(attestation_json).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to parse attestation JSON: {}",
-                e
-            ))
-        })?;
+        let att_value: Value = jacs_core::strict_json::parse_strict_json(attestation_json)
+            .map_err(|e| {
+                BindingCoreError::serialization_failed(format!(
+                    "Failed to parse attestation JSON: {}",
+                    e
+                ))
+            })?;
 
         let envelope = jacs::attestation::dsse::export_dsse(&att_value).map_err(|e| {
             BindingCoreError::document_failed(format!("Failed to export DSSE envelope: {}", e))
@@ -2478,22 +2603,46 @@ impl AgentWrapper {
     // Protocol helpers (delegates to jacs::protocol)
     // =========================================================================
 
-    /// Build the JACS `Authorization` header value.
+    /// Build the legacy unbound JACS `Authorization` header.
     ///
-    /// Format: `"JACS {jacs_id}:{unix_timestamp}:{base64_signature}"`.
-    /// Requires a loaded agent with keys.
+    /// This method is retained for source compatibility with HAI and older SDK
+    /// consumers. It emits a WARN because it does not bind method, URL, body,
+    /// or audience. New integrations should call [`Self::build_request_auth_header`].
     pub fn build_auth_header(&self) -> BindingResult<String> {
         let mut agent = self.lock()?;
+        #[allow(deprecated)]
         jacs::protocol::build_auth_header(&mut agent).map_err(|e| {
             BindingCoreError::signing_failed(format!("Failed to build auth header: {}", e))
         })
+    }
+
+    /// Build a request-bound JACS v2 `Authorization` header.
+    /// `body` must be the exact bytes sent on the wire; use an empty slice for
+    /// a request with no body.
+    pub fn build_request_auth_header(
+        &self,
+        method: &str,
+        url: &str,
+        body: &[u8],
+        audience: &str,
+    ) -> BindingResult<String> {
+        let mut agent = self.lock()?;
+        jacs::protocol::build_request_auth_header(&mut agent, method, url, body, audience).map_err(
+            |e| {
+                BindingCoreError::signing_failed(format!(
+                    "Failed to build request auth header: {}",
+                    e
+                ))
+            },
+        )
     }
 
     /// Deterministically serialize a JSON string per RFC 8785 (JCS).
     ///
     /// Accepts a JSON string, parses it, and returns the canonicalized form.
     pub fn canonicalize_json(&self, json_string: &str) -> BindingResult<String> {
-        let value: Value = serde_json::from_str(json_string).map_err(|e| {
+        check_binding_json_size(json_string, "canonicalization JSON")?;
+        let value: Value = jacs_core::strict_json::parse_strict_json(json_string).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
                 "Failed to parse JSON for canonicalization: {}",
                 e
@@ -2508,13 +2657,15 @@ impl AgentWrapper {
     /// containing `version`, `document_type`, `data`, `metadata`, and
     /// `jacsSignature`.
     pub fn sign_response(&self, payload_json: &str) -> BindingResult<String> {
+        check_binding_json_size(payload_json, "response payload JSON")?;
         let mut agent = self.lock()?;
-        let payload: Value = serde_json::from_str(payload_json).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to parse payload JSON for sign_response: {}",
-                e
-            ))
-        })?;
+        let payload: Value =
+            jacs_core::strict_json::parse_strict_json(payload_json).map_err(|e| {
+                BindingCoreError::serialization_failed(format!(
+                    "Failed to parse payload JSON for sign_response: {}",
+                    e
+                ))
+            })?;
         let result = jacs::protocol::sign_response(&mut agent, &payload).map_err(|e| {
             BindingCoreError::signing_failed(format!("Failed to sign response: {}", e))
         })?;
@@ -2545,59 +2696,57 @@ impl AgentWrapper {
         })
     }
 
-    /// Extract the document ID from a JACS-signed document.
+    /// Inspect a document ID without verifying the document.
     ///
     /// Checks `jacsDocumentId`, `document_id`, `id` in priority order.
-    /// SDK clients use this to build hosted verification URLs.
+    /// SDK clients use this to build hosted verification URLs. The result is
+    /// attacker-controlled until separate verification succeeds and must not
+    /// drive authorization, key lookup, replay, or trust decisions.
     pub fn extract_document_id(&self, document: &str) -> BindingResult<String> {
         jacs::protocol::extract_document_id(document)
             .map_err(|e| BindingCoreError::generic(format!("Failed to extract document ID: {}", e)))
     }
 
-    /// Unwrap a JACS-signed event, verifying the signature when the signer's
-    /// public key is known.
+    /// Verify and unwrap a fully-bound v2 JACS response event.
     ///
     /// `event_json` is the signed event as a JSON string.
-    /// `server_keys_json` is a JSON object mapping agent IDs to base64-encoded
-    /// public key bytes: `{"agent_id": "base64_key", ...}`.
+    /// `server_keys_json` is a JSON object mapping agent IDs to canonical PEM
+    /// text or base64-encoded raw public-key bytes.
     ///
-    /// Returns a JSON string: `{"data": <unwrapped>, "verified": <bool>}`.
+    /// Returns data only after successful verification, together with
+    /// authenticated provenance: `verified`, `status`, `signerId`, `timestamp`,
+    /// `algorithm`, and `documentId`. Unknown signers, plain/legacy events, and
+    /// invalid envelopes return an error and never expose unverified data.
     pub fn unwrap_signed_event(
         &self,
         event_json: &str,
         server_keys_json: &str,
     ) -> BindingResult<String> {
+        check_binding_json_size(event_json, "signed event JSON")?;
         let agent = self.lock()?;
-        let event: Value = serde_json::from_str(event_json).map_err(|e| {
+        let event: Value = jacs_core::strict_json::parse_strict_json(event_json).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
                 "Failed to parse event JSON for unwrap_signed_event: {}",
                 e
             ))
         })?;
-        let keys_map: HashMap<String, String> =
-            serde_json::from_str(server_keys_json).map_err(|e| {
-                BindingCoreError::serialization_failed(format!(
-                    "Failed to parse server keys JSON for unwrap_signed_event: {}",
-                    e
-                ))
-            })?;
-        let keys: HashMap<String, Vec<u8>> = keys_map
-            .into_iter()
-            .map(|(k, v)| {
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(&v)
-                    .unwrap_or_else(|_| v.into_bytes());
-                (k, bytes)
-            })
-            .collect();
-        let (data, verified) =
-            jacs::protocol::unwrap_signed_event(&agent, &event, &keys).map_err(|e| {
+        let keys = parse_server_public_keys_json(server_keys_json, "unwrap_signed_event")?;
+        let verified =
+            jacs::protocol::verify_signed_event_strict(&agent, &event, &keys).map_err(|e| {
                 BindingCoreError::verification_failed(format!(
                     "Failed to unwrap signed event: {}",
                     e
                 ))
             })?;
-        let result = json!({"data": data, "verified": verified});
+        let result = json!({
+            "data": verified.data,
+            "verified": true,
+            "status": "verified",
+            "signerId": verified.signer_id,
+            "timestamp": verified.timestamp,
+            "algorithm": verified.algorithm,
+            "documentId": verified.document_id,
+        });
         serde_json::to_string(&result).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
                 "Failed to serialize unwrap_signed_event result: {}",
@@ -2662,21 +2811,43 @@ pub fn verify_document_standalone(
     use std::path::{Path, PathBuf};
     use std::sync::{Mutex, OnceLock};
 
+    // Preserve the long-standing standalone contract for ordinary malformed
+    // syntax: verification returns valid=false rather than throwing. A
+    // duplicate-key document is different: serde_json accepts it and collapses
+    // one value, so it must remain a hard error before any metadata extraction.
+    if serde_json::from_str::<serde_json::Value>(signed_document).is_err() {
+        return Ok(VerificationResult {
+            valid: false,
+            signer_id: String::new(),
+            timestamp: String::new(),
+            agent_version: String::new(),
+        });
+    }
+    jacs_core::strict_json::parse_strict_json(signed_document).map_err(|e| {
+        BindingCoreError::serialization_failed(format!(
+            "Failed to parse signed document JSON: {}",
+            e
+        ))
+    })?;
+
     fn absolutize_dir(raw: &str) -> String {
         let p = PathBuf::from(raw);
-        if p.is_absolute() {
-            p.to_string_lossy().to_string()
+        let absolute = if p.is_absolute() {
+            p
         } else {
             std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join(p)
-                .to_string_lossy()
-                .to_string()
-        }
+        };
+        absolute
+            .canonicalize()
+            .unwrap_or(absolute)
+            .to_string_lossy()
+            .to_string()
     }
 
     fn sig_field(doc: &str, field: &str) -> String {
-        serde_json::from_str::<Value>(doc)
+        jacs_core::strict_json::parse_strict_json(doc)
             .ok()
             .and_then(|v| {
                 v.get("jacsSignature")
@@ -2727,7 +2898,7 @@ pub fn verify_document_standalone(
 
                 let metadata = match std::fs::read_to_string(&path)
                     .ok()
-                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                    .and_then(|s| jacs_core::strict_json::parse_strict_json(&s).ok())
                 {
                     Some(v) => v,
                     None => continue,
@@ -2785,9 +2956,22 @@ pub fn verify_document_standalone(
         .lock()
         .map_err(|e| BindingCoreError::generic(format!("Failed to lock standalone verify: {e}")))?;
 
-    let signer_id = sig_field(signed_document, "agentID");
-    let timestamp = sig_field(signed_document, "date");
-    let agent_version = sig_field(signed_document, "agentVersion");
+    let legacy_signature = jacs_core::strict_json::parse_strict_json(signed_document)
+        .ok()
+        .and_then(|value| value.get("jacsSignature").cloned())
+        .is_some_and(|signature| signature.get("signatureContentVersion").is_none());
+    // Legacy-v1 compatibility authenticates the payload, not these metadata
+    // fields. Keep them empty so a successful compatibility result cannot be
+    // mistaken for trusted signer/time/version attribution.
+    let (signer_id, timestamp, agent_version) = if legacy_signature {
+        (String::new(), String::new(), String::new())
+    } else {
+        (
+            sig_field(signed_document, "agentID"),
+            sig_field(signed_document, "date"),
+            sig_field(signed_document, "agentVersion"),
+        )
+    };
     let signer_public_key_hash = sig_field(signed_document, "publicKeyHash");
 
     // Always resolve caller-provided directories to absolute paths so relative
@@ -3082,78 +3266,22 @@ pub fn ensure_network_access(capability: &str) -> BindingResult<()> {
 
 /// Fetch an A2A Agent Card JSON object using Rust-owned network policy and HTTP behavior.
 pub fn fetch_agent_card(base_url: &str, timeout_ms: Option<u64>) -> BindingResult<String> {
-    let trimmed = base_url.trim();
-    if trimmed.is_empty() {
-        return Err(BindingCoreError::invalid_argument(
-            "Agent base URL cannot be empty",
-        ));
+    #[cfg(feature = "a2a")]
+    {
+        jacs::a2a::trust::fetch_agent_card_json(base_url, timeout_ms).map_err(|error| {
+            BindingCoreError::network_failed(format!(
+                "Identity-safe Agent Card fetch failed: {error}"
+            ))
+        })
     }
 
-    let card_url = format!(
-        "{}/.well-known/agent-card.json",
-        trimmed.trim_end_matches('/')
-    );
-    let parsed_url = Url::parse(&card_url).map_err(|e| {
-        BindingCoreError::invalid_argument(format!("Invalid agent URL '{}': {}", base_url, e))
-    })?;
-    validate_network_url(&parsed_url, "Agent Card URL")?;
-    jacs::config::ensure_network_access(jacs::config::NetworkCapability::AgentCardFetch)
-        .map_err(|e| BindingCoreError::network_failed(e.to_string()))?;
-
-    let client = build_blocking_json_client(timeout_ms.unwrap_or(DEFAULT_NETWORK_TIMEOUT_MS))?;
-    let response = client
-        .get(parsed_url.clone())
-        .header(ACCEPT, "application/json")
-        .send()
-        .map_err(|e| {
-            if e.is_timeout() {
-                BindingCoreError::network_failed(format!(
-                    "Agent discovery timed out: {}",
-                    parsed_url
-                ))
-            } else {
-                BindingCoreError::network_failed(format!(
-                    "Agent unreachable: {} ({})",
-                    parsed_url, e
-                ))
-            }
-        })?;
-
-    if response.status() == StatusCode::NOT_FOUND {
-        return Err(BindingCoreError::network_failed(format!(
-            "Agent card not found (404): {}",
-            parsed_url
-        )));
-    }
-
-    if !response.status().is_success() {
-        return Err(BindingCoreError::network_failed(format!(
-            "Agent card request failed (HTTP {}): {}",
-            response.status(),
-            parsed_url
-        )));
-    }
-
-    let content_type = content_type_header(&response);
-    if !content_type.is_empty() && !content_type.to_ascii_lowercase().contains("json") {
-        return Err(BindingCoreError::validation(format!(
-            "Agent card response is not JSON (content-type: {}): {}",
-            content_type, parsed_url
-        )));
-    }
-
-    let body = response.text().map_err(|e| {
-        BindingCoreError::network_failed(format!(
-            "Failed to read Agent Card response from {}: {}",
-            parsed_url, e
+    #[cfg(not(feature = "a2a"))]
+    {
+        let _ = (base_url, timeout_ms);
+        Err(BindingCoreError::network_failed(
+            "Agent Card discovery requires the binding-core 'a2a' feature; refusing the legacy unbounded fetch path",
         ))
-    })?;
-
-    parse_json_object_body(
-        &body,
-        format!("Agent card is not valid JSON: {}", parsed_url),
-        format!("Agent card at {} is not a JSON object", parsed_url),
-    )
+    }
 }
 
 /// Fetch a remote key lookup JSON object using Rust-owned network policy and HTTP behavior.
@@ -3532,6 +3660,7 @@ pub use jacs;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::path::PathBuf;
     use tempfile::tempdir;
 
@@ -3551,11 +3680,23 @@ mod tests {
     }
 
     #[test]
-    fn verify_standalone_tampered_document_returns_valid_false_with_signer_id() {
+    fn verify_standalone_duplicate_keys_are_a_hard_error() {
+        let error = verify_document_standalone(
+            r#"{"jacsSignature":{"agentID":"trusted","agentID":"attacker"}}"#,
+            Some("local"),
+            None,
+            None,
+        )
+        .expect_err("ambiguous standalone documents must be rejected");
+        assert!(error.message.contains("duplicate JSON object key"));
+    }
+
+    #[test]
+    fn verify_standalone_legacy_tampered_document_suppresses_untrusted_signer_id() {
         let tampered = r#"{"jacsSignature":{"agentID":"golden-test-agent","agentVersion":"v1"},"jacsSha256":"x"}"#;
         let result = verify_document_standalone(tampered, Some("local"), None, None).unwrap();
         assert!(!result.valid);
-        assert_eq!(result.signer_id, "golden-test-agent");
+        assert_eq!(result.signer_id, "");
     }
 
     #[test]
@@ -3574,7 +3715,7 @@ mod tests {
         )
         .unwrap();
         assert!(!result.valid);
-        assert_eq!(result.signer_id, "golden-test-agent");
+        assert_eq!(result.signer_id, "");
     }
 
     #[test]
@@ -3588,7 +3729,7 @@ mod tests {
         )
         .unwrap();
         assert!(!result.valid);
-        assert_eq!(result.signer_id, "some-agent");
+        assert_eq!(result.signer_id, "");
     }
 
     #[cfg(unix)]
@@ -3624,7 +3765,51 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "pre-existing: cross-language fixture verification fails with relative parent paths"]
+    #[serial(jacs_env)]
+    fn password_context_rejects_tampered_signed_config_before_using_key_path() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonical tempdir");
+        let data_dir = root.join("data");
+        let key_dir = root.join("keys");
+        let config_path = root.join("jacs.config.json");
+        let data_dir_string = data_dir.to_string_lossy().into_owned();
+        let key_dir_string = key_dir.to_string_lossy().into_owned();
+        let config_path_string = config_path.to_string_lossy().into_owned();
+        let params = jacs::simple::CreateAgentParams::builder()
+            .name("binding-password-config-integrity")
+            .password("BindingConfigIntegrity!2026")
+            .algorithm("ed25519")
+            .data_directory(&data_dir_string)
+            .key_directory(&key_dir_string)
+            .config_path(&config_path_string)
+            .build();
+        let _ = jacs::simple::SimpleAgent::create_with_params(params)
+            .expect("create signed config fixture");
+
+        let mut config: Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).expect("read signed config"))
+                .expect("parse signed config");
+        let attacker_dir = root.join("attacker-password-dir");
+        fs::create_dir_all(&attacker_dir).expect("attacker dir");
+        fs::write(attacker_dir.join(".jacs_password"), "attacker-secret")
+            .expect("attacker password file");
+        config["jacs_key_directory"] = json!(attacker_dir.to_string_lossy());
+        fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&config).expect("serialize tampered config"),
+        )
+        .expect("write tampered config");
+
+        let error = resolve_password_context(Some(&config_path_string), None)
+            .expect_err("tampered config-controlled password path must be rejected");
+        assert!(
+            error.message.contains("unverified config"),
+            "error should identify the config integrity boundary: {}",
+            error.message
+        );
+    }
+
+    #[test]
     fn verify_standalone_accepts_relative_parent_paths_from_subdir() {
         let Some(fixtures_dir) = cross_language_fixtures_dir() else {
             eprintln!("Skipping: cross-language fixtures directory not found");
@@ -3815,7 +4000,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     fn ephemeral_wrapper() -> AgentWrapper {
         let wrapper = AgentWrapper::new();
-        wrapper.ephemeral(Some("ed25519")).unwrap();
+        wrapper.ephemeral(Some("pq2025")).unwrap();
         wrapper
     }
 
@@ -3918,20 +4103,36 @@ mod tests {
     /// Helper: create an ephemeral AgentWrapper for protocol tests.
     fn protocol_wrapper() -> AgentWrapper {
         let wrapper = AgentWrapper::new();
-        wrapper.ephemeral(Some("ed25519")).unwrap();
+        wrapper.ephemeral(Some("pq2025")).unwrap();
         wrapper
     }
 
     #[test]
-    fn protocol_build_auth_header_starts_with_jacs() {
+    fn protocol_auth_builders_are_additive() {
         let wrapper = protocol_wrapper();
+        let legacy = wrapper.build_auth_header().expect("legacy auth header");
+        assert!(legacy.starts_with("JACS "));
         let header = wrapper
-            .build_auth_header()
-            .expect("build_auth_header failed");
+            .build_request_auth_header(
+                "POST",
+                "https://api.example.test/v1/jobs?mode=fast",
+                br#"{"task":"review"}"#,
+                "hai-api",
+            )
+            .expect("build_request_auth_header failed");
         assert!(
-            header.starts_with("JACS "),
-            "Header must start with 'JACS ', got: {header}"
+            header.starts_with("JACS v2."),
+            "Header must start with 'JACS v2.', got: {header}"
         );
+    }
+
+    #[test]
+    fn protocol_request_auth_header_rejects_invalid_request_context() {
+        let wrapper = protocol_wrapper();
+        let error = wrapper
+            .build_request_auth_header("", "https://api.example.test", b"", "hai-api")
+            .expect_err("empty method must fail");
+        assert_eq!(error.kind, ErrorKind::SigningFailed);
     }
 
     #[test]
@@ -3952,6 +4153,17 @@ mod tests {
     }
 
     #[test]
+    fn protocol_canonicalize_json_rejects_duplicate_keys() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.canonicalize_json(
+            r#"{"role":"reader","nested":{"agentID":"trusted","agent\u0049D":"attacker"}}"#,
+        );
+        let err = result.expect_err("ambiguous JSON must not be canonicalized");
+        assert_eq!(err.kind, ErrorKind::SerializationFailed);
+        assert!(err.message.contains("duplicate JSON object key"));
+    }
+
+    #[test]
     fn protocol_sign_response_has_required_fields() {
         let wrapper = protocol_wrapper();
         let result = wrapper
@@ -3963,7 +4175,11 @@ mod tests {
             envelope.get("jacsSignature").is_some(),
             "missing 'jacsSignature'"
         );
-        assert_eq!(envelope["version"], "1.0.0");
+        assert_eq!(envelope["version"], "2.0.0");
+        assert_eq!(
+            envelope["jacsSignature"]["signatureContentVersion"],
+            "jacs-response-v2"
+        );
     }
 
     #[test]
@@ -3972,6 +4188,15 @@ mod tests {
         let result = wrapper.sign_response("not json");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind, ErrorKind::SerializationFailed);
+    }
+
+    #[test]
+    fn protocol_sign_response_rejects_duplicate_keys() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.sign_response(r#"{"amount":1,"amount":1000000}"#);
+        let err = result.expect_err("ambiguous JSON must never be signed");
+        assert_eq!(err.kind, ErrorKind::SerializationFailed);
+        assert!(err.message.contains("duplicate JSON object key"));
     }
 
     #[test]
@@ -4010,42 +4235,111 @@ mod tests {
     }
 
     #[test]
-    fn protocol_unwrap_signed_event_unknown_agent_unverified() {
+    fn protocol_unwrap_signed_event_unknown_agent_fails_closed() {
         let wrapper = protocol_wrapper();
         let event = r#"{"data":{"result":"hello"},"jacsSignature":{"agentID":"unknown:v1","date":"2026-01-01T00:00:00Z","signature":"fakesig"}}"#;
         let keys = r#"{}"#;
-        let result = wrapper
+        let error = wrapper
             .unwrap_signed_event(event, keys)
-            .expect("unwrap_signed_event failed");
-        let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
-        assert_eq!(parsed["verified"], false);
-        assert_eq!(parsed["data"]["result"], "hello");
+            .expect_err("unknown signer must not release data");
+        assert_eq!(error.kind, ErrorKind::VerificationFailed);
     }
 
     #[test]
-    fn protocol_unwrap_signed_event_legacy_payload() {
+    fn protocol_unwrap_signed_event_legacy_payload_fails_closed() {
         let wrapper = protocol_wrapper();
         let event = r#"{"payload":{"status":"ok"}}"#;
         let keys = r#"{}"#;
-        let result = wrapper
+        let error = wrapper
             .unwrap_signed_event(event, keys)
-            .expect("unwrap_signed_event failed");
-        let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
-        assert_eq!(parsed["verified"], false);
-        assert_eq!(parsed["data"]["status"], "ok");
+            .expect_err("legacy payload must not release data");
+        assert_eq!(error.kind, ErrorKind::VerificationFailed);
     }
 
     #[test]
-    fn protocol_unwrap_signed_event_plain_event() {
+    fn protocol_unwrap_signed_event_plain_event_fails_closed() {
         let wrapper = protocol_wrapper();
         let event = r#"{"type":"heartbeat","ts":12345}"#;
         let keys = r#"{}"#;
-        let result = wrapper
+        let error = wrapper
             .unwrap_signed_event(event, keys)
-            .expect("unwrap_signed_event failed");
-        let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
-        assert_eq!(parsed["verified"], false);
-        assert_eq!(parsed["data"]["type"], "heartbeat");
+            .expect_err("plain event must not release data");
+        assert_eq!(error.kind, ErrorKind::VerificationFailed);
+    }
+
+    #[test]
+    fn protocol_unwrap_signed_event_returns_verified_provenance_only() {
+        let wrapper = protocol_wrapper();
+        let event = wrapper
+            .sign_response(r#"{"result":"hello"}"#)
+            .expect("sign response");
+        let event_value: Value = serde_json::from_str(&event).expect("response JSON");
+        let signer_id = event_value["jacsSignature"]["agentID"]
+            .as_str()
+            .expect("agentID");
+        let public_key = wrapper
+            .lock()
+            .expect("agent lock")
+            .get_public_key()
+            .expect("public key");
+        let keys = serde_json::to_string(&json!({
+            (signer_id): base64::engine::general_purpose::STANDARD.encode(public_key),
+        }))
+        .expect("keys JSON");
+
+        let result = wrapper
+            .unwrap_signed_event(&event, &keys)
+            .expect("verified response should unwrap");
+        let parsed: Value = serde_json::from_str(&result).expect("result JSON");
+        assert_eq!(parsed["verified"], true);
+        assert_eq!(parsed["status"], "verified");
+        assert_eq!(parsed["data"]["result"], "hello");
+        assert_eq!(parsed["signerId"], signer_id);
+        assert_eq!(parsed["algorithm"], "pq2025");
+        assert!(parsed["documentId"].as_str().is_some());
+    }
+
+    #[test]
+    fn protocol_prepare_signed_event_replay_never_releases_payload() {
+        let wrapper = protocol_wrapper();
+        let event = wrapper
+            .sign_response(r#"{"secret":"pending replay"}"#)
+            .expect("sign response");
+        let event_value: Value = serde_json::from_str(&event).expect("response JSON");
+        let signer_id = event_value["jacsSignature"]["agentID"]
+            .as_str()
+            .expect("agentID");
+        let public_key = wrapper
+            .lock()
+            .expect("agent lock")
+            .get_public_key()
+            .expect("public key");
+        let keys = serde_json::to_string(&json!({
+            (signer_id): base64::engine::general_purpose::STANDARD.encode(public_key),
+        }))
+        .expect("keys JSON");
+
+        let claim = crate::prepare_signed_event_replay_binding_json(&event, &keys, 300)
+            .expect("prepare signed event replay");
+        let claim: Value = serde_json::from_str(&claim).expect("claim JSON");
+        assert_eq!(claim["status"], "crypto_verified_replay_pending");
+        assert_eq!(claim["replayConsumed"], false);
+        assert!(claim.get("data").is_none());
+        assert!(claim.get("verified").is_none());
+        assert!(claim["replayKey"].as_str().is_some());
+    }
+
+    #[test]
+    fn protocol_server_key_maps_reject_duplicate_or_empty_ids() {
+        let duplicate = r#"{"agent":"a","agent":"b"}"#;
+        let duplicate_error = crate::prepare_signed_event_replay_binding_json("{}", duplicate, 300)
+            .expect_err("duplicate key IDs must fail strict parsing");
+        assert_eq!(duplicate_error.kind, ErrorKind::SerializationFailed);
+
+        let empty_error =
+            crate::prepare_signed_event_replay_binding_json("{}", r#"{"":"key"}"#, 300)
+                .expect_err("empty key IDs must fail before verification");
+        assert_eq!(empty_error.kind, ErrorKind::InvalidArgument);
     }
 
     #[test]
@@ -4074,7 +4368,7 @@ mod tests {
 
         fn attestation_wrapper() -> AgentWrapper {
             let wrapper = AgentWrapper::new();
-            wrapper.ephemeral(Some("ed25519")).unwrap();
+            wrapper.ephemeral(Some("pq2025")).unwrap();
             wrapper
         }
 

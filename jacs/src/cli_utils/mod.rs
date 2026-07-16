@@ -97,11 +97,7 @@ fn set_file_list(
 }
 
 pub fn get_storage_default_for_cli() -> Result<MultiStorage, JacsError> {
-    let storage: Option<MultiStorage> =
-        Some(MultiStorage::default_new().expect("Failed to initialize storage"));
-    if let Some(storage) = storage {
-        Ok(storage)
-    } else {
-        Err("Storage not initialized".into())
-    }
+    MultiStorage::default_new().map_err(|error| {
+        JacsError::StorageError(format!("Failed to initialize CLI storage: {error}"))
+    })
 }

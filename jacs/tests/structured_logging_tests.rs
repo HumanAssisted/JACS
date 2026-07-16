@@ -494,7 +494,7 @@ mod attestation_tracing {
     use std::collections::HashMap;
 
     fn ephemeral_agent() -> SimpleAgent {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
         agent
     }
 
@@ -658,23 +658,16 @@ mod attestation_tracing {
 }
 
 // =============================================================================
-// P2 Task 001 — grandfathered Ed25519 signing emits the deprecation WARN.
-//
-// New agent creation and all rotations are PQ-only, but an existing
-// Ed25519-rooted agent keeps signing (no silent break for pinned
-// downstream consumers). Every such native signature emits
-// `native_legacy_ed25519_sign` at WARN so operators can watch fleet
-// drift; the fix is rotation, which always migrates to pq2025.
+// Supported Ed25519 signing is reported as a normal successful operation.
+// It must not emit the obsolete legacy/deprecation warning.
 // =============================================================================
 
 #[test]
 #[serial]
-fn test_grandfathered_ed25519_sign_warns() {
+fn test_supported_ed25519_sign_has_truthful_logs() {
     let _password = PasswordEnvGuard::set();
     let _scope = ScopedTempCwd::enter("jacs_structlog_grandfather");
 
-    // Build a grandfathered fixture agent via the legacy/test-only escape
-    // hatch (public creation paths are PQ-only and resolve ed25519 away).
     let params = jacs::simple::CreateAgentParams::builder()
         .name("legacy-ed25519-grandfather")
         .password(TEST_PASSWORD)
@@ -683,31 +676,27 @@ fn test_grandfathered_ed25519_sign_warns() {
         .key_directory("./jacs_keys")
         .config_path("./jacs.config.json")
         .build();
-    let (agent, info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
-        .expect("legacy fixture agent");
-    assert!(
-        info.algorithm.contains("Ed25519"),
-        "fixture builder must produce a genuine Ed25519 root, got {}",
-        info.algorithm
-    );
+    let (agent, info) = SimpleAgent::create_with_params(params).expect("Ed25519 agent");
+    assert_eq!(info.algorithm, "ring-Ed25519");
 
     let events = with_captured_logs(|| {
         let _ = agent
-            .sign_message(&json!({"legacy": true}))
-            .expect("grandfathered Ed25519 sign must still succeed");
+            .sign_message(&json!({"algorithm": "ed25519"}))
+            .expect("supported Ed25519 sign");
     });
 
     let warns = events_with_name(&events, "native_legacy_ed25519_sign");
     assert!(
-        !warns.is_empty(),
-        "grandfathered Ed25519 sign must emit native_legacy_ed25519_sign. All events: {:?}",
+        warns.is_empty(),
+        "supported Ed25519 must not emit a false legacy warning. All events: {:?}",
         events.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
+    let completions = events_with_name(&events, "signing_procedure_complete");
     assert_eq!(
-        warns[0].level,
-        Level::WARN,
-        "native_legacy_ed25519_sign must be WARN, not DEBUG"
+        completions.len(),
+        1,
+        "one signing completion event expected"
     );
-    // PRD §9.8 names the identity field `jacs_id` (not `agent_id`).
-    assert_has_field(warns[0], "jacs_id");
+    assert_eq!(get_field(completions[0], "algorithm"), Some("ring-Ed25519"));
+    assert_has_field(completions[0], "agent_id");
 }

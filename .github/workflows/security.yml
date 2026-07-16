@@ -1,0 +1,197 @@
+name: Release security gates
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy-and-rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
+        with:
+          toolchain: "1.97"
+
+      - name: Check immutable workflow dependencies
+        run: ./scripts/check-action-pins.sh
+
+      - name: Check advisory exception deadlines and reachability
+        run: ./scripts/check-security-exceptions.py
+
+      - name: Check source and shipped-artifact matrix
+        run: ./scripts/check-release-matrix.py
+
+      - name: Check project license consistency
+        run: python3 scripts/check_project_license.py
+
+      - name: Check THIRD-PARTY-NOTICES freshness
+        run: python3 scripts/third_party_notices.py --check
+
+      - name: Test release and security policy contracts
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Install pinned Rust audit tools
+        run: |
+          cargo install cargo-audit --locked --version 0.22.1
+          cargo install cargo-deny --locked --version 0.19.0
+
+      - name: Audit workspace lock
+        run: |
+          cargo audit
+          cargo deny --all-features check advisories
+          cargo deny --all-features check licenses
+
+      - name: Audit separate SurrealDB lock
+        run: |
+          cargo audit --file jacs-surrealdb/Cargo.lock \
+            --ignore RUSTSEC-2023-0071
+          cargo deny --manifest-path jacs-surrealdb/Cargo.toml --all-features check advisories licenses
+
+      - name: Audit standalone observability example lock
+        run: |
+          cargo audit --file jacs/examples/observability/Cargo.lock
+          cargo deny --manifest-path jacs/examples/observability/Cargo.toml --all-features check advisories licenses
+
+      - name: Pinned full-history secret scan
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          curl --fail --location --silent --show-error \
+            --output /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git --redact --no-banner \
+            --gitleaks-ignore-path .gitleaksignore .
+
+  node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: jacsnpm
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            jacsnpm/package-lock.json
+            jacsnpm/examples/package-lock.json
+            jacsnpm/examples/langchain/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Blocking source and example-lock audits
+        run: |
+          npm audit --audit-level=high
+          npm audit --package-lock-only --audit-level=high --prefix examples
+          npm audit --package-lock-only --audit-level=high --prefix examples/langchain
+      - name: Audit WASM Vite smoke lock
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: npm audit --package-lock-only --audit-level=high
+      - name: Build and audit the exact npm package candidate
+        run: |
+          set -euo pipefail
+          pack_dir="$(mktemp -d)"
+          extract_dir="$(mktemp -d)"
+          npm pack --ignore-scripts --json --pack-destination "$pack_dir" > /tmp/jacsnpm-pack.json
+          tarball="$(node -e 'const p=require("/tmp/jacsnpm-pack.json"); if (p.length !== 1) throw new Error("expected one tarball, got "+p.length); process.stdout.write(p[0].filename)')"
+          tar -tzf "$pack_dir/$tarball" >/tmp/jacsnpm-pack-files.txt
+          tar -xzf "$pack_dir/$tarball" -C "$extract_dir"
+          cd "$extract_dir/package"
+          npm install --package-lock-only --ignore-scripts
+          npm audit --package-lock-only --audit-level=high
+          npm sbom --package-lock-only --sbom-format=spdx > /tmp/jacsnpm.spdx.json
+          node -e 'const s=JSON.parse(require("fs").readFileSync("/tmp/jacsnpm.spdx.json", "utf8")); if (!String(s.spdxVersion || "").startsWith("SPDX-2.") || !Array.isArray(s.packages) || s.packages.length === 0) throw new Error("npm SPDX SBOM is empty or malformed")'
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned audit tools
+        run: python -m pip install "pip-audit==2.9.0" "uv==0.11.28"
+      - name: Audit core and each optional extra
+        working-directory: jacspy
+        run: |
+          set -euo pipefail
+          extras=(core mcp ws langchain langgraph crewai fastapi anthropic a2a a2a-server all)
+          for extra in "${extras[@]}"; do
+            requirements="/tmp/jacs-${extra}.txt"
+            if [ "$extra" = core ]; then
+              uv export --locked --no-dev --no-emit-project --no-hashes --output-file "$requirements" >/dev/null
+            else
+              uv export --locked --no-dev --no-emit-project --no-hashes --extra "$extra" --output-file "$requirements" >/dev/null
+            fi
+            if [ "$extra" = crewai ] || [ "$extra" = all ]; then
+              pip-audit --requirement "$requirements" \
+                --ignore-vuln PYSEC-2026-311 \
+                --ignore-vuln GHSA-f4j7-r4q5-qw2c \
+                --ignore-vuln GHSA-xf7x-x43h-rpqh
+            else
+              pip-audit --requirement "$requirements"
+            fi
+          done
+      - name: Audit standalone Python MCP example lock
+        working-directory: jacspy/examples/jacs-mcp
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-hashes --output-file /tmp/jacs-mcp-example.txt >/dev/null
+          pip-audit --disable-pip --no-deps --requirement /tmp/jacs-mcp-example.txt
+      - name: Audit standalone Python requirements examples
+        working-directory: jacspy
+        run: |
+          set -euo pipefail
+          for requirements in \
+            examples/http/requirements.txt \
+            examples/mcp/requirements.txt \
+            examples/langchain/requirements.txt
+          do
+            pip-audit --requirement "$requirements"
+          done
+      - name: Generate Python CycloneDX SBOM
+        working-directory: jacspy
+        run: |
+          uv export --locked --all-extras --format cyclonedx1.5 --output-file /tmp/jacspy.cdx.json >/dev/null
+          python -c 'import json; s=json.load(open("/tmp/jacspy.cdx.json", encoding="utf-8")); assert s.get("bomFormat") == "CycloneDX" and s.get("components"), "Python CycloneDX SBOM is empty or malformed"'
+
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26"
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+      - name: Audit Go binding
+        working-directory: jacsgo
+        run: govulncheck ./...

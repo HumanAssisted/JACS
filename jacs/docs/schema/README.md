@@ -12,7 +12,7 @@
 
 * [Attestation](./attestation.md "A JACS attestation document that proves WHO did WHAT and WHY it should be trusted") – `https://hai.ai/schemas/attestation/v1/attestation.schema.json`
 
-* [Compatibility Key Binding](./compatibility-key-binding.md "PQ-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json`
+* [Compatibility Key Binding](./compatibility-key-binding.md "Native-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json`
 
 * [Config](./jacs.md "Jacs Configuration File") – `https://hai.ai/schemas/jacs.config.schema.json`
 

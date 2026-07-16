@@ -3,7 +3,7 @@
  *
  * Validates:
  * - a2a: true enables well-known endpoints
- * - All 5 well-known documents are served
+ * - All 6 identity-bound well-known documents are served
  * - CORS headers on responses
  * - OPTIONS preflight handling
  * - a2aSkills and a2aUrl options
@@ -15,6 +15,7 @@ const { expect } = require('chai');
 const sinon = require('sinon');
 const http = require('http');
 const express = require('express');
+const { configureNativeGenerator } = require('./helpers/a2a-bound');
 
 // The compiled middleware
 let expressModule;
@@ -28,12 +29,21 @@ try {
  * Create a stubbed JacsClient.
  */
 function createMockClient(overrides = {}) {
+  const agent = configureNativeGenerator(
+    { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
+    {
+      agentId: overrides.agentId || 'express-a2a-agent',
+      name: overrides.name || 'Express A2A Agent',
+      skills: overrides.skills || [],
+      interfaceUrl: overrides.interfaceUrl,
+    },
+  );
   return {
     signMessage: sinon.stub().resolves({ raw: '{}', documentId: 'x', agentId: 'a', timestamp: '' }),
     verify: sinon.stub().resolves({ valid: true, data: {}, signerId: '', timestamp: '', attachments: [], errors: [] }),
     agentId: overrides.agentId || 'express-a2a-agent',
     name: overrides.name || 'Express A2A Agent',
-    _agent: { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
+    _agent: agent,
   };
 }
 
@@ -108,12 +118,20 @@ describe('Express Middleware A2A Route Injection - [2.9.1]', function () {
 
     before(async function () {
       if (!available) this.skip();
-      const client = createMockClient({ agentId: 'a2a-agent-1', name: 'A2A Test Agent' });
+      const skills = [
+        { id: 'code-gen', name: 'Code Generation', description: 'Generate code', tags: ['dev'] },
+      ];
+      const client = createMockClient({
+        agentId: 'a2a-agent-1',
+        name: 'A2A Test Agent',
+        skills,
+        interfaceUrl: 'https://my-agent.example.com/agent',
+      });
       const mw = expressModule.jacsMiddleware({
         client,
         verify: false,
         a2a: true,
-        a2aSkills: [{ id: 'code-gen', name: 'Code Generation', description: 'Generate code', tags: ['dev'] }],
+        a2aSkills: skills,
         a2aUrl: 'my-agent.example.com',
       });
       testServer = await startServer(mw);
@@ -159,6 +177,15 @@ describe('Express Middleware A2A Route Injection - [2.9.1]', function () {
 
       expect(status).to.equal(200);
       expect(body.agentId).to.equal('a2a-agent-1');
+    });
+
+    it('should serve /.well-known/jacs-compat-binding.json', async () => {
+      const { status, body } = await httpGet(
+        testServer.port,
+        '/.well-known/jacs-compat-binding.json',
+      );
+      expect(status).to.equal(200);
+      expect(body.jacsSha256).to.equal('binding-hash');
     });
 
     it('should include CORS headers on well-known responses', async () => {

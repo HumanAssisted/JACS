@@ -28,7 +28,7 @@ jacs quickstart --name my-agent --domain my-agent.example.com --sign --file myda
 **Options:**
 - `--name <name>` - Agent name used for first-time quickstart creation (required)
 - `--domain <domain>` - Agent domain used for DNS/public-key verification workflows (required)
-- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). New agent creation is PQ-only: a `ring-Ed25519` request resolves to `pq2025` with a WARN (`native_non_pq_sign_rejected`)
+- `--algorithm <algo>` - Signing algorithm: `pq2025` (default) or `ed25519`; the legacy input alias `ring-Ed25519` is also accepted and the canonical Ed25519 wire label remains `ring-Ed25519`
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)
 
@@ -119,7 +119,7 @@ jacs keychain status --agent-id <AGENT_UUID>
 3. OS keychain keyed by agent ID (if `keychain` feature is enabled and not disabled)
 
 ### `jacs init`
-Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup. New agents get a `pq2025` native root plus an ES256 ecosystem compatibility key; pass `--no-compat-key` to skip the compatibility key (minimal/air-gapped agents).
+Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup. New agents get the selected native root (`pq2025` by default) plus an ES256 ecosystem compatibility key; pass `--no-compat-key` to skip the compatibility key (minimal/air-gapped agents).
 
 ```bash
 jacs init
@@ -161,7 +161,7 @@ jacs agent add-compat-key [--config ./jacs.config.json]
 ```
 
 ### `jacs agent issue-compat-binding`
-Issue (or re-issue) the PQ-root-signed compatibility key binding. Content scopes (`ap2-mandate`, `agreement-vc`) are never auto-issued — grant them here explicitly. This is also the re-issue path after `agent rotate-keys` (a binding signed by a previous root no longer authorizes exports). The same grant is available from language bindings as `issue_compat_binding_json(scopes_json, expires_at)` (scopes as a JSON array, e.g. `["jwks","did","ap2-mandate"]`), so Python/Node/Go callers can enable content exports without shelling out to the CLI.
+Issue (or re-issue) the native-root-signed compatibility key binding. Content scopes (`ap2-mandate`, `agreement-vc`) are never auto-issued — grant them here explicitly. This is also the re-issue path after `agent rotate-keys` (a binding signed by a previous root no longer authorizes exports). The same grant is available from language bindings as `issue_compat_binding_json(scopes_json, expires_at)` (scopes as a JSON array, e.g. `["jwks","did","ap2-mandate"]`), so Python/Node/Go callers can enable content exports without shelling out to the CLI.
 
 ```bash
 # default: identity scopes only (jwks,did,a2a-agent-card,w3c-agent-identity)
@@ -210,9 +210,10 @@ jacs document create [OPTIONS]
 **Options:**
 - `-a <agent-file>` - Path to the agent file. If not specified, uses config `jacs_agent_id_and_version`
 - `-f <filename>` - Path to input file. Must be JSON format
-- `-o <output>` - Output filename for the created document
+- `-o, --output <output>` - Output filename for the created document (cannot be combined with `--directory`)
 - `-d <directory>` - Path to directory of files. Files should end with `.json`
 - `-v, --verbose` - Enable verbose output
+- `--json` - Emit a machine-readable result containing each document key and saved path
 - `-n, --no-save` - Instead of saving files, print to stdout
 - `-s, --schema <schema>` - Path to JSON schema file to use for validation
 - `--attach <attach>` - Path to file or directory for file attachments
@@ -223,6 +224,7 @@ jacs document create [OPTIONS]
 ```bash
 # Create document from JSON file
 jacs document create -f my-document.json
+# Prints: Saved signed document: <actual path>
 
 # Create document with embedded attachment
 jacs document create -f document.json --attach ./image.jpg --embed true

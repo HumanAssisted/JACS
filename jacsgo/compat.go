@@ -34,10 +34,10 @@ func (a *JacsSimpleAgent) AddCompatKey() (string, error) {
 	)
 }
 
-// IssueCompatBinding issues (or re-issues) the PQ-root-signed compatibility
+// IssueCompatBinding issues (or re-issues) the native-root-signed compatibility
 // key binding (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
 // `agreement-vc`) are never auto-issued: they require this explicit grant,
-// and every grant is signed by the PQ root. This is also the re-issue path
+// and every grant is signed by the current native root. This is also the re-issue path
 // after key rotation.
 //
 // scopesJSON is either "" (grant the default identity scopes) or a JSON
@@ -63,7 +63,7 @@ func (a *JacsSimpleAgent) IssueCompatBinding(scopesJSON string, expiresAt string
 }
 
 // ExportCompatibilityJwks exports the agent's compatibility JWKS (ES256
-// public key only — PQ material is never published here) as JSON.
+// public key only — native-root material is never published here) as JSON.
 func (a *JacsSimpleAgent) ExportCompatibilityJwks() (string, error) {
 	if a.handle == nil {
 		return "", errSimpleAgentClosed
@@ -74,9 +74,9 @@ func (a *JacsSimpleAgent) ExportCompatibilityJwks() (string, error) {
 	)
 }
 
-// ExportCompatibilityKeyBinding exports the current (verified) PQ-root-signed
+// ExportCompatibilityKeyBinding exports the current verified native-root-signed
 // compatibility key binding document as JSON, so relying parties can trace
-// the ES256 key back to the post-quantum root.
+// the ES256 key back to the agent's native root.
 func (a *JacsSimpleAgent) ExportCompatibilityKeyBinding() (string, error) {
 	if a.handle == nil {
 		return "", errSimpleAgentClosed

@@ -18,7 +18,7 @@ use crate::error::JacsError;
 /// Returns `JacsError::ConversionError` if the input is not valid JSON.
 pub fn jacs_to_html(json_str: &str) -> Result<String, JacsError> {
     // Validate input is JSON
-    let value: serde_json::Value = serde_json::from_str(json_str)
+    let value: serde_json::Value = jacs_core::strict_json::parse_strict_json(json_str)
         .map_err(|e| JacsError::conversion("JSON", "HTML", format!("invalid JSON input: {}", e)))?;
 
     // Extract JACS metadata fields if present
@@ -235,6 +235,13 @@ dd {{ margin: 0; }}
 /// - The extracted content is not valid JSON
 /// - The input is empty or not HTML
 pub fn html_to_jacs(html_str: &str) -> Result<String, JacsError> {
+    crate::schema::utils::check_document_size(html_str).map_err(|error| {
+        JacsError::conversion(
+            "HTML",
+            "JSON",
+            format!("input size policy rejected: {error}"),
+        )
+    })?;
     if html_str.is_empty() {
         return Err(JacsError::conversion("HTML", "JSON", "input is empty"));
     }
@@ -269,13 +276,14 @@ pub fn html_to_jacs(html_str: &str) -> Result<String, JacsError> {
     let json_str = json_str.replace(r"<\/", "</");
 
     // Validate it is actually JSON
-    let _: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
-        JacsError::conversion(
-            "HTML",
-            "JSON",
-            format!("embedded JSON in script tag is malformed: {}", e),
-        )
-    })?;
+    let _: serde_json::Value =
+        jacs_core::strict_json::parse_strict_json(&json_str).map_err(|e| {
+            JacsError::conversion(
+                "HTML",
+                "JSON",
+                format!("embedded JSON in script tag is malformed: {}", e),
+            )
+        })?;
 
     Ok(json_str.to_string())
 }
@@ -383,6 +391,16 @@ mod tests {
             msg.contains("malformed"),
             "Should mention malformed JSON: {}",
             msg
+        );
+    }
+
+    #[test]
+    fn html_to_jacs_rejects_duplicate_embedded_json_keys() {
+        let html = r#"<!doctype html><script type="application/json" id="jacs-data">{"agentID":"trusted","agentID":"attacker"}</script>"#;
+        let error = html_to_jacs(html).expect_err("duplicate embedded JSON names must fail closed");
+        assert!(
+            error.to_string().contains("duplicate JSON object key"),
+            "unexpected error: {error}"
         );
     }
 

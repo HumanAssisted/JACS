@@ -2,7 +2,7 @@
 Tests for jacs.a2a_server — FastAPI A2A routes (Task #18 / [2.3.1]).
 
 Verifies:
-- jacs_a2a_routes() returns a router with all 5 well-known endpoints
+- jacs_a2a_routes() returns a router with all 6 identity-bound endpoints
 - CORS headers are present on responses
 - ?signed=true query param works on agent-card.json
 - create_a2a_app() builds a complete FastAPI application
@@ -46,6 +46,44 @@ def _make_mock_client(agent_data: dict | None = None) -> MagicMock:
     client = MagicMock()
     client._agent = MagicMock()
     client._agent.get_agent_json.return_value = json.dumps(agent_data)
+    compat_kid = "compat-kid"
+    binding_hash = "binding-hash"
+    native_documents = {
+        "/.well-known/agent-card.json": {
+            "name": agent_data.get("jacsName", "JACS Agent"),
+            "description": agent_data.get("jacsDescription", ""),
+            "version": agent_data.get("jacsVersion", "1"),
+            "protocolVersions": ["0.4.0"],
+            "supportedInterfaces": [
+                {"url": "https://agent.example.com", "protocolBinding": "jsonrpc"}
+            ],
+            "skills": agent_data.get("skills", []),
+            "metadata": {
+                "jacsId": agent_data.get("jacsId"),
+                "jacsVersion": agent_data.get("jacsVersion", "1"),
+                "jacsCompatKid": compat_kid,
+                "jacsCompatBindingHash": binding_hash,
+                "jacsCompatBindingPath": "/.well-known/jacs-compat-binding.json",
+            },
+            "signatures": [{"keyId": compat_kid, "jws": "native-es256-jws"}],
+        },
+        "/.well-known/jwks.json": {
+            "keys": [{"kid": compat_kid, "alg": "ES256", "use": "sig"}]
+        },
+        "/.well-known/jacs-compat-binding.json": {"jacsSha256": binding_hash},
+        "/.well-known/jacs-agent.json": {"agentId": agent_data.get("jacsId")},
+        "/.well-known/jacs-pubkey.json": {"agentId": agent_data.get("jacsId")},
+        "/.well-known/jacs-extension.json": {
+            "uri": "urn:jacs:provenance-v1",
+            "capabilities": {
+                "documentSigning": {"algorithms": ["ring-Ed25519", "pq2025"]}
+            },
+        },
+    }
+    client._agent.generate_well_known_documents.return_value = json.dumps([
+        {"path": path, "document": document}
+        for path, document in native_documents.items()
+    ])
     client._agent_info = MagicMock()
     client._agent_info.agent_id = agent_data.get("jacsId", "test-id")
     client._agent_info.public_key_path = None
@@ -138,13 +176,14 @@ class TestJacsA2ARoutes:
         assert "GET" in resp.headers.get("access-control-allow-methods", "")
 
     def test_signed_query_param(self):
-        """?signed=true returns the card (same content since no JWS configured)."""
+        """The legacy query parameter still returns the signed native card."""
         tc = self._get_test_client()
         resp = tc.get("/.well-known/agent-card.json?signed=true")
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["name"] == "Test A2A Bot"
+        assert body["signatures"][0]["jws"] == "native-es256-jws"
 
     def test_skills_override(self):
         """Custom skills are used for the exported agent card."""
@@ -156,7 +195,18 @@ class TestJacsA2ARoutes:
                 "tags": ["jacs"],
             }
         ]
-        tc = self._get_test_client(skills=custom_skills)
+        agent_data = {
+            "jacsId": "test-agent-1",
+            "jacsName": "Test A2A Bot",
+            "jacsDescription": "A test agent for A2A server",
+            "jacsVersion": "v2.0",
+            "jacsAgentType": "ai",
+            "skills": custom_skills,
+        }
+        tc = self._get_test_client(
+            client=_make_mock_client(agent_data),
+            skills=custom_skills,
+        )
         resp = tc.get("/.well-known/agent-card.json")
 
         body = resp.json()
@@ -186,6 +236,7 @@ class TestCreateA2AApp:
         paths = [
             "/.well-known/agent-card.json",
             "/.well-known/jwks.json",
+            "/.well-known/jacs-compat-binding.json",
             "/.well-known/jacs-agent.json",
             "/.well-known/jacs-pubkey.json",
             "/.well-known/jacs-extension.json",
@@ -223,7 +274,14 @@ class TestServeA2A:
                 "tags": ["jacs"],
             }
         ]
-        client = _make_mock_client()
+        client = _make_mock_client({
+            "jacsId": "test-agent-1",
+            "jacsName": "Test A2A Bot",
+            "jacsDescription": "A test agent for A2A server",
+            "jacsVersion": "v2.0",
+            "jacsAgentType": "ai",
+            "skills": custom_skills,
+        })
         app = create_a2a_app(client, skills=custom_skills)
         tc = TestClient(app)
 

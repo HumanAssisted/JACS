@@ -37,7 +37,7 @@ payloads.
 ## Usage
 
 The `ap2-mandate` binding scope is a **content scope**: it is never
-auto-issued. Grant it explicitly first (this requires the PQ root's
+auto-issued. Grant it explicitly first (this requires the native root's
 signature):
 
 ```bash
@@ -64,10 +64,10 @@ npm install jose canonicalize
 node scripts/smoke/verify_ap2_jws.mjs export.json jwks.json
 ```
 
-**Classical verification is not PQ trust.** The ES256 check proves
+**Classical verification is not native-root trust.** The ES256 check proves
 possession of the compatibility key only. To trace the mandate to the
-agent's post-quantum root, a JACS-aware relying party additionally
-verifies the PQ-signed compatibility key binding
+agent's native root, a JACS-aware relying party additionally verifies the
+native-root-signed compatibility key binding
 (`jacs agent export-compat-binding`) whose content hash the export
 references. Native JACS documents are never touched by this export —
 signing a mandate does not create or modify any `jacsSignature`.

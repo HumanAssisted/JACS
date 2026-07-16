@@ -4,7 +4,7 @@
 https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json
 ```
 
-PQ-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes. The trust bridge between a JACS agent's native (post-quantum) identity and W3C/JOSE ecosystems: the native\_root key signs this document, so granting or widening a scope always requires the PQ root. The binding never authorizes native JACS signing.
+Native-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes. The trust bridge between a JACS agent's native identity and W3C/JOSE ecosystems: the native\_root key signs this document, so granting or widening a scope always requires the current native root. The binding never authorizes native JACS signing.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                                                       |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------- |

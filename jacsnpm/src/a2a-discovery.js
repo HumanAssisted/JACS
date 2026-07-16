@@ -16,10 +16,8 @@
  * ```
  */
 
-const http = require('http');
-const https = require('https');
 const { JACS_EXTENSION_URI } = require('./a2a');
-const { ensureNetworkAccess } = require('../index.js');
+const { fetchAgentCardAsync } = require('../index.js');
 const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
 
 /**
@@ -37,48 +35,21 @@ const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
 async function discoverAgent(url, options = {}) {
   const timeoutMs = options.timeoutMs || 10000;
 
-  // Enforce Rust-owned network access policy
-  ensureNetworkAccess('agent_card_fetch');
-
   const trimmed = (url || '').trim().replace(/\/+$/, '');
   if (!trimmed) {
     throw new Error('Agent base URL cannot be empty');
   }
-  const cardUrl = `${trimmed}/.well-known/agent-card.json`;
-
-  return new Promise((resolve, reject) => {
-    const mod = cardUrl.startsWith('https') ? https : http;
-    const req = mod.get(cardUrl, { timeout: timeoutMs, headers: { Accept: 'application/json' } }, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume(); // drain
-        reject(new Error(`Agent card fetch failed: ${res.statusCode} for ${cardUrl}`));
-        return;
-      }
-      const contentType = res.headers['content-type'] || '';
-      if (!contentType.includes('json')) {
-        res.resume();
-        reject(new Error(`Agent card response is not JSON (content-type: ${contentType}) for ${cardUrl}`));
-        return;
-      }
-      let body = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk) => { body += chunk; });
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(new Error(`Agent card response is not valid JSON for ${cardUrl}`));
-        }
-      });
-    });
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error(`Agent discovery timed out: ${cardUrl}`));
-    });
-    req.on('error', (err) => {
-      reject(new Error(`Agent discovery failed: ${err.message}`));
-    });
-  });
+  if (typeof fetchAgentCardAsync !== 'function') {
+    throw new Error(
+      'Secure native Agent Card fetch is unavailable; refusing the legacy unbounded HTTP path',
+    );
+  }
+  const raw = await fetchAgentCardAsync(trimmed, timeoutMs);
+  try {
+    return JSON.parse(raw);
+  } catch (_error) {
+    throw new Error(`Secure native Agent Card fetch returned invalid JSON for ${trimmed}`);
+  }
 }
 
 /**
@@ -182,9 +153,9 @@ function resolveTrustPolicy(options = {}) {
  * @param {number} [options.timeoutMs=10000] - Request timeout in milliseconds
  * @param {'open'|'verified'|'strict'} [options.policy='verified'] - Trust policy
  * @param {'open'|'verified'|'strict'} [options.trustPolicy='verified'] - Alias for policy
- * @param {Object} [options.client] - Optional JacsClient-like object with isTrusted(agentId)
- * @param {(agentId: string) => boolean} [options.trustStoreEvaluator] - Optional trust lookup hook
- * @param {(agentId: string) => boolean} [options.isTrusted] - Optional shorthand trust lookup hook
+ * @param {Object} [options.client] - JacsClient with native A2A assessment. Without it, only open can allow.
+ * @param {(agentId: string) => boolean} [options.trustStoreEvaluator] - Deprecated; cannot establish identity trust
+ * @param {(agentId: string) => boolean} [options.isTrusted] - Deprecated; cannot establish identity trust
  * @returns {Promise<{
  *   card: Object,
  *   jacsRegistered: boolean,
@@ -201,37 +172,54 @@ async function discoverAndAssess(url, options = {}) {
   const card = await discoverAgent(url, options);
   const jacsRegistered = hasJacsExtension(card);
   const agentId = extractAgentId(card);
-  const inTrustStore = jacsRegistered
-    ? evaluateTrustStore(agentId, options)
-    : false;
-  const trustLevel = inTrustStore
-    ? 'trusted'
-    : (jacsRegistered ? 'jacs_registered' : 'untrusted');
 
-  let allowed = false;
-  switch (policy) {
-    case 'open':
-      allowed = true;
-      break;
-    case 'verified':
-      allowed = jacsRegistered;
-      break;
-    case 'strict':
-      allowed = inTrustStore;
-      break;
-    default:
-      allowed = false;
-      break;
+  const nativeAssess = options.client?._agent?.assessA2aAgent;
+  if (typeof nativeAssess === 'function') {
+    try {
+      const canonical = JSON.parse(await nativeAssess.call(
+        options.client._agent,
+        JSON.stringify(card),
+        policy,
+      ));
+      const canonicalLevel = String(canonical.trustLevel || 'Untrusted');
+      const trustLevel = canonicalLevel === 'ExplicitlyTrusted'
+        ? 'trusted'
+        : canonicalLevel === 'JacsVerified'
+          ? 'jacs_registered'
+          : 'untrusted';
+      return {
+        card,
+        jacsRegistered: canonical.jacsRegistered === true,
+        trustLevel,
+        allowed: canonical.allowed === true,
+        inTrustStore: canonicalLevel === 'ExplicitlyTrusted',
+        policy,
+        agentId,
+        reason: String(canonical.reason || ''),
+        firstContact: canonical.firstContact === true,
+      };
+    } catch (_error) {
+      // Continue into the fail-closed result below. A native outage or malformed
+      // result must not become a fresh wrapper-only trust opportunity.
+    }
   }
+
+  const allowed = policy === 'open';
+  const reason = allowed
+    ? 'Open policy: agent allowed without native cryptographic assessment; no identity assurance is claimed'
+    : `${policy[0].toUpperCase()}${policy.slice(1)} policy: native cryptographic assessment is unavailable; `
+      + 'an Agent Card extension or trust-store name alone does not prove identity';
 
   return {
     card,
     jacsRegistered,
-    trustLevel,
+    trustLevel: 'untrusted',
     allowed,
-    inTrustStore,
+    inTrustStore: false,
     policy,
     agentId,
+    reason,
+    firstContact: false,
   };
 }
 

@@ -1,5 +1,7 @@
 # API Reference
 
+{{#include ../_snippets/node-registry-status.md}}
+
 Complete API documentation for the `@hai.ai/jacs` Node.js package.
 
 ## Installation

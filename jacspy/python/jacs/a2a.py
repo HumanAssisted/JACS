@@ -14,7 +14,7 @@ import logging
 import os
 import warnings
 from typing import Dict, List, Optional, Any, TYPE_CHECKING, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import uuid
 from datetime import datetime
 
@@ -128,12 +128,18 @@ def _build_jwk_set_from_public_key(
 
 def _build_trust_block(trust_assessment: Dict[str, Any]) -> Dict[str, Any]:
     """Map canonical trustAssessment data to the wrapper's legacy trust block."""
+    allowed = trust_assessment.get("allowed") is True
     return {
-        "allowed": bool(trust_assessment.get("allowed", False)),
-        "jacs_registered": bool(trust_assessment.get("jacsRegistered", False)),
-        "trust_level": _legacy_trust_level(trust_assessment.get("trustLevel")),
+        "allowed": allowed,
+        "jacs_registered": trust_assessment.get("jacsRegistered") is True,
+        "trust_level": (
+            _legacy_trust_level(trust_assessment.get("trustLevel"))
+            if allowed
+            else "untrusted"
+        ),
         "reason": trust_assessment.get("reason", ""),
         "policy": trust_assessment.get("policy"),
+        "first_contact": trust_assessment.get("firstContact") is True,
     }
 
 
@@ -250,43 +256,30 @@ def _build_trust_assessment(
     metadata = agent_card.get("metadata")
     agent_id = metadata.get("jacsId") if isinstance(metadata, dict) else None
     jacs_registered = _has_jacs_extension(agent_card)
-    trusted = False
-    is_trusted = _get_configured_callable(client, "is_trusted")
-    if callable(is_trusted) and agent_id:
-        try:
-            trusted = bool(is_trusted(agent_id))
-        except Exception:
-            trusted = False
-
-    trust_level = "ExplicitlyTrusted" if trusted else "JacsVerified" if jacs_registered else "Untrusted"
     normalized_policy = str(policy).lower()
     policy_name = _canonical_policy_name(normalized_policy) or "Verified"
 
     if normalized_policy == "open":
         allowed = True
-        reason = "Open policy: all agents are allowed"
-    elif normalized_policy == "verified":
-        allowed = jacs_registered
         reason = (
-            "Verified policy: agent has JACS provenance extension"
-            if jacs_registered
-            else "Verified policy: agent does not declare JACS provenance extension"
+            "Open policy: agent allowed without native cryptographic assessment; "
+            "no identity assurance is claimed"
         )
     else:
-        allowed = trusted
-        if trusted:
-            reason = f"Strict policy: agent '{agent_id}' is in the local trust store."
-        elif agent_id:
-            reason = (
-                f"Strict policy: agent '{agent_id}' is not in the local trust store. "
-                "Use trust_agent() to add it first."
-            )
-        else:
-            reason = "Strict policy: remote agent is missing a jacsId and cannot be trusted."
+        # A self-advertised extension or a boolean trust-store lookup cannot
+        # replace native card/JWKS/binding verification. The native assessor
+        # performs secure same-origin fetches, durable TOFU pinning, and strict
+        # native-root binding verification. If it is unavailable, every
+        # identity-bearing policy fails closed.
+        allowed = False
+        reason = (
+            f"{policy_name} policy: native cryptographic assessment is unavailable; "
+            "an Agent Card extension or local trust-store name alone does not prove identity"
+        )
 
     return {
         "allowed": allowed,
-        "trustLevel": trust_level,
+        "trustLevel": "Untrusted",
         "reason": reason,
         "jacsRegistered": jacs_registered,
         "agentId": agent_id,
@@ -295,7 +288,7 @@ def _build_trust_assessment(
 
 
 def _normalize_status(status: Any, *, valid: bool, reason: str = "") -> Any:
-    if isinstance(status, str) and status in {"Verified", "SelfSigned"}:
+    if valid and isinstance(status, str) and status in {"Verified", "SelfSigned"}:
         return status
     if isinstance(status, dict):
         if "Unverified" in status and isinstance(status["Unverified"], dict):
@@ -312,8 +305,22 @@ def _normalize_status(status: Any, *, valid: bool, reason: str = "") -> Any:
     return {"Invalid": {"reason": reason or "signature verification failed"}}
 
 
-def _normalize_parent_result(parent: Dict[str, Any]) -> Dict[str, Any]:
-    verified = bool(parent.get("verified", parent.get("valid", False)))
+def _normalize_parent_result(parent: Any) -> Dict[str, Any]:
+    if not isinstance(parent, dict):
+        return {
+            "index": 0,
+            "artifactId": "",
+            "signerId": "",
+            "status": {"Invalid": {"reason": "malformed canonical parent result"}},
+            "verified": False,
+        }
+    explicit_verified = (
+        parent.get("verified") is True
+        if "verified" in parent
+        else parent.get("valid") is True
+    )
+    status = parent.get("status")
+    verified = explicit_verified and status in {"Verified", "SelfSigned"}
     return {
         "index": int(parent.get("index", 0)),
         "artifactId": str(parent.get("artifactId", "")),
@@ -329,36 +336,116 @@ def _canonical_result_from_wrapped_artifact(
     valid: bool,
     status: Any,
     parent_results: Optional[List[Dict[str, Any]]] = None,
-    trust_assessment: Optional[Dict[str, Any]] = None,
+    trust_assessment: Any = None,
+    parent_summary_valid: Optional[bool] = None,
+    canonical_provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    signature = wrapped_artifact.get("jacsSignature")
-    signer_id = signature.get("agentID", "") if isinstance(signature, dict) else ""
-    signer_version = signature.get("agentVersion", "") if isinstance(signature, dict) else ""
+    if canonical_provenance is None:
+        # Parsed wrapper fields are attacker-controlled until the canonical
+        # native A2A verifier authenticates and projects them.  A generic
+        # verify_response() boolean has no A2A provenance contract, so never
+        # copy its signer, version, type, timestamp, or payload into a result.
+        signer_id = ""
+        signer_version = ""
+        artifact_type = ""
+        timestamp = ""
+        original_artifact = {}
+        canonical_provenance_complete = False
+    else:
+        # Canonical native verification results are an authenticated output
+        # contract. Never backfill a missing field from the attacker-supplied
+        # wrapper: that would turn parsed input into purported verified data.
+        signer_id = canonical_provenance.get("signerId")
+        signer_version = canonical_provenance.get("signerVersion")
+        artifact_type = canonical_provenance.get("artifactType")
+        timestamp = canonical_provenance.get("timestamp")
+        original_artifact = canonical_provenance.get("originalArtifact")
+        canonical_provenance_complete = (
+            isinstance(signer_id, str)
+            and bool(signer_id)
+            and isinstance(signer_version, str)
+            and bool(signer_version)
+            and isinstance(artifact_type, str)
+            and bool(artifact_type)
+            and isinstance(timestamp, str)
+            and bool(timestamp)
+            and isinstance(original_artifact, dict)
+        )
+        if not isinstance(signer_id, str):
+            signer_id = ""
+        if not isinstance(signer_version, str):
+            signer_version = ""
+        if not isinstance(artifact_type, str):
+            artifact_type = ""
+        if not isinstance(timestamp, str):
+            timestamp = ""
+        if not isinstance(original_artifact, dict):
+            original_artifact = {}
     normalized_parent_results = [
         _normalize_parent_result(parent_result)
         for parent_result in (parent_results or [])
     ]
+    declared_parents = wrapped_artifact.get("jacsParentSignatures")
+    declared_parent_count = len(declared_parents) if isinstance(declared_parents, list) else 0
+    parents_valid = canonical_provenance is not None and (
+        len(normalized_parent_results) == declared_parent_count
+        and all(parent["verified"] is True for parent in normalized_parent_results)
+        and parent_summary_valid is not False
+    )
+    normalized_trust: Optional[Dict[str, Any]] = None
+    trust_allows = True
+    if trust_assessment is not None:
+        if isinstance(trust_assessment, dict):
+            allowed = trust_assessment.get("allowed") is True
+            trust_level = _canonical_trust_level(trust_assessment.get("trustLevel"))
+            normalized_trust = {
+                "allowed": allowed,
+                "trustLevel": trust_level if allowed else "Untrusted",
+                "reason": str(trust_assessment.get("reason", "")),
+                "jacsRegistered": trust_assessment.get("jacsRegistered") is True,
+                "agentId": trust_assessment.get("agentId"),
+                "policy": _canonical_policy_name(trust_assessment.get("policy")) or "Verified",
+                "firstContact": trust_assessment.get("firstContact") is True,
+            }
+        else:
+            normalized_trust = {
+                "allowed": False,
+                "trustLevel": "Untrusted",
+                "reason": "malformed canonical trust assessment",
+                "jacsRegistered": False,
+                "agentId": None,
+                "policy": "Verified",
+                "firstContact": False,
+            }
+        trust_allows = normalized_trust["allowed"] is True
+    effective_valid = (
+        valid is True
+        and parents_valid
+        and canonical_provenance_complete
+        and trust_allows
+    )
+    failure_reason = (
+        "canonical verifier omitted authenticated provenance fields"
+        if not canonical_provenance_complete
+        else "parent signature verification failed or was incomplete"
+        if not parents_valid
+        else normalized_trust.get("reason", "trust policy denied the signer")
+        if normalized_trust is not None and not trust_allows
+        else "signature verification failed"
+    )
 
     result: Dict[str, Any] = {
-        "status": _normalize_status(status, valid=valid),
-        "valid": valid,
+        "status": _normalize_status(status, valid=effective_valid, reason=failure_reason),
+        "valid": effective_valid,
         "signerId": signer_id,
         "signerVersion": signer_version,
-        "artifactType": str(wrapped_artifact.get("jacsType", "")),
-        "timestamp": str(wrapped_artifact.get("jacsVersionDate", "")),
-        "parentSignaturesValid": all(parent["verified"] for parent in normalized_parent_results),
+        "artifactType": artifact_type,
+        "timestamp": timestamp,
+        "parentSignaturesValid": parents_valid,
         "parentVerificationResults": normalized_parent_results,
-        "originalArtifact": wrapped_artifact.get("a2aArtifact", {}),
+        "originalArtifact": original_artifact,
     }
-    if trust_assessment:
-        normalized_trust = {
-            "allowed": bool(trust_assessment.get("allowed", False)),
-            "trustLevel": _canonical_trust_level(trust_assessment.get("trustLevel")),
-            "reason": str(trust_assessment.get("reason", "")),
-            "jacsRegistered": bool(trust_assessment.get("jacsRegistered", False)),
-            "agentId": trust_assessment.get("agentId"),
-            "policy": _canonical_policy_name(trust_assessment.get("policy")) or "Verified",
-        }
+    if normalized_trust is not None:
         result["trustLevel"] = normalized_trust["trustLevel"]
         result["trustAssessment"] = normalized_trust
     return result
@@ -498,7 +585,7 @@ class JACSA2AIntegration:
     def serve(self, port: int = 8000, host: str = "0.0.0.0") -> None:
         """Start a minimal HTTP server that publishes the agent card.
 
-        Serves all five ``/.well-known/`` endpoints required for A2A
+        Serves all six identity-bound ``/.well-known/`` endpoints required for A2A
         agent discovery.
 
         Requires ``uvicorn`` and ``fastapi`` (install with
@@ -800,42 +887,56 @@ class JACSA2AIntegration:
 
         return {
             "card": card,
-            "jacs_registered": bool(canonical.get("jacsRegistered", False)),
-            "trust_level": _legacy_trust_level(canonical.get("trustLevel")),
-            "allowed": bool(canonical.get("allowed", False)),
+            "jacs_registered": canonical.get("jacsRegistered") is True,
+            "trust_level": (
+                _legacy_trust_level(canonical.get("trustLevel"))
+                if canonical.get("allowed") is True
+                else "untrusted"
+            ),
+            "allowed": canonical.get("allowed") is True,
             "reason": canonical.get("reason", ""),
             "policy": canonical.get("policy", _canonical_policy_name(effective_policy)),
+            "first_contact": canonical.get("firstContact") is True,
         }
 
-    def trust_a2a_agent(self, agent_card_json: str) -> str:
-        """Add a remote A2A agent to the local trust store.
+    def trust_a2a_agent(self, agent_document_json: str, public_key_pem: str) -> str:
+        """Explicitly trust a native JACS identity used by A2A strict mode.
 
-        Extracts the agent document from the card's metadata and
-        delegates to :meth:`JacsClient.trust_agent`.
+        An Agent Card is self-advertised discovery metadata and is never
+        sufficient to create native identity trust. The caller must obtain the
+        full self-signed native JACS agent document and its public key through
+        an authenticated out-of-band channel. Native trust establishment then
+        verifies the document before persisting a ``verified`` trust entry.
 
         Args:
-            agent_card_json: JSON string of the remote Agent Card.
+            agent_document_json: Full native JACS agent document JSON.
+            public_key_pem: Explicit native public key in PEM form.
 
         Returns:
-            Result string from the trust store operation.
-
-        Raises:
-            ValueError: If the card has no ``jacsId`` in metadata.
+            Result string from :meth:`JacsClient.trust_agent_with_key`.
         """
-        from .a2a_discovery import _extract_agent_id
-
-        card = json.loads(agent_card_json)
-        agent_id = _extract_agent_id(card)
-        if not agent_id:
+        if not isinstance(public_key_pem, str) or not public_key_pem.strip():
             raise ValueError(
-                "Cannot trust agent: card has no jacsId in metadata."
+                "Cannot establish A2A identity trust without an explicit public key"
             )
-
-        # Build a minimal agent document for the trust store.
-        # The trust store needs the full agent JSON, but an Agent Card
-        # only carries metadata.  We pass the card as-is — the trust
-        # store will index it by jacsId.
-        return self.client.trust_agent(agent_card_json)
+        try:
+            document = json.loads(agent_document_json)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Invalid native JACS agent document JSON: {exc}") from exc
+        if not isinstance(document, dict) or not all(
+            field in document for field in ("jacsId", "jacsVersion", "jacsSignature")
+        ):
+            raise ValueError(
+                "trust_a2a_agent requires the full native JACS agent document, not an "
+                "unauthenticated Agent Card"
+            )
+        trust_with_key = _get_configured_callable(self.client, "trust_agent_with_key")
+        if trust_with_key is None:
+            raise RuntimeError(
+                "The configured JacsClient does not expose trust_agent_with_key; "
+                "strict A2A trust cannot be established"
+            )
+        return trust_with_key(agent_document_json, public_key_pem)
 
     def verify_wrapped_artifact(
         self,
@@ -844,6 +945,11 @@ class JACSA2AIntegration:
         trust_policy: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Verify a JACS-wrapped A2A artifact.
+
+        Affirmative verification requires the native canonical
+        ``verify_a2a_artifact`` contract.  The generic ``verify_response``
+        method is not an A2A fallback: even a literal ``True`` produces a
+        stable invalid result with blank provenance and cannot elevate trust.
 
         Args:
             wrapped_artifact: The wrapped artifact to verify.
@@ -932,13 +1038,15 @@ class JACSA2AIntegration:
         public_key_b64: str,
         agent_data: Dict[str, Any]
     ) -> Dict[str, Dict[str, Any]]:
-        """Generate .well-known documents for A2A integration (v0.4.0)
+        """Generate identity-bound .well-known documents for A2A integration.
 
         Args:
-            agent_card: The A2A Agent Card
-            jws_signature: JWS signature of the Agent Card
-            public_key_b64: Base64-encoded public key
-            agent_data: JACS agent data
+            agent_card: Deprecated compatibility input; never replaces the
+                native signed Agent Card.
+            jws_signature: Deprecated compatibility input; never accepted as
+                an identity signature.
+            public_key_b64: Deprecated compatibility input.
+            agent_data: Deprecated compatibility input.
 
         Returns:
             Dictionary mapping paths to document contents
@@ -947,82 +1055,77 @@ class JACSA2AIntegration:
             getattr(self.client, "_agent", None),
             "generate_well_known_documents",
         )
-        if native_generate is not None:
-            try:
-                native_pairs = json.loads(native_generate())
-                documents = {
-                    item["path"]: item["document"]
-                    for item in native_pairs
-                    if isinstance(item, dict)
-                    and isinstance(item.get("path"), str)
-                    and "document" in item
-                }
-                card_dict = self.agent_card_to_dict(agent_card)
-                native_card = documents.get("/.well-known/agent-card.json")
-                if isinstance(native_card, dict) and "signatures" in native_card:
-                    card_dict.setdefault("signatures", native_card["signatures"])
-                if jws_signature:
-                    card_dict["signatures"] = [{"jws": jws_signature}]
-                documents["/.well-known/agent-card.json"] = card_dict
-                return documents
-            except Exception:
-                logger.debug(
-                    "Falling back to wrapper well-known generation; native helper unavailable",
-                    exc_info=True,
-                )
+        if native_generate is None:
+            raise RuntimeError(
+                "Identity-bound A2A discovery requires the native JACS generator; "
+                "legacy wrapper-generated keys and signatures are not trusted"
+            )
+        try:
+            native_pairs = json.loads(native_generate())
+        except Exception as exc:
+            raise RuntimeError(
+                f"Identity-bound A2A discovery generation failed: {exc}"
+            ) from exc
+        if not isinstance(native_pairs, list):
+            raise RuntimeError("Native A2A discovery result must be an array of path/document pairs")
 
-        documents = {}
-        key_algorithm = agent_data.get("keyAlgorithm", "pq2025")
-        post_quantum = any(
-            marker in str(key_algorithm).lower()
-            for marker in ["pq2025", "ml-dsa"]
-        )
+        documents: Dict[str, Dict[str, Any]] = {}
+        for item in native_pairs:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("path"), str)
+                or not isinstance(item.get("document"), dict)
+            ):
+                raise RuntimeError("Native A2A discovery returned a malformed path/document pair")
+            path = item["path"]
+            if path in documents:
+                raise RuntimeError(f"Native A2A discovery returned duplicate path {path!r}")
+            documents[path] = item["document"]
 
-        # 1. Agent Card with embedded signature (v0.4.0)
-        card_dict = self.agent_card_to_dict(agent_card)
-        card_dict["signatures"] = [{"jws": jws_signature}]
-        documents["/.well-known/agent-card.json"] = card_dict
-
-        # 2. JWK Set for A2A verifiers
-        documents["/.well-known/jwks.json"] = self._build_jwks(public_key_b64, agent_data)
-
-        # 3. JACS Agent Descriptor
-        documents["/.well-known/jacs-agent.json"] = {
-            "jacsVersion": "1.0",
-            "agentId": agent_data.get("jacsId"),
-            "agentVersion": agent_data.get("jacsVersion"),
-            "agentType": agent_data.get("jacsAgentType"),
-            "publicKeyHash": _hash_public_key_base64(public_key_b64),
-            "keyAlgorithm": key_algorithm,
-            "capabilities": {
-                "signing": True,
-                "verification": True,
-                "postQuantum": post_quantum
-            },
-            "schemas": {
-                "agent": "https://jacs.ai/schemas/agent/v1/agent.schema.json",
-                "header": "https://jacs.ai/schemas/header/v1/header.schema.json",
-                "signature": "https://jacs.ai/schemas/components/signature/v1/signature.schema.json"
-            },
-            "endpoints": {
-                "verify": "/jacs/verify",
-                "sign": "/jacs/sign",
-                "agent": "/jacs/agent"
-            }
+        required_paths = {
+            "/.well-known/agent-card.json",
+            "/.well-known/jwks.json",
+            "/.well-known/jacs-compat-binding.json",
+            "/.well-known/jacs-agent.json",
+            "/.well-known/jacs-pubkey.json",
+            "/.well-known/jacs-extension.json",
         }
+        missing = sorted(required_paths.difference(documents))
+        if missing:
+            raise RuntimeError(
+                "Native A2A discovery omitted identity-bound documents: " + ", ".join(missing)
+            )
 
-        # 4. JACS Public Key
-        documents["/.well-known/jacs-pubkey.json"] = {
-            "publicKey": public_key_b64,
-            "publicKeyHash": _hash_public_key_base64(public_key_b64),
-            "algorithm": key_algorithm,
-            "agentId": agent_data.get("jacsId"),
-            "agentVersion": agent_data.get("jacsVersion"),
-            "timestamp": datetime.utcnow().isoformat() + "Z"
-        }
+        card = documents["/.well-known/agent-card.json"]
+        metadata = card.get("metadata")
+        signatures = card.get("signatures")
+        if (
+            not isinstance(metadata, dict)
+            or metadata.get("jacsCompatBindingPath")
+            != "/.well-known/jacs-compat-binding.json"
+            or not isinstance(signatures, list)
+            or not signatures
+            or not isinstance(signatures[0], dict)
+            or not signatures[0].get("jws")
+            or signatures[0].get("keyId") != metadata.get("jacsCompatKid")
+        ):
+            raise RuntimeError("Native A2A Agent Card is missing its bound ES256 signature metadata")
 
-        # 5. Extension descriptor
-        documents["/.well-known/jacs-extension.json"] = self.create_extension_descriptor()
+        jwks = documents["/.well-known/jwks.json"].get("keys")
+        if (
+            not isinstance(jwks, list)
+            or not any(
+                isinstance(key, dict)
+                and key.get("kid") == metadata.get("jacsCompatKid")
+                and key.get("alg") == "ES256"
+                and key.get("use") == "sig"
+                for key in jwks
+            )
+        ):
+            raise RuntimeError("Native A2A JWKS does not contain the card's ES256 signing key")
+        binding = documents["/.well-known/jacs-compat-binding.json"]
+        if binding.get("jacsSha256") != metadata.get("jacsCompatBindingHash"):
+            raise RuntimeError("Native A2A compatibility binding hash does not match the Agent Card")
 
         return documents
 
@@ -1055,70 +1158,76 @@ class JACSA2AIntegration:
             )
 
             canonical: Dict[str, Any]
-            if policy and agent_card and verify_with_policy is not None:
+            canonical_is_native = False
+            requires_policy_verifier = policy in {"verified", "strict"}
+            if requires_policy_verifier and (agent_card is None or verify_with_policy is None):
+                canonical = _canonical_result_from_wrapped_artifact(
+                    wrapped_artifact,
+                    valid=False,
+                    status={
+                        "Invalid": {
+                            "reason": (
+                                f"{policy.capitalize()} A2A artifact verification requires "
+                                "the canonical native policy verifier; generic or legacy "
+                                "verification cannot establish policy-bound trust"
+                            )
+                        }
+                    },
+                )
+            elif policy and agent_card and verify_with_policy is not None:
                 canonical_json = verify_with_policy(
                     wrapped_json,
                     json.dumps(agent_card),
                     policy,
                 )
                 canonical = json.loads(canonical_json)
+                canonical_is_native = True
             elif verify_canonical is not None:
                 canonical_json = verify_canonical(wrapped_json)
                 canonical = json.loads(canonical_json)
+                canonical_is_native = True
             elif verify_legacy is not None:
-                signature = wrapped_artifact.get("jacsSignature")
-                signer_id = signature.get("agentID", "") if isinstance(signature, dict) else ""
-                local_agent_id = getattr(self.client, "agent_id", None)
-                try:
-                    verification_result = verify_legacy(wrapped_json)
-                    if isinstance(verification_result, bool):
-                        valid = verification_result
-                    elif isinstance(verification_result, dict):
-                        valid = True
-                    else:
-                        valid = bool(verification_result)
-                    status: Any = (
-                        "SelfSigned"
-                        if valid and signer_id and signer_id == local_agent_id
-                        else "Verified"
-                        if valid
-                        else "Invalid"
-                    )
-                except Exception as exc:
-                    valid = False
-                    status = {"Invalid": {"reason": str(exc)}}
-
-                parent_results = []
-                parents = wrapped_artifact.get("jacsParentSignatures")
-                if isinstance(parents, list):
-                    for index, parent in enumerate(parents):
-                        if not isinstance(parent, dict):
-                            continue
-                        parent_result = self._verify_wrapped_artifact_internal(parent, visited)
-                        parent_results.append(
-                            {
-                                "index": index,
-                                "artifactId": str(parent.get("jacsId", "")),
-                                "signerId": str(parent_result.get("signerId", "")),
-                                "status": parent_result.get("status"),
-                                "verified": bool(parent_result.get("valid", False)),
-                            }
-                        )
-
+                # Generic document verification is not an A2A verification
+                # contract.  Even a literal True cannot authenticate which
+                # parsed fields were covered, project canonical provenance, or
+                # validate the parent chain.  Do not invoke it as a fallback.
                 canonical = _canonical_result_from_wrapped_artifact(
                     wrapped_artifact,
-                    valid=valid,
-                    status=status,
-                    parent_results=parent_results,
+                    valid=False,
+                    status={
+                        "Invalid": {
+                            "reason": (
+                                "A2A verification requires the canonical native "
+                                "verify_a2a_artifact() verifier; legacy "
+                                "verify_response() cannot establish A2A validity"
+                            )
+                        }
+                    },
+                    parent_summary_valid=False,
                 )
             else:
                 raise AttributeError(
                     "A2A verification requires one of verify_a2a_artifact_with_policy(), "
-                    "verify_a2a_artifact(), or verify_response() on client._agent."
+                    "or verify_a2a_artifact() on client._agent."
                 )
 
             if policy and agent_card and "trustAssessment" not in canonical:
-                trust_assessment = _build_trust_assessment(self.client, policy, agent_card)
+                trust_assessment = (
+                    _build_trust_assessment(self.client, policy, agent_card)
+                    if canonical_is_native
+                    else {
+                        "allowed": False,
+                        "trustLevel": "Untrusted",
+                        "reason": (
+                            "canonical native A2A verification is unavailable; "
+                            "legacy verification cannot elevate trust"
+                        ),
+                        "jacsRegistered": False,
+                        "agentId": None,
+                        "policy": _canonical_policy_name(policy) or "Verified",
+                        "firstContact": False,
+                    }
+                )
                 canonical = {
                     **canonical,
                     "trustLevel": trust_assessment["trustLevel"],
@@ -1133,17 +1242,35 @@ class JACSA2AIntegration:
             if "parentSignaturesValid" not in canonical:
                 parent_results = canonical.get("parentVerificationResults", [])
                 canonical["parentSignaturesValid"] = all(
-                    bool(parent.get("verified", False))
+                    parent.get("verified") is True
                     for parent in parent_results
                     if isinstance(parent, dict)
                 )
+            declared_parents = wrapped_artifact.get("jacsParentSignatures")
+            if (
+                isinstance(declared_parents, list)
+                and declared_parents
+                and canonical.get("parentSignaturesValid") is not True
+            ):
+                canonical["valid"] = False
+                canonical["status"] = {
+                    "Invalid": {
+                        "reason": "parent signature verification did not return literal true"
+                    }
+                }
 
             result = _canonical_result_from_wrapped_artifact(
                 wrapped_artifact,
-                valid=bool(canonical.get("valid", False)),
+                valid=canonical.get("valid") is True,
                 status=canonical.get("status"),
                 parent_results=canonical.get("parentVerificationResults"),
                 trust_assessment=canonical.get("trustAssessment"),
+                parent_summary_valid=(
+                    canonical.get("parentSignaturesValid") is True
+                    if isinstance(declared_parents, list) and declared_parents
+                    else None
+                ),
+                canonical_provenance=canonical if canonical_is_native else None,
             )
             return _A2AVerificationResult(result)
         finally:

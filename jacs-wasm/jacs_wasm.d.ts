@@ -30,6 +30,7 @@ export class CoreAgentHandle {
   algorithm(): string;
   clearSecrets(): void;
   exportAgent(): string;
+  exportEncryptedAgent(password: string): string;
   getPublicKeyBase64(): string;
   isUnlocked(): boolean;
   signMessageJson(data_json: string): string;

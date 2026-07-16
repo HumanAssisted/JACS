@@ -5,7 +5,11 @@ export interface DiscoverAgentOptions {
 }
 
 export interface TrustLookupClient {
+  /** @deprecated A boolean lookup cannot establish A2A identity trust. */
   isTrusted?: (agentId: string) => boolean;
+  _agent?: {
+    assessA2aAgent?: (agentCardJson: string, policy: TrustPolicy) => Promise<string>;
+  };
 }
 
 export interface DiscoverAndAssessOptions extends DiscoverAgentOptions {
@@ -24,6 +28,8 @@ export interface DiscoverAndAssessResult {
   inTrustStore: boolean;
   policy: TrustPolicy;
   agentId: string | null;
+  reason: string;
+  firstContact: boolean;
 }
 
 export declare const VALID_TRUST_POLICIES: TrustPolicy[];

@@ -3,8 +3,8 @@
  *
  * Validates:
  * - Constructor accepts JacsClient (not config path)
- * - signRequest used via client._agent (B-3)
- * - verifyResponse used via client._agent with JSON.stringify (B-4)
+ * - native signArtifactSync used via client._agent (B-3 hardening)
+ * - canonical verifyA2aArtifactSync used with JSON.stringify (B-4)
  * - native hash helpers back A2A public-key metadata (B-5 related)
  * - wrapArtifactWithProvenance is async
  * - verifyWrappedArtifact is async
@@ -27,6 +27,11 @@ const {
   DEFAULT_TRUST_POLICY,
   sha256
 } = require('../src/a2a');
+const {
+  configureNativeGenerator,
+  configureNativeArtifactSigner,
+  configureCanonicalArtifactVerifier,
+} = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient with a mock _agent for testing.
@@ -34,8 +39,17 @@ const {
 function createMockClient() {
   const mockAgent = {
     signRequest: sinon.stub(),
+    signArtifactSync: sinon.stub(),
     verifyResponse: sinon.stub(),
+    verifyA2aArtifactSync: sinon.stub(),
+    verifyA2aArtifactWithPolicySync: sinon.stub(),
   };
+  configureNativeArtifactSigner(mockAgent, { agentId: 'test-agent-id' });
+  configureCanonicalArtifactVerifier(mockAgent);
+  configureNativeGenerator(mockAgent, {
+    agentId: 'test-agent-id',
+    name: 'test-agent',
+  });
   return {
     _agent: mockAgent,
     agentId: 'test-agent-id',
@@ -60,32 +74,24 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
   describe('constructor', () => {
     it('should accept a JacsClient instance', () => {
       const mockClient = createMockClient();
-      const integration = new JACSA2AIntegration(mockClient);
+      const integration = new JACSA2AIntegration(mockClient, TRUST_POLICIES.OPEN);
       expect(integration.client).to.equal(mockClient);
     });
 
     it('should not require a config path', () => {
       const mockClient = createMockClient();
       // No config path, no jacs.load call - just a client reference
-      const integration = new JACSA2AIntegration(mockClient);
+      const integration = new JACSA2AIntegration(mockClient, TRUST_POLICIES.OPEN);
       expect(integration.client._agent).to.exist;
     });
   });
 
   // -------------------------------------------------------------------------
-  // Test 2: wrapArtifactWithProvenance is async and uses client._agent.signRequest (B-3)
+  // Test 2: wrapArtifactWithProvenance is async and uses the canonical native signer.
   // -------------------------------------------------------------------------
   describe('wrapArtifactWithProvenance (B-3 fix)', () => {
     it('should return a Promise (async method)', async () => {
       const mockClient = createMockClient();
-      const signedResult = {
-        jacsId: 'wrapped-123',
-        jacsType: 'a2a-task',
-        a2aArtifact: { data: 'test' },
-        jacsSignature: { agentID: 'test-agent', signature: 'sig' }
-      };
-      mockClient._agent.signRequest.returns(signedResult);
-
       const integration = new JACSA2AIntegration(mockClient);
       const result = integration.wrapArtifactWithProvenance({ data: 'test' }, 'task');
 
@@ -96,48 +102,32 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       expect(resolved.jacsType).to.equal('a2a-task');
     });
 
-    it('should call client._agent.signRequest (not jacs.legacySignRequest)', async () => {
+    it('should call client._agent.signArtifactSync, never generic signRequest', async () => {
       const mockClient = createMockClient();
       const artifact = { taskId: 'task-1', action: 'process' };
-      const signedResult = {
-        jacsId: 'wrapped-456',
-        jacsType: 'a2a-task',
-        a2aArtifact: artifact,
-        jacsSignature: { agentID: 'agent-1' }
-      };
-      mockClient._agent.signRequest.returns(signedResult);
-
       const integration = new JACSA2AIntegration(mockClient);
       await integration.wrapArtifactWithProvenance(artifact, 'task');
 
-      expect(mockClient._agent.signRequest.calledOnce).to.be.true;
-
-      // Verify the wrapped document structure passed to signRequest
-      const arg = mockClient._agent.signRequest.firstCall.args[0];
-      expect(arg.jacsType).to.equal('a2a-task');
-      expect(arg.jacsLevel).to.equal('artifact');
-      expect(arg.a2aArtifact).to.deep.equal(artifact);
-      expect(arg.$schema).to.equal('https://jacs.ai/schemas/header/v1/header.schema.json');
+      expect(mockClient._agent.signRequest.called).to.be.false;
+      expect(mockClient._agent.signArtifactSync.calledOnce).to.be.true;
+      expect(mockClient._agent.signArtifactSync.firstCall.args).to.deep.equal([
+        JSON.stringify(artifact), 'task', null,
+      ]);
     });
 
     it('should include parent signatures when provided', async () => {
       const mockClient = createMockClient();
       const parentSig = { jacsId: 'parent-1', jacsSignature: { agentID: 'parent-agent' } };
-      mockClient._agent.signRequest.callsFake((wrapped) => ({
-        ...wrapped,
-        jacsSignature: { agentID: 'agent-1' }
-      }));
-
       const integration = new JACSA2AIntegration(mockClient);
       await integration.wrapArtifactWithProvenance({ data: 'test' }, 'step', [parentSig]);
 
-      const arg = mockClient._agent.signRequest.firstCall.args[0];
-      expect(arg.jacsParentSignatures).to.deep.equal([parentSig]);
+      const parentJson = mockClient._agent.signArtifactSync.firstCall.args[2];
+      expect(JSON.parse(parentJson)).to.deep.equal([parentSig]);
     });
   });
 
   // -------------------------------------------------------------------------
-  // Test 3: verifyWrappedArtifact is async and uses client._agent.verifyResponse (B-4)
+  // Test 3: verifyWrappedArtifact is async and uses canonical native A2A verification (B-4)
   // -------------------------------------------------------------------------
   describe('verifyWrappedArtifact (B-4 fix)', () => {
     it('should return a Promise (async method)', async () => {
@@ -152,7 +142,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
         jacsSignature: { agentID: 'signer', agentVersion: 'v1', publicKeyHash: 'hash' }
       };
 
-      const integration = new JACSA2AIntegration(mockClient);
+      const integration = new JACSA2AIntegration(mockClient, TRUST_POLICIES.OPEN);
       const result = integration.verifyWrappedArtifact(wrappedArtifact);
 
       expect(result).to.be.an.instanceOf(Promise);
@@ -162,7 +152,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       expect(resolved.signerId).to.equal('signer');
     });
 
-    it('should call client._agent.verifyResponse with JSON.stringify', async () => {
+    it('should call client._agent.verifyA2aArtifactSync with JSON.stringify', async () => {
       const mockClient = createMockClient();
       mockClient._agent.verifyResponse.returns(true);
 
@@ -173,13 +163,14 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
         jacsSignature: { agentID: 'agent-2' }
       };
 
-      const integration = new JACSA2AIntegration(mockClient);
+      const integration = new JACSA2AIntegration(mockClient, TRUST_POLICIES.OPEN);
       await integration.verifyWrappedArtifact(wrappedArtifact);
 
-      expect(mockClient._agent.verifyResponse.calledOnce).to.be.true;
+      expect(mockClient._agent.verifyA2aArtifactSync.calledOnce).to.be.true;
+      expect(mockClient._agent.verifyResponse.called).to.be.false;
 
       // Verify it was called with a JSON string, not the raw object
-      const arg = mockClient._agent.verifyResponse.firstCall.args[0];
+      const arg = mockClient._agent.verifyA2aArtifactSync.firstCall.args[0];
       expect(typeof arg).to.equal('string');
       const parsed = JSON.parse(arg);
       expect(parsed.jacsId).to.equal('artifact-2');
@@ -193,6 +184,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       const parent = {
         jacsId: 'parent-1',
         jacsType: 'a2a-task',
+        jacsVersionDate: '2025-01-15T09:00:00Z',
         a2aArtifact: { step: 1 },
         jacsSignature: { agentID: 'parent-agent', agentVersion: 'v1' }
       };
@@ -200,19 +192,19 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       const child = {
         jacsId: 'child-1',
         jacsType: 'a2a-task',
+        jacsVersionDate: '2025-01-15T10:00:00Z',
         a2aArtifact: { step: 2 },
         jacsSignature: { agentID: 'child-agent', agentVersion: 'v1' },
         jacsParentSignatures: [parent]
       };
 
-      const integration = new JACSA2AIntegration(mockClient);
+      const integration = new JACSA2AIntegration(mockClient, TRUST_POLICIES.OPEN);
       const result = await integration.verifyWrappedArtifact(child);
 
       expect(result.valid).to.be.true;
       expect(result.parentSignaturesCount).to.equal(1);
       expect(result.parentSignaturesValid).to.be.true;
-      // verifyResponse called twice: once for child, once for parent
-      expect(mockClient._agent.verifyResponse.callCount).to.equal(2);
+      expect(mockClient._agent.verifyA2aArtifactSync.calledOnce).to.equal(true);
     });
   });
 
@@ -226,7 +218,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       expect(sha256(input)).to.equal(expected);
     });
 
-    it('should hash decoded public-key bytes in generateWellKnownDocuments', () => {
+    it('does not replace native public-key metadata with wrapper input', () => {
       const mockClient = createMockClient();
       const integration = new JACSA2AIntegration(mockClient);
 
@@ -247,11 +239,10 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
         agentCard, 'mock-jws', publicKeyB64, agentData
       );
 
-      const expectedHash = crypto.createHash('sha256')
-        .update(Buffer.from(publicKeyB64, 'base64'))
-        .digest('hex');
-      expect(documents['/.well-known/jacs-agent.json'].publicKeyHash).to.equal(expectedHash);
-      expect(documents['/.well-known/jacs-pubkey.json'].publicKeyHash).to.equal(expectedHash);
+      expect(documents['/.well-known/jacs-agent.json'].publicKeyHash)
+        .to.equal('native-public-key-hash');
+      expect(documents['/.well-known/jacs-pubkey.json'].publicKeyHash)
+        .to.equal('native-public-key-hash');
     });
 
     it('should default missing keyAlgorithm to pq2025 in well-known docs', () => {
@@ -334,40 +325,25 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
   // Test 7: signArtifact alias
   // -------------------------------------------------------------------------
   describe('signArtifact alias', () => {
-    it('should be the primary method and call signRequest', async () => {
+    it('should be the primary method and call signArtifactSync', async () => {
       const mockClient = createMockClient();
       const artifact = { action: 'process', data: { x: 1 } };
-      const signedResult = {
-        jacsId: 'signed-1',
-        jacsType: 'a2a-task',
-        a2aArtifact: artifact,
-        jacsSignature: { agentID: 'agent-1' }
-      };
-      mockClient._agent.signRequest.returns(signedResult);
-
       const integration = new JACSA2AIntegration(mockClient);
       const result = await integration.signArtifact(artifact, 'task');
 
       expect(result.jacsType).to.equal('a2a-task');
-      expect(mockClient._agent.signRequest.calledOnce).to.be.true;
+      expect(mockClient._agent.signArtifactSync.calledOnce).to.be.true;
+      expect(mockClient._agent.signRequest.called).to.be.false;
     });
 
     it('wrapArtifactWithProvenance should delegate to signArtifact', async () => {
       const mockClient = createMockClient();
       const artifact = { step: 'verify' };
-      const signedResult = {
-        jacsId: 'signed-2',
-        jacsType: 'a2a-message',
-        a2aArtifact: artifact,
-        jacsSignature: { agentID: 'agent-2' }
-      };
-      mockClient._agent.signRequest.returns(signedResult);
-
       const integration = new JACSA2AIntegration(mockClient);
       const result = await integration.wrapArtifactWithProvenance(artifact, 'message');
 
       expect(result.jacsType).to.equal('a2a-message');
-      expect(mockClient._agent.signRequest.calledOnce).to.be.true;
+      expect(mockClient._agent.signArtifactSync.calledOnce).to.be.true;
     });
   });
 

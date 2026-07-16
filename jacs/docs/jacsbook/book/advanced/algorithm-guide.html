@@ -176,21 +176,20 @@
                     <main>
                         <h1 id="algorithm-selection-guide"><a class="header" href="#algorithm-selection-guide">Algorithm Selection Guide</a></h1>
 <p>Choosing the right signing algorithm affects key size, signature size, verification speed, and compliance posture. This guide helps you pick the right one.</p>
-<h2 id="new-agents-are-pq-only"><a class="header" href="#new-agents-are-pq-only">New Agents Are PQ-Only</a></h2>
-<p><strong>New agent creation always uses <code>pq2025</code> (ML-DSA-87 / FIPS-204).</strong> There is no
-algorithm choice at creation time: a request for Ed25519 (via config or an
-explicit parameter) resolves to <code>pq2025</code> and logs a WARN; ES256 or any other
-algorithm is a typed error. ES256 exists in JACS only as an ecosystem
-compatibility key, never as a native <code>jacsSignature</code> algorithm.</p>
-<p>Existing Ed25519-rooted agents are <strong>grandfathered</strong>: they continue to load,
-sign (each native signature logs a WARN <code>native_legacy_ed25519_sign</code>), and
-verify. All key rotations resolve to <code>pq2025</code>, so a grandfathered agent
-migrates to post-quantum keys the first time it rotates — see
+<h2 id="new-agent-selection"><a class="header" href="#new-agent-selection">New-Agent Selection</a></h2>
+<p><strong><code>pq2025</code> (ML-DSA-87 / FIPS-204) is the secure default.</strong> Pass <code>ed25519</code>
+explicitly when its smaller keys and signatures are required. JACS returns the
+canonical wire label <code>ring-Ed25519</code>; the requested label, generated key shape,
+persisted configuration, and emitted signature algorithm always agree.
+<code>ring-Ed25519</code> remains accepted as a legacy input alias. ES256 is an ecosystem
+compatibility key, never a native <code>jacsSignature</code> algorithm.</p>
+<p>All key rotations currently resolve to <code>pq2025</code>, so rotation is also the
+supported Ed25519-to-post-quantum migration path — see
 <a href="key-rotation.html">Key Rotation</a>.</p>
 <h2 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Public Key</th><th>Signature</th><th>Status</th></tr></thead><tbody>
-<tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Default and only algorithm for new agents (FIPS-204)</td></tr>
-<tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>32 bytes</td><td>64 bytes</td><td>Legacy: verify always; sign only for grandfathered pre-existing agents</td></tr>
+<tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Default; post-quantum (FIPS-204)</td></tr>
+<tr><td>Ed25519</td><td><code>ring-Ed25519</code> (input alias: <code>ed25519</code>)</td><td>32 bytes</td><td>64 bytes</td><td>Supported for creation, signing, and verification</td></tr>
 </tbody></table>
 </div>
 <h2 id="when-to-choose-post-quantum"><a class="header" href="#when-to-choose-post-quantum">When to Choose Post-Quantum</a></h2>
@@ -215,7 +214,9 @@ migrates to post-quantum keys the first time it rotates — see
 <p>Or via environment variable:</p>
 <pre><code class="language-bash">export JACS_AGENT_KEY_ALGORITHM=pq2025
 </code></pre>
-<p>Valid values for new keys: <code>ring-Ed25519</code>, <code>pq2025</code></p>
+<p>User-facing values for new keys: <code>ed25519</code>, <code>pq2025</code>. The historical
+<code>ring-Ed25519</code> input remains accepted and is the canonical signature/config
+label emitted for Ed25519.</p>
 <p>In Python and Node.js, pass the algorithm to <code>quickstart(...)</code>:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
 client = JacsClient.quickstart(

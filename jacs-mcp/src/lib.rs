@@ -8,7 +8,7 @@
 //! Tools are organized into families and exposed via runtime profiles:
 //!
 //! **Core profile** (default) -- tool families for everyday signing and verification:
-//! - `document` -- Document CRUD (create, sign, verify, update)
+//! - `document` -- Document signing and verification
 //! - `trust` -- Trust store management (add, remove, list trusted agents)
 //! - `search` -- Document search and discovery
 //! - `key` -- Key management and export

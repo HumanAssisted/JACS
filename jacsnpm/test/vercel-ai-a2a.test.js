@@ -9,6 +9,7 @@
 
 const { expect } = require('chai');
 const sinon = require('sinon');
+const { signedResult } = require('./helpers/signed-document');
 
 let adapterModule;
 try {
@@ -31,12 +32,11 @@ describe('Vercel AI Adapter A2A Metadata - [2.9.4]', function () {
 
   function createMockClient(overrides = {}) {
     return {
-      signMessage: sinon.stub().resolves({
-        raw: '{"jacsId":"doc-a2a:1","jacsSignature":{"agentID":"a2a-agent","date":"2026-01-01T00:00:00Z"}}',
+      signMessage: sinon.stub().callsFake(async (binding) => signedResult(binding, {
         documentId: 'doc-a2a:1',
         agentId: 'a2a-agent',
         timestamp: '2026-01-01T00:00:00Z',
-      }),
+      })),
       agentId: overrides.agentId || 'a2a-agent-id',
       name: overrides.name || 'A2A Test Agent',
       _agent: { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
@@ -77,8 +77,57 @@ describe('Vercel AI Adapter A2A Metadata - [2.9.4]', function () {
       expect(card.name).to.equal('Vercel A2A Agent');
       expect(card.protocolVersions).to.include('0.4.0');
       expect(card.capabilities).to.have.property('extensions');
+      expect(result.providerMetadata.jacs.a2a).to.deep.include({ signed: true });
+      const signedCardDocument = JSON.parse(
+        result.providerMetadata.jacs.a2a.signedDocument,
+      );
+      expect(signedCardDocument.content.output).to.deep.equal(card);
       // Signing should still work alongside A2A
       expect(result.providerMetadata.jacs.text).to.deep.include({ signed: true });
+    });
+
+    (available ? it : it.skip)('should make independent agent-card mutation detectable', async () => {
+      const client = createMockClient({ agentId: 'vercel-a2a-1', name: 'Vercel A2A Agent' });
+      const middleware = adapterModule.jacsProvenance({ client, a2a: true });
+
+      const result = await middleware.wrapGenerate({
+        doGenerate: sinon.stub().resolves(createMockGenerateResult('Bound card')),
+        doStream: sinon.stub(),
+        params: { prompt: [] },
+        model: {},
+      });
+      const signedCardDocument = JSON.parse(
+        result.providerMetadata.jacs.a2a.signedDocument,
+      );
+
+      result.providerMetadata.jacs.agentCard.name = 'Attacker replacement';
+
+      expect(result.providerMetadata.jacs.agentCard).to.not.deep.equal(
+        signedCardDocument.content.output,
+      );
+      expect(signedCardDocument.content.output.name).to.equal('Vercel A2A Agent');
+    });
+
+    (available ? it : it.skip)('should sign A2A metadata even when text and tool signing are disabled', async () => {
+      const client = createMockClient({ agentId: 'vercel-a2a-only', name: 'A2A Only Agent' });
+      const middleware = adapterModule.jacsProvenance({
+        client,
+        a2a: true,
+        signText: false,
+        signToolResults: false,
+      });
+
+      const result = await middleware.wrapGenerate({
+        doGenerate: sinon.stub().resolves(createMockGenerateResult('Unsigned text by policy')),
+        doStream: sinon.stub(),
+        params: { prompt: [] },
+        model: {},
+      });
+
+      expect(client.signMessage.calledOnce).to.equal(true);
+      expect(result.providerMetadata.jacs).to.have.property('agentCard');
+      expect(result.providerMetadata.jacs.a2a).to.deep.include({ signed: true });
+      expect(result.providerMetadata.jacs).to.not.have.property('text');
     });
   });
 
@@ -131,6 +180,13 @@ describe('Vercel AI Adapter A2A Metadata - [2.9.4]', function () {
       expect(metaChunk.type).to.equal('provider-metadata');
       expect(metaChunk.providerMetadata.jacs).to.have.property('agentCard');
       expect(metaChunk.providerMetadata.jacs.agentCard.name).to.equal('Stream A2A Agent');
+      expect(metaChunk.providerMetadata.jacs.a2a).to.deep.include({ signed: true });
+      const signedCardDocument = JSON.parse(
+        metaChunk.providerMetadata.jacs.a2a.signedDocument,
+      );
+      expect(signedCardDocument.content.output).to.deep.equal(
+        metaChunk.providerMetadata.jacs.agentCard,
+      );
       // Text signing should also be present
       expect(metaChunk.providerMetadata.jacs.text).to.deep.include({ signed: true });
     });
@@ -155,6 +211,81 @@ describe('Vercel AI Adapter A2A Metadata - [2.9.4]', function () {
       });
 
       expect(result.providerMetadata.jacs).to.not.have.property('agentCard');
+    });
+  });
+
+  describe('A2A generation failures', () => {
+    function failingA2AClient() {
+      const client = createMockClient();
+      Object.defineProperty(client, 'agentId', {
+        get() { throw new Error('native identity unavailable'); },
+      });
+      return client;
+    }
+
+    (available ? it : it.skip)('should fail closed when requested A2A metadata cannot be generated', async () => {
+      const middleware = adapterModule.jacsProvenance({
+        client: failingA2AClient(),
+        a2a: true,
+      });
+      let error;
+      try {
+        await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('identity-bound')),
+          params: { prompt: [] }, model: {},
+        });
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/A2A metadata generation failed.*native identity unavailable/i);
+    });
+
+    (available ? it : it.skip)('should omit failed A2A metadata only after explicit dangerous opt-in', async () => {
+      const middleware = adapterModule.jacsProvenance({
+        client: failingA2AClient(),
+        a2a: true,
+        allowUnsignedOutput: true,
+      });
+      const consoleStub = sinon.stub(console, 'error');
+      try {
+        const result = await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('identity-bound')),
+          params: { prompt: [] }, model: {},
+        });
+        expect(result.providerMetadata.jacs.text.signed).to.equal(true);
+        expect(result.providerMetadata.jacs).to.not.have.property('agentCard');
+        expect(consoleStub.calledWithMatch(/A2A metadata generation failed/)).to.equal(true);
+      } finally {
+        consoleStub.restore();
+      }
+    });
+
+    (available ? it : it.skip)('should release zero buffered chunks when required A2A metadata fails', async () => {
+      const middleware = adapterModule.jacsProvenance({
+        client: failingA2AClient(),
+        a2a: true,
+      });
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', textDelta: 'must remain withheld' });
+          controller.enqueue({ type: 'finish', finishReason: 'stop', usage: {} });
+          controller.close();
+        },
+      });
+      const result = await middleware.wrapStream({
+        doStream: sinon.stub().resolves({ stream: source }),
+        params: { prompt: [] }, model: {},
+      });
+      const reader = result.stream.getReader();
+      let error;
+      try {
+        await reader.read();
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/A2A metadata generation failed/i);
     });
   });
 });

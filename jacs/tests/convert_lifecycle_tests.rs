@@ -89,7 +89,7 @@ fn sign_complex_payload_html_round_trip() {
     let agent = make_agent("ed25519");
     let complex = serde_json::json!({
         "name": "HTML Complex Test",
-        "values": [1.5, -0.0, 9007199254740993_u64, 0],
+        "values": [1.5, -0.0, 9007199254740991_u64, 0],
         "html_chars": "a < b & c > d",
         "nested": {"deep": {"deeper": "bottom"}}
     });

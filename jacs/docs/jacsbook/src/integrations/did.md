@@ -54,7 +54,7 @@ This gives human-readable identity, standards-friendly discovery, and strong cry
 ## ES256 Compatibility Entries in DID Documents (P2)
 
 When the agent has an ES256 compatibility key **and** a valid
-PQ-root-signed compatibility key binding granting the `did` scope,
+native-root-signed compatibility key binding granting the `did` scope,
 generated DID documents (`jacs w3c did-document`) include two
 verification-method entries for that key:
 
@@ -65,7 +65,7 @@ verification-method entries for that key:
 If the compatibility key is absent or the binding is missing, invalid, or
 lacks the `did` scope, the DID document is still exported — it simply
 omits the ES256 entries. The ES256 entries prove possession of the
-compatibility key only; post-quantum trust comes from the binding
+compatibility key only; native-root trust comes from the binding
 (`jacs agent export-compat-binding`) — see the
 [Security Model](../advanced/security.md#compatibility-key-binding-p2).
 

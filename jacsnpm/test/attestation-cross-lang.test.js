@@ -12,6 +12,10 @@
 const { expect } = require('chai');
 const path = require('path');
 const fs = require('fs');
+const {
+  LEGACY_SIGNATURE_ENV,
+  withLegacyFixtureCompatibility,
+} = require('./legacy-fixture');
 
 let simple;
 try {
@@ -107,6 +111,7 @@ describe('Cross-language attestation verification', function () {
   const fixturesDirExists = fs.existsSync(FIXTURES_DIR);
   let STANDALONE_CACHE_DIR = null;
   let previousIatSkewEnv = undefined;
+  let previousAllowLegacyEnv = undefined;
 
   before(function () {
     if (!available) {
@@ -118,6 +123,8 @@ describe('Cross-language attestation verification', function () {
       this.skip();
     }
     previousIatSkewEnv = process.env[IAT_SKEW_ENV_VAR];
+    previousAllowLegacyEnv = process.env[LEGACY_SIGNATURE_ENV];
+    delete process.env[LEGACY_SIGNATURE_ENV];
     process.env[IAT_SKEW_ENV_VAR] = '0';
     STANDALONE_CACHE_DIR = buildStandaloneKeyCache();
   });
@@ -131,6 +138,11 @@ describe('Cross-language attestation verification', function () {
       delete process.env[IAT_SKEW_ENV_VAR];
     } else {
       process.env[IAT_SKEW_ENV_VAR] = previousIatSkewEnv;
+    }
+    if (previousAllowLegacyEnv === undefined) {
+      delete process.env[LEGACY_SIGNATURE_ENV];
+    } else {
+      process.env[LEGACY_SIGNATURE_ENV] = previousAllowLegacyEnv;
     }
   });
 
@@ -148,21 +160,40 @@ describe('Cross-language attestation verification', function () {
       const hasFixture = fixturesDirExists && fixtureExists(algo.prefix);
 
       (available && hasFixture ? it : it.skip)(
-        'should verify a Rust-generated attestation with verifyStandalone',
+        'should enforce secure legacy policy with verifyStandalone',
         () => {
           const { attestation, metadata } = readFixture(algo.prefix);
+          const signature = JSON.parse(attestation).jacsSignature || {};
+          const isLegacy = !Object.prototype.hasOwnProperty.call(
+            signature,
+            'signatureContentVersion',
+          );
 
-          const result = simple.verifyStandalone(attestation, standaloneOpts());
+          let result = simple.verifyStandalone(attestation, standaloneOpts());
 
           expect(result).to.be.an('object');
-          expect(result.valid).to.equal(
-            true,
-            `Failed to verify ${algo.name} attestation`,
-          );
-          expect(result.signerId).to.equal(
-            metadata.agent_id,
-            `Signer ID should match metadata for ${algo.name}`,
-          );
+          if (isLegacy) {
+            expect(result.valid).to.equal(false);
+            expect(result.signerId).to.equal('');
+            result = withLegacyFixtureCompatibility(() => (
+              simple.verifyStandalone(attestation, standaloneOpts())
+            ));
+            expect(result.valid).to.equal(
+              true,
+              `Explicit legacy compatibility failed for ${algo.name} attestation`,
+            );
+            expect(result.signerId).to.equal('');
+            expect(result.timestamp).to.equal('');
+          } else {
+            expect(result.valid).to.equal(
+              true,
+              `Failed to verify ${algo.name} attestation`,
+            );
+            expect(result.signerId).to.equal(
+              metadata.agent_id,
+              `Signer ID should match metadata for ${algo.name}`,
+            );
+          }
         },
       );
 

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use rmcp::{
@@ -10,6 +10,7 @@ use rmcp::{
     service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
+use tokio::io::AsyncReadExt;
 
 mod support;
 
@@ -17,17 +18,19 @@ mod support;
 // create new JACS documents, so they need an algorithm with working
 // private-key signing.
 use support::{
-    TEST_PASSWORD, assert_server_reaches_initialized_request,
+    LEGACY_SIGNATURE_CONTENT_ENV_VAR, ScopedEnvVar, TEST_PASSWORD,
+    assert_server_reaches_initialized_request,
     prepare_temp_workspace_ed25519 as prepare_temp_workspace, run_server_with_fixture,
 };
 
 static STDIO_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
-static CWD_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static AGENT_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 // The stdio child can take longer to complete the rmcp handshake on contended
 // CI runners after full-tool schemas and storage backends have been loaded.
 const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(90);
 const MCP_CALL_TIMEOUT: Duration = Duration::from_secs(90);
+const MCP_STDERR_CAPTURE_LIMIT: usize = 64 * 1024;
 const AGREEMENT_V2_SCENARIO: &str =
     include_str!("../../binding-core/tests/fixtures/agreement_v2_scenarios.json");
 
@@ -41,22 +44,30 @@ struct RmcpSession {
 impl RmcpSession {
     async fn spawn(extra_env: &[(&str, &str)]) -> anyhow::Result<Self> {
         let (config, base) = prepare_temp_workspace();
-        Self::spawn_from_workspace(config, base, extra_env).await
+        Self::spawn_from_workspace(config, base, Some("full"), extra_env).await
+    }
+
+    async fn spawn_with_profile(
+        cli_profile: Option<&str>,
+        extra_env: &[(&str, &str)],
+    ) -> anyhow::Result<Self> {
+        let (config, base) = prepare_temp_workspace();
+        Self::spawn_from_workspace(config, base, cli_profile, extra_env).await
     }
 
     async fn spawn_from_workspace(
         config: PathBuf,
         base: PathBuf,
+        cli_profile: Option<&str>,
         extra_env: &[(&str, &str)],
     ) -> anyhow::Result<Self> {
         let bin_path = support::jacs_cli_bin();
         let command = tokio::process::Command::new(&bin_path).configure(|cmd| {
             cmd.arg("mcp")
-                .arg("--profile")
-                .arg("full")
                 .current_dir(&base)
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
+                .env(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true")
                 .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
                 .env("RUST_LOG", "warn")
                 .env_remove("JACS_KEY_DIRECTORY")
@@ -65,18 +76,63 @@ impl RmcpSession {
                 .env_remove("JACS_AGENT_KEY_ALGORITHM")
                 .env_remove("JACS_AGENT_PRIVATE_KEY_FILENAME")
                 .env_remove("JACS_AGENT_PUBLIC_KEY_FILENAME")
-                .env_remove("JACS_DEFAULT_STORAGE");
+                .env_remove("JACS_DEFAULT_STORAGE")
+                .env_remove("JACS_MCP_PROFILE");
+
+            if let Some(profile) = cli_profile {
+                cmd.arg("--profile").arg(profile);
+            }
 
             for (k, v) in extra_env {
                 cmd.env(k, v);
             }
         });
-        let (transport, _stderr) = TokioChildProcess::builder(command)
-            .stderr(Stdio::null())
+        let (transport, stderr) = TokioChildProcess::builder(command)
+            .stderr(Stdio::piped())
             .spawn()?;
-        let client = tokio::time::timeout(MCP_INIT_TIMEOUT, ().serve(transport))
-            .await
-            .map_err(|_| anyhow::anyhow!("timed out initializing jacs-mcp over stdio"))??;
+        let stderr_capture = Arc::new(Mutex::new(Vec::new()));
+        let stderr_task = stderr.map(|mut stderr| {
+            let capture = Arc::clone(&stderr_capture);
+            tokio::spawn(async move {
+                let mut chunk = [0_u8; 4096];
+                loop {
+                    let read = stderr.read(&mut chunk).await?;
+                    if read == 0 {
+                        break;
+                    }
+                    let mut captured = capture.lock().unwrap_or_else(|e| e.into_inner());
+                    let remaining = MCP_STDERR_CAPTURE_LIMIT.saturating_sub(captured.len());
+                    captured.extend_from_slice(&chunk[..read.min(remaining)]);
+                }
+                std::io::Result::Ok(())
+            })
+        });
+        let init_result = tokio::time::timeout(MCP_INIT_TIMEOUT, ().serve(transport)).await;
+        let client = match init_result {
+            Ok(Ok(client)) => client,
+            outcome => {
+                if let Some(task) = stderr_task {
+                    let _ = tokio::time::timeout(Duration::from_secs(1), task).await;
+                }
+                let stderr = {
+                    let captured = stderr_capture.lock().unwrap_or_else(|e| e.into_inner());
+                    String::from_utf8_lossy(&captured).into_owned()
+                };
+                match outcome {
+                    Err(_) => {
+                        return Err(anyhow::anyhow!(
+                            "timed out initializing jacs-mcp over stdio; child stderr:\n{stderr}"
+                        ));
+                    }
+                    Ok(Err(error)) => {
+                        return Err(anyhow::anyhow!(
+                            "failed to initialize jacs-mcp over stdio: {error}; child stderr:\n{stderr}"
+                        ));
+                    }
+                    Ok(Ok(_)) => unreachable!(),
+                }
+            }
+        };
 
         Ok(Self { client, base })
     }
@@ -97,6 +153,61 @@ impl RmcpSession {
         .map_err(|_| anyhow::anyhow!("timed out calling MCP tool '{}'", name))??;
         parse_tool_result(name, response)
     }
+}
+
+#[tokio::test]
+async fn mcp_stdio_tools_list_honors_default_env_and_cli_profile_precedence() -> anyhow::Result<()>
+{
+    let _guard = STDIO_TEST_LOCK.lock().await;
+
+    let core = RmcpSession::spawn_with_profile(None, &[]).await?;
+    let core_tools = tokio::time::timeout(MCP_CALL_TIMEOUT, core.client.list_all_tools()).await??;
+    let core_names: Vec<&str> = core_tools.iter().map(|tool| tool.name.as_ref()).collect();
+    assert!(core_names.contains(&"jacs_sign_document"));
+    assert!(!core_names.contains(&"jacs_create_agreement"));
+    core.client.cancellation_token().cancel();
+
+    let env_full = RmcpSession::spawn_with_profile(None, &[("JACS_MCP_PROFILE", "full")]).await?;
+    let full_tools =
+        tokio::time::timeout(MCP_CALL_TIMEOUT, env_full.client.list_all_tools()).await??;
+    let full_names: Vec<&str> = full_tools.iter().map(|tool| tool.name.as_ref()).collect();
+    assert!(full_names.contains(&"jacs_create_agreement"));
+    assert!(full_tools.len() > core_tools.len());
+    env_full.client.cancellation_token().cancel();
+
+    let cli_core =
+        RmcpSession::spawn_with_profile(Some("core"), &[("JACS_MCP_PROFILE", "full")]).await?;
+    let overridden =
+        tokio::time::timeout(MCP_CALL_TIMEOUT, cli_core.client.list_all_tools()).await??;
+    let overridden_names: Vec<&str> = overridden.iter().map(|tool| tool.name.as_ref()).collect();
+    assert!(!overridden_names.contains(&"jacs_create_agreement"));
+    assert_eq!(overridden.len(), core_tools.len());
+    cli_core.client.cancellation_token().cancel();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_stdio_initialization_failure_preserves_bounded_child_stderr() {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let (_config, base) = prepare_temp_workspace();
+    let missing_config = base.join("missing.config.json");
+
+    let error =
+        match RmcpSession::spawn_from_workspace(missing_config, base.clone(), Some("core"), &[])
+            .await
+        {
+            Ok(_) => panic!("missing config must fail MCP initialization"),
+            Err(error) => error,
+        };
+    let message = error.to_string();
+    assert!(message.contains("child stderr"), "{message}");
+    assert!(
+        message.contains("Config file not found") || message.contains("Failed to load agent"),
+        "missing-config diagnostic should survive the stdio wrapper: {message}"
+    );
+
+    support::cleanup_workspace(&base);
 }
 
 fn parse_tool_result(
@@ -178,14 +289,14 @@ impl Drop for RmcpSession {
 
 struct LoadedAgentWorkspace {
     _guard: MutexGuard<'static, ()>,
+    _password: ScopedEnvVar,
+    _legacy_fixture: ScopedEnvVar,
     agent: jacs_binding_core::AgentWrapper,
     base: PathBuf,
-    orig: PathBuf,
 }
 
 impl Drop for LoadedAgentWorkspace {
     fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.orig);
         let _ = fs::remove_dir_all(&self.base);
     }
 }
@@ -234,6 +345,25 @@ async fn mcp_document_and_attestation_round_trip_over_stdio() -> anyhow::Result<
         verify_doc["valid"], true,
         "verify_document invalid: {}",
         verify_doc
+    );
+
+    let duplicate_content = session
+        .call_tool(
+            "jacs_sign_document",
+            serde_json::json!({ "content": "{\"decision\":\"allow\",\"decision\":\"deny\"}" }),
+        )
+        .await?;
+    assert_eq!(
+        duplicate_content["success"], false,
+        "duplicate-key JSON must be rejected before signing: {}",
+        duplicate_content
+    );
+    assert!(
+        duplicate_content["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("duplicate JSON object key")),
+        "duplicate-key failure should preserve the strict-parser diagnostic: {}",
+        duplicate_content
     );
 
     let attestation = session
@@ -1298,8 +1428,8 @@ fn well_known_documents_generated() {
     let docs: Vec<serde_json::Value> =
         serde_json::from_str(&docs_json).expect("Well-known documents should be valid JSON array");
     assert!(
-        docs.len() >= 3,
-        "Should generate at least 3 well-known documents, got {}",
+        docs.len() == 6,
+        "Should generate the complete six-document bound discovery set, got {}",
         docs.len()
     );
 
@@ -1322,6 +1452,34 @@ fn well_known_documents_generated() {
         "First document should be agent-card, got: {}",
         first_path
     );
+    assert!(docs.iter().any(|entry| {
+        entry.get("path").and_then(|path| path.as_str())
+            == Some("/.well-known/jacs-compat-binding.json")
+    }));
+    let repeated_json = ctx
+        .agent
+        .generate_well_known_documents(Some("ES256"))
+        .expect("binding generator should reuse the persisted identity");
+    let repeated: Vec<serde_json::Value> =
+        serde_json::from_str(&repeated_json).expect("repeated discovery JSON");
+    for path in [
+        "/.well-known/agent-card.json",
+        "/.well-known/jwks.json",
+        "/.well-known/jacs-compat-binding.json",
+    ] {
+        let lookup = |entries: &[serde_json::Value]| {
+            entries
+                .iter()
+                .find(|entry| entry["path"] == path)
+                .map(|entry| entry["document"].clone())
+        };
+        assert_eq!(lookup(&docs), lookup(&repeated), "{path} must be stable");
+    }
+    let obsolete = ctx
+        .agent
+        .generate_well_known_documents(Some("ring-Ed25519"))
+        .expect_err("obsolete ephemeral A2A algorithms must be rejected");
+    assert!(obsolete.message.contains("ES256"));
 }
 
 /// Test that get_agent_json returns the agent's full document.
@@ -1351,20 +1509,22 @@ fn export_agent_json_valid() {
 
 /// Helper: load an AgentWrapper inside a temp workspace while serializing cwd changes.
 fn load_agent_in_workspace() -> LoadedAgentWorkspace {
-    let guard = CWD_TEST_LOCK.lock().expect("lock cwd test mutex");
+    let guard = AGENT_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let (config, base) = prepare_temp_workspace();
     let agent = jacs_binding_core::AgentWrapper::new();
-    let orig = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&base).expect("chdir to workspace");
-    unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
+    let password = ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    let legacy_fixture = ScopedEnvVar::set(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true");
     agent
         .load(config.to_string_lossy().to_string())
         .expect("load agent");
     LoadedAgentWorkspace {
         _guard: guard,
+        _password: password,
+        _legacy_fixture: legacy_fixture,
         agent,
         base,
-        orig,
     }
 }
 

@@ -161,4 +161,13 @@ describe('Node.js error kind parity', function () {
     const signed = agent.signMessage('{"test": 1}');
     expect(() => agent.verifyWithKey(signed, '!!!notbase64')).to.throw(/Invalid|base64/i);
   });
+
+  it('removed algorithms expose the shared portable error category', function () {
+    const { message_prefix: prefix, removed_algorithm: removed } = fixture.portable_error_contract;
+    const { JacsSimpleAgent } = require('../index.js');
+
+    expect(() => JacsSimpleAgent.ephemeral(removed.input)).to.throw().with.property(
+      'message',
+    ).that.includes(`${prefix}${removed.kind}`);
+  });
 });

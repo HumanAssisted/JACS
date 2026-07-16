@@ -166,7 +166,8 @@ jacs document create -f unsigned-doc.json
 **Cause:** Document was signed with an unsupported algorithm.
 
 **Solution:**
-- Use a supported algorithm for new keys: `ring-Ed25519`, `pq2025`
+- Use a supported user-facing algorithm for new keys: `ed25519`, `pq2025`
+  (`ring-Ed25519` remains a legacy input and canonical wire label)
 
 ## DNS Verification Errors
 

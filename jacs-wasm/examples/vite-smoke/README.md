@@ -22,11 +22,25 @@ the page's `#output` element does not end with `SMOKE OK` within
 
 ## How it wires `@jacs/wasm`
 
-The `vite.config.ts` aliases the bare `@jacs/wasm` import to the
-locally built `../../pkg/index.js`, and `@jacs/wasm/worker` to
-`../../pkg/worker/index.js`. The package published on npm exposes
-the same shape — the alias only exists so the smoke can run before
-`npm publish` lands.
+With no extra environment variables, `vite.config.ts` aliases the bare
+`@jacs/wasm` import to the locally built `../../pkg/index.js`, and
+`@jacs/wasm/worker` to `../../pkg/worker/index.js`.
+
+To test an exact package installed from npm, install it into this example and
+select it explicitly:
+
+```bash
+npm install --no-save --ignore-scripts @jacs/wasm@0.11.4
+JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@jacs/wasm" \
+  JACS_WASM_EXPECTED_VERSION=0.11.4 \
+  npm test
+```
+
+Registry mode validates the package name, exact version, export map, main
+entry, worker entry, and worker bootstrap before Vite starts. The package root
+must be an absolute, non-symlinked `node_modules/@jacs/wasm` directory. A bad
+or missing registry package fails immediately and never falls back to the
+local `../../pkg` candidate.
 
 CI runs this check on every `wasm-v*` tag via
 `release-wasm.yml` (Task 021), after `wasm-pack build` +

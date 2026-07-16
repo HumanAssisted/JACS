@@ -5,36 +5,51 @@ on:
     tags:
       - 'pypi/v*'
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
+
+concurrency:
+  group: release-pypi-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/python.yml
+
   verify-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Extract version from tag
+      - name: Validate and extract release tag
         id: extract
-        run: |
-          TAG="${GITHUB_REF#refs/tags/pypi/v}"
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+        run: python3 scripts/release_tag.py --surface pypi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
 
       - name: Check pyproject.toml version matches tag
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
-          pip install toml
-          PKG_VERSION=$(python -c "import toml; print(toml.load('jacspy/pyproject.toml')['project']['version'])")
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          set -euo pipefail
+          PKG_VERSION=$(python -c "import tomllib; print(tomllib.load(open('jacspy/pyproject.toml', 'rb'))['project']['version'])")
           echo "Package version: $PKG_VERSION"
           echo "Tag version: $TAG_VERSION"
           if [ "$PKG_VERSION" = "$TAG_VERSION" ]; then
@@ -45,7 +60,7 @@ jobs:
           fi
 
   build-wheels:
-    needs: verify-version
+    needs: [verify-version, functional-gate]
     strategy:
       fail-fast: false
       matrix:
@@ -76,17 +91,21 @@ jobs:
             allow_failure: false
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: '1.97'
           target: ${{ matrix.target }}
@@ -98,33 +117,43 @@ jobs:
       - name: Set musl CC for native ARM builds
         if: contains(matrix.target, 'aarch64') && contains(matrix.target, 'musl') && !matrix.use_zig
         run: |
-          echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
-          echo "AR_aarch64_unknown_linux_musl=ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
+          {
+            echo "CC_aarch64_unknown_linux_musl=musl-gcc"
+            echo "AR_aarch64_unknown_linux_musl=ar"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc"
+          } >> "$GITHUB_ENV"
 
       - name: Install maturin
         if: ${{ !matrix.use_zig }}
-        run: pip install maturin
+        run: pip install "maturin==1.5.0"
 
       - name: Install maturin with zig support
         if: ${{ matrix.use_zig }}
-        run: pip install "maturin[zig]"
+        run: pip install "maturin[zig]==1.5.0"
 
       - name: Build wheel
         id: build_wheel
         if: ${{ !matrix.use_zig }}
         continue-on-error: ${{ matrix.allow_failure }}
         working-directory: jacspy
-        run: maturin build --release --target ${{ matrix.target }} --out dist
+        run: maturin build --locked --release --target ${{ matrix.target }} --out dist
 
       - name: Build wheel (zig)
         id: build_wheel_zig
         if: ${{ matrix.use_zig }}
         continue-on-error: ${{ matrix.allow_failure }}
         working-directory: jacspy
-        run: maturin build --release --target ${{ matrix.target }} --out dist --zig
+        run: maturin build --locked --release --target ${{ matrix.target }} --out dist --zig
 
-      - uses: actions/upload-artifact@v4
+      - name: Verify wheel package inventory
+        if: ${{ steps.build_wheel.conclusion == 'success' || steps.build_wheel_zig.conclusion == 'success' }}
+        run: >-
+          python3 scripts/check_python_package_inventory.py
+          --license LICENSE-APACHE
+          --notices THIRD-PARTY-NOTICES
+          jacspy/dist/*.whl
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ steps.build_wheel.conclusion == 'success' || steps.build_wheel_zig.conclusion == 'success' }}
         with:
           name: wheels-${{ matrix.target }}
@@ -133,40 +162,251 @@ jobs:
   build-sdist:
     needs: verify-version
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
 
       - name: Install maturin
-        run: pip install maturin
+        run: pip install "maturin==1.5.0"
 
       - name: Build sdist
         working-directory: jacspy
         run: maturin sdist --out dist
 
-      - uses: actions/upload-artifact@v4
+      - name: Verify source distribution package inventory
+        run: >-
+          python3 scripts/check_python_package_inventory.py
+          --license LICENSE-APACHE
+          --notices THIRD-PARTY-NOTICES
+          jacspy/dist/*.tar.gz
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sdist
           path: jacspy/dist/*.tar.gz
 
-  publish:
-    needs: [build-wheels, build-sdist]
+  prepare-release:
+    needs: [verify-version, build-wheels, build-sdist]
     runs-on: ubuntu-latest
-    environment: pypi
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Generate Python distribution SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
-          packages-dir: dist/
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          path: dist
+          format: spdx-json
+          output-file: jacspy.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate Python SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacspy.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacspy.spdx.json >/dev/null
+
+      - name: Record exact Python distribution digests
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            sha256sum -- *.whl *.tar.gz | sort -k2 > "../jacspy-${VERSION}-sha256sums.txt"
+          )
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacspy-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: |
+            dist/*
+            jacspy-${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            jacspy.spdx.json
+          if-no-files-found: error
+
+  candidate-smoke:
+    needs: [verify-version, prepare-release]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacspy-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: release
+
+      - name: Verify bundle digests and install exact local wheel
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+          VENV: /tmp/jacs-python-candidate-smoke-${{ matrix.python-version }}
+        run: |
+          set -euo pipefail
+          manifest="jacspy-${VERSION}-sha256sums.txt"
+          (
+            cd release/dist
+            sha256sum -c "../${manifest}"
+          )
+          dist="$(realpath release/dist)"
+          python -m venv "$VENV"
+          "$VENV/bin/pip" install \
+            --no-index \
+            --no-deps \
+            --only-binary=:all: \
+            --find-links "$dist" \
+            "jacs==$VERSION"
+
+      - name: Import, sign, and verify exact wheel candidate
+        env:
+          VENV: /tmp/jacs-python-candidate-smoke-${{ matrix.python-version }}
+        run: |
+          "$VENV/bin/python" - <<'PY'
+          from jacs import SimpleAgent
+
+          agent, _ = SimpleAgent.ephemeral(algorithm="ed25519")
+          signed = agent.sign_message({"release": True})
+          assert agent.verify(signed["raw"])["valid"] is True
+          PY
+
+  publish:
+    needs: [security-gate, verify-version, prepare-release, candidate-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacspy-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: release
+
+      - name: Verify exact candidate bundle before publication
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          (
+            cd release/dist
+            sha256sum -c "../jacspy-${VERSION}-sha256sums.txt"
+          )
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        with:
+          packages-dir: release/dist/
+
+  post-publish-smoke:
+    needs: [verify-version, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install exact wheel from PyPI and sign/verify
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+          VENV: /tmp/jacs-python-release-smoke-${{ matrix.python-version }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if python -m pip index versions jacs 2>/dev/null | grep -q "Available versions:.*${VERSION}"; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              echo "::error::jacs==$VERSION did not become available on PyPI"
+              exit 1
+            fi
+            sleep 10
+          done
+          python -m venv "$VENV"
+          "$VENV/bin/pip" install --only-binary=:all: "jacs==$VERSION"
+          "$VENV/bin/python" - <<'PY'
+          from jacs import SimpleAgent
+
+          agent, _ = SimpleAgent.ephemeral(algorithm="ed25519")
+          signed = agent.sign_message({"release": True})
+          assert agent.verify(signed["raw"])["valid"] is True
+          PY
+
+      - name: Cryptographically verify PEP 740 provenance for every distribution
+        if: matrix.python-version == '3.11'
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+          JACS_PYPI_VERIFY_TIMEOUT_SECONDS: "60"
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/jacs-pypi-attestation-verifier
+          /tmp/jacs-pypi-attestation-verifier/bin/pip install \
+            --disable-pip-version-check \
+            "pypi-attestations==0.0.29"
+          PATH="/tmp/jacs-pypi-attestation-verifier/bin:$PATH" \
+            python scripts/verify_pypi_release_attestations.py "$VERSION"
+
+  durable-release-evidence:
+    needs: [verify-version, prepare-release, post-publish-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacspy-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: release-evidence
+
+      - name: Attest durable Python release evidence
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            release-evidence/jacspy-${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            release-evidence/jacspy.spdx.json
+
+      - name: Publish durable Python release evidence
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: JACS Python v${{ needs.verify-version.outputs.version }}
+          body: Attested distribution checksums and SPDX SBOM for the PyPI release.
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release-evidence/jacspy-${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            release-evidence/jacspy.spdx.json

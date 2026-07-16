@@ -17,7 +17,8 @@ func main() {
 	fmt.Println()
 
 	// Load an existing agent
-	// Run `jacs create --name "my-agent"` first if you don't have one
+	// Run `jacs quickstart --name my-agent --domain my-agent.example.com` first
+	// if you don't have one.
 	configPath := "./jacs.config.json"
 	if err := jacs.Load(&configPath); err != nil {
 		log.Printf("No agent found. Creating one...")

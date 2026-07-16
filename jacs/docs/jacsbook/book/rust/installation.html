@@ -192,6 +192,9 @@
 <h3 id="from-cratesio-recommended"><a class="header" href="#from-cratesio-recommended">From crates.io (Recommended)</a></h3>
 <pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
+<p>At the 2026-07-09 shipped-artifact snapshot, crates.io resolves <code>jacs-cli</code>
+<code>0.11.3</code>; the documentation source is <code>0.11.4</code>. Check the resolved version
+instead of assuming the source branch has already been published.</p>
 <h3 id="from-homebrew-macos"><a class="header" href="#from-homebrew-macos">From Homebrew (macOS)</a></h3>
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
 brew install jacs
@@ -207,30 +210,33 @@ cargo install --path jacs-cli
 <h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
 <p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
 <pre><code class="language-bash"># Start the MCP server (stdio transport)
-jacs mcp
+JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
 </code></pre>
 <h2 id="using-as-a-library"><a class="header" href="#using-as-a-library">Using as a Library</a></h2>
 <p>Add JACS to your <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
-jacs = "0.3"
+jacs = "0.11.3"
 </code></pre>
+<p><code>0.11.3</code> is the published crate recorded in
+<code>release/shipped-artifacts.json</code>; source checkout <code>0.11.4</code> is not installable
+from crates.io until its release completes.</p>
 <h3 id="with-optional-features"><a class="header" href="#with-optional-features">With Optional Features</a></h3>
 <p>JACS supports several optional features for observability and integrations:</p>
 <pre><code class="language-toml">[dependencies]
 # Basic library usage
-jacs = "0.3"
+jacs = "0.11.3"
 
 # With OpenTelemetry logging
-jacs = { version = "0.3", features = ["otlp-logs"] }
+jacs = { version = "0.11.3", features = ["otlp-logs"] }
 
 # With OpenTelemetry metrics
-jacs = { version = "0.3", features = ["otlp-metrics"] }
+jacs = { version = "0.11.3", features = ["otlp-metrics"] }
 
 # With OpenTelemetry tracing
-jacs = { version = "0.3", features = ["otlp-tracing"] }
+jacs = { version = "0.11.3", features = ["otlp-tracing"] }
 
 # With all observability features
-jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
+jacs = { version = "0.11.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
 </code></pre>
 <h3 id="available-features"><a class="header" href="#available-features">Available Features</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
@@ -240,27 +246,40 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 <tr><td><code>otlp-tracing</code></td><td>OpenTelemetry Protocol distributed tracing</td></tr>
 <tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
 <tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>s3</code></td><td>AWS S3 storage; opt-in because it adds cloud HTTP/XML dependencies</td></tr>
 <tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
 <tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
 <tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="platform-support"><a class="header" href="#platform-support">Platform Support</a></h2>
-<p>JACS supports the following platforms:</p>
-<div class="table-wrapper"><table><thead><tr><th>Platform</th><th>Architecture</th><th>Support</th></tr></thead><tbody>
-<tr><td>Linux</td><td>x86_64, aarch64</td><td>Full support</td></tr>
-<tr><td>macOS</td><td>x86_64, aarch64</td><td>Full support</td></tr>
-<tr><td>Windows</td><td>x86_64</td><td>Full support</td></tr>
-<tr><td>WebAssembly</td><td>wasm32</td><td>Partial (no post-quantum crypto, limited storage)</td></tr>
+<p>The Rust crate and the CLI have different distribution models. The <code>jacs</code>
+crate is source compiled by Cargo; a successful build depends on the Rust
+target, linker, and system dependencies available to the consumer. The CLI is
+also published as platform archives.</p>
+<p>Observed public artifacts on 2026-07-09:</p>
+<div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Version</th><th>Prebuilt targets</th><th>Test evidence</th></tr></thead><tbody>
+<tr><td>Rust library crate</td><td><code>jacs 0.11.3</code></td><td>None; crates.io distributes source</td><td>Full source suites run in release CI on Ubuntu and macOS. This does not imply every Rust-supported target.</td></tr>
+<tr><td>CLI crate</td><td><code>jacs-cli 0.11.3</code></td><td><code>cargo install</code> builds from source</td><td>Source compilation follows the consumer's Rust target and native dependencies.</td></tr>
+<tr><td>CLI archives</td><td><code>jacs-cli 0.11.3</code></td><td>macOS arm64/x86_64; glibc Linux arm64/x86_64; Windows x86_64</td><td>The release job builds each target and executes <code>jacs --version</code> on its runner. Full feature suites are not run separately on every archive target.</td></tr>
+<tr><td>Browser WASM</td><td>source <code>0.11.4</code> only</td><td>No published <code>@jacs/wasm</code> package</td><td>Source CI runs Firefox <code>wasm-pack</code> tests and a Chromium/Playwright package smoke on Ubuntu.</td></tr>
 </tbody></table>
 </div>
+<p>There is no basis for a blanket “full support” claim across operating systems.
+In particular, the Windows x86_64 CLI archive does not imply Windows wheels or
+native modules for Python, Node, or Go. See
+<a href="../getting-started/deployment.html">Deployment Compatibility</a> for the exact
+cross-language, architecture, and libc matrix.</p>
 <h3 id="webassembly-notes"><a class="header" href="#webassembly-notes">WebAssembly Notes</a></h3>
-<p>When targeting WebAssembly, some features are unavailable:</p>
-<ul>
-<li>Post-quantum cryptographic algorithms (<code>pq2025</code>)</li>
-<li>File system storage backend</li>
-<li>HTTP-based remote operations</li>
-</ul>
+<p>The source-built <code>jacs-wasm</code> package supports both Ed25519 and post-quantum
+<code>pq2025</code> signing and verification. The previous claim that WebAssembly lacked
+post-quantum support was incorrect.</p>
+<p>The WASM surface remains browser-specific and omits native filesystem storage,
+DNS resolution, MCP, and the CLI. It uses encrypted browser persistence, and
+its private keys live in JavaScript-visible WebAssembly memory. Most
+importantly for installation, <code>@jacs/wasm</code> was not published to npm at the
+shipped-artifact observation date; build it from source rather than running the
+unqualified npm install command until a registry version exists.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>After installation, initialize JACS:</p>
 <pre><code class="language-bash"># Create configuration and agent in one step
@@ -288,7 +307,11 @@ jacs agent create --create-keys true
 <tr><td><code>JACS_DATA_DIRECTORY</code></td><td>Directory for document storage</td><td><code>./jacs_data</code></td></tr>
 <tr><td><code>JACS_KEY_DIRECTORY</code></td><td>Directory for cryptographic keys</td><td><code>./jacs_keys</code></td></tr>
 <tr><td><code>JACS_DEFAULT_STORAGE</code></td><td>Storage backend (<code>fs</code>, <code>memory</code>)</td><td><code>fs</code></td></tr>
-<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>pq2025</code>)</td><td><code>ring-Ed25519</code></td></tr>
+<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ed25519</code>, <code>pq2025</code>; legacy alias <code>ring-Ed25519</code>)</td><td><code>pq2025</code></td></tr>
+<tr><td><code>JACS_ALLOW_LEGACY_SIGNATURE_CONTENT</code></td><td>Explicitly allow payload-only verification of legacy v1 signatures; signer/version/time metadata stays untrusted and empty</td><td><code>false</code></td></tr>
+<tr><td><code>JACS_REJECT_LEGACY_SIGNATURE_CONTENT</code></td><td>Force legacy-v1 rejection even if compatibility was requested</td><td><code>false</code></td></tr>
+<tr><td><code>JACS_PAYLOAD_MAX_REPLAY_SECONDS</code></td><td>Freshness/nonce retention window for HTTP/RPC payload proofs</td><td><code>300</code></td></tr>
+<tr><td><code>JACS_REQUIRE_SHARED_REPLAY_STORE</code></td><td>Fail closed unless an application-installed <code>ReplayStore</code> is shared across replicas</td><td><code>false</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>

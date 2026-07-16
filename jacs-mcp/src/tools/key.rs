@@ -47,7 +47,7 @@ pub struct ReencryptKeyResult {
 pub struct RotateKeysParams {
     /// Signing algorithm for the new keys. Rotation always resolves to pq2025.
     #[schemars(
-        description = "Signing algorithm for the new keys. Rotation always resolves to pq2025 (omit or pass pq2025); Ed25519-rooted agents migrate to pq2025 on rotation."
+        description = "Signing algorithm for the new keys. Omit to preserve the current algorithm; Ed25519 may upgrade to pq2025, but pq2025 cannot downgrade."
     )]
     pub algorithm: Option<String>,
 }
@@ -110,8 +110,12 @@ pub struct ExportAgentCardResult {
 /// Parameters for generating well-known documents.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GenerateWellKnownParams {
-    /// Optional A2A signing algorithm override (default: ring-Ed25519).
-    #[schemars(description = "A2A signing algorithm override (default: ring-Ed25519)")]
+    /// Compatibility-only parameter. Omit or pass `ES256`; obsolete explicit
+    /// algorithms are rejected because discovery reuses the persisted,
+    /// native-root-bound compatibility key.
+    #[schemars(
+        description = "Compatibility-only algorithm selector: omit or pass ES256. Other values are rejected; discovery always uses the persisted native-root-bound compatibility key."
+    )]
     pub a2a_algorithm: Option<String>,
 }
 
@@ -177,9 +181,10 @@ pub fn tools() -> Vec<Tool> {
         ),
         Tool::new(
             "jacs_rotate_keys",
-            "Rotate the agent's cryptographic keys. Generates a new keypair, signs a \
-             transition proof with the old key, re-signs the agent document and config \
-             with the new key. Optionally change the signing algorithm.",
+            "Rotate the agent's cryptographic keys to pq2025. Generates a new keypair, \
+             signs a transition proof with the old key, and re-signs the agent document \
+             and config with the new key. Omit algorithm or pass pq2025; Ed25519 and \
+             unknown targets are rejected.",
             schema_map::<RotateKeysParams>(),
         ),
         Tool::new(
@@ -190,8 +195,9 @@ pub fn tools() -> Vec<Tool> {
         ),
         Tool::new(
             "jacs_generate_well_known",
-            "Generate all .well-known documents for A2A discovery. Returns an array of \
-             {path, document} objects that can be served at each path for agent discovery.",
+            "Generate the identity-bound .well-known documents for A2A discovery: the stable \
+             ES256-signed Agent Card, compatibility JWKS, native-root-signed binding, and JACS \
+             descriptors. Returns {path, document} entries for serving.",
             schema_map::<GenerateWellKnownParams>(),
         ),
         Tool::new(

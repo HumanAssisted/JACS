@@ -1,9 +1,10 @@
 //! A2A evidence adapter.
 //!
-//! Normalizes A2A protocol messages into attestation evidence.
+//! Normalizes bytes described as A2A messages into digest-addressed attestation
+//! evidence. This adapter does not verify an A2A/JACS signature or signer trust.
 //! Zero new dependencies -- reuses existing jacs/src/a2a/ module.
 
-use crate::attestation::adapters::EvidenceAdapter;
+use crate::attestation::adapters::{EvidenceAdapter, digest_recorded_claim};
 use crate::attestation::digest::{compute_digest_set_bytes, should_embed_with_sensitivity};
 use crate::attestation::types::*;
 use crate::error::JacsError;
@@ -38,14 +39,9 @@ impl EvidenceAdapter for A2aAdapter {
             None
         };
 
-        let claims = vec![Claim {
-            name: "a2a-message-verified".into(),
-            value: Value::Bool(true),
-            confidence: Some(0.9),
-            assurance_level: Some(AssuranceLevel::Verified),
-            issuer: None,
-            issued_at: Some(crate::time_utils::now_rfc3339()),
-        }];
+        // Raw bytes and caller-controlled metadata cannot establish A2A
+        // protocol validity. Record only what this adapter actually computed.
+        let claims = vec![digest_recorded_claim("a2a", &digests)];
 
         let evidence = EvidenceRef {
             kind: EvidenceKind::A2a,
@@ -99,8 +95,9 @@ impl EvidenceAdapter for A2aAdapter {
 
         info!(
             target: "jacs::attestation::adapters",
-            event = "evidence_verified",
+            event = "evidence_digest_checked",
             adapter = "a2a",
+            verification_scope = "digest_only",
             digest_valid = digest_valid,
         );
 
@@ -109,9 +106,9 @@ impl EvidenceAdapter for A2aAdapter {
             digest_valid,
             freshness_valid: true, // Freshness checking is done at full verify level
             detail: if digest_valid {
-                "Embedded A2A evidence digest verified".into()
+                "Embedded A2A evidence bytes match the recorded digest; A2A protocol signature and signer trust were not verified".into()
             } else {
-                "A2A evidence digest could not be verified".into()
+                "A2A evidence digest could not be verified; A2A protocol signature and signer trust were not verified".into()
             },
         })
     }
@@ -130,15 +127,46 @@ mod tests {
     }
 
     #[test]
-    fn a2a_normalize_valid_message() {
+    fn a2a_normalize_records_digest_only_claim() {
         let adapter = A2aAdapter;
         let msg = json!({"jsonrpc": "2.0", "method": "test", "id": 1});
         let raw = serde_json::to_vec(&msg).unwrap();
         let (claims, evidence) = adapter.normalize(&raw, &json!({})).unwrap();
 
         assert!(!claims.is_empty());
-        assert_eq!(claims[0].name, "a2a-message-verified");
+        assert_eq!(claims[0].name, "a2a-evidence-digest-recorded");
+        assert_eq!(claims[0].value, evidence.digests.sha256);
+        assert_eq!(
+            claims[0].assurance_level,
+            Some(AssuranceLevel::SelfAsserted)
+        );
         assert_eq!(evidence.kind, EvidenceKind::A2a);
+    }
+
+    #[test]
+    fn a2a_normalize_never_claims_arbitrary_message_is_protocol_verified() {
+        let adapter = A2aAdapter;
+        let raw = br#"{"jsonrpc":"2.0","result":"attacker-controlled"}"#;
+        let metadata = json!({
+            "verified": true,
+            "signatureVerified": true,
+            "assuranceLevel": "verified"
+        });
+
+        let (claims, _) = adapter.normalize(raw, &metadata).unwrap();
+
+        assert!(
+            claims
+                .iter()
+                .all(|claim| claim.assurance_level != Some(AssuranceLevel::Verified)),
+            "normalizing bytes and checking a digest is not A2A protocol verification"
+        );
+        assert!(
+            claims
+                .iter()
+                .all(|claim| claim.name != "a2a-message-verified"),
+            "unverified input must not produce a protocol-verification claim"
+        );
     }
 
     #[test]
@@ -206,6 +234,8 @@ mod tests {
             "Embedded evidence digest should verify: {}",
             result.detail
         );
+        assert!(result.detail.contains("not verified"));
+        assert!(result.detail.contains("protocol signature"));
     }
 
     #[test]

@@ -22,7 +22,7 @@ use rmcp::{
 };
 
 mod support;
-use support::{TEST_PASSWORD, prepare_temp_workspace_ed25519};
+use support::{LEGACY_SIGNATURE_CONTENT_ENV_VAR, TEST_PASSWORD, prepare_temp_workspace_ed25519};
 
 static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -53,6 +53,7 @@ impl Session {
                 .current_dir(&base)
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
+                .env(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true")
                 .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
                 .env("RUST_LOG", "warn")
                 .env_remove("JACS_KEY_DIRECTORY")
@@ -495,6 +496,7 @@ async fn spawn_with_sandbox_and_outside_file(
             .current_dir(&base)
             .env("JACS_CONFIG", &config)
             .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
+            .env(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true")
             .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
             .env("JACS_MCP_BASE_DIR", &sandbox)
             .env("RUST_LOG", "warn")
@@ -644,6 +646,7 @@ async fn jacs_sign_image_output_path_honours_base_dir_confinement() -> anyhow::R
             .current_dir(&base)
             .env("JACS_CONFIG", &config)
             .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
+            .env(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true")
             .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
             .env("JACS_MCP_BASE_DIR", &sandbox)
             .env("RUST_LOG", "warn");

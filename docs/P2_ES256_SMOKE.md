@@ -1,14 +1,14 @@
-# P2 PQ-Root Targeted Export Smoke Checklist
+# P2 Native-Root Targeted Export Smoke Checklist
 
 This checklist matches the P2 plan after targeted ecosystem content exports were brought into scope.
 
 The smoke goal is narrow:
 
-1. a new JACS agent signs native JACS documents with `pq2025`
+1. a default new JACS agent signs native JACS documents with `pq2025`, while explicit Ed25519 selection remains truthful
 2. the agent has an ES256 compatibility key unless explicitly opted out
 3. existing agents add the ES256 key only through explicit migration
 4. the ES256 key is encrypted at rest with the existing JACS key envelope
-5. a PQ-signed compatibility binding ties the ES256 public key and export scopes to the JACS agent id
+5. a native-root-signed compatibility binding ties the ES256 public key and export scopes to the JACS agent id
 6. JWKS, DID, W3C, and A2A exports can point back to that binding
 7. AP2 mandate and Agreement-v2-as-VC exports are targeted ecosystem artifacts, not native JACS projections
 
@@ -22,11 +22,11 @@ cargo test -p jacs-binding-core --test contract -- --nocapture algorithm
 
 Expected:
 
-- new native signatures use `pq2025`
+- default native signatures use `pq2025`; explicit `ed25519` uses `ring-Ed25519`
 - native ES256 is rejected at parse, schema, and verify layers
 - `signingAlgorithm` is optional in schema for legacy compatibility but set to `pq2025` by new signatures
-- an existing Ed25519-rooted agent still signs (grandfathered) and logs WARN `native_legacy_ed25519_sign`
-- `rotate_keys` yields a `pq2025` root — by argument and by default — even for a grandfathered Ed25519 agent
+- an Ed25519-rooted agent signs normally without a false legacy/rejection WARN
+- `rotate_keys` yields a `pq2025` root — by argument and by default — even for an Ed25519 agent
 - legacy verification still works
 
 ## Task 002 - Role-Based Keyring, Init, and Migration
@@ -57,7 +57,7 @@ Expected:
 - binding has native `jacsSignature.signingAlgorithm == "pq2025"`
 - binding can authorize identity scopes and content scopes
 - swapping the ES256 key or tampering with the binding fails verification
-- the latest-`issuedAt` binding wins; a binding signed by a previous (rotated-away) PQ root no longer authorizes exports
+- the latest-`issuedAt` binding wins; a binding signed by a previous (rotated-away) native root no longer authorizes exports
 - an expired binding denies export
 
 ## Task 004 - Ecosystem Identity Exports
@@ -75,7 +75,7 @@ Expected:
 - JWKS exports the ES256 public key with a stable `kid`
 - DID/W3C identity export lists the ES256 verification method
 - A2A export uses the bound ES256 compatibility key when needed
-- every identity export embeds or references the PQ-signed compatibility binding
+- every identity export embeds or references the native-root-signed compatibility binding
 
 ## Task 004b - AP2 Mandate Export
 
@@ -90,9 +90,9 @@ Expected:
 - typed AP2 mandate exports as detached ES256 JWS over JCS bytes
 - exporter rejects non-mandate input
 - known-answer vector matches the pinned AP2 spec/source used by the task
-- export fails without `ap2-mandate` scope in the PQ-signed binding
+- export fails without `ap2-mandate` scope in the native-root-signed binding
 - native source document still verifies unchanged after export
-- stock JOSE verification accepts the ES256 JWS but does not assert PQ-root trust by itself
+- stock JOSE verification accepts the ES256 JWS but does not assert native-root trust by itself
 
 ## Task 004c - Agreement-v2-as-VC Export
 
@@ -112,7 +112,7 @@ Expected:
 - VC uses `ecdsa-jcs-2019`
 - exporter rejects non-agreement input
 - independent Data Integrity vector verifies
-- export fails without `agreement-vc` scope in the PQ-signed binding
+- export fails without `agreement-vc` scope in the native-root-signed binding
 - native agreement document still verifies unchanged after export
 
 ## Task 005 - Public Surface Parity
@@ -164,7 +164,7 @@ Expected:
 - missing compatibility key logs WARN
 - binding verification failure logs WARN
 - content export without scope logs WARN
-- grandfathered Ed25519 signing logs WARN `native_legacy_ed25519_sign`
+- supported Ed25519 signing emits the normal successful-signing signal
 - successful ecosystem export logs INFO with format, key id, and binding hash
 - the §9.8 counters increment (`jacs_compatibility_export_total{format}` etc.) — asserted, not just documented
 - docs explain CLI-only content exporters, the trust-chain degradation, and the no-generic-projection boundary
@@ -178,7 +178,7 @@ rg "ring-ES256|jacsProjections|sign-jws|sign-data-integrity|export-dsse-document
   README.md jacs/docs/jacsbook/src jacs-cli/README.md jacs-mcp/README.md
 
 # 2. Positive: the P2 model must be findable in user docs
-rg -l "PQ root|compatibility key binding|ES256 compatibility|AP2 mandate|Agreement-v2-as-VC" \
+rg -l "native root|compatibility key binding|ES256 compatibility|AP2 mandate|Agreement-v2-as-VC" \
   README.md jacs/docs/jacsbook/src jacs-cli/README.md jacs-mcp/README.md
 ```
 
@@ -199,7 +199,7 @@ The verifier scripts resolve their npm dependencies (`jose`, `canonicalize`) fro
 JACS_REPO=$(pwd)                          # run this line from the repo root
 WORK=$(mktemp -d) && cd "$WORK"
 
-# fresh agent: PQ root + ES256 compat key (quickstart is the non-interactive
+# fresh agent: native root (pq2025 by default) + ES256 compat key (quickstart is the non-interactive
 # init path; `jacs init` prompts and is not scriptable)
 export JACS_PRIVATE_KEY_PASSWORD='P2-Smoke-Password!2026'
 jacs quickstart --name p2-smoke --domain example.com
@@ -215,7 +215,7 @@ jacs agent export-compat-binding > p2_binding.json
 jacs agent add-compat-key && echo "UNEXPECTED: duplicate add-compat-key succeeded" && exit 1
 echo "ok: duplicate add-compat-key rejected"
 
-# content scopes are NEVER auto-issued: grant them explicitly (PQ root signs)
+# content scopes are NEVER auto-issued: grant them explicitly (native root signs)
 jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate,agreement-vc
 
 # content exports (CLI-only in P2; stdin form works like the rest of the agreement-v2 group)

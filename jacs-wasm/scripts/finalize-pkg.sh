@@ -8,7 +8,8 @@
 #    via Python json (avoids a `jq` dependency on dev machines).
 # 3. Compiles the hand-written `index.ts` + `worker/*.ts` to JS + d.ts
 #    via the workspace tsconfig and copies them into `pkg/`.
-# 4. Copies `jacs-wasm/README.md` into `pkg/` so npm shows the README.
+# 4. Copies `jacs-wasm/README.md`, the repository Apache-2.0 text, and current
+#    third-party notices into `pkg/` so the npm artifact is self-contained.
 #
 # Idempotent — safe to re-run.
 
@@ -17,9 +18,11 @@ set -euo pipefail
 JACS_WASM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG_DIR="${JACS_WASM_DIR}/pkg"
 TEMPLATE="${JACS_WASM_DIR}/package.template.json"
+LICENSE_SOURCE="${JACS_WASM_DIR}/../LICENSE-APACHE"
+NOTICES_SOURCE="${JACS_WASM_DIR}/../THIRD-PARTY-NOTICES"
 
 if [[ ! -d "${PKG_DIR}" ]]; then
-    echo "error: ${PKG_DIR} does not exist. Run 'wasm-pack build --target web --release jacs-wasm' first." >&2
+    echo "error: ${PKG_DIR} does not exist. Run 'cd jacs-wasm && wasm-pack build --target web --release .' first." >&2
     exit 1
 fi
 
@@ -105,17 +108,14 @@ cat > "${STAGE_DIR}/tsconfig.json" <<JSON
 }
 JSON
 
-if command -v tsc >/dev/null 2>&1; then
-    echo "finalize-pkg: tsc -p ${STAGE_DIR}/tsconfig.json"
-    # tsc diagnostics MUST fail the script (Issue 007 / Task 032). The
-    # release workflow + PR workflow (Task 028) both also run a source-
-    # tree `tsc --noEmit -p jacs-wasm/tsconfig.json` as a discrete step
-    # — this is the belt-and-suspenders that also compiles the staged
-    # wrappers against the real pkg/ d.ts and emits the .js outputs.
+if command -v npx >/dev/null 2>&1; then
+    echo "finalize-pkg: npx typescript@5.9.3 tsc -p ${STAGE_DIR}/tsconfig.json"
+    # Release and PR workflows use this exact compiler version. Diagnostics
+    # must fail before the staged wrappers can be copied into the package.
+    (cd "${STAGE_DIR}" && npx --yes -p typescript@5.9.3 tsc -p tsconfig.json)
+elif command -v tsc >/dev/null 2>&1; then
+    echo "finalize-pkg: local tsc -p ${STAGE_DIR}/tsconfig.json"
     (cd "${STAGE_DIR}" && tsc -p tsconfig.json)
-elif command -v npx >/dev/null 2>&1; then
-    echo "finalize-pkg: npx tsc -p ${STAGE_DIR}/tsconfig.json"
-    (cd "${STAGE_DIR}" && npx --yes -p typescript@5 tsc -p tsconfig.json)
 else
     echo "error: tsc not available; cannot finalize TypeScript wrappers." >&2
     echo "       install Node + typescript and re-run finalize-pkg.sh." >&2
@@ -134,10 +134,24 @@ if [[ -d "${STAGE_DIR}/out" ]]; then
     cp "${STAGE_DIR}/out/worker/jacs-worker.d.ts" "${PKG_DIR}/worker/jacs-worker.d.ts" 2>/dev/null || true
 fi
 
-# --- 4. Copy README so npm shows it on the package page ---
+# --- 4. Copy README + license so the npm package is self-contained ---
 if [[ -f "${JACS_WASM_DIR}/README.md" ]]; then
     cp "${JACS_WASM_DIR}/README.md" "${PKG_DIR}/README.md"
     echo "finalize-pkg: copied README.md"
 fi
+
+if [[ ! -f "${LICENSE_SOURCE}" ]]; then
+    echo "error: ${LICENSE_SOURCE} missing; refusing to create an unlicensed npm artifact." >&2
+    exit 1
+fi
+cp "${LICENSE_SOURCE}" "${PKG_DIR}/LICENSE"
+echo "finalize-pkg: copied Apache-2.0 LICENSE"
+
+if [[ ! -f "${NOTICES_SOURCE}" ]]; then
+    echo "error: ${NOTICES_SOURCE} missing; refusing to create an incomplete npm artifact." >&2
+    exit 1
+fi
+cp "${NOTICES_SOURCE}" "${PKG_DIR}/THIRD-PARTY-NOTICES"
+echo "finalize-pkg: copied THIRD-PARTY-NOTICES"
 
 echo "finalize-pkg: done. Inspect ${PKG_DIR}/package.json + run 'npm pack --dry-run --workspaces=false' from ${PKG_DIR}."

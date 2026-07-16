@@ -23,11 +23,13 @@ char* jacs_agent_assess_a2a_agent(JacsAgentHandle handle, const char* agent_card
 // Protocol API
 char* jacs_agent_get_public_key_pem(JacsAgentHandle handle);
 char* jacs_agent_build_auth_header(JacsAgentHandle handle);
+char* jacs_agent_build_request_auth_header(JacsAgentHandle handle, const char* method, const char* url, const uint8_t* body, size_t body_len, const char* audience);
 char* jacs_agent_canonicalize_json(JacsAgentHandle handle, const char* json);
 char* jacs_agent_sign_response(JacsAgentHandle handle, const char* payload_json);
 char* jacs_agent_encode_verify_payload(JacsAgentHandle handle, const char* document);
 char* jacs_agent_decode_verify_payload(JacsAgentHandle handle, const char* encoded);
 char* jacs_agent_extract_document_id(JacsAgentHandle handle, const char* document);
+char* jacs_agent_prepare_signed_event_replay(JacsAgentHandle handle, const char* event_json, const char* server_keys_json, uint64_t max_age_seconds);
 char* jacs_agent_unwrap_signed_event(JacsAgentHandle handle, const char* event_json, const char* server_keys_json);
 
 // Attestation API (available when built with --features attestation)
@@ -80,6 +82,17 @@ char* jacs_simple_verify_with_key(SimpleAgentHandle handle, const char* signed_d
 char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);
 char* jacs_simple_sign_raw_bytes(SimpleAgentHandle handle, const uint8_t* data, size_t data_len);
 char* jacs_simple_sign_file(SimpleAgentHandle handle, const char* file_path, int embed);
+
+// Request/response protocol helpers
+char* jacs_simple_build_legacy_auth_header(SimpleAgentHandle handle);
+char* jacs_simple_build_auth_header(SimpleAgentHandle handle, const char* method, const char* url, const uint8_t* body, size_t body_len, const char* audience);
+char* jacs_simple_canonicalize_json(SimpleAgentHandle handle, const char* json_string);
+char* jacs_simple_sign_response(SimpleAgentHandle handle, const char* payload_json);
+char* jacs_simple_encode_verify_payload(SimpleAgentHandle handle, const char* document);
+char* jacs_simple_decode_verify_payload(SimpleAgentHandle handle, const char* encoded);
+char* jacs_simple_extract_document_id(SimpleAgentHandle handle, const char* document);
+char* jacs_simple_prepare_signed_event_replay(SimpleAgentHandle handle, const char* event_json, const char* server_keys_json, uint64_t max_age_seconds);
+char* jacs_simple_unwrap_signed_event(SimpleAgentHandle handle, const char* event_json, const char* server_keys_json);
 
 // Agreement v2
 char* jacs_simple_create_agreement_v2(SimpleAgentHandle handle, const char* input_json);

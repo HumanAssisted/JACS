@@ -27,6 +27,8 @@ include = [
     "schemas/conflict/v1/conflict.schema.json",
     "schemas/a2a-verification-result.schema.json",
     "schemas/jacs.config.schema.json",
+    "LICENSE-APACHE",
+    "THIRD-PARTY-NOTICES",
     "Cargo.toml",
 ]
 

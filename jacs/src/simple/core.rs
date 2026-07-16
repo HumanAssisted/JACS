@@ -19,7 +19,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use tracing::{debug, info, warn};
 
-/// Resolve the signing algorithm for a NEW agent: new creation is PQ-only.
+/// Resolve the signing algorithm for a new agent without substitution.
 ///
 /// The policy now lives in [`crate::crypt::resolve_new_agent_algorithm`] so
 /// the low-level `Agent` creation paths apply it too; re-exported here for
@@ -182,6 +182,27 @@ fn resolve_config_relative_path(config_path: &Path, candidate: &str) -> PathBuf 
             .unwrap_or_else(|| Path::new("."));
         normalize_path(&config_dir.join(candidate_path))
     }
+}
+
+fn resolve_config_relative_directory(
+    config_path: &Path,
+    candidate: &str,
+    field: &str,
+) -> Result<PathBuf, JacsError> {
+    if candidate.trim().is_empty() || candidate.contains('\0') {
+        return Err(JacsError::ConfigError(format!(
+            "{field} must be a non-empty filesystem path"
+        )));
+    }
+    if Path::new(candidate)
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(JacsError::ConfigError(format!(
+            "{field} contains an unsafe parent-directory segment: '{candidate}'"
+        )));
+    }
+    Ok(resolve_config_relative_path(config_path, candidate))
 }
 
 /// Build canonical `AgentInfo` for an agent that has already been loaded.
@@ -381,6 +402,18 @@ pub struct SimpleAgent {
 // =============================================================================
 
 impl SimpleAgent {
+    /// Construct a keyless verifier for internal explicit-key paths.
+    ///
+    /// This avoids generating an unrelated ephemeral identity merely to verify
+    /// attacker-supplied data with a caller-provided public key.
+    pub(crate) fn verification_only(strict: bool) -> Self {
+        Self {
+            agent: Mutex::new(crate::get_empty_agent()),
+            config_path: None,
+            strict,
+        }
+    }
+
     /// Returns whether this agent is in strict mode.
     pub fn is_strict(&self) -> bool {
         self.strict
@@ -481,12 +514,10 @@ impl SimpleAgent {
         Self::create_with_params_inner(params, false)
     }
 
-    /// LEGACY / TEST-ONLY: create an Ed25519-rooted agent for building
-    /// grandfathered fixtures (pre-P2 agents). New agent creation through
-    /// every supported public path is PQ-only (`pq2025`); this escape hatch
-    /// exists solely so integration tests can exercise the grandfathered
-    /// load-and-sign and rotation-migration paths. Not part of the supported
-    /// API and never exposed through bindings/CLI/MCP.
+    /// TEST-ONLY: create an Ed25519-rooted pre-compat-key fixture. Public
+    /// creation also supports explicit Ed25519 selection; this escape hatch
+    /// preserves historical fixture shape for load and migration tests. It is
+    /// not exposed through bindings/CLI/MCP.
     #[doc(hidden)]
     pub fn create_legacy_ed25519_agent_for_fixtures(
         params: CreateAgentParams,
@@ -498,9 +529,6 @@ impl SimpleAgent {
         params: CreateAgentParams,
         allow_legacy_ed25519: bool,
     ) -> Result<(Self, AgentInfo), JacsError> {
-        use crate::keystore::KeyPaths;
-        use crate::storage::jenv;
-
         // Resolve password: params > env var (via canonical resolver) > error
         // If resolution fails, propagate the detailed error describing which
         // sources were tried (env var, password file, keychain) rather than
@@ -551,11 +579,59 @@ impl SimpleAgent {
             params.name, algorithm
         );
 
-        // Create directories (including agent/ and public_keys/ subdirs that save() expects)
-        let keys_dir = Path::new(&params.key_directory);
-        let data_dir = Path::new(&params.data_directory);
+        // If a config path already exists, authenticate those exact bytes
+        // before creating directories, keys, compatibility material, or agent
+        // files. The retained Value is reused below to avoid a verify/read
+        // race that could otherwise swap the config after preflight.
+        let config_path = Path::new(&params.config_path);
+        let preflight_existing_config = match std::fs::symlink_metadata(config_path) {
+            Ok(_) => {
+                let config = crate::config::Config::from_file(&params.config_path)?;
+                crate::agent::Agent::verify_new_config_before_use(&config)?;
+                Some(config.raw_json.clone().ok_or_else(|| {
+                    JacsError::ConfigError(format!(
+                        "Existing config '{}' lost its parsed source bytes during preflight.",
+                        params.config_path
+                    ))
+                })?)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(JacsError::ConfigError(format!(
+                    "Could not inspect config path '{}': {}",
+                    params.config_path, error
+                )));
+            }
+        };
 
-        fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+        // Directory settings are interpreted relative to the config file, not
+        // process CWD. If an authenticated existing config is being reused,
+        // its retained values are authoritative over the creation parameters.
+        let effective_key_directory = preflight_existing_config
+            .as_ref()
+            .and_then(|config| config.get("jacs_key_directory"))
+            .and_then(Value::as_str)
+            .unwrap_or(&params.key_directory);
+        let effective_data_directory = preflight_existing_config
+            .as_ref()
+            .and_then(|config| config.get("jacs_data_directory"))
+            .and_then(Value::as_str)
+            .unwrap_or(&params.data_directory);
+        let keys_dir = resolve_config_relative_directory(
+            config_path,
+            effective_key_directory,
+            "jacs_key_directory",
+        )?;
+        let data_dir = resolve_config_relative_directory(
+            config_path,
+            effective_data_directory,
+            "jacs_data_directory",
+        )?;
+        let key_directory = keys_dir.to_string_lossy().into_owned();
+        let data_directory = data_dir.to_string_lossy().into_owned();
+
+        // Create directories (including agent/ and public_keys/ subdirs that save() expects)
+        fs::create_dir_all(&keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
             path: keys_dir.to_string_lossy().to_string(),
             reason: e.to_string(),
         })?;
@@ -573,80 +649,7 @@ impl SimpleAgent {
         })?;
 
         // Protect key directory from accidental git commits / Docker inclusion
-        write_key_directory_ignore_files(keys_dir);
-
-        // Build agent-scoped KeyPaths (no env mutation needed for key paths)
-        let key_paths = KeyPaths {
-            key_directory: params.key_directory.clone(),
-            private_key_filename: DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
-            public_key_filename: DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
-        };
-
-        // Set non-password config in jenv for code that still reads from there
-        // (e.g., MultiStorage::default_new(), Agent::new(), config loading).
-        // These are directory/storage config, not secrets, so jenv is acceptable.
-        //
-        // IMPORTANT: We save previous values and restore them after agent creation
-        // to avoid polluting the global jenv store for concurrent callers (Issue 011).
-        const JENV_CONFIG_KEYS: [&str; 6] = [
-            "JACS_DATA_DIRECTORY",
-            "JACS_KEY_DIRECTORY",
-            "JACS_AGENT_KEY_ALGORITHM",
-            "JACS_DEFAULT_STORAGE",
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            "JACS_AGENT_PUBLIC_KEY_FILENAME",
-        ];
-        // Save previous values so we can restore them on exit (success or error).
-        // We distinguish "had a jenv override" from "value came from process env
-        // passthrough" to avoid manufacturing sticky overrides (Issue 014).
-        let saved_jenv: Vec<(&str, bool, Option<String>)> = JENV_CONFIG_KEYS
-            .iter()
-            .map(|&key| {
-                let had_override = jenv::has_jenv_override(key);
-                let value = if had_override {
-                    jenv::get_env_var(key, false).ok().flatten()
-                } else {
-                    None
-                };
-                (key, had_override, value)
-            })
-            .collect();
-        // Drop guard that restores jenv state even if we return early with `?`.
-        struct JenvRestoreGuard<'a>(Vec<(&'a str, bool, Option<String>)>);
-        impl<'a> Drop for JenvRestoreGuard<'a> {
-            fn drop(&mut self) {
-                for (key, had_override, prev) in &self.0 {
-                    if *had_override {
-                        if let Some(val) = prev {
-                            let _ = jenv::set_env_var(key, val);
-                        } else {
-                            let _ = jenv::clear_env_var(key);
-                        }
-                    } else {
-                        // No jenv override existed before; clear so env passthrough resumes.
-                        let _ = jenv::clear_env_var(key);
-                    }
-                }
-            }
-        }
-        let _jenv_guard = JenvRestoreGuard(saved_jenv);
-
-        jenv::set_env_var("JACS_DATA_DIRECTORY", &params.data_directory)?;
-        jenv::set_env_var("JACS_KEY_DIRECTORY", &params.key_directory)?;
-        jenv::set_env_var("JACS_AGENT_KEY_ALGORITHM", &algorithm)?;
-        jenv::set_env_var("JACS_DEFAULT_STORAGE", &params.default_storage)?;
-        jenv::set_env_var(
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            DEFAULT_PRIVATE_KEY_FILENAME,
-        )?;
-        jenv::set_env_var(
-            "JACS_AGENT_PUBLIC_KEY_FILENAME",
-            DEFAULT_PUBLIC_KEY_FILENAME,
-        )?;
-        // Password flows through Agent.password (set below), NOT through env/jenv.
-        // Do NOT set JACS_PRIVATE_KEY_PASSWORD in jenv — it would race under
-        // concurrent multi-agent creation. The password reaches encrypt/decrypt
-        // via Agent.password -> FsEncryptedStore.password -> _with_password fns.
+        write_key_directory_ignore_files(&keys_dir);
 
         // Create a minimal agent JSON
         let description = if params.description.is_empty() {
@@ -657,17 +660,24 @@ impl SimpleAgent {
 
         let agent_json = build_agent_document(&params.agent_type, &params.name, &description)?;
 
-        // Create the agent and set agent-scoped fields
-        let mut agent = crate::get_empty_agent();
+        // Build the creation context entirely from agent-scoped values. Do not
+        // publish temporary paths or algorithms through jenv: another thread
+        // loading an unrelated identity must never observe this agent's config.
+        let creation_config = crate::config::Config::builder()
+            .key_algorithm(&algorithm)
+            .key_directory(&key_directory)
+            .data_directory(&data_directory)
+            .private_key_filename(DEFAULT_PRIVATE_KEY_FILENAME)
+            .public_key_filename(DEFAULT_PUBLIC_KEY_FILENAME)
+            .default_storage(&params.default_storage)
+            .use_security(false)
+            .build();
+        let mut agent = crate::agent::Agent::from_config(creation_config, Some(&password))?;
         if allow_legacy_ed25519 {
-            // Fixture-only path: NEW key generation is otherwise PQ-only,
-            // so the Agent-level hatch must be enabled for the Ed25519
-            // fixture builder to mint genuine Ed25519 keys.
+            // Fixture-only path preserves pre-compat-key construction
+            // semantics without changing the public algorithm resolver.
             agent.allow_legacy_ed25519_keygen_for_fixtures();
         }
-        agent.set_key_paths(key_paths.clone());
-        agent.set_password(Some(password.clone()));
-
         let instance = agent
             .create_agent_and_load(&agent_json.to_string(), true, Some(&algorithm))
             .map_err(|e| JacsError::Internal {
@@ -687,43 +697,25 @@ impl SimpleAgent {
         // Existing agents NEVER mint keys on load; they use the explicit
         // add_compat_key migration. The legacy Ed25519 fixture builder
         // models a PRE-P2 agent, which by definition has no compat key.
-        let compat_key = if params.no_compat_key || allow_legacy_ed25519 {
-            None
-        } else {
+        if !params.no_compat_key && !allow_legacy_ed25519 {
             let native_public_key = agent.get_public_key().map_err(|e| JacsError::Internal {
                 message: format!("Failed to read native public key for keyring: {}", e),
             })?;
             let native_kid = crate::crypt::hash::hash_public_key(&native_public_key);
-            Some(crate::keystore::compat::create_ecosystem_key(
-                &params.key_directory,
+            crate::keystore::compat::create_ecosystem_key(
+                &key_directory,
                 &password,
                 &algorithm,
                 &native_kid,
-            )?)
-        };
+            )?;
+        }
 
         let lookup_id = format!("{}:{}", agent_id, version);
 
         // Resolve the config: if one already exists at config_path, read it
         // and only update the agent ID. Log differences between existing values
         // and params so the caller knows. If no config exists, create one fresh.
-        let config_path = Path::new(&params.config_path);
-        let config_entry_exists = std::fs::symlink_metadata(config_path).is_ok();
-        let config_str = if config_entry_exists {
-            let existing_str =
-                crate::secure_io::read_to_string_no_follow(config_path).map_err(|e| {
-                    JacsError::Internal {
-                        message: format!(
-                            "Failed to read existing config '{}': {}",
-                            params.config_path, e
-                        ),
-                    }
-                })?;
-            let mut existing: serde_json::Value =
-                serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to parse existing config: {}", e),
-                })?;
-
+        let _persisted_config_json = if let Some(mut existing) = preflight_existing_config {
             // Log differences between existing config and params
             let check = |field: &str, existing_val: Option<&str>, param_val: &str| {
                 if let Some(ev) = existing_val
@@ -897,17 +889,11 @@ impl SimpleAgent {
             new_str
         };
 
-        // Set the agent's in-memory config from the resolved config so save()
-        // uses the correct data_directory and key_directory.
-        let validated_config_value =
-            crate::config::validate_config(&config_str).map_err(|e| JacsError::Internal {
-                message: format!("Failed to validate config: {}", e),
-            })?;
-        agent.config = Some(serde_json::from_value(validated_config_value).map_err(|e| {
-            JacsError::Internal {
-                message: format!("Failed to parse config: {}", e),
-            }
-        })?);
+        // Re-read and authenticate the exact persisted bytes, then install the
+        // verified config context so save() uses its normalized directories and
+        // keeps runtime signature provenance.
+        let persisted_config = crate::config::Config::from_file(&params.config_path)?;
+        agent.install_verified_config_context(persisted_config, &params.config_path)?;
 
         // Save the agent (uses directories from the resolved config)
         agent.save().map_err(|e| JacsError::Internal {
@@ -938,35 +924,13 @@ impl SimpleAgent {
             dns_record = crate::dns::bootstrap::emit_plain_bind(&rr);
         }
 
-        let private_key_path = format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
-        let public_key_path = format!("{}/{}", params.key_directory, DEFAULT_PUBLIC_KEY_FILENAME);
-
         info!(
             "Agent '{}' created successfully with ID {} (programmatic)",
             params.name, agent_id
         );
 
-        let info = AgentInfo {
-            agent_id,
-            name: params.name.clone(),
-            public_key_path,
-            config_path: params.config_path.clone(),
-            version,
-            algorithm: algorithm.clone(),
-            private_key_path,
-            data_directory: params.data_directory.clone(),
-            key_directory: params.key_directory.clone(),
-            domain: params.domain.clone(),
-            dns_record,
-            ecosystem_kid: compat_key
-                .as_ref()
-                .map(|c| c.kid.clone())
-                .unwrap_or_default(),
-            ecosystem_algorithm: compat_key
-                .as_ref()
-                .map(|c| c.algorithm.clone())
-                .unwrap_or_default(),
-        };
+        let mut info = build_loaded_agent_info(&agent, &params.config_path)?;
+        info.dns_record = dns_record;
 
         Ok((
             Self {
@@ -996,31 +960,99 @@ impl SimpleAgent {
     /// ```
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load(config_path: Option<&str>, strict: Option<bool>) -> Result<Self, JacsError> {
+        Self::load_with_config_policy(config_path, strict, true)
+    }
+
+    fn load_with_config_policy(
+        config_path: Option<&str>,
+        strict: Option<bool>,
+        apply_environment_overrides: bool,
+    ) -> Result<Self, JacsError> {
+        let (path, resolved_path) = Self::resolve_load_config_path(config_path)?;
+
+        debug!("Loading agent from config: {}", path);
+
+        let mut agent = crate::get_empty_agent();
+        let load_result = if apply_environment_overrides {
+            agent.load_by_config(resolved_path.to_string_lossy().into_owned())
+        } else {
+            agent.load_by_config_file_only(resolved_path.to_string_lossy().into_owned())
+        };
+        load_result.map_err(|e| JacsError::ConfigInvalid {
+            field: "config".to_string(),
+            reason: e.to_string(),
+        })?;
+
+        info!(
+            environment_overrides = apply_environment_overrides,
+            "Agent loaded successfully from {}",
+            resolved_path.display()
+        );
+
+        Ok(Self {
+            agent: Mutex::new(agent),
+            config_path: Some(resolved_path.to_string_lossy().into_owned()),
+            strict: resolve_strict(strict),
+        })
+    }
+
+    fn resolve_load_config_path(config_path: Option<&str>) -> Result<(&str, PathBuf), JacsError> {
         let path = config_path.unwrap_or("./jacs.config.json");
         let resolved_path = if Path::new(path).is_absolute() {
             normalize_path(Path::new(path))
         } else {
             normalize_path(&std::env::current_dir()?.join(path))
         };
-
-        debug!("Loading agent from config: {}", path);
-
         if !resolved_path.exists() {
             return Err(JacsError::ConfigNotFound {
                 path: path.to_string(),
             });
         }
+        Ok((path, resolved_path))
+    }
 
-        let mut agent = crate::get_empty_agent();
-        agent
-            .load_by_config(resolved_path.to_string_lossy().into_owned())
-            .map_err(|e| JacsError::ConfigInvalid {
-                field: "config".to_string(),
-                reason: e.to_string(),
-            })?;
+    /// Loads an existing agent from a configuration file without ambient
+    /// `JACS_*` or jenv overrides.
+    ///
+    /// Use this when the caller has already built or selected an authoritative
+    /// configuration at a trust boundary. Signature/schema validation and key
+    /// loading are identical to [`Self::load`]; only environment merging is
+    /// skipped.
+    #[must_use = "agent loading result must be checked for errors"]
+    pub fn load_file_only(
+        config_path: Option<&str>,
+        strict: Option<bool>,
+    ) -> Result<Self, JacsError> {
+        Self::load_with_config_policy(config_path, strict, false)
+    }
 
-        info!("Agent loaded successfully from {}", resolved_path.display());
+    /// Loads an authoritative signed config while relocating its filesystem
+    /// material to caller-owned absolute runtime directories.
+    ///
+    /// The exact config bytes remain the signature-verification source. Only
+    /// the in-memory key/data locations are replaced, and ambient `JACS_*`
+    /// overrides are never applied. This is intended for read-only secret
+    /// mounts copied into an isolated process-owned workspace.
+    #[must_use = "agent loading result must be checked for errors"]
+    pub fn load_file_only_with_runtime_directories(
+        config_path: Option<&str>,
+        data_directory: &str,
+        key_directory: &str,
+        strict: Option<bool>,
+    ) -> Result<Self, JacsError> {
+        let (_, resolved_path) = Self::resolve_load_config_path(config_path)?;
+        let resolved_path_str = resolved_path
+            .to_str()
+            .ok_or_else(|| JacsError::ConfigError("Config path must be valid UTF-8".to_string()))?;
+        let mut config = crate::config::Config::from_file(resolved_path_str)?;
+        config.set_runtime_filesystem_directories(data_directory, key_directory)?;
+        let agent = Agent::from_config(config, None)?;
 
+        info!(
+            data_directory,
+            key_directory,
+            "Agent loaded from authoritative config with isolated runtime directories"
+        );
         Ok(Self {
             agent: Mutex::new(agent),
             config_path: Some(resolved_path.to_string_lossy().into_owned()),
@@ -1063,17 +1095,15 @@ impl SimpleAgent {
     /// ```
     #[must_use = "ephemeral agent result must be checked for errors"]
     pub fn ephemeral(algorithm: Option<&str>) -> Result<(Self, AgentInfo), JacsError> {
-        // New agent creation is PQ-only: Ed25519 requests resolve to pq2025
-        // with a WARN, unknown algorithms are a typed error.
+        // pq2025 is the default; explicit Ed25519 selection is honored and
+        // unknown algorithms are a typed error.
         let algo = resolve_new_agent_algorithm(algorithm.unwrap_or(""))?;
         Self::ephemeral_with_algo(&algo, false)
     }
 
-    /// LEGACY / TEST-ONLY: build a genuine Ed25519 ephemeral agent for
-    /// grandfathered-agent and mixed-algorithm coverage. Public ephemeral
-    /// creation is PQ-only; this hatch skips the resolver. `#[doc(hidden)]`
-    /// like `create_legacy_ed25519_agent_for_fixtures` — not part of the
-    /// supported API and never exposed through bindings/CLI/MCP.
+    /// TEST-ONLY: build a pre-compat-key Ed25519 fixture for historical and
+    /// mixed-algorithm coverage. Public ephemeral creation also supports
+    /// Ed25519. This helper is not exposed through bindings/CLI/MCP.
     #[doc(hidden)]
     pub fn ephemeral_legacy_ed25519_for_fixtures() -> Result<(Self, AgentInfo), JacsError> {
         Self::ephemeral_with_algo("ring-Ed25519", true)
@@ -1086,17 +1116,17 @@ impl SimpleAgent {
         let inner = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
+        if inner.is_ephemeral() {
+            return Err(JacsError::ValidationError(
+                "ephemeral agents are memory-only; compatibility keys are disk artifacts"
+                    .to_string(),
+            ));
+        }
         let key_directory = inner
-            .config
-            .as_ref()
+            .key_paths()
             .ok_or(JacsError::AgentNotLoaded)?
-            .jacs_key_directory()
-            .clone()
-            .unwrap_or_else(|| {
-                crate::paths::local_keys_dir()
-                    .to_string_lossy()
-                    .into_owned()
-            });
+            .key_directory
+            .clone();
         Ok((inner, key_directory))
     }
 
@@ -1108,13 +1138,6 @@ impl SimpleAgent {
     /// ephemeral (compat keys are disk artifacts).
     pub fn add_compat_key(&self) -> Result<crate::keystore::compat::CompatKeyInfo, JacsError> {
         let (inner, key_directory) = self.locked_with_key_dir()?;
-        if inner.is_ephemeral() {
-            return Err(JacsError::ValidationError(
-                "ephemeral agents are memory-only; the ecosystem compatibility key is a disk \
-                 artifact and cannot be added"
-                    .to_string(),
-            ));
-        }
         let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
         let native_algorithm = config.get_key_algorithm()?;
         let password = inner.resolve_password()?;
@@ -1128,10 +1151,10 @@ impl SimpleAgent {
         )
     }
 
-    /// Issue (or re-issue) the PQ-root-signed compatibility key binding
+    /// Issue (or re-issue) the native-root-signed compatibility key binding
     /// (P2 Task 003). `scopes = None` grants the default identity scopes;
     /// content scopes (`ap2-mandate`, `agreement-vc`) must be requested
-    /// explicitly — granting them always requires this PQ-root signature.
+    /// explicitly — granting them always requires this native-root signature.
     pub fn issue_compat_binding(
         &self,
         scopes: Option<&[&str]>,
@@ -1231,8 +1254,7 @@ impl SimpleAgent {
     ) -> Result<(Self, AgentInfo), JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
 
-        // The fixture hatch uses the matching Agent-level hatch: the public
-        // Agent::ephemeral path resolves Ed25519 to pq2025 (FR1).
+        // The fixture hatch uses the matching Agent-level compatibility path.
         let mut agent = if legacy_ed25519_fixture {
             Agent::ephemeral_legacy_ed25519_for_fixtures()
         } else {
@@ -1409,6 +1431,46 @@ impl SimpleAgent {
         info!("Message signed: document_id={}", jacs_doc.id);
 
         SignedDocument::from_jacs_document(jacs_doc, "document")
+    }
+
+    /// Sign a fully bound JACS v2 response envelope.
+    ///
+    /// This covers response metadata and payload in one signature and keeps
+    /// callers out of the internal agent mutex.
+    #[must_use = "signed response envelope must be used or transmitted"]
+    pub fn sign_response(&self, payload: &Value) -> Result<Value, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {e}"),
+        })?;
+        crate::protocol::sign_response(&mut agent, payload)
+    }
+
+    /// Build the legacy unbound JACS Authorization credential.
+    ///
+    /// Retained for compatibility; new integrations should call
+    /// [`Self::build_request_auth_header`] with the exact request context.
+    #[must_use = "Authorization header must be sent or discarded explicitly"]
+    #[allow(deprecated)]
+    pub fn build_auth_header(&self) -> Result<String, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {e}"),
+        })?;
+        crate::protocol::build_auth_header(&mut agent)
+    }
+
+    /// Build a request-bound JACS v2 Authorization credential.
+    #[must_use = "request Authorization header must be sent with its bound request"]
+    pub fn build_request_auth_header(
+        &self,
+        method: &str,
+        url: &str,
+        body: &[u8],
+        audience: &str,
+    ) -> Result<String, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {e}"),
+        })?;
+        crate::protocol::build_request_auth_header(&mut agent, method, url, body, audience)
     }
 
     /// Sign raw bytes and return the raw signature bytes.
@@ -1640,7 +1702,15 @@ impl SimpleAgent {
     }
 
     fn verify_json_document(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
-        Self::validate_json_input(signed_document)?;
+        let parsed = Self::parse_json_input(signed_document)?;
+        if parsed
+            .pointer("/jacsSignature/signatureContentVersion")
+            .and_then(Value::as_str)
+            == Some(crate::protocol::RESPONSE_SIGNATURE_CONTENT_VERSION)
+        {
+            let public_key = self.get_public_key()?;
+            return self.verify_bound_response_with_key(signed_document, &parsed, &public_key);
+        }
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -1858,7 +1928,14 @@ impl SimpleAgent {
         public_key: Vec<u8>,
     ) -> Result<VerificationResult, JacsError> {
         debug!("verify_with_key() called");
-        Self::validate_json_input(signed_document)?;
+        let parsed = Self::parse_json_input(signed_document)?;
+        if parsed
+            .pointer("/jacsSignature/signatureContentVersion")
+            .and_then(Value::as_str)
+            == Some(crate::protocol::RESPONSE_SIGNATURE_CONTENT_VERSION)
+        {
+            return self.verify_bound_response_with_key(signed_document, &parsed, &public_key);
+        }
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -1874,12 +1951,11 @@ impl SimpleAgent {
             Err(e) if !self.strict => {
                 // Fall back to parsing the JSON directly so we can still
                 // extract signer info and report the error softly.
-                let value: Value = serde_json::from_str(signed_document).map_err(|parse_err| {
-                    JacsError::DocumentMalformed {
+                let value: Value = jacs_core::strict_json::parse_strict_json(signed_document)
+                    .map_err(|parse_err| JacsError::DocumentMalformed {
                         field: "json".to_string(),
                         reason: parse_err.to_string(),
-                    }
-                })?;
+                    })?;
                 errors.push(format!("Document load failed: {}", e));
                 return self.build_verification_result(&value, errors, "Document load failed");
             }
@@ -1918,10 +1994,56 @@ impl SimpleAgent {
         self.build_verification_result(&jacs_doc.value, errors, "Document verified with key")
     }
 
-    /// Validates that the input string is well-formed JSON suitable for verification.
-    ///
-    /// Checks: looks like JSON, within size limits, parses successfully.
-    fn validate_json_input(signed_document: &str) -> Result<(), JacsError> {
+    fn verify_bound_response_with_key(
+        &self,
+        signed_document: &str,
+        envelope: &Value,
+        public_key: &[u8],
+    ) -> Result<VerificationResult, JacsError> {
+        match crate::protocol::verify_response_json_with_trusted_key(signed_document, public_key) {
+            Ok(data) => {
+                let signer_id = envelope
+                    .pointer("/jacsSignature/agentID")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let timestamp = envelope
+                    .pointer("/jacsSignature/date")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let attachments = extract_attachments(&data);
+                info!(
+                    "Bound response verified with key: valid=true, signer={}",
+                    signer_id
+                );
+                Ok(VerificationResult {
+                    valid: true,
+                    data,
+                    signer_id,
+                    signer_name: None,
+                    timestamp,
+                    attachments,
+                    errors: Vec::new(),
+                })
+            }
+            Err(error) if self.strict => Err(JacsError::SignatureVerificationFailed {
+                reason: error.to_string(),
+            }),
+            Err(error) => Ok(VerificationResult {
+                valid: false,
+                data: Value::Null,
+                signer_id: String::new(),
+                signer_name: None,
+                timestamp: String::new(),
+                attachments: Vec::new(),
+                errors: vec![error.to_string()],
+            }),
+        }
+    }
+
+    /// Parse a bounded strict-JSON input suitable for verification dispatch.
+    fn parse_json_input(signed_document: &str) -> Result<Value, JacsError> {
         let trimmed = signed_document.trim();
         if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
             return Err(JacsError::DocumentMalformed {
@@ -1941,13 +2063,12 @@ impl SimpleAgent {
 
         check_document_size(signed_document)?;
 
-        let _: Value =
-            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
+        jacs_core::strict_json::parse_strict_json(signed_document).map_err(|e| {
+            JacsError::DocumentMalformed {
                 field: "json".to_string(),
                 reason: e.to_string(),
-            })?;
-
-        Ok(())
+            }
+        })
     }
 
     /// Builds a `VerificationResult` from a document value and accumulated errors.
@@ -1970,8 +2091,21 @@ impl SimpleAgent {
             });
         }
 
-        let signer_id = doc_value.get_path_str_or(&["jacsSignature", "agentID"], "");
-        let timestamp = doc_value.get_path_str_or(&["jacsSignature", "date"], "");
+        // Legacy-v1 cryptographic compatibility authenticates payload fields
+        // only. Never surface its mutable signer/time metadata in a successful
+        // result, even when the caller explicitly enabled compatibility.
+        let legacy_signature = doc_value
+            .get("jacsSignature")
+            .and_then(|signature| signature.get("signatureContentVersion"))
+            .is_none();
+        let (signer_id, timestamp) = if legacy_signature {
+            (String::new(), String::new())
+        } else {
+            (
+                doc_value.get_path_str_or(&["jacsSignature", "agentID"], ""),
+                doc_value.get_path_str_or(&["jacsSignature", "date"], ""),
+            )
+        };
 
         info!("{}: valid={}, signer={}", log_label, valid, signer_id);
 
@@ -2130,10 +2264,10 @@ impl SimpleAgent {
             }
             if let Some(config) = &agent.config {
                 if let Some(dir) = config.jacs_data_directory().as_ref() {
-                    info["data_directory"] = serde_json::json!(dir);
-                }
-                if let Some(dir) = config.jacs_key_directory().as_ref() {
-                    info["key_directory"] = serde_json::json!(dir);
+                    let resolved = config
+                        .resolve_config_relative_path(dir)
+                        .unwrap_or_else(|_| std::path::PathBuf::from(dir));
+                    info["data_directory"] = serde_json::json!(resolved);
                 }
                 if let Some(storage) = config.jacs_default_storage().as_ref() {
                     info["default_storage"] = serde_json::json!(storage);
@@ -2141,6 +2275,9 @@ impl SimpleAgent {
                 if let Some(algo) = config.jacs_agent_key_algorithm().as_ref() {
                     info["key_algorithm"] = serde_json::json!(algo);
                 }
+            }
+            if let Some(paths) = agent.key_paths() {
+                info["key_directory"] = serde_json::json!(paths.key_directory);
             }
         }
 

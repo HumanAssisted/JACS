@@ -11,12 +11,15 @@ package jacs
 // It complements, not duplicates, simple_agent_parity_test.go.
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -87,6 +90,15 @@ var goNameMap = map[string]string{
 	"sign_message_json":                 "SignMessage",
 	"sign_raw_bytes_base64":             "SignRawBytes",
 	"sign_file_json":                    "SignFile",
+	"build_auth_header":                 "BuildAuthHeader",
+	"build_request_auth_header":         "BuildRequestAuthHeader",
+	"canonicalize_json":                 "CanonicalizeJSON",
+	"sign_response":                     "SignResponse",
+	"encode_verify_payload":             "EncodeVerifyPayload",
+	"decode_verify_payload":             "DecodeVerifyPayload",
+	"extract_document_id":               "ExtractDocumentID",
+	"prepare_signed_event_replay_json":  "PrepareSignedEventReplay",
+	"unwrap_signed_event":               "UnwrapSignedEvent",
 	"export_w3c_did":                    "ExportW3cDid",
 	"export_w3c_did_document_json":      "ExportW3cDidDocument",
 	"export_w3c_agent_description_json": "ExportW3cAgentDescription",
@@ -191,6 +203,98 @@ func TestMethodParityAgainstFixture(t *testing.T) {
 			"If a method was intentionally excluded, add it to excludedFromGo.\n"+
 			"If it has a different Go name, add it to goNameMap.",
 			len(missing), formatLines(missing))
+	}
+}
+
+func TestPublicSimpleProtocolRoundTrip(t *testing.T) {
+	algorithm := "ed25519"
+	agent, _, err := EphemeralSimpleAgent(&algorithm)
+	if err != nil {
+		t.Fatalf("create simple agent: %v", err)
+	}
+	defer agent.Close()
+
+	t.Setenv("JACS_REJECT_UNBOUND_AUTH_HEADER", "")
+	legacy, err := agent.BuildAuthHeader()
+	if err != nil || !strings.HasPrefix(legacy, "JACS ") {
+		t.Fatalf("legacy auth header: header=%q err=%v", legacy, err)
+	}
+
+	body := []byte(`{"include_test":false}`)
+	header, err := agent.BuildRequestAuthHeader(
+		"POST",
+		"https://hai.ai/api/v1/agents/hello",
+		body,
+		"hai.ai",
+	)
+	if err != nil || !strings.HasPrefix(header, "JACS v2.") {
+		t.Fatalf("request-bound auth header: header=%q err=%v", header, err)
+	}
+
+	envelope, err := agent.SignResponse(`{"type":"connected"}`)
+	if err != nil {
+		t.Fatalf("sign response: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(envelope), &parsed); err != nil {
+		t.Fatalf("parse response envelope: %v", err)
+	}
+	signature := parsed["jacsSignature"].(map[string]interface{})
+	signerID := signature["agentID"].(string)
+	pem, err := agent.GetPublicKeyPEM()
+	if err != nil {
+		t.Fatalf("get public key: %v", err)
+	}
+	keysJSON, _ := json.Marshal(map[string]string{signerID: pem})
+	verifiedJSON, err := agent.UnwrapSignedEvent(envelope, string(keysJSON))
+	if err != nil {
+		t.Fatalf("unwrap signed event: %v", err)
+	}
+	var verified map[string]interface{}
+	if err := json.Unmarshal([]byte(verifiedJSON), &verified); err != nil {
+		t.Fatalf("parse verification result: %v", err)
+	}
+	if verified["verified"] != true {
+		t.Fatalf("expected verified result: %s", verifiedJSON)
+	}
+}
+
+func TestPublicSimpleRequestAuthHashesExactBinaryBody(t *testing.T) {
+	algorithm := "ed25519"
+	agent, _, err := EphemeralSimpleAgent(&algorithm)
+	if err != nil {
+		t.Fatalf("create simple agent: %v", err)
+	}
+	defer agent.Close()
+
+	body := []byte{0x00, 0xff, 0x80, 0x00, 0x7f}
+	header, err := agent.BuildRequestAuthHeader(
+		"POST",
+		"https://hai.ai/api/v1/jobs",
+		body,
+		"hai.ai",
+	)
+	if err != nil {
+		t.Fatalf("build binary request auth header: %v", err)
+	}
+	segments := strings.Split(strings.TrimPrefix(header, "JACS v2."), ".")
+	if len(segments) != 2 {
+		t.Fatalf("unexpected request auth segment count: %d", len(segments))
+	}
+	claimsJSON, err := base64.RawURLEncoding.DecodeString(segments[0])
+	if err != nil {
+		t.Fatalf("decode request auth claims: %v", err)
+	}
+	var claims struct {
+		ContentDigest string `json:"contentDigest"`
+	}
+	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
+		t.Fatalf("parse request auth claims: %v", err)
+	}
+	digest := sha256.Sum256(body)
+	expected := "sha-256=:" + base64.StdEncoding.EncodeToString(digest[:]) + ":"
+	if claims.ContentDigest != expected {
+		t.Fatalf("binary content digest = %q, want %q", claims.ContentDigest, expected)
 	}
 }
 

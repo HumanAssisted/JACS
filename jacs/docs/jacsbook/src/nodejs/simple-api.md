@@ -1,5 +1,7 @@
 # Simplified API
 
+{{#include ../_snippets/node-registry-status.md}}
+
 The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.
 
 ## v0.7.0: Async-First API
@@ -32,7 +34,7 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}
-Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+Pass `{ algorithm: 'ed25519' }` to override the default (`pq2025`).
 
 To load an existing agent explicitly, use `load()` instead:
 
@@ -96,7 +98,7 @@ Pure sync functions (no NAPI call, no suffix needed):
 Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is unset, Node quickstart auto-generates a secure password in-process (`JACS_SAVE_PASSWORD_FILE=true` persists it to `./jacs_keys/.jacs_password`). Call this once before `signMessage()` or `verify()`.
 
 **Parameters:**
-- `options` (object, required fields): `{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }`. Default algorithm: `"pq2025"`. Supported choices: `"ring-Ed25519"`, `"pq2025"`.
+- `options` (object, required fields): `{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }`. Default algorithm: `"pq2025"`. User-facing choices: `"ed25519"`, `"pq2025"`; `"ring-Ed25519"` is accepted as a legacy alias.
 
 **Returns:** `Promise<AgentInfo>` (async) or `AgentInfo` (sync)
 
@@ -114,14 +116,14 @@ console.log(`Private key: ${info.privateKeyPath}`);
 const info = await jacs.quickstart({
   name: 'my-agent',
   domain: 'my-agent.example.com',
-  algorithm: 'ring-Ed25519',
+  algorithm: 'ed25519',
 });
 
 // Sync variant (blocks event loop)
 const info = jacs.quickstartSync({
   name: 'my-agent',
   domain: 'my-agent.example.com',
-  algorithm: 'ring-Ed25519',
+  algorithm: 'ed25519',
 });
 ```
 
@@ -282,6 +284,54 @@ Verify a signed document **without** loading an agent. Use when you only need to
 const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
 console.log(result.valid, result.signerId);
 ```
+
+---
+
+### HTTP protocol helpers (`JacsSimpleAgent` instances)
+
+The module-level async API focuses on durable documents. Request-bound HTTP
+auth and signed event methods live on the synchronous instance class:
+
+```javascript
+const { JacsSimpleAgent } = require('@hai.ai/jacs');
+
+const agent = JacsSimpleAgent.ephemeral('ed25519');
+const body = '{"action":"approve"}';
+const authorization = agent.buildRequestAuthHeader(
+  'POST',
+  'https://api.example.com/v1/jobs?mode=strict',
+  body,
+  'jobs-api',
+);
+
+const envelope = agent.signResponse(JSON.stringify({ decision: 'allow' }));
+const signerId = JSON.parse(envelope).jacsSignature.agentID;
+const keys = JSON.stringify({ [signerId]: agent.getPublicKeyPem() });
+const verified = JSON.parse(agent.unwrapSignedEvent(envelope, keys));
+if (!authorization.startsWith('JACS v2.') || !verified.verified) {
+  throw new Error('protocol verification failed');
+}
+```
+
+- `buildRequestAuthHeader(method, url, body, audience)` binds the normalized method,
+  absolute URL including query, exact UTF-8 body bytes, audience, signer/key,
+  issue time, and nonce. Stringify the final request body first and send it
+  unchanged.
+- `signResponse(payloadJson)` returns a `2.0.0` envelope whose
+  `jacs-response-v2` signature covers payload and all metadata.
+- `unwrapSignedEvent(eventJson, serverKeysJson)` returns JSON containing
+  verified `data`, `signerId`, `timestamp`, `algorithm`, and `documentId`.
+  Plain/unsigned input, legacy payload-only envelopes, unknown signers, and any
+  mutation throw; it never successfully returns `verified: false`.
+
+The server key map is the application's configured trust decision. Signature
+verification proves possession of the corresponding key, not a real-world
+identity by itself.
+
+Legacy no-argument `buildAuthHeader()` remains available for compatibility and
+emits a WARN. Migrate both peers to v2; strict deployments can reject the
+legacy method with `JACS_REJECT_UNBOUND_AUTH_HEADER=true`. See
+[Security](../advanced/security.md#request-bound-http-authorization).
 
 ---
 

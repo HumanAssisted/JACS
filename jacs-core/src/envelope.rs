@@ -53,6 +53,24 @@ const ARGON2ID_MEMORY_COST_KIB: u32 = 19_456;
 const ARGON2ID_TIME_COST: u32 = 2;
 /// Argon2id parallelism.
 const ARGON2ID_PARALLELISM: u32 = 1;
+/// Minimum memory accepted from a V2 Argon2id envelope (KiB).
+pub const ARGON2ID_MIN_MEMORY_COST_KIB: u32 = 8_192;
+/// Maximum memory accepted from a V2 Argon2id envelope (KiB).
+pub const ARGON2ID_MAX_MEMORY_COST_KIB: u32 = ARGON2ID_MEMORY_COST_KIB;
+/// Minimum time cost accepted from a V2 Argon2id envelope.
+pub const ARGON2ID_MIN_TIME_COST: u32 = 1;
+/// Maximum time cost accepted from a V2 Argon2id envelope.
+pub const ARGON2ID_MAX_TIME_COST: u32 = ARGON2ID_TIME_COST;
+/// Parallelism accepted from a V2 Argon2id envelope.
+pub const ARGON2ID_REQUIRED_PARALLELISM: u32 = ARGON2ID_PARALLELISM;
+/// Maximum serialized V2 private-key envelope size.
+pub const MAX_V2_ENVELOPE_BYTES: usize = 16 * 1_048_576;
+/// Maximum total encrypted private-key input size for every supported format.
+/// The legacy PBKDF2 reader is intentionally subject to the same cap before
+/// format sniffing or KDF/AEAD work.
+pub const MAX_ENCRYPTED_PRIVATE_KEY_BYTES: usize = MAX_V2_ENVELOPE_BYTES;
+/// Maximum decoded ciphertext held by a V2 private-key envelope.
+pub const MAX_V2_CIPHERTEXT_BYTES: usize = 12 * 1_048_576;
 
 // =========================================================================
 // ZeroizingVec — secure buffer for decrypted private key material
@@ -118,6 +136,7 @@ impl std::fmt::Debug for ZeroizingVec {
 // =========================================================================
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KdfEnvelope {
     name: String,
     version: u32,
@@ -127,7 +146,7 @@ struct KdfEnvelope {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct EncryptedPrivateKeyEnvelope {
     jacs_encrypted_private_key_version: u8,
     cipher: String,
@@ -158,6 +177,7 @@ fn derive_argon2id_key(
             kdf.name, kdf.version
         )));
     }
+    validate_argon2id_kdf_policy(kdf)?;
     let params = Params::new(
         kdf.m_cost_kib,
         kdf.t_cost,
@@ -171,6 +191,36 @@ fn derive_argon2id_key(
         .hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| CoreError::DecryptionFailed(format!("Argon2id key derivation failed: {e}")))?;
     Ok(key)
+}
+
+fn validate_argon2id_kdf_policy(kdf: &KdfEnvelope) -> Result<(), CoreError> {
+    let rejected = if !(ARGON2ID_MIN_MEMORY_COST_KIB..=ARGON2ID_MAX_MEMORY_COST_KIB)
+        .contains(&kdf.m_cost_kib)
+    {
+        Some(format!(
+            "mCostKib must be in {}..={} (got {})",
+            ARGON2ID_MIN_MEMORY_COST_KIB, ARGON2ID_MAX_MEMORY_COST_KIB, kdf.m_cost_kib
+        ))
+    } else if !(ARGON2ID_MIN_TIME_COST..=ARGON2ID_MAX_TIME_COST).contains(&kdf.t_cost) {
+        Some(format!(
+            "tCost must be in {}..={} (got {})",
+            ARGON2ID_MIN_TIME_COST, ARGON2ID_MAX_TIME_COST, kdf.t_cost
+        ))
+    } else if kdf.p_cost != ARGON2ID_REQUIRED_PARALLELISM {
+        Some(format!(
+            "pCost must equal {} (got {})",
+            ARGON2ID_REQUIRED_PARALLELISM, kdf.p_cost
+        ))
+    } else {
+        None
+    };
+
+    if let Some(reason) = rejected {
+        return Err(CoreError::MalformedEnvelope(format!(
+            "Argon2id parameter policy rejected: {reason}"
+        )));
+    }
+    Ok(())
 }
 
 /// Encrypt `data` under `password` and emit the V2 JSON envelope as bytes.
@@ -220,8 +270,15 @@ pub fn decrypt_v2_envelope(
     if first_non_ws != Some(b'{') {
         return Ok(None);
     }
-    let envelope: EncryptedPrivateKeyEnvelope = serde_json::from_slice(encrypted_data)
-        .map_err(|e| CoreError::MalformedEnvelope(format!("invalid V2 envelope JSON: {e}")))?;
+    if encrypted_data.len() > MAX_V2_ENVELOPE_BYTES {
+        return Err(CoreError::MalformedEnvelope(format!(
+            "V2 envelope exceeds the {} byte limit",
+            MAX_V2_ENVELOPE_BYTES
+        )));
+    }
+    let envelope: EncryptedPrivateKeyEnvelope =
+        crate::strict_json::deserialize_strict_json_slice(encrypted_data)
+            .map_err(|e| CoreError::MalformedEnvelope(format!("invalid V2 envelope JSON: {e}")))?;
     if envelope.jacs_encrypted_private_key_version != ENCRYPTED_PRIVATE_KEY_VERSION_V2 {
         return Err(CoreError::UnsupportedAlgorithm(format!(
             "encrypted private key envelope version {}",
@@ -234,6 +291,15 @@ pub fn decrypt_v2_envelope(
             envelope.cipher
         )));
     }
+    if envelope.kdf.name != "Argon2id" || envelope.kdf.version != 19 {
+        return Err(CoreError::UnsupportedAlgorithm(format!(
+            "private key KDF '{}'/version {}",
+            envelope.kdf.name, envelope.kdf.version
+        )));
+    }
+    // Reject attacker-controlled work factors before base64 allocation or KDF
+    // execution. The accepted profile is versioned with the V2 envelope.
+    validate_argon2id_kdf_policy(&envelope.kdf)?;
     let salt = URL_SAFE_NO_PAD
         .decode(envelope.salt.as_bytes())
         .map_err(|e| CoreError::MalformedEnvelope(format!("invalid envelope salt: {e}")))?;
@@ -243,11 +309,24 @@ pub fn decrypt_v2_envelope(
     let ciphertext = URL_SAFE_NO_PAD
         .decode(envelope.ciphertext.as_bytes())
         .map_err(|e| CoreError::MalformedEnvelope(format!("invalid envelope ciphertext: {e}")))?;
+    if salt.len() != PBKDF2_SALT_SIZE {
+        return Err(CoreError::MalformedEnvelope(format!(
+            "invalid envelope salt length: expected {}, got {}",
+            PBKDF2_SALT_SIZE,
+            salt.len()
+        )));
+    }
     if nonce.len() != AES_GCM_NONCE_SIZE {
         return Err(CoreError::MalformedEnvelope(format!(
             "invalid envelope nonce length: expected {}, got {}",
             AES_GCM_NONCE_SIZE,
             nonce.len()
+        )));
+    }
+    if ciphertext.len() > MAX_V2_CIPHERTEXT_BYTES {
+        return Err(CoreError::MalformedEnvelope(format!(
+            "V2 envelope ciphertext exceeds the {} byte limit",
+            MAX_V2_CIPHERTEXT_BYTES
         )));
     }
     let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
@@ -338,6 +417,12 @@ pub fn decrypt_private_key(
     encrypted_key_with_salt_and_nonce: &[u8],
     password: &str,
 ) -> Result<ZeroizingVec, CoreError> {
+    if encrypted_key_with_salt_and_nonce.len() > MAX_ENCRYPTED_PRIVATE_KEY_BYTES {
+        return Err(CoreError::MalformedEnvelope(format!(
+            "encrypted private key exceeds the {} byte limit",
+            MAX_ENCRYPTED_PRIVATE_KEY_BYTES
+        )));
+    }
     if let Some(decrypted) = decrypt_v2_envelope(encrypted_key_with_salt_and_nonce, password)? {
         return Ok(ZeroizingVec::new(decrypted));
     }

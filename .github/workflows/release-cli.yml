@@ -5,26 +5,45 @@ on:
     tags:
       - 'cli/v*'
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/rust.yml
+
   verify-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Extract version from tag
+      - name: Validate and extract release tag
         id: extract
-        run: |
-          TAG="${GITHUB_REF#refs/tags/cli/v}"
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+        run: python3 scripts/release_tag.py --surface cli
 
       - name: Check Cargo.toml versions match tag
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          set -euo pipefail
           for dir in jacs jacs-mcp jacs-cli; do
             CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             echo "$dir version: $CARGO_VERSION, tag: $TAG_VERSION"
@@ -35,7 +54,9 @@ jobs:
           done
 
   build:
-    needs: verify-version
+    needs: [verify-version, functional-gate]
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -62,12 +83,16 @@ jobs:
             archive_ext: zip
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.verify-version.outputs.version }}
       CLI_ASSET_NAME: jacs-cli-${{ needs.verify-version.outputs.version }}-${{ matrix.asset_suffix }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         if: runner.os != 'Windows'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Stage source tree (Windows)
         if: runner.os == 'Windows'
@@ -93,6 +118,10 @@ jobs:
             $_ -eq "$prefix/Cargo.lock" -or
             $_ -eq "$prefix/README.md" -or
             $_ -eq "$prefix/LICENSE" -or
+            $_ -eq "$prefix/LICENSE-APACHE" -or
+            $_ -eq "$prefix/THIRD-PARTY-NOTICES" -or
+            $_ -eq "$prefix/scripts/check_release_artifact_licenses.py" -or
+            $_ -eq "$prefix/scripts/smoke-cli-installers.py" -or
             $_ -eq "$prefix/binding-core/Cargo.toml" -or
             $_ -eq "$prefix/jacs-core/Cargo.toml" -or
             $_ -like "$prefix/jacs-core/src/*" -or
@@ -110,8 +139,13 @@ jobs:
             $_ -eq "$prefix/jacs-mcp/Cargo.toml" -or
             $_ -eq "$prefix/jacs-mcp/README.md" -or
             $_ -eq "$prefix/jacsnpm/Cargo.toml" -or
+            $_ -eq "$prefix/jacsnpm/package.json" -or
+            $_ -eq "$prefix/jacsnpm/scripts/install-cli.js" -or
+            $_ -eq "$prefix/jacsnpm/bin/jacs-cli.js" -or
             $_ -eq "$prefix/jacsnpm/src/lib.rs" -or
             $_ -eq "$prefix/jacspy/Cargo.toml" -or
+            $_ -eq "$prefix/jacspy/pyproject.toml" -or
+            $_ -eq "$prefix/jacspy/python/jacs/cli_runner.py" -or
             $_ -eq "$prefix/jacspy/src/lib.rs" -or
             $_ -eq "$prefix/jacsgo/lib/Cargo.toml" -or
             $_ -eq "$prefix/jacsgo/lib/src/lib.rs" -or
@@ -144,14 +178,14 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
           toolchain: '1.97'
           targets: ${{ matrix.target }}
 
       - name: Build binaries
         run: |
-          cargo build --release -p jacs-cli --target ${{ matrix.target }}
+          cargo build --locked --release -p jacs-cli --target ${{ matrix.target }}
 
       - name: Smoke test (Unix)
         if: runner.os != 'Windows'
@@ -167,41 +201,130 @@ jobs:
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
-          cp target/${{ matrix.target }}/release/jacs jacs-cli
-          tar czf ${CLI_ASSET_NAME}.tar.gz jacs-cli
-          shasum -a 256 ${CLI_ASSET_NAME}.tar.gz > ${CLI_ASSET_NAME}.tar.gz.sha256
+          cp "target/${{ matrix.target }}/release/jacs" jacs-cli
+          tar czf "${CLI_ASSET_NAME}.tar.gz" jacs-cli LICENSE-APACHE THIRD-PARTY-NOTICES
+          python3 scripts/check_release_artifact_licenses.py \
+            --license LICENSE-APACHE \
+            --notices THIRD-PARTY-NOTICES \
+            "${CLI_ASSET_NAME}.tar.gz"
+          shasum -a 256 "${CLI_ASSET_NAME}.tar.gz" > "${CLI_ASSET_NAME}.tar.gz.sha256"
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Copy-Item "target/${{ matrix.target }}/release/jacs.exe" "jacs-cli.exe"
-          Compress-Archive -Path "jacs-cli.exe" -DestinationPath "${env:CLI_ASSET_NAME}.zip"
+          Compress-Archive -Path "jacs-cli.exe", "LICENSE-APACHE", "THIRD-PARTY-NOTICES" -DestinationPath "${env:CLI_ASSET_NAME}.zip"
+          python scripts/check_release_artifact_licenses.py `
+            --license LICENSE-APACHE `
+            --notices THIRD-PARTY-NOTICES `
+            "${env:CLI_ASSET_NAME}.zip"
           Get-FileHash "${env:CLI_ASSET_NAME}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${env:CLI_ASSET_NAME}.zip" } | Out-File "${env:CLI_ASSET_NAME}.zip.sha256" -Encoding ascii
 
-      - uses: actions/upload-artifact@v4
+      - name: Smoke staged Python and Node installers (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          # Serve only an aggregate sha256sums.txt, matching the release layout.
+          python3 scripts/smoke-cli-installers.py \
+            --asset "${CLI_ASSET_NAME}.tar.gz" \
+            --checksum "${CLI_ASSET_NAME}.tar.gz.sha256"
+
+      - name: Smoke staged Python and Node installers (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Serve only an aggregate sha256sums.txt, matching the release layout.
+          python scripts/smoke-cli-installers.py `
+            --asset "${env:CLI_ASSET_NAME}.zip" `
+            --checksum "${env:CLI_ASSET_NAME}.zip.sha256"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: binaries-${{ matrix.asset_suffix }}
           path: |
             ${{ env.CLI_ASSET_NAME }}.*
 
-  release:
+  prepare-release:
     needs: [verify-version, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
 
       - name: Collect checksums
         run: |
-          cd artifacts
-          find . -name "*.sha256" -exec cat {} \; > ../sha256sums.txt
-          cd ..
+          set -euo pipefail
+          mapfile -d '' checksum_files < <(find artifacts -type f -name '*.sha256' -print0 | sort -z)
+          if [[ "${#checksum_files[@]}" -ne 5 ]]; then
+            echo "::error::expected 5 CLI checksum files, found ${#checksum_files[@]}"
+            exit 1
+          fi
+          : > sha256sums.txt
+          for checksum_file in "${checksum_files[@]}"; do
+            (
+              cd "$(dirname "$checksum_file")"
+              sha256sum -c "$(basename "$checksum_file")"
+            )
+            cat "$checksum_file" >> sha256sums.txt
+          done
+          sort -k2 -o sha256sums.txt sha256sums.txt
+          test "$(wc -l < sha256sums.txt | tr -d ' ')" = 5
           cat sha256sums.txt
 
+      - name: Generate SPDX SBOM for release artifacts
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: artifacts
+          format: spdx-json
+          output-file: jacs-cli.spdx.json
+          artifact-name: jacs-cli-${{ needs.verify-version.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate CLI SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacs-cli.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacs-cli.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacs-cli-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256
+            sha256sums.txt
+            jacs-cli.spdx.json
+          if-no-files-found: error
+
+  release:
+    needs: [security-gate, verify-version, prepare-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacs-cli-${{ needs.verify-version.outputs.version }}-release-bundle
+
+      - name: Attest CLI artifacts, checksums, and SBOM
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256
+            sha256sums.txt
+            jacs-cli.spdx.json
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: cli/v${{ needs.verify-version.outputs.version }}
           name: JACS CLI v${{ needs.verify-version.outputs.version }}
@@ -239,7 +362,36 @@ jobs:
             ```bash
             shasum -a 256 -c sha256sums.txt
             ```
+
+            GitHub build provenance is attached to every binary, checksum
+            manifest, and SBOM. Verify a downloaded artifact with:
+            ```bash
+            gh attestation verify <artifact> --repo HumanAssisted/JACS
+            ```
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
+            artifacts/**/*.sha256
             sha256sums.txt
+            jacs-cli.spdx.json
+
+  verify-release-attestations:
+    needs: [verify-version, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download and verify every public CLI release asset attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: cli/v${{ needs.verify-version.outputs.version }}
+        run: |
+          python3 scripts/verify_github_release_attestations.py \
+            "$RELEASE_TAG" \
+            "HumanAssisted/JACS/.github/workflows/release-cli.yml"

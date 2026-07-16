@@ -102,7 +102,11 @@ Agent systems are polyglot by nature. Security controls must work consistently a
 
 ### 3.1 Model Context Protocol (MCP)
 
-**Relationship:** JACS provides an MCP server with 33 tools for signing, verification, trust management, A2A artifact operations, and attestation operations. Any MCP-compatible client can use JACS as a native tool.
+**Relationship:** JACS provides a runtime-profiled MCP server. Source `0.11.4`
+exposes 25 everyday signing, verification, trust, discovery, and provenance
+tools in the default `core` profile; the opt-in `full` profile exposes 42 tools
+by adding Agreement v2, A2A artifact, and attestation operations. Any
+MCP-compatible client can use JACS as a native tool.
 
 **Integration value for NCCoE:** The MCP server demonstrates how cryptographic identity and signing can be added to existing AI agent workflows without code changes -- the agent calls JACS tools through the standard MCP interface.
 
@@ -212,7 +216,7 @@ JACS (JSON Agent Communication Standard) is an open-source project maintained by
 
 - **Version:** 0.9.2
 - **Language:** Rust core with Python, Node.js, and Go bindings
-- **License:** Apache 2.0 with Common Clause
+- **License:** Apache-2.0
 - **Tests:** 1,200+ across 5 language targets
 - **Algorithms:** ML-DSA-87 (default), Ed25519, ECDSA P-256/P-384
 - **Standards alignment:** JCS (RFC 8785), DSSE, in-toto predicate types

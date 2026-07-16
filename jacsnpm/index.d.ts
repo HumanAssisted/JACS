@@ -118,6 +118,11 @@ export declare function legacyVerifyResponse(documentString: string): object
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
 export declare function ensureNetworkAccess(capability: string): void
 export declare function fetchAgentCard(baseUrl: string, timeoutMs?: number | undefined | null): string
+/**
+ * Fetch an Agent Card off the V8 event-loop thread using the shared secure
+ * trust-boundary transport.
+ */
+export declare function fetchAgentCardAsync(baseUrl: string, timeoutMs?: number | undefined | null): Promise<string>
 export declare function fetchRemoteKeyLookup(baseUrl?: string | undefined | null, jacsId?: string | undefined | null, version?: string | undefined | null, publicKeyHash?: string | undefined | null, timeoutMs?: number | undefined | null): string
 export declare function hashPublicKeyBase64(publicKeyBase64: string): string
 export declare function buildJwkSetFromPublicKey(publicKeyBase64: string, keyAlgorithm: string, keyId: string): string
@@ -268,8 +273,51 @@ export declare class JacsAgent {
   fromHtml(htmlStr: string): Promise<string>
   /** Convert a YAML string to JSON and verify the resulting document (async). */
   verifyYaml(yamlStr: string): Promise<boolean>
-  /** Build a JACS auth header for HTTP requests (sync, blocks event loop). */
+  /** Export this agent as an A2A Agent Card (sync, blocks event loop). */
+  exportAgentCardSync(): string
+  /**
+   * Generate the stable, native-root-bound ES256 .well-known A2A document set
+   * (sync, blocks event loop). Omit the algorithm or pass ES256.
+   */
+  generateWellKnownDocumentsSync(a2AAlgorithm?: string | undefined | null): string
+  /** Wrap an A2A artifact with JACS provenance signature (sync). */
+  wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
+  /** Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync. */
+  signArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
+  /** Verify a JACS-wrapped A2A artifact (sync). */
+  verifyA2aArtifactSync(wrappedJson: string): string
+  /** Verify a JACS-wrapped A2A artifact with policy-aware trust assessment (sync). */
+  verifyA2aArtifactWithPolicySync(wrappedJson: string, agentCardJson: string, policy: string): string
+  /** Assess a remote agent's trust level based on its Agent Card and a policy (sync). */
+  assessA2aAgentSync(agentCardJson: string, policy: string): string
+  /** Export this agent as an A2A Agent Card. */
+  exportAgentCard(): Promise<string>
+  /**
+   * Generate the stable, native-root-bound ES256 .well-known A2A document set.
+   * Omit the algorithm or pass ES256; obsolete choices are rejected.
+   */
+  generateWellKnownDocuments(a2AAlgorithm?: string | undefined | null): Promise<string>
+  /** Wrap an A2A artifact with JACS provenance signature. */
+  wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
+  /** Sign an A2A artifact. Alias for wrapA2aArtifact. */
+  signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
+  /** Verify a JACS-wrapped A2A artifact. */
+  verifyA2aArtifact(wrappedJson: string): Promise<string>
+  /** Verify a JACS-wrapped A2A artifact with policy-aware trust assessment. */
+  verifyA2aArtifactWithPolicy(wrappedJson: string, agentCardJson: string, policy: string): Promise<string>
+  /** Assess a remote agent's trust level based on its Agent Card and a policy. */
+  assessA2aAgent(agentCardJson: string, policy: string): Promise<string>
+  /**
+   * Build the legacy unbound auth header (sync, blocks event loop).
+   * Retained for compatibility; prefer `buildRequestAuthHeaderSync`.
+   */
   buildAuthHeaderSync(): string
+  /**
+   * Build a request-bound JACS v2 auth header (sync, blocks event loop).
+   * Pass the actual method, absolute URL, exact body bytes (Buffer or
+   * Uint8Array; strings are UTF-8 encoded), and audience.
+   */
+  buildRequestAuthHeaderSync(method: string, url: string, body: string | Buffer | Uint8Array, audience: string): string
   /** Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop). */
   canonicalizeJsonSync(jsonString: string): string
   /** Sign a response payload, returning a signed envelope JSON (sync, blocks event loop). */
@@ -278,12 +326,22 @@ export declare class JacsAgent {
   encodeVerifyPayloadSync(document: string): string
   /** Decode a URL-safe base64 verification payload (sync). */
   decodeVerifyPayloadSync(encoded: string): string
-  /** Extract the document ID from a JACS-signed document (sync). */
+  /**
+   * Inspect an unverified document ID (sync). Never use the result for
+   * authorization or trust before separately verifying the document.
+   */
   extractDocumentIdSync(document: string): string
   /** Unwrap and verify a signed event against known server public keys (sync, blocks event loop). */
   unwrapSignedEventSync(eventJson: string, serverKeysJson: string): string
-  /** Build a JACS auth header for HTTP requests. */
+  /**
+   * Verify signed-event cryptography and freshness without releasing data
+   * or consuming replay state (sync, blocks event loop).
+   */
+  prepareSignedEventReplaySync(eventJson: string, serverKeysJson: string, maxAgeSeconds: number): string
+  /** Build the legacy unbound auth header. */
   buildAuthHeader(): Promise<string>
+  /** Build a request-bound JACS v2 auth header. */
+  buildRequestAuthHeader(method: string, url: string, body: string | Buffer | Uint8Array, audience: string): Promise<string>
   /** Deterministically serialize JSON per RFC 8785 / JCS. */
   canonicalizeJson(jsonString: string): Promise<string>
   /** Sign a response payload, returning a signed envelope JSON. */
@@ -292,10 +350,18 @@ export declare class JacsAgent {
   encodeVerifyPayload(document: string): Promise<string>
   /** Decode a URL-safe base64 verification payload. */
   decodeVerifyPayload(encoded: string): Promise<string>
-  /** Extract the document ID from a JACS-signed document. */
+  /**
+   * Inspect an unverified document ID. Never use the result for
+   * authorization or trust before separately verifying the document.
+   */
   extractDocumentId(document: string): Promise<string>
   /** Unwrap and verify a signed event against known server public keys. */
   unwrapSignedEvent(eventJson: string, serverKeysJson: string): Promise<string>
+  /**
+   * Verify signed-event cryptography and freshness without releasing data
+   * or consuming replay state. PQ verification runs on the worker pool.
+   */
+  prepareSignedEventReplay(eventJson: string, serverKeysJson: string, maxAgeSeconds: number): Promise<string>
   /** Create a signed attestation document (sync). */
   createAttestationSync(paramsJson: string): string
   /** Verify an attestation -- local tier (sync). */
@@ -354,6 +420,22 @@ export declare class JacsSimpleAgent {
   getPublicKeyBase64(): string
   /** Runtime diagnostic info as a JSON string. */
   diagnostics(): string
+  /** Build the legacy unbound JACS Authorization header. */
+  buildAuthHeader(): string
+  /** Build a request-bound JACS v2 Authorization header. */
+  buildRequestAuthHeader(method: string, url: string, body: string | Buffer | Uint8Array, audience: string): string
+  canonicalizeJson(jsonString: string): string
+  signResponse(payloadJson: string): string
+  encodeVerifyPayload(document: string): string
+  decodeVerifyPayload(encoded: string): string
+  /** Inspect an attacker-controlled document ID without verification. */
+  extractDocumentId(document: string): string
+  unwrapSignedEvent(eventJson: string, serverKeysJson: string): string
+  /**
+   * Verify signed-event cryptography and freshness without releasing data
+   * or consuming replay state. PQ verification runs on the worker pool.
+   */
+  prepareSignedEventReplay(eventJson: string, serverKeysJson: string, maxAgeSeconds: number): Promise<string>
   /** Export this agent's did:wba identifier. */
   exportW3cDid(origin?: string | undefined | null): string
   /** Export this agent's did:wba DID document as JSON. */
@@ -431,8 +513,8 @@ export declare class JacsSimpleAgent {
    */
   verifyYaml(yamlStr: string): string
   /**
-   * Rotate the agent's cryptographic keys.
-   * Optionally change the signing algorithm.
+   * Rotate the agent's cryptographic keys to pq2025. Omit the algorithm or
+   * pass pq2025; Ed25519 and unknown targets are rejected.
    * Returns a JSON string of the RotationResult.
    */
   rotateKeys(algorithm?: string | undefined | null): string
@@ -443,25 +525,25 @@ export declare class JacsSimpleAgent {
    */
   addCompatKey(): string
   /**
-   * Issue (or re-issue) the PQ-root-signed compatibility key binding
+   * Issue (or re-issue) the native-root-signed compatibility key binding
    * (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
    * `agreement-vc`) are never auto-issued: they require this explicit
-   * grant, signed by the PQ root. Also the re-issue path after
+   * grant, signed by the current native root. Also the re-issue path after
    * rotateKeys(). `scopes` omitted/null grants the default identity
    * scopes; an unknown scope is a validation error. `expiresAt` is an
    * optional RFC 3339 timestamp. Returns the binding document JSON.
    */
   issueCompatBinding(scopes?: Array<string> | undefined | null, expiresAt?: string | undefined | null): string
   /**
-   * Export the agent's compatibility JWKS (ES256 public key only — PQ
-   * material is never published here). Auto-issues the default identity
+   * Export the agent's compatibility JWKS (ES256 public key only — native
+   * root material is never published here). Auto-issues the default identity
    * binding on first use. Returns a JSON string of the JWKS.
    */
   exportCompatibilityJwks(): string
   /**
-   * Export the current (verified) PQ-root-signed compatibility key
-   * binding document, so relying parties can trace the ES256 key back
-   * to the post-quantum root. Returns a JSON string of the binding.
+   * Export the current verified native-root-signed compatibility key
+   * binding document, so relying parties can trace the ES256 key back to
+   * the agent's native root. Returns a JSON string of the binding.
    */
   exportCompatibilityKeyBinding(): string
   /**
@@ -524,4 +606,9 @@ export declare class JacsSimpleAgent {
   extractMediaSignature(filePath: string, opts?: ExtractMediaOptsNapi | undefined | null): Promise<string | null>
   /** Sync variant of [`extractMediaSignature`]. */
   extractMediaSignatureSync(filePath: string, opts?: ExtractMediaOptsNapi | undefined | null): string | null
+  /**
+   * Export the A2A agent card signed with the ES256 compatibility key
+   * (P2 Task 004-B).
+   */
+  exportA2aAgentCard(): string
 }

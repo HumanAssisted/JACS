@@ -14,25 +14,29 @@ const {
   JACS_EXTENSION_URI,
   TRUST_POLICIES,
 } = require('../src/a2a');
+const {
+  configureNativeAssessor,
+  configureCanonicalArtifactVerifier,
+  configureNativeArtifactSigner,
+} = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient for the demo scenario.
  */
 function createMockClient(overrides = {}) {
   const trustedAgents = overrides.trustedAgents || [];
+  const agentId = overrides.agentId || 'mock-agent';
+  const agent = {
+    signRequest: sinon.stub(),
+    signArtifactSync: sinon.stub(),
+    verifyResponse: sinon.stub().returns(true),
+  };
+  configureNativeAssessor(agent, { trustedAgentIds: trustedAgents });
+  configureCanonicalArtifactVerifier(agent, { trustedAgentIds: trustedAgents });
+  configureNativeArtifactSigner(agent, { agentId });
   return {
-    _agent: {
-      signRequest: sinon.stub().callsFake((doc) => ({
-        ...doc,
-        jacsSignature: {
-          agentID: overrides.agentId || 'mock-agent',
-          agentVersion: '1',
-          publicKeyHash: `hash-${overrides.agentId || 'mock'}`,
-        },
-      })),
-      verifyResponse: sinon.stub().returns(true),
-    },
-    agentId: overrides.agentId || 'mock-agent',
+    _agent: agent,
+    agentId,
     name: overrides.name || 'Mock Agent',
     isTrusted: sinon.stub().callsFake((id) => trustedAgents.includes(id)),
     trustAgent: sinon.stub().returns('ok'),
@@ -83,7 +87,12 @@ describe('A2A Trust Demo Integration - [2.5.3]', function () {
       expect(signedByA.a2aArtifact).to.deep.equal(task);
 
       // Agent B verifies Agent A's artifact
-      const verifyAtB = await a2aB.verifyWrappedArtifact(signedByA);
+      const cardA = JSON.parse(JSON.stringify(a2aA.exportAgentCard({
+        jacsId: 'agent-alpha',
+        jacsName: 'Agent A',
+        jacsDescription: 'JACS Agent A',
+      })));
+      const verifyAtB = await a2aB.verifyWrappedArtifact(signedByA, cardA);
       expect(verifyAtB.valid).to.be.true;
       expect(verifyAtB.signerId).to.equal('agent-alpha');
       expect(verifyAtB.trustAssessment).to.exist;

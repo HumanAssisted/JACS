@@ -179,6 +179,16 @@ pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
                 "path": "/.well-known/jacs-pubkey.json",
                 "method": "GET",
                 "description": "Retrieve agent's public key"
+            },
+            "jwks": {
+                "path": "/.well-known/jwks.json",
+                "method": "GET",
+                "description": "Retrieve the stable ES256 compatibility key used by the Agent Card"
+            },
+            "compatibilityBinding": {
+                "path": "/.well-known/jacs-compat-binding.json",
+                "method": "GET",
+                "description": "Retrieve the native-root-signed binding for the Agent Card compatibility key"
             }
         }
     })

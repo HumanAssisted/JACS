@@ -26,9 +26,7 @@ def ephemeral_client():
 def _make_app(client, **middleware_kwargs):
     """Return a FastAPI app with JacsMiddleware attached."""
     app = fastapi.FastAPI()
-    app.add_middleware(
-        JacsMiddleware, client=client, **middleware_kwargs
-    )
+    app.add_middleware(JacsMiddleware, client=client, **middleware_kwargs)
 
     @app.get("/json")
     def get_json():
@@ -37,6 +35,7 @@ def _make_app(client, **middleware_kwargs):
     @app.get("/text")
     def get_text():
         from starlette.responses import PlainTextResponse
+
         return PlainTextResponse("plain text body")
 
     @app.post("/echo")
@@ -72,6 +71,36 @@ class TestMiddlewareSignsResponses:
         result = ephemeral_client.verify(json.dumps(data))
         assert result.valid
 
+    def test_signing_failure_does_not_emit_downstream_body(self):
+        broken_client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        broken_client.reset()
+        app = _make_app(
+            broken_client,
+            verify_requests=False,
+        )
+        client = TestClient(app)
+
+        resp = client.get("/json")
+
+        assert resp.status_code == 500
+        assert resp.json() == {"error": "JACS response signing failed"}
+        assert "value" not in resp.text
+
+    def test_unsigned_response_requires_explicit_opt_in(self):
+        broken_client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        broken_client.reset()
+        app = _make_app(
+            broken_client,
+            verify_requests=False,
+            allow_unsigned_output=True,
+        )
+        client = TestClient(app)
+
+        resp = client.get("/json")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "value": 42}
+
 
 class TestMiddlewareVerifiesRequests:
     """Middleware should verify incoming signed POST bodies."""
@@ -97,6 +126,48 @@ class TestMiddlewareVerifiesRequests:
         )
         assert resp.status_code == 200
 
+    def test_invalid_claimed_signature_fails_closed_by_default(self, ephemeral_client):
+        app = _make_app(ephemeral_client, sign_responses=False)
+        client = TestClient(app)
+        bad_body = json.dumps(
+            {
+                "jacsSignature": {"signature": "INVALID"},
+                "jacsDocument": {"action": "must-not-pass"},
+            }
+        )
+
+        resp = client.post(
+            "/echo",
+            content=bad_body,
+            headers={"Content-Type": "application/json"},
+        )
+
+        assert resp.status_code == 401
+
+    def test_invalid_claimed_signature_passthrough_requires_explicit_opt_in(
+        self, ephemeral_client
+    ):
+        app = _make_app(
+            ephemeral_client,
+            sign_responses=False,
+            allow_unverified_passthrough=True,
+        )
+        client = TestClient(app)
+        bad_body = json.dumps(
+            {
+                "jacsSignature": {"signature": "INVALID"},
+                "jacsDocument": {"action": "legacy-passthrough"},
+            }
+        )
+
+        resp = client.post(
+            "/echo",
+            content=bad_body,
+            headers={"Content-Type": "application/json"},
+        )
+
+        assert resp.status_code == 200
+
 
 class TestMiddlewareStrict:
     """Strict mode should reject invalid signatures."""
@@ -105,15 +176,36 @@ class TestMiddlewareStrict:
         app = _make_app(ephemeral_client, strict=True)
         client = TestClient(app)
         # Post a body that claims to be signed but isn't valid
-        bad_body = json.dumps({
-            "jacsSignature": {"signature": "INVALID"},
-            "jacsDocument": {"action": "bad"},
-        })
+        bad_body = json.dumps(
+            {
+                "jacsSignature": {"signature": "INVALID"},
+                "jacsDocument": {"action": "bad"},
+            }
+        )
         resp = client.post(
             "/echo",
             content=bad_body,
             headers={"Content-Type": "application/json"},
         )
+        assert resp.status_code == 401
+
+    def test_truthy_non_boolean_verification_flag_fails_closed(self, ephemeral_client):
+        ephemeral_client.verify = lambda _raw: {"valid": "false", "errors": []}
+        app = _make_app(ephemeral_client, strict=True, sign_responses=False)
+        client = TestClient(app)
+        body = json.dumps(
+            {
+                "jacsSignature": {"signature": "attacker-controlled"},
+                "jacsDocument": {"action": "must-not-pass"},
+            }
+        )
+
+        resp = client.post(
+            "/echo",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+
         assert resp.status_code == 401
 
 
@@ -147,10 +239,12 @@ class TestMiddlewareVerifyDisabled:
     def test_no_verify_when_disabled(self, ephemeral_client):
         app = _make_app(ephemeral_client, verify_requests=False)
         client = TestClient(app)
-        bad_body = json.dumps({
-            "jacsSignature": {"signature": "INVALID"},
-            "jacsDocument": {"action": "bad"},
-        })
+        bad_body = json.dumps(
+            {
+                "jacsSignature": {"signature": "INVALID"},
+                "jacsDocument": {"action": "bad"},
+            }
+        )
         # Should pass through without verification even though signature is bad
         resp = client.post(
             "/echo",
@@ -202,8 +296,10 @@ class TestMiddlewareAuthReplayProtection:
 
     def test_future_timestamp_rejected_when_enabled(self, ephemeral_client):
         future_iso = (
-            datetime.now(timezone.utc) + timedelta(seconds=60)
-        ).isoformat().replace("+00:00", "Z")
+            (datetime.now(timezone.utc) + timedelta(seconds=60))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
         # Keep this as a middleware-path test by stubbing verify() to return
         # a successful cryptographic result with a future signature timestamp.

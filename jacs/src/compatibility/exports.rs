@@ -2,16 +2,223 @@
 //!
 //! JWKS and binding exports — the surfaces that make a JACS agent's
 //! compatibility key legible to JOSE ecosystems. Every export is gated by
-//! the PQ-root-signed binding scope (`require_scope`). Identity exports
+//! the native-root-signed binding scope (`require_scope`). Identity exports
 //! may auto-issue the DEFAULT (identity-scopes-only) binding when none
-//! exists yet — the PQ root signs it in-process at that moment; content
+//! exists yet — the current native root signs it in-process at that moment; content
 //! exports (Tasks 004b/004c) never auto-issue.
 
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::error::JacsError;
 use serde_json::{Value, json};
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use tracing::info;
+
+/// Deterministic discovery path for the native-root-signed compatibility
+/// binding referenced by A2A Agent Cards.
+pub const A2A_COMPAT_BINDING_PATH: &str = "/.well-known/jacs-compat-binding.json";
+
+const IDENTITY_BINDING_LOCK_FILENAME: &str = ".jacs.compat-binding.issue.lock";
+const IDENTITY_BINDING_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
+struct IdentityBindingIssueGuard {
+    _file: std::fs::File,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IdentityBindingReissueReason {
+    StaleAgentVersion,
+    A2aFreshness,
+}
+
+/// Identify the two narrow cases an identity exporter may repair with the
+/// loaded native root. Corrupt, foreign, expired, or otherwise invalid
+/// bindings deliberately return `None` and remain hard failures in the normal
+/// scope verifier.
+fn identity_binding_reissue_reason(
+    agent: &Agent,
+    key_directory: &str,
+    binding: &Value,
+    refresh_for_a2a: bool,
+) -> Result<Option<IdentityBindingReissueReason>, JacsError> {
+    if super::binding::authentic_binding_has_stale_agent_version(agent, key_directory, binding)? {
+        return Ok(Some(IdentityBindingReissueReason::StaleAgentVersion));
+    }
+    if !refresh_for_a2a {
+        return Ok(None);
+    }
+
+    // Refresh only a fully valid CURRENT binding. A malformed timestamp or a
+    // failed signature is never converted into an opportunity to invoke the
+    // signing key and overwrite evidence of tampering.
+    let verdict = super::binding::verify_compat_binding(agent, key_directory, binding)?;
+    if !verdict.valid {
+        return Ok(None);
+    }
+    let issued_at = binding["compatibilityKeyBinding"]["issuedAt"]
+        .as_str()
+        .ok_or_else(|| {
+            JacsError::ValidationError(
+                "valid compatibility binding is missing issuedAt; refusing freshness reissue"
+                    .to_string(),
+            )
+        })?;
+    let issued_at = chrono::DateTime::parse_from_rfc3339(issued_at)
+        .map(|value| value.with_timezone(&chrono::Utc))
+        .map_err(|error| {
+            JacsError::ValidationError(format!(
+                "compatibility binding issuedAt is invalid; refusing freshness reissue: {error}"
+            ))
+        })?;
+    let now = crate::time_utils::now_utc();
+    let refresh_before =
+        now - chrono::Duration::seconds(super::binding::A2A_BINDING_REFRESH_AFTER_SECONDS);
+    let future_limit =
+        now + chrono::Duration::seconds(super::binding::STRICT_A2A_BINDING_MAX_FUTURE_SECONDS);
+    if issued_at <= refresh_before || issued_at > future_limit {
+        Ok(Some(IdentityBindingReissueReason::A2aFreshness))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Load the persisted default identity binding or issue it exactly once across
+/// concurrent processes sharing the same key directory.
+///
+/// A persistent 0600 lock file carries an OS advisory lock. The kernel releases
+/// that lock automatically on process death, so a crashed issuer cannot leave a
+/// permanent lock-file denial of service. Waiters read the winner's atomically
+/// replaced binding rather than signing a second timestamp/JTI variant.
+fn load_or_issue_default_identity_binding(
+    agent: &mut Agent,
+    key_directory: &str,
+    requested_export: Option<&str>,
+    refresh_for_a2a: bool,
+) -> Result<Value, JacsError> {
+    let lock_path = PathBuf::from(key_directory).join(IDENTITY_BINDING_LOCK_FILENAME);
+    let deadline = Instant::now() + IDENTITY_BINDING_LOCK_TIMEOUT;
+    let lock_file =
+        crate::secure_io::open_private_lock_file_no_follow(&lock_path).map_err(|error| {
+            JacsError::FileWriteFailed {
+                path: lock_path.to_string_lossy().into_owned(),
+                reason: format!("failed to open compatibility binding issuance lock: {error}"),
+            }
+        })?;
+
+    loop {
+        if let Some(binding) = super::binding::load_compat_binding(key_directory)?
+            && identity_binding_reissue_reason(agent, key_directory, &binding, refresh_for_a2a)?
+                .is_none()
+        {
+            return Ok(binding);
+        }
+
+        match lock_file.try_lock() {
+            Ok(()) => {
+                let _guard = IdentityBindingIssueGuard { _file: lock_file };
+                let mut preserved_scopes: Option<Vec<String>> = None;
+                let mut preserved_expiry: Option<String> = None;
+                // Another issuer may have completed between our initial check
+                // and lock acquisition. Return its current binding, repair an
+                // authentic same-root stale-version binding, or issue the
+                // first binding. Corrupt/foreign bindings are returned to the
+                // normal verifier and remain hard failures.
+                if let Some(binding) = super::binding::load_compat_binding(key_directory)? {
+                    let Some(reissue_reason) = identity_binding_reissue_reason(
+                        agent,
+                        key_directory,
+                        &binding,
+                        refresh_for_a2a,
+                    )?
+                    else {
+                        return Ok(binding);
+                    };
+                    match reissue_reason {
+                        IdentityBindingReissueReason::StaleAgentVersion => {
+                            tracing::warn!(
+                                event = "compatibility_binding_stale_version_reissue",
+                                jacs_id = %agent.get_id().unwrap_or_default(),
+                                old_agent_version = binding["jacsSignature"]["agentVersion"]
+                                    .as_str()
+                                    .unwrap_or(""),
+                                current_agent_version = %agent.get_version().unwrap_or_default(),
+                                old_binding_hash = %super::binding::binding_hash(&binding),
+                                "reissuing an authentic compatibility binding after a same-root agent version update"
+                            );
+                        }
+                        IdentityBindingReissueReason::A2aFreshness => {
+                            tracing::warn!(
+                                event = "a2a_compatibility_binding_freshness_reissue",
+                                jacs_id = %agent.get_id().unwrap_or_default(),
+                                old_issued_at = binding["compatibilityKeyBinding"]["issuedAt"]
+                                    .as_str()
+                                    .unwrap_or(""),
+                                old_binding_hash = %super::binding::binding_hash(&binding),
+                                max_age_seconds = super::binding::STRICT_A2A_BINDING_MAX_AGE_SECONDS,
+                                refresh_after_seconds = super::binding::A2A_BINDING_REFRESH_AFTER_SECONDS,
+                                "reissuing an authentic A2A compatibility binding before the Strict freshness cutoff"
+                            );
+                        }
+                    }
+                    preserved_scopes =
+                        binding["compatibilityKeyBinding"]["scope"]
+                            .as_array()
+                            .map(|scopes| {
+                                scopes
+                                    .iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect()
+                            });
+                    preserved_expiry = binding["compatibilityKeyBinding"]["expiresAt"]
+                        .as_str()
+                        .map(str::to_string);
+                }
+                if let Some(scopes) = preserved_scopes {
+                    let scope_refs: Vec<&str> = scopes.iter().map(String::as_str).collect();
+                    return super::binding::issue_compat_binding_ctx(
+                        agent,
+                        key_directory,
+                        &scope_refs,
+                        preserved_expiry.as_deref(),
+                        requested_export,
+                    );
+                }
+                return super::binding::issue_compat_binding_ctx(
+                    agent,
+                    key_directory,
+                    super::binding::DEFAULT_IDENTITY_SCOPES,
+                    None,
+                    requested_export,
+                );
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    tracing::warn!(
+                        event = "compatibility_binding_issue_lock_timeout",
+                        path = %lock_path.display(),
+                        timeout_ms = IDENTITY_BINDING_LOCK_TIMEOUT.as_millis() as u64,
+                        "timed out waiting for another process to issue the identity binding"
+                    );
+                    return Err(JacsError::ValidationError(format!(
+                        "timed out after {} ms waiting for compatibility binding issuance lock \
+                         '{}'",
+                        IDENTITY_BINDING_LOCK_TIMEOUT.as_millis(),
+                        lock_path.display()
+                    )));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(JacsError::FileWriteFailed {
+                    path: lock_path.to_string_lossy().into_owned(),
+                    reason: format!("failed to acquire identity binding issuance lock: {error}"),
+                });
+            }
+        }
+    }
+}
 
 /// Ensure a binding exists (issuing the default identity binding if not),
 /// then require `scope`. Used by IDENTITY exports only.
@@ -20,25 +227,20 @@ fn require_identity_scope(
     key_directory: &str,
     scope: &str,
 ) -> Result<Value, JacsError> {
-    let binding = match super::binding::load_compat_binding(key_directory)? {
-        Some(binding) => binding,
-        // Auto-issue needs the ES256 key on disk; a fresh agent without
-        // one fails HERE with `KeyNotFound` — record the documented
-        // `reason="missing_key"` error counter under the requested format.
-        // Issuance returns the persisted binding, so no disk re-load.
-        None => super::binding::issue_compat_binding_ctx(
-            agent,
-            key_directory,
-            super::binding::DEFAULT_IDENTITY_SCOPES,
-            None,
-            Some(scope),
-        )
-        .inspect_err(|e| {
-            if matches!(e, JacsError::KeyNotFound { .. }) {
-                super::record_export_error(scope, "missing_key");
-            }
-        })?,
-    };
+    // Auto-issue needs the ES256 key on disk; a fresh agent without one fails
+    // HERE with `KeyNotFound`. The filesystem lock makes simultaneous first
+    // exports from replicas converge on one persisted signed binding.
+    let binding = load_or_issue_default_identity_binding(
+        agent,
+        key_directory,
+        Some(scope),
+        scope == "a2a-agent-card",
+    )
+    .inspect_err(|e| {
+        if matches!(e, JacsError::KeyNotFound { .. }) {
+            super::record_export_error(scope, "missing_key");
+        }
+    })?;
     super::binding::require_scope_on(agent, key_directory, scope, binding)
 }
 
@@ -84,6 +286,20 @@ pub fn export_compatibility_jwks(
 /// is pinned per FR14: `alg`, `kid`, `typ: "JOSE"` (not "JWT"). The
 /// card's metadata carries the binding reference AS A CONTENT HASH.
 pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<Value, JacsError> {
+    let card = crate::a2a::agent_card::export_agent_card(agent)?;
+    export_a2a_agent_card_from(agent, key_directory, card)
+}
+
+/// Scope-check, bind, and sign an already-constructed A2A Agent Card.
+///
+/// Binding surfaces use this crate-private variant to preserve their explicit
+/// skill projection while sharing the one ES256/JCS signing implementation.
+#[cfg(feature = "a2a")]
+pub(crate) fn export_a2a_agent_card_from(
+    agent: &mut Agent,
+    key_directory: &str,
+    card: crate::a2a::AgentCard,
+) -> Result<Value, JacsError> {
     use base64::Engine as _;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
@@ -92,11 +308,17 @@ pub fn export_a2a_agent_card(agent: &mut Agent, key_directory: &str) -> Result<V
     // Missing keys fail (and count) inside the scope gate above.
     let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
 
-    // Base card from the existing exporter, plus the binding reference.
-    let card = crate::a2a::agent_card::export_agent_card(agent)?;
+    // Base card plus the deterministic binding resolution information. A
+    // content hash alone is not resolvable by a remote verifier; publishing
+    // both keeps the hash as the integrity reference and gives discovery a
+    // same-origin, fixed path with no attacker-controlled URL.
     let mut card_value = serde_json::to_value(&card)?;
+    if !card_value["metadata"].is_object() {
+        card_value["metadata"] = json!({});
+    }
     card_value["metadata"]["jacsCompatKid"] = json!(compat.kid);
     card_value["metadata"]["jacsCompatBindingHash"] = json!(binding_hash);
+    card_value["metadata"]["jacsCompatBindingPath"] = json!(A2A_COMPAT_BINDING_PATH);
 
     // Sign the card (without signatures) with the ES256 compat key. This
     // is the card-typed path — it never routes through the generic
@@ -162,15 +384,7 @@ pub fn export_compatibility_key_binding(
     // The binding itself is the artifact — gate on the broadest identity
     // scope semantics by verifying the binding outright. Issuance returns
     // the persisted binding, so no disk re-load.
-    let binding = match super::binding::load_compat_binding(key_directory)? {
-        Some(binding) => binding,
-        None => super::binding::issue_compat_binding(
-            agent,
-            key_directory,
-            super::binding::DEFAULT_IDENTITY_SCOPES,
-            None,
-        )?,
-    };
+    let binding = load_or_issue_default_identity_binding(agent, key_directory, None, false)?;
     let verdict = super::binding::verify_compat_binding(agent, key_directory, &binding)?;
     if !verdict.valid {
         return Err(JacsError::ValidationError(format!(

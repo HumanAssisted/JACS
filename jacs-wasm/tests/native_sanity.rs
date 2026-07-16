@@ -8,7 +8,10 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
-use jacs_wasm::{CoreAgentHandle, create_ephemeral, create_verifier};
+use jacs_wasm::{
+    CoreAgentHandle, create_ephemeral, create_verifier, import_encrypted_agent,
+    validate_encrypted_material_shape,
+};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -129,6 +132,48 @@ fn export_agent_returns_json_with_jacs_id() {
     let agent_str = handle.export_agent().expect("export");
     let agent: Value = serde_json::from_str(&agent_str).expect("agent json parse");
     assert!(agent["jacsId"].as_str().is_some(), "jacsId present");
+}
+
+#[test]
+fn encrypted_export_import_round_trips_via_wasm_handle() {
+    let password = "native wasm-handle roundtrip password";
+    let original = create_ephemeral("ed25519").expect("create");
+    let original_public_key = original.get_public_key_base64().expect("public key");
+    let original_agent: Value =
+        serde_json::from_str(&original.export_agent().expect("public agent")).unwrap();
+
+    let material_json = original
+        .export_encrypted_agent(password.to_owned())
+        .expect("encrypted export");
+    validate_encrypted_material_shape(&material_json)
+        .expect("exported material is accepted by localStore");
+    let material: Value = serde_json::from_str(&material_json).expect("AgentMaterial JSON");
+    assert_eq!(material["algorithm"], Value::from("ed25519"));
+    assert!(
+        material["encrypted_private_key"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+
+    let restored = import_encrypted_agent(&material_json, password).expect("encrypted import");
+    assert_eq!(
+        restored.get_public_key_base64().expect("restored key"),
+        original_public_key
+    );
+    let restored_agent: Value =
+        serde_json::from_str(&restored.export_agent().expect("restored agent")).unwrap();
+    assert_eq!(restored_agent["jacsId"], original_agent["jacsId"]);
+
+    let signed = restored
+        .sign_message_json(r#"{"restored":true}"#)
+        .expect("restored signer works");
+    let outcome: Value = serde_json::from_str(
+        &restored
+            .verify_json(&signed)
+            .expect("restored verifier works"),
+    )
+    .unwrap();
+    assert_eq!(outcome["valid"], Value::Bool(true));
 }
 
 #[test]

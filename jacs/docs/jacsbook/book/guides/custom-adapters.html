@@ -178,6 +178,13 @@
 <p>Evidence adapters normalize external proof sources into JACS attestation claims and
 evidence references. JACS ships with A2A and Email adapters; you can add your own
 for JWT tokens, TLSNotary proofs, or any custom evidence source.</p>
+<p>The built-in A2A and Email adapters are deliberately <strong>digest-only</strong>. They record
+and later compare the exact evidence digest, but do not verify A2A protocol
+signatures, DKIM, S/MIME, PGP, JACS signatures, sender identity, or signer trust.
+Their generated claims therefore use <code>self-asserted</code> assurance and names ending in
+<code>evidence-digest-recorded</code>. First verify protocol provenance with the corresponding
+protocol API, then create an explicit claim from that typed verification result if
+your application needs to attest signature validity.</p>
 <h2 id="what-is-an-evidenceadapter"><a class="header" href="#what-is-an-evidenceadapter">What Is an EvidenceAdapter?</a></h2>
 <p>An <code>EvidenceAdapter</code> is a Rust trait with three methods:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -223,6 +230,8 @@ be embedded in the attestation document.</li>
 <li>Make network calls (normalization should be deterministic and fast)</li>
 <li>Modify the raw evidence</li>
 <li>Set confidence to 1.0 unless the evidence is self-verifying (e.g., a valid cryptographic proof)</li>
+<li>Treat caller-supplied metadata or successful digest computation as proof that a
+protocol signature, sender identity, or trust policy was verified</li>
 </ul>
 <h2 id="the-verify_evidence-contract"><a class="header" href="#the-verify_evidence-contract">The verify_evidence() Contract</a></h2>
 <p><code>verify_evidence()</code> must:</p>
@@ -267,7 +276,9 @@ impl EvidenceAdapter for JwtAdapter {
             return Err("Invalid JWT: expected 3 dot-separated parts".into());
         }
 
-        // 2. Decode the payload (base64url)
+        // 2. Decode the payload (base64url). These fields are UNVERIFIED until
+        // a separate JWT verifier validates the signature, algorithm, issuer,
+        // audience, and time claims against an explicit trust policy.
         let payload_bytes = base64::Engine::decode(
             &amp;base64::engine::general_purpose::URL_SAFE_NO_PAD,
             parts[1],
@@ -281,20 +292,20 @@ impl EvidenceAdapter for JwtAdapter {
         let mut claims = vec![];
         if let Some(iss) = payload.get("iss") {
             claims.push(Claim {
-                name: "jwt-issuer".into(),
+                name: "jwt-unverified-issuer".into(),
                 value: iss.clone(),
-                confidence: Some(0.8),
-                assurance_level: Some(AssuranceLevel::Verified),
-                issuer: iss.as_str().map(String::from),
+                confidence: None,
+                assurance_level: Some(AssuranceLevel::SelfAsserted),
+                issuer: None,
                 issued_at: Some(crate::time_utils::now_rfc3339()),
             });
         }
         if let Some(sub) = payload.get("sub") {
             claims.push(Claim {
-                name: "jwt-subject".into(),
+                name: "jwt-unverified-subject".into(),
                 value: sub.clone(),
-                confidence: Some(0.8),
-                assurance_level: Some(AssuranceLevel::Verified),
+                confidence: None,
+                assurance_level: Some(AssuranceLevel::SelfAsserted),
                 issuer: None,
                 issued_at: None,
             });
@@ -345,9 +356,9 @@ impl EvidenceAdapter for JwtAdapter {
             digest_valid,
             freshness_valid,
             detail: if digest_valid {
-                "JWT digest verified".into()
+                "JWT bytes match the recorded digest; JWT signature and claims were not verified".into()
             } else {
-                "JWT digest mismatch or data unavailable".into()
+                "JWT digest mismatch or data unavailable; JWT signature and claims were not verified".into()
             },
         })
     }
@@ -386,7 +397,8 @@ mod tests {
             .normalize(jwt.as_bytes(), &amp;json!({}))
             .expect("normalize should succeed");
 
-        assert!(claims.iter().any(|c| c.name == "jwt-issuer"));
+        assert!(claims.iter().any(|c| c.name == "jwt-unverified-issuer"));
+        assert!(claims.iter().all(|c| c.assurance_level != Some(AssuranceLevel::Verified)));
         assert_eq!(evidence.kind, EvidenceKind::Jwt);
     }
 }

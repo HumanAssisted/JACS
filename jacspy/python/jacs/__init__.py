@@ -86,6 +86,15 @@ from .types import (
     VerifyImageResult,
 )
 
+from .replay import (
+    REPLAY_ERROR_CODES,
+    ReplayError,
+    ReplayErrorCode,
+    SharedReplayStore,
+    VerifiedSignedEvent,
+    unwrap_signed_event_with_replay_store,
+)
+
 # Make instance-based client API available
 from .client import JacsClient
 
@@ -148,6 +157,13 @@ __all__ = [
     "VerifyTextResult",
     "SignImageResult",
     "VerifyImageResult",
+    # External shared replay-store contract
+    "REPLAY_ERROR_CODES",
+    "ReplayError",
+    "ReplayErrorCode",
+    "SharedReplayStore",
+    "VerifiedSignedEvent",
+    "unwrap_signed_event_with_replay_store",
     # Submodules
     "simple",
     "async_simple",

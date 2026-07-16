@@ -416,6 +416,9 @@ print('Signature:', signature)
 <hr />
 <h3 id="agentsign_requestparams"><a class="header" href="#agentsign_requestparams">agent.sign_request(params)</a></h3>
 <p>Sign a request payload, wrapping it in a JACS document.</p>
+<p>This is a generic document wrapper, not an HTTP authorization credential: it
+does not bind the actual method, absolute URL, query, body bytes, or audience.
+Use <code>SimpleAgent.build_request_auth_header(method, url, body, audience)</code> for HTTP.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>params</code> (any): The request payload (will be JSON serialized)</li>
@@ -432,6 +435,11 @@ print('Signature:', signature)
 <hr />
 <h3 id="agentverify_responsedocument_string"><a class="header" href="#agentverify_responsedocument_string">agent.verify_response(document_string)</a></h3>
 <p>Verify a JACS-signed response and extract the payload.</p>
+<p>This verifies the legacy generic document shape. It is not the strict
+<code>jacs-response-v2</code> event contract. New event consumers use
+<code>SimpleAgent.unwrap_signed_event(event_json, server_keys_json)</code>, which rejects
+plain events, unknown signers, legacy envelopes, and mutations without
+releasing data.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>document_string</code> (str): The JACS-signed response</li>
@@ -512,6 +520,9 @@ jacs.load('./jacs.config.json')
 </code></pre>
 <h3 id="jacssign_requestdata"><a class="header" href="#jacssign_requestdata">jacs.sign_request(data)</a></h3>
 <p>Sign a request using the global agent.</p>
+<p>This deprecated helper signs request-like data only; it does not authenticate
+HTTP context. Use instance-based <code>SimpleAgent.build_auth_header(...)</code> for a
+request-bound v2 credential.</p>
 <pre><code class="language-python">signed = jacs.sign_request({'method': 'tools/call', 'params': {...}})
 </code></pre>
 <h3 id="jacsverify_requestdata"><a class="header" href="#jacsverify_requestdata">jacs.verify_request(data)</a></h3>
@@ -520,10 +531,15 @@ jacs.load('./jacs.config.json')
 </code></pre>
 <h3 id="jacssign_responsedata"><a class="header" href="#jacssign_responsedata">jacs.sign_response(data)</a></h3>
 <p>Sign a response using the global agent.</p>
+<p>This deprecated global helper is not the fully bound response-envelope API.
+Use <code>SimpleAgent.sign_response(payload_json)</code> for <code>jacs-response-v2</code>.</p>
 <pre><code class="language-python">signed = jacs.sign_response({'result': 'success'})
 </code></pre>
 <h3 id="jacsverify_responsedata"><a class="header" href="#jacsverify_responsedata">jacs.verify_response(data)</a></h3>
 <p>Verify an incoming response using the global agent.</p>
+<p>This deprecated global helper is not strict signed-event unwrapping. Use
+<code>SimpleAgent.unwrap_signed_event(event_json, server_keys_json)</code> and treat every
+error as untrusted input.</p>
 <pre><code class="language-python">result = jacs.verify_response(response_string)
 payload = result.get('payload')
 </code></pre>
@@ -533,11 +549,14 @@ payload = result.get('payload')
 </code></pre>
 <p>Canonical MCP documentation lives at <a href="mcp.html">Python MCP Integration</a>. This API section lists the MCP entry points only:</p>
 <ul>
-<li><code>JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False)</code> - Wrap a FastMCP server with JACS request verification and response signing.</li>
-<li><code>JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)</code> - Create a FastMCP client with JACS signing/verification interceptors.</li>
-<li><code>create_jacs_mcp_server(name, config_path=None)</code> - One-line server factory.</li>
-<li><code>jacs_call(server_url, method, **params)</code> - One-shot authenticated MCP call.</li>
+<li><code>JACSMCPServer(..., allowed_peer_agent_ids=[...])</code> - Wrap a FastMCP HTTP server with allowlisted JACS request verification and response signing.</li>
+<li><code>JACSMCPClient(..., expected_peer_agent_id="...")</code> - Create a FastMCP SSE client pinned to the expected server signer.</li>
+<li><code>create_jacs_mcp_server(..., allowed_peer_agent_ids=[...])</code> - One-line authenticated HTTP server factory.</li>
+<li><code>jacs_call(..., expected_peer_agent_id="...")</code> - One-shot authenticated local MCP call.</li>
 </ul>
+<p>The wrappers reject <code>stdio</code>, require portable-v2 signed carriers for every
+POST, randomize request IDs per session, and cap buffered JSON messages. See
+the canonical MCP page for the dangerous compatibility flags and key-hash pin.</p>
 <p>For examples, strict-mode behavior, and security guidance, see <a href="mcp.html">Python MCP Integration</a>.</p>
 <hr />
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>

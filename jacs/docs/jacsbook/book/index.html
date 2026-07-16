@@ -215,11 +215,19 @@ jacs mcp
 <pre><code class="language-bash">pip install jacs
 </code></pre>
 <h3 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h3>
+<blockquote>
+<p><strong>Registry status (observed 2026-07-11):</strong> npm serves
+<code>@hai.ai/jacs@0.10.1</code>, while these pages describe source <code>0.11.4</code>. The
+registry package does not expose every method shown here. Pin the version and
+inspect its exports; use a source build only when that is an explicit
+deployment choice.</p>
+</blockquote>
 <pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <h3 id="go"><a class="header" href="#go">Go</a></h3>
-<pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
-</code></pre>
+<p><code>go get</code> alone cannot link the CGo wrapper, and no matching native-library
+release existed at the 2026-07-09 baseline. Build the full repository by
+following <a href="go/installation.html">Go Installation and Quick Start</a>.</p>
 <h2 id="what-this-book-does-not-claim"><a class="header" href="#what-this-book-does-not-claim">What This Book Does Not Claim</a></h2>
 <ul>
 <li>MCP and A2A are different boundaries: MCP is model-to-tool; A2A is agent-to-agent discovery and exchange.</li>

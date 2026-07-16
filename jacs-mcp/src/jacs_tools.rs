@@ -169,7 +169,7 @@ fn extract_document_lookup_key(doc: &serde_json::Value) -> Option<String> {
 
 /// Parse a signed document JSON string and return its stable lookup key.
 fn extract_document_lookup_key_from_str(document_json: &str) -> Option<String> {
-    serde_json::from_str::<serde_json::Value>(document_json)
+    jacs::strict_json::parse_strict_json(document_json)
         .ok()
         .and_then(|v| extract_document_lookup_key(&v))
 }
@@ -181,7 +181,7 @@ fn value_string(doc: &serde_json::Value, field: &str) -> Option<String> {
 /// Extract verification validity from `verify_a2a_artifact` details JSON.
 /// Defaults to `false` on malformed/missing fields to avoid optimistic trust.
 fn extract_verify_a2a_valid(details_json: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(details_json)
+    jacs::strict_json::parse_strict_json(details_json)
         .ok()
         .and_then(|v| v.get("valid").and_then(|b| b.as_bool()))
         .unwrap_or(false)
@@ -217,10 +217,13 @@ pub struct JacsMcpServer {
 
 #[allow(dead_code)]
 impl JacsMcpServer {
-    /// Create a new JACS MCP server with the given agent and default profile.
+    /// Create a new JACS MCP server with the given agent and the safe `Core`
+    /// profile.
     ///
-    /// The runtime profile is resolved from `JACS_MCP_PROFILE` env var,
-    /// defaulting to `Core`.
+    /// This embedding constructor is intentionally deterministic and does not
+    /// read process-global environment state. CLI hosts should resolve their
+    /// fallible CLI/environment boundary with [`crate::profile::Profile::resolve`]
+    /// and pass the result to [`Self::with_profile`].
     ///
     /// # Arguments
     ///
@@ -230,10 +233,8 @@ impl JacsMcpServer {
     ///
     /// * `JACS_MCP_ALLOW_REGISTRATION` - Set to "true" to enable the jacs_create_agent tool
     /// * `JACS_MCP_ALLOW_UNTRUST` - Set to "true" to enable the jacs_untrust_agent tool
-    /// * `JACS_MCP_PROFILE` - Set to "full" to expose all tools, defaults to "core"
     pub fn new(agent: AgentWrapper) -> Self {
-        let profile = crate::profile::Profile::resolve(None);
-        Self::with_profile(agent, profile)
+        Self::with_profile(agent, crate::profile::Profile::Core)
     }
 
     /// Create a new JACS MCP server with an explicit runtime profile.
@@ -333,6 +334,32 @@ impl JacsMcpServer {
     /// Get a reference to the active runtime profile.
     pub fn profile(&self) -> &crate::profile::Profile {
         &self.profile
+    }
+
+    /// Build initialization instructions from the exact active tool inventory.
+    ///
+    /// Keeping this derived from [`Self::active_tools`] prevents a core-profile
+    /// server from advertising advanced tools that it will reject at dispatch.
+    fn active_instructions(&self) -> String {
+        let mut names: Vec<String> = self
+            .active_tools()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect();
+        names.sort();
+
+        let tool_list = names
+            .iter()
+            .map(|name| format!("- {name}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        format!(
+            "JACS MCP profile '{}' exposes {} active tools for local data provenance, signing, and verification. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n{}",
+            self.profile.as_str(),
+            names.len(),
+            tool_list
+        )
     }
 
     fn with_agent<T>(
@@ -445,7 +472,7 @@ impl JacsMcpServer {
         ) {
             Ok(info_json) => {
                 // Parse the info JSON to extract agent_id
-                let agent_id = serde_json::from_str::<serde_json::Value>(&info_json)
+                let agent_id = jacs::strict_json::parse_strict_json(&info_json)
                     .ok()
                     .and_then(|v| v.get("agent_id").and_then(|a| a.as_str()).map(String::from));
 
@@ -551,7 +578,8 @@ impl JacsMcpServer {
 
         let result = match self.agent.rotate_keys(params.algorithm.as_deref()) {
             Ok(json_str) => {
-                let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
+                let parsed: serde_json::Value =
+                    jacs::strict_json::parse_strict_json(&json_str).unwrap_or_default();
                 key::RotateKeysResult {
                     success: true,
                     jacs_id: parsed["jacs_id"].as_str().map(String::from),
@@ -769,16 +797,16 @@ impl JacsMcpServer {
         {
             Ok(signed_string) => {
                 // Count signatures
-                let sig_count =
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&signed_string) {
-                        v.get("jacsAgreement")
-                            .and_then(|a| a.get("signatures"))
-                            .and_then(|s| s.as_array())
-                            .map(|arr| arr.len())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
+                let sig_count = if let Ok(v) = jacs::strict_json::parse_strict_json(&signed_string)
+                {
+                    v.get("jacsAgreement")
+                        .and_then(|a| a.get("signatures"))
+                        .and_then(|s| s.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
 
                 SignAgreementResult {
                     success: true,
@@ -839,26 +867,27 @@ impl JacsMcpServer {
         }
 
         // Parse the verified agreement to extract status details.
-        let doc: serde_json::Value = match serde_json::from_str(&params.signed_agreement) {
-            Ok(v) => v,
-            Err(e) => {
-                let result = CheckAgreementResult {
-                    success: false,
-                    complete: false,
-                    total_agents: 0,
-                    signatures_collected: 0,
-                    signatures_required: 0,
-                    quorum_met: false,
-                    expired: false,
-                    signed_by: None,
-                    unsigned: None,
-                    timeout: None,
-                    error: Some(format!("Failed to parse agreement JSON: {}", e)),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-        };
+        let doc: serde_json::Value =
+            match jacs::strict_json::parse_strict_json(&params.signed_agreement) {
+                Ok(v) => v,
+                Err(e) => {
+                    let result = CheckAgreementResult {
+                        success: false,
+                        complete: false,
+                        total_agents: 0,
+                        signatures_collected: 0,
+                        signatures_required: 0,
+                        quorum_met: false,
+                        expired: false,
+                        signed_by: None,
+                        unsigned: None,
+                        timeout: None,
+                        error: Some(format!("Failed to parse agreement JSON: {}", e)),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
 
         let agreement = match doc.get(&fieldname) {
             Some(a) => a,
@@ -1103,13 +1132,13 @@ impl JacsMcpServer {
         #[cfg(feature = "agreement-tools")]
         {
             // Extract the agreement id once for any failure log (fail soft to "unknown").
-            let agreement_id = serde_json::from_str::<serde_json::Value>(&params.agreement)
+            let agreement_id = jacs::strict_json::parse_strict_json(&params.agreement)
                 .ok()
                 .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
                 .unwrap_or_else(|| "unknown".to_string());
 
             let result = match self.agent.verify_agreement_v2_json(&params.agreement) {
-                Ok(report_json) => match serde_json::from_str::<serde_json::Value>(&report_json) {
+                Ok(report_json) => match jacs::strict_json::parse_strict_json(&report_json) {
                     Ok(report_value) => {
                         // Fail closed: a report missing `valid` is treated as invalid.
                         let valid = report_value
@@ -1194,7 +1223,7 @@ impl JacsMcpServer {
             ) {
                 Ok(analysis_json) => AgreementV2ValueResult {
                     success: true,
-                    result: serde_json::from_str(&analysis_json).ok(),
+                    result: jacs::strict_json::parse_strict_json(&analysis_json).ok(),
                     error: None,
                 },
                 Err(e) => AgreementV2ValueResult {
@@ -1316,21 +1345,22 @@ impl JacsMcpServer {
         Parameters(params): Parameters<SignDocumentParams>,
     ) -> String {
         // Validate content is valid JSON
-        let content_value: serde_json::Value = match serde_json::from_str(&params.content) {
-            Ok(v) => v,
-            Err(e) => {
-                let result = SignDocumentResult {
-                    success: false,
-                    signed_document: None,
-                    content_hash: None,
-                    jacs_document_id: None,
-                    message: "Content is not valid JSON".to_string(),
-                    error: Some(e.to_string()),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-        };
+        let content_value: serde_json::Value =
+            match jacs::strict_json::parse_strict_json(&params.content) {
+                Ok(v) => v,
+                Err(e) => {
+                    let result = SignDocumentResult {
+                        success: false,
+                        signed_document: None,
+                        content_hash: None,
+                        jacs_document_id: None,
+                        message: "Content is not valid JSON".to_string(),
+                        error: Some(e.to_string()),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
 
         // Wrap content in a JACS-compatible envelope if it doesn't already have jacsType
         let doc_to_sign = if content_value.get("jacsType").is_some() {
@@ -1412,7 +1442,7 @@ impl JacsMcpServer {
         match self.agent.verify_signature(&params.document, None) {
             Ok(valid) => {
                 // Try to extract signer ID from the document
-                let signer_id = serde_json::from_str::<serde_json::Value>(&params.document)
+                let signer_id = jacs::strict_json::parse_strict_json(&params.document)
                     .ok()
                     .and_then(|v| {
                         v.get("jacsSignature")
@@ -1585,7 +1615,7 @@ impl JacsMcpServer {
             Ok(assessment_json) => {
                 // Parse the assessment to extract fields for our result type
                 let assessment: serde_json::Value =
-                    serde_json::from_str(&assessment_json).unwrap_or_default();
+                    jacs::strict_json::parse_strict_json(&assessment_json).unwrap_or_default();
                 let allowed = assessment
                     .get("allowed")
                     .and_then(|v| v.as_bool())
@@ -1676,10 +1706,10 @@ impl JacsMcpServer {
         }
     }
 
-    /// Generate all .well-known documents for A2A discovery.
+    /// Generate the stable, identity-bound .well-known documents for A2A discovery.
     #[tool(
         name = "jacs_generate_well_known",
-        description = "Generate .well-known documents for A2A agent discovery."
+        description = "Generate stable ES256-signed A2A discovery documents together with the native-root-signed compatibility binding."
     )]
     pub async fn jacs_generate_well_known(
         &self,
@@ -1691,8 +1721,9 @@ impl JacsMcpServer {
         {
             Ok(docs_json) => {
                 // Parse to count documents
-                let count = serde_json::from_str::<Vec<serde_json::Value>>(&docs_json)
-                    .map(|v| v.len())
+                let count = jacs::strict_json::parse_strict_json(&docs_json)
+                    .ok()
+                    .and_then(|value| value.as_array().map(Vec::len))
                     .unwrap_or(0);
                 let result = GenerateWellKnownResult {
                     success: true,
@@ -1952,7 +1983,7 @@ impl JacsMcpServer {
         match self.agent.get_agent_json() {
             Ok(agent_json) => {
                 // Try to extract the agent ID from the JSON
-                let agent_id = serde_json::from_str::<serde_json::Value>(&agent_json)
+                let agent_id = jacs::strict_json::parse_strict_json(&agent_json)
                     .ok()
                     .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from));
                 let result = ExportAgentResult {
@@ -2951,51 +2982,7 @@ impl ServerHandler for JacsMcpServer {
         info.server_info = Implementation::new("jacs-mcp", env!("CARGO_PKG_VERSION"))
             .with_title("JACS MCP Server")
             .with_website_url("https://humanassisted.github.io/JACS/");
-        info.instructions = Some(
-            "This MCP server provides data provenance and cryptographic signing for \
-                 signed documents, agreements, A2A artifacts, agents, and configuration. \
-                 \
-                 Document signing: jacs_sign_document (sign JSON content), \
-                 jacs_verify_document (verify a signed JACS document). \
-                 \
-                 \
-                 Agent management: jacs_create_agent (create new agent with keys), \
-                 jacs_reencrypt_key (rotate private key password). \
-                 \
-                 A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), \
-                 jacs_verify_a2a_artifact (verify wrapped artifact), \
-                 jacs_assess_a2a_agent (assess remote agent trust level). \
-                 \
-                 A2A discovery: jacs_export_agent_card (export Agent Card), \
-                 jacs_generate_well_known (generate .well-known documents), \
-                 jacs_export_agent (export full agent JSON). \
-                 \
-                 W3C interop: jacs_w3c_export_did (export did:wba identifier), \
-                 jacs_w3c_export_did_document (export DID document), \
-                 jacs_w3c_export_agent_description (export agent description), \
-                 jacs_w3c_generate_well_known (generate W3C discovery documents), \
-                 jacs_w3c_sign_request (create request-bound DID proof), \
-                 jacs_w3c_verify_request (verify request-bound DID proof). \
-                 \
-                 Trust store: jacs_trust_agent (add agent to trust store), \
-                 jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), \
-                 jacs_list_trusted_agents (list all trusted agent IDs), \
-                 jacs_is_trusted (check if agent is trusted), \
-                 jacs_get_trusted_agent (get trusted agent JSON). \
-                 \
-                 Attestation: jacs_attest_create (create signed attestation with claims), \
-                 jacs_attest_verify (verify attestation, optionally with evidence checks), \
-                 jacs_attest_lift (lift signed document into attestation), \
-                 jacs_attest_export_dsse (export attestation as DSSE envelope). \
-                 \
-                 Search: jacs_search (unified search across all signed documents). \
-                 \
-                 Inline text and media: jacs_sign_text (sign a markdown/text file in place), \
-                 jacs_verify_text (verify inline JACS signatures), jacs_sign_image \
-                 (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image \
-                 (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
-                .to_string(),
-        );
+        info.instructions = Some(self.active_instructions());
         info
     }
 
@@ -3049,12 +3036,12 @@ mod tests {
 
     #[test]
     fn test_tools_list_matches_compiled_features() {
-        let tools = JacsMcpServer::tools();
-        let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
+        let available_tools = JacsMcpServer::tools();
+        let names: Vec<&str> = available_tools.iter().map(|t| &*t.name).collect();
 
         // Total should match the compiled-in tool count
         assert_eq!(
-            tools.len(),
+            available_tools.len(),
             crate::tools::total_tool_count(),
             "tools() count should match total_tool_count()"
         );

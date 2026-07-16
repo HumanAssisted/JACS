@@ -17,7 +17,7 @@ fn expected() -> Value {
 
 fn ephemeral_agent() -> (SimpleAgentWrapper, String) {
     let (wrapper, info_json) =
-        SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral agent");
+        SimpleAgentWrapper::ephemeral(Some("pq2025")).expect("ephemeral agent");
     let info: Value = serde_json::from_str(&info_json).expect("agent info json");
     let agent_id = info["agent_id"].as_str().expect("agent_id").to_string();
     (wrapper, agent_id)
@@ -26,7 +26,7 @@ fn ephemeral_agent() -> (SimpleAgentWrapper, String) {
 fn ephemeral_agent_wrapper() -> AgentWrapper {
     let wrapper = AgentWrapper::new();
     wrapper
-        .ephemeral(Some("ed25519"))
+        .ephemeral(Some("pq2025"))
         .expect("ephemeral agent wrapper");
     wrapper
 }
@@ -346,7 +346,7 @@ fn doc_version(document_json: &str) -> String {
 /// all IS the feature-gate assertion. Behavior: ephemeral agents carry
 /// no ecosystem key or binding, so the `agreement-vc` content scope
 /// denies (content exports are never auto-issued), and non-agreement
-/// input is rejected at the typed boundary before any signing.
+/// input is rejected at the typed boundary before authorization or signing.
 #[test]
 fn export_agreement_v2_as_vc_json_requires_agreement_feature() {
     let (wrapper, agent_id) = ephemeral_agent();
@@ -361,7 +361,24 @@ fn export_agreement_v2_as_vc_json_requires_agreement_feature() {
         "error names the missing authorization chain: {msg}"
     );
 
-    let err = wrapper
+    // Exercise the typed boundary through a supported, persisted agent. It is
+    // deliberately created without a compatibility key so this also proves
+    // malformed input is rejected before the authorization/key lookup.
+    let tmp = tempfile::TempDir::new().expect("temporary persisted agent root");
+    let root = tmp.path().canonicalize().expect("canonical temp root");
+    let params = json!({
+        "name": "agreement-vc-binding-boundary",
+        "password": "TestP@ss123!#",
+        "algorithm": "pq2025",
+        "data_directory": root.join("jacs_data").to_str().expect("data path"),
+        "key_directory": root.join("jacs_keys").to_str().expect("key path"),
+        "config_path": root.join("jacs.config.json").to_str().expect("config path"),
+        "no_compat_key": true,
+    });
+    let (persisted, _info) = SimpleAgentWrapper::create_with_params(&params.to_string())
+        .expect("persisted agent without compatibility key");
+
+    let err = persisted
         .export_agreement_v2_as_vc_json("{\"foo\": \"bar\"}")
         .expect_err("non-agreement input must be rejected");
     let msg = format!("{err:?}");

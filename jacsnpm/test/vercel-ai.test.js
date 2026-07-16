@@ -8,6 +8,7 @@
 
 const { expect } = require('chai');
 const sinon = require('sinon');
+const { signedResult } = require('./helpers/signed-document');
 
 let adapterModule;
 try {
@@ -34,12 +35,11 @@ describe('Vercel AI SDK Adapter', function () {
 
   function createMockClient(overrides) {
     return {
-      signMessage: sinon.stub().resolves({
-        raw: '{"jacsId":"doc-123:1","jacsSignature":{"agentID":"agent-abc","date":"2025-01-01T00:00:00Z"}}',
+      signMessage: sinon.stub().callsFake(async (binding) => signedResult(binding, {
         documentId: 'doc-123:1',
         agentId: 'agent-abc',
         timestamp: '2025-01-01T00:00:00Z',
-      }),
+      })),
       agentId: 'agent-abc',
       ...overrides,
     };
@@ -91,7 +91,10 @@ describe('Vercel AI SDK Adapter', function () {
 
       expect(doGenerate.calledOnce).to.be.true;
       expect(client.signMessage.calledOnce).to.be.true;
-      expect(client.signMessage.firstCall.args[0]).to.equal('Hello, world!');
+      expect(client.signMessage.firstCall.args[0]).to.deep.equal({
+        output: 'Hello, world!',
+        metadata: {},
+      });
       expect(result.providerMetadata).to.have.property('jacs');
       expect(result.providerMetadata.jacs.text).to.deep.include({
         signed: true,
@@ -99,6 +102,7 @@ describe('Vercel AI SDK Adapter', function () {
         agentId: 'agent-abc',
         timestamp: '2025-01-01T00:00:00Z',
       });
+      expect(result.providerMetadata.jacs.text.signedDocument).to.include('jacsSignature');
     });
 
     (available ? it : it.skip)('should skip signing when signText is false', async () => {
@@ -199,11 +203,9 @@ describe('Vercel AI SDK Adapter', function () {
         model: {},
       });
 
-      // signMessage should receive content wrapped with metadata
+      // The portable document must bind the exact output and caller metadata.
       const signArg = client.signMessage.firstCall.args[0];
-      expect(signArg).to.have.property('content', 'Hello!');
-      expect(signArg).to.have.property('provenance');
-      expect(signArg.provenance).to.deep.equal(meta);
+      expect(signArg).to.deep.equal({ output: 'Hello!', metadata: meta });
     });
 
     (available ? it : it.skip)('should preserve existing providerMetadata', async () => {
@@ -253,7 +255,7 @@ describe('Vercel AI SDK Adapter', function () {
       }
     });
 
-    (available ? it : it.skip)('should log and continue on signing failure in permissive mode', async () => {
+    (available ? it : it.skip)('should fail closed on signing failure by default even when strict is false', async () => {
       const client = createMockClient({
         signMessage: sinon.stub().rejects(new Error('Transient failure')),
       });
@@ -262,24 +264,134 @@ describe('Vercel AI SDK Adapter', function () {
       const mockResult = createMockGenerateResult('Hello!');
       const doGenerate = sinon.stub().resolves(mockResult);
 
-      // Capture console.error
-      const consoleStub = sinon.stub(console, 'error');
+      let error;
       try {
-        const result = await middleware.wrapGenerate({
+        await middleware.wrapGenerate({
           doGenerate,
           doStream: sinon.stub(),
           params: { prompt: [] },
           model: {},
         });
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.equal('Transient failure');
+    });
 
+    (available ? it : it.skip)('should continue unsigned only after explicit dangerous opt-in', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().rejects(new Error('Transient failure')),
+      });
+      const middleware = adapterModule.jacsProvenance({ client, allowUnsignedOutput: true });
+      const consoleStub = sinon.stub(console, 'error');
+      try {
+        const result = await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('Hello!')),
+          params: { prompt: [] },
+          model: {},
+        });
         expect(result.providerMetadata.jacs.text).to.deep.include({
           signed: false,
           error: 'Transient failure',
         });
+        expect(result.providerMetadata.jacs.text).to.not.have.property('signedDocument');
         expect(consoleStub.calledWithMatch('[jacs/vercel-ai] signing failed:')).to.be.true;
       } finally {
         consoleStub.restore();
       }
+    });
+
+    (available ? it : it.skip)('should not emit signed true when raw provenance is missing', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().resolves({
+          documentId: 'doc-no-raw:1', agentId: 'agent-abc', timestamp: '2025-01-01T00:00:00Z',
+        }),
+      });
+      const middleware = adapterModule.jacsProvenance({ client, allowUnsignedOutput: true });
+      const consoleStub = sinon.stub(console, 'error');
+      try {
+        const result = await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('Hello!')),
+          params: { prompt: [] },
+          model: {},
+        });
+        expect(result.providerMetadata.jacs.text.signed).to.equal(false);
+        expect(result.providerMetadata.jacs.text).to.not.have.property('signedDocument');
+      } finally {
+        consoleStub.restore();
+      }
+    });
+
+    (available ? it : it.skip)('should not emit signed true when provenance identifiers are missing', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().resolves({
+          raw: '{"jacsId":"doc-no-agent:1","jacsSignature":{"agentID":"agent-abc"}}',
+          documentId: 'doc-no-agent:1', agentId: '', timestamp: '2025-01-01T00:00:00Z',
+        }),
+      });
+      const middleware = adapterModule.jacsProvenance({ client, allowUnsignedOutput: true });
+      const consoleStub = sinon.stub(console, 'error');
+      try {
+        const result = await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('Hello!')),
+          params: { prompt: [] }, model: {},
+        });
+        expect(result.providerMetadata.jacs.text.signed).to.equal(false);
+        expect(result.providerMetadata.jacs.text).to.not.have.property('signedDocument');
+      } finally {
+        consoleStub.restore();
+      }
+    });
+
+    (available ? it : it.skip)('should reject a signed document that binds different output', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().resolves(signedResult(
+          { output: 'substituted', metadata: {} },
+          {
+            documentId: 'doc-substitute:1',
+            agentId: 'agent-abc',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        )),
+      });
+      const middleware = adapterModule.jacsProvenance({ client });
+
+      let error;
+      try {
+        await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('original')),
+          params: { prompt: [] }, model: {},
+        });
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/exact output and metadata/i);
+    });
+
+    (available ? it : it.skip)('should let strict mode override unsigned-output opt-in', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().rejects(new Error('strict override')),
+      });
+      const middleware = adapterModule.jacsProvenance({
+        client,
+        allowUnsignedOutput: true,
+        strict: true,
+      });
+
+      let error;
+      try {
+        await middleware.wrapGenerate({
+          doGenerate: sinon.stub().resolves(createMockGenerateResult('Hello!')),
+          params: { prompt: [] },
+          model: {},
+        });
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.equal('strict override');
     });
   });
 
@@ -349,7 +461,169 @@ describe('Vercel AI SDK Adapter', function () {
 
       // signMessage called with accumulated text
       expect(client.signMessage.calledOnce).to.be.true;
-      expect(client.signMessage.firstCall.args[0]).to.equal('Hello, world!');
+      expect(client.signMessage.firstCall.args[0]).to.deep.equal({
+        output: 'Hello, world!',
+        metadata: {},
+      });
+    });
+
+    (available ? it : it.skip)('should release no text before buffered signature success', async () => {
+      let releaseSignature;
+      const signPromise = new Promise((resolve) => { releaseSignature = resolve; });
+      const client = createMockClient({ signMessage: sinon.stub().returns(signPromise) });
+      const middleware = adapterModule.jacsProvenance({ client });
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', textDelta: 'secret' });
+          controller.enqueue({ type: 'finish', finishReason: 'stop', usage: {} });
+          controller.close();
+        },
+      });
+      const result = await middleware.wrapStream({
+        doStream: sinon.stub().resolves({ stream: mockStream }), params: { prompt: [] }, model: {},
+      });
+      const reader = result.stream.getReader();
+      const firstRead = reader.read();
+      const early = await Promise.race([
+        firstRead.then(() => 'released'),
+        new Promise((resolve) => setTimeout(() => resolve('blocked'), 25)),
+      ]);
+      expect(early).to.equal('blocked');
+      expect(client.signMessage.calledOnce).to.be.true;
+
+      releaseSignature(signedResult(
+        { output: 'secret', metadata: {} },
+        {
+          documentId: 'doc-stream:1',
+          agentId: 'agent-abc',
+          timestamp: '2025-01-01T00:00:00Z',
+        },
+      ));
+      expect((await firstRead).value).to.deep.equal({ type: 'text-delta', textDelta: 'secret' });
+    });
+
+    (available ? it : it.skip)('should snapshot buffered chunks before signing and release', async () => {
+      let releaseSignature;
+      const signPromise = new Promise((resolve) => { releaseSignature = resolve; });
+      const client = createMockClient({ signMessage: sinon.stub().returns(signPromise) });
+      const middleware = adapterModule.jacsProvenance({ client });
+      const mutableChunk = { type: 'text-delta', textDelta: 'signed text' };
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(mutableChunk);
+          controller.close();
+        },
+      });
+      const result = await middleware.wrapStream({
+        doStream: sinon.stub().resolves({ stream: mockStream }), params: { prompt: [] }, model: {},
+      });
+      const firstRead = result.stream.getReader().read();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(client.signMessage.calledOnce).to.equal(true);
+
+      // A provider retaining its object reference must not be able to mutate
+      // the buffered output after the adapter chose the bytes to sign.
+      mutableChunk.textDelta = 'mutated after signing started';
+      releaseSignature(signedResult(
+        { output: 'signed text', metadata: {} },
+        {
+          documentId: 'doc-stream-snapshot:1',
+          agentId: 'agent-abc',
+          timestamp: '2025-01-01T00:00:00Z',
+        },
+      ));
+
+      expect((await firstRead).value).to.deep.equal({
+        type: 'text-delta', textDelta: 'signed text',
+      });
+    });
+
+    (available ? it : it.skip)('should fail before releasing buffered text when stream signing fails', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().rejects(new Error('stream key unavailable')),
+      });
+      const middleware = adapterModule.jacsProvenance({ client });
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', textDelta: 'must stay private' });
+          controller.close();
+        },
+      });
+      const result = await middleware.wrapStream({
+        doStream: sinon.stub().resolves({ stream: mockStream }), params: { prompt: [] }, model: {},
+      });
+      let error;
+      try {
+        await result.stream.getReader().read();
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.equal('stream key unavailable');
+    });
+
+    (available ? it : it.skip)('should enforce the bounded stream buffer before releasing text', async () => {
+      const client = createMockClient();
+      const middleware = adapterModule.jacsProvenance({ client, maxBufferedStreamBytes: 64 });
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', textDelta: 'x'.repeat(128) });
+          controller.close();
+        },
+      });
+      const result = await middleware.wrapStream({
+        doStream: sinon.stub().resolves({ stream: mockStream }), params: { prompt: [] }, model: {},
+      });
+      let error;
+      try {
+        await result.stream.getReader().read();
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/buffer.*limit/i);
+      expect(client.signMessage.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should reject post-hoc streaming without dangerous unsigned opt-in', () => {
+      expect(() => adapterModule.jacsProvenance({
+        client: createMockClient(), allowPostHocStreaming: true,
+      })).to.throw(/post-hoc.*allowUnsignedOutput/i);
+    });
+
+    (available ? it : it.skip)('should release post-hoc text only after both dangerous opt-ins', async () => {
+      let releaseSignature;
+      const signPromise = new Promise((resolve) => { releaseSignature = resolve; });
+      const client = createMockClient({ signMessage: sinon.stub().returns(signPromise) });
+      const middleware = adapterModule.jacsProvenance({
+        client,
+        allowUnsignedOutput: true,
+        allowPostHocStreaming: true,
+        maxBufferedStreamBytes: 1024,
+      });
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', textDelta: 'explicitly dangerous' });
+          controller.close();
+        },
+      });
+      const result = await middleware.wrapStream({
+        doStream: sinon.stub().resolves({ stream: source }), params: { prompt: [] }, model: {},
+      });
+      const reader = result.stream.getReader();
+
+      expect((await reader.read()).value).to.deep.equal({
+        type: 'text-delta', textDelta: 'explicitly dangerous',
+      });
+      releaseSignature(signedResult(
+        { output: 'explicitly dangerous', metadata: {} },
+        {
+          documentId: 'post-hoc:1',
+          agentId: 'agent-abc',
+          timestamp: '2025-01-01T00:00:00Z',
+        },
+      ));
+      expect((await reader.read()).value.type).to.equal('provider-metadata');
     });
 
     (available ? it : it.skip)('should not sign when signText is false', async () => {

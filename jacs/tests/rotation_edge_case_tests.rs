@@ -58,9 +58,8 @@ fn create_test_agent(
     (agent, info, tmp, guard)
 }
 
-/// Build a GRANDFATHERED Ed25519 agent via the legacy/test-only escape
-/// hatch. Public creation paths are PQ-only (P2 Task 001); the cross-algo
-/// migration tests need a genuine pre-P2 Ed25519 root.
+/// Build a pre-compat-key Ed25519 agent via the legacy/test-only escape
+/// hatch; the cross-algorithm migration tests need that historical shape.
 fn create_legacy_ed25519_test_agent(
     name: &str,
 ) -> (SimpleAgent, simple::AgentInfo, tempfile::TempDir, CwdGuard) {
@@ -116,7 +115,7 @@ fn test_crash_after_rotate_self_before_config_write() {
 
     // Simulate crash: restore pre-rotation config, add a journal
     std::fs::write("./jacs.config.json", &config_before).expect("restore stale config");
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
@@ -125,6 +124,9 @@ fn test_crash_after_rotate_self_before_config_write() {
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload: should auto-repair
     let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None).expect("should auto-repair");
@@ -172,7 +174,7 @@ fn test_double_crash_recovery() {
     std::fs::write("./jacs.config.json", &config_after_first).expect("restore mid-state config");
 
     // Write journal for second rotation
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &result1.new_version,
@@ -181,6 +183,9 @@ fn test_double_crash_recovery() {
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload: should auto-repair to the second rotation's state
     let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None).expect("should auto-repair");
@@ -245,6 +250,55 @@ fn test_transition_proof_message_contains_correct_hashes() {
     assert!(
         msg.contains(&result.new_public_key_hash),
         "Transition message must contain new key hash"
+    );
+}
+
+/// A relying party must bind the old-key proof to both the expected stable
+/// identity and the candidate new public key; validating the detached proof
+/// alone is insufficient for registry rotation.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_transition_proof_binds_expected_identity_and_new_key() {
+    let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, info, _tmp, _guard) = create_test_agent("proof-binding-test", "pq2025");
+    let old_key = agent.get_public_key().expect("old public key");
+    let result = advanced::rotate(&agent, None).expect("rotation");
+    let new_key = agent.get_public_key().expect("new public key");
+    let proof: Value = serde_json::from_str(
+        result
+            .transition_proof
+            .as_deref()
+            .expect("transition proof"),
+    )
+    .expect("parse transition proof");
+
+    jacs::agent::Agent::verify_transition_proof_for_rotation(
+        &proof,
+        &info.agent_id,
+        &old_key,
+        &new_key,
+    )
+    .expect("bound transition proof");
+
+    assert!(
+        jacs::agent::Agent::verify_transition_proof_for_rotation(
+            &proof,
+            &uuid::Uuid::new_v4().to_string(),
+            &old_key,
+            &new_key,
+        )
+        .is_err(),
+        "proof must not authorize a different stable identity"
+    );
+    assert!(
+        jacs::agent::Agent::verify_transition_proof_for_rotation(
+            &proof,
+            &info.agent_id,
+            &old_key,
+            &old_key,
+        )
+        .is_err(),
+        "proof must bind the exact candidate new public key"
     );
 }
 
@@ -340,8 +394,7 @@ fn test_ed25519_to_pq2025_signs_correctly() {
     );
 }
 
-/// P2 Task 001: pq2025 to Ed25519 is a DOWNGRADE and must be rejected —
-/// rotation always resolves to pq2025; the reverse direction is gone.
+/// pq2025 to Ed25519 is a downgrade and must be rejected.
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_rotation_to_ed25519_is_rejected() {
@@ -352,8 +405,8 @@ fn test_rotation_to_ed25519_is_rejected() {
         let err = advanced::rotate(&agent, Some(bad))
             .expect_err("rotation to Ed25519 must be a typed error");
         assert!(
-            err.to_string().contains("pq2025"),
-            "rotation error should steer to pq2025, got: {err}"
+            err.to_string().contains("downgrade"),
+            "rotation error should identify the downgrade, got: {err}"
         );
     }
 
@@ -471,7 +524,7 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
 
     // Simulate crash: restore pre-rotation config + write journal
     std::fs::write("./jacs.config.json", &config_before).expect("restore stale config");
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
@@ -480,6 +533,9 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload: auto-repair
     let recovered =

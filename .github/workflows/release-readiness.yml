@@ -1,0 +1,69 @@
+name: Shipped artifact matrix
+
+on:
+  workflow_run:
+    workflows:
+      - "Release CLI Binaries"
+      - "Release crates.io"
+      - "Release PyPI"
+      - "Release npm"
+      - "Release @jacs/wasm"
+      - "Release jacsgo Native Libraries"
+    types: [completed]
+  schedule:
+    - cron: "41 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      require_parity:
+        description: "Fail unless Rust, CLI, Python, Node, WASM, and Go all match source"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-registries:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - name: Install pinned registry-provenance verifiers
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
+          python3 -m venv /tmp/jacs-registry-provenance
+          /tmp/jacs-registry-provenance/bin/pip install \
+            --disable-pip-version-check \
+            "pypi-attestations==0.0.29"
+      - name: Verify observed registry matrix
+        if: ${{ !inputs.require_parity }}
+        run: ./scripts/check-release-matrix.py --online
+      - name: Require coordinated release parity
+        if: ${{ inputs.require_parity }}
+        run: ./scripts/check-release-matrix.py --require-parity
+      - name: Cryptographically reverify recorded GitHub release inventories
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/verify_github_release_attestations.py
+          --matrix release/shipped-artifacts.json
+      - name: Cryptographically reverify recorded PyPI and npm releases
+        run: >-
+          env PATH="/tmp/jacs-registry-provenance/bin:$PATH"
+          python3 scripts/verify_recorded_registry_provenance.py
+          release/shipped-artifacts.json

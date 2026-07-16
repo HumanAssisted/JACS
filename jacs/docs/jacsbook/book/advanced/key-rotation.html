@@ -193,24 +193,22 @@
 </ul>
 <h3 id="migrating-ed25519-agents-to-pq2025"><a class="header" href="#migrating-ed25519-agents-to-pq2025">Migrating Ed25519 Agents to pq2025</a></h3>
 <p><strong>Rotation always resolves to <code>pq2025</code></strong> — it is the designated migration path
-for grandfathered Ed25519 agents:</p>
+for Ed25519 agents:</p>
 <pre><code class="language-bash">jacs agent rotate-keys
 </code></pre>
 <ul>
-<li>A grandfathered Ed25519 agent that rotates (with or without an <code>--algorithm</code>
+<li>An Ed25519 agent that rotates (with or without an <code>--algorithm</code>
 argument) gets a <code>pq2025</code> root; the config is stamped <code>pq2025</code>; the
 transition proof is signed by the old Ed25519 key, so the migration is
 cryptographically authorized by the previous root.</li>
 <li>Rotating <strong>to</strong> Ed25519 (or any non-PQ algorithm) is a typed error.</li>
-<li>Until it rotates, a grandfathered agent keeps signing with Ed25519 and each
-native signature logs a WARN <code>native_legacy_ed25519_sign</code> so operators can
-track fleet drift.</li>
+<li>Until it rotates, an Ed25519 agent keeps signing normally with Ed25519.</li>
 <li>Documents signed by the old Ed25519 key remain verifiable after migration
 (see Cross-Algorithm Verification in the Algorithm Selection Guide).</li>
 <li>Rotation supersedes the ES256 <strong>compatibility key binding</strong>: the binding
 is signed by the native root, so after rotation ecosystem exports fail
 with a "re-issue" error until <code>jacs agent issue-compat-binding</code> runs
-under the new PQ root.</li>
+under the new native root.</li>
 <li>Rotation applies to the <strong>native root</strong> only — rotating the ES256
 compatibility key itself is out of scope in P2.</li>
 </ul>
@@ -346,7 +344,11 @@ jacs agent keys revoke &lt;key-hash&gt;
 <li>The old and new keys are cryptographically linked</li>
 <li>An attacker cannot forge a rotation without the old private key</li>
 </ul>
-<p>You can verify a transition proof programmatically using <code>Agent::verify_transition_proof()</code>.</p>
+<p><code>Agent::verify_transition_proof()</code> validates the detached old-key signature.
+Registries and directories must use
+<code>Agent::verify_transition_proof_for_rotation(proof, expected_agent_id, old_key, new_key)</code>
+instead. That stricter API also binds the proof to the expected stable identity
+and exact candidate new key, preventing proof transplantation.</p>
 <h3 id="crash-recovery"><a class="header" href="#crash-recovery">Crash Recovery</a></h3>
 <p>JACS uses a write-ahead journal to recover from crashes during key rotation. Before rotation begins, a journal file is written to <code>{key_directory}/.jacs_rotation_journal.json</code>. The journal tracks the rotation stage:</p>
 <ol>
@@ -358,7 +360,8 @@ jacs agent keys revoke &lt;key-hash&gt;
 <p>If the process crashes mid-rotation, the next agent load detects the journal and automatically repairs the config by re-signing it with the current key. No manual intervention is required for the common case.</p>
 <p>For manual recovery: <code>jacs agent repair</code></p>
 <h3 id="cross-algorithm-rotation"><a class="header" href="#cross-algorithm-rotation">Cross-Algorithm Rotation</a></h3>
-<p>You can change the signing algorithm during rotation:</p>
+<p>Rotation is a one-way migration to <code>pq2025</code>, not an arbitrary algorithm
+selector. An Ed25519 root can migrate to post-quantum signing:</p>
 <pre><code class="language-bash"># Rotate from Ed25519 to post-quantum
 jacs agent rotate-keys --algorithm pq2025
 </code></pre>
@@ -531,7 +534,7 @@ Securely delete old private key</li>
 <li><input disabled="" type="checkbox"/>
 Test signing with new key</li>
 <li><input disabled="" type="checkbox"/>
-Re-issue the compatibility key binding (<code>jacs agent issue-compat-binding</code>) if the agent has an ES256 compatibility key — ecosystem exports fail until the new PQ root signs a fresh binding</li>
+Re-issue the compatibility key binding (<code>jacs agent issue-compat-binding</code>) if the agent has an ES256 compatibility key — ecosystem exports fail until the new native root signs a fresh binding</li>
 </ul>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>

@@ -1,6 +1,7 @@
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
 use crate::agent::Agent;
 use crate::agent::document::DocumentTraits;
+use crate::agent::loaders::FileLoader;
 use crate::cli_utils::get_storage_default_for_cli;
 use crate::cli_utils::set_file_list;
 use crate::document::verify_document_with_agent;
@@ -10,8 +11,20 @@ use crate::shared::document_check_agreement;
 use crate::shared::document_create;
 use crate::shared::document_load_and_save;
 use crate::shared::document_sign_agreement;
-use std::process;
+use serde::Serialize;
+use serde_json::Value;
 use tracing::debug;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateDocumentOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    pub document_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document: Option<Value>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_documents(
@@ -23,13 +36,13 @@ pub fn create_documents(
     embed: Option<bool>,
     no_save: bool,
     schema: Option<&String>,
-) -> Result<(), JacsError> {
-    let storage = get_storage_default_for_cli();
+) -> Result<Vec<CreateDocumentOutput>, JacsError> {
+    let storage = get_storage_default_for_cli()?;
     if outputfilename.is_some() && directory.is_some() {
-        eprintln!(
-            "Error: if there is a directory you can't name the file the same for multiple files."
-        );
-        process::exit(1);
+        return Err(JacsError::ValidationError(
+            "--output cannot be combined with --directory because multiple documents would overwrite the same file"
+                .to_string(),
+        ));
     }
 
     // Allow attachments-only for create command
@@ -41,9 +54,7 @@ pub fn create_documents(
     }
 
     // Use updated set_file_list with storage
-    let files: Vec<String> =
-        set_file_list(storage.as_ref().unwrap(), filename, directory, attachments)
-            .expect("Failed to determine file list");
+    let files: Vec<String> = set_file_list(&storage, filename, directory, attachments)?;
 
     // Handle attachment-only case: if files is empty but attachments provided,
     // we need to run the loop once with an empty file to create a document
@@ -62,6 +73,7 @@ pub fn create_documents(
         count = files_to_process.len(),
         "create_documents: processing files"
     );
+    let mut outputs = Vec::with_capacity(files_to_process.len());
     // iterate over filenames
     for file in &files_to_process {
         debug!(file = %file, "create_documents: processing file");
@@ -72,13 +84,18 @@ pub fn create_documents(
             } else if !file.is_empty() {
                 debug!(file = %file, "create_documents: reading document file");
                 // Use storage to read the input document file
-                let content_bytes = storage
-                    .as_ref()
-                    .expect("Storage must be initialized for this command")
-                    .get_file(file, None)
-                    .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
-                String::from_utf8(content_bytes)
-                    .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file))
+                let content_bytes = storage.get_file(file, None).map_err(|error| {
+                    JacsError::DocumentError(format!(
+                        "Failed to load document file '{}': {}",
+                        file, error
+                    ))
+                })?;
+                String::from_utf8(content_bytes).map_err(|error| {
+                    JacsError::ValidationError(format!(
+                        "Document file '{}' is not valid UTF-8: {}",
+                        file, error
+                    ))
+                })?
             } else {
                 eprintln!("Warning: Empty file path encountered in loop.");
                 "{}".to_string()
@@ -99,20 +116,60 @@ pub fn create_documents(
             no_save,
             attachments,
             embed,
-        )
-        .expect("document_create");
+        )?;
         debug!(
             result_len = result.len(),
             "create_documents: document_create succeeded"
         );
         if no_save {
-            println!("{}", result);
+            let document: Value = serde_json::from_str(&result).map_err(|error| {
+                JacsError::DocumentError(format!(
+                    "Created document could not be decoded: {}",
+                    error
+                ))
+            })?;
+            let document_key = format!(
+                "{}:{}",
+                document
+                    .get("jacsId")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| JacsError::DocumentError(
+                        "Created document is missing jacsId".to_string()
+                    ))?,
+                document
+                    .get("jacsVersion")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| JacsError::DocumentError(
+                        "Created document is missing jacsVersion".to_string()
+                    ))?
+            );
+            outputs.push(CreateDocumentOutput {
+                input: (!file.is_empty()).then(|| file.clone()),
+                document_key,
+                saved_path: None,
+                document: Some(document),
+            });
         } else {
-            debug!("create_documents: document saved");
+            let document_key = result
+                .strip_prefix("saved  ")
+                .unwrap_or(&result)
+                .trim()
+                .to_string();
+            let output_name = outputfilename
+                .cloned()
+                .unwrap_or_else(|| document_key.clone());
+            let saved_path = agent.make_data_directory_path(&output_name)?;
+            debug!(path = %saved_path, "create_documents: document saved");
+            outputs.push(CreateDocumentOutput {
+                input: (!file.is_empty()).then(|| file.clone()),
+                document_key,
+                saved_path: Some(saved_path),
+                document: None,
+            });
         }
     } // end iteration
 
-    Ok(())
+    Ok(outputs)
 }
 
 #[allow(clippy::too_many_arguments)]

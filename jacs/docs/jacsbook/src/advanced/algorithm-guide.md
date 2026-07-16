@@ -2,26 +2,25 @@
 
 Choosing the right signing algorithm affects key size, signature size, verification speed, and compliance posture. This guide helps you pick the right one.
 
-## New Agents Are PQ-Only
+## New-Agent Selection
 
-**New agent creation always uses `pq2025` (ML-DSA-87 / FIPS-204).** There is no
-algorithm choice at creation time: a request for Ed25519 (via config or an
-explicit parameter) resolves to `pq2025` and logs a WARN; ES256 or any other
-algorithm is a typed error. ES256 exists in JACS only as an ecosystem
-compatibility key, never as a native `jacsSignature` algorithm.
+**`pq2025` (ML-DSA-87 / FIPS-204) is the secure default.** Pass `ed25519`
+explicitly when its smaller keys and signatures are required. JACS returns the
+canonical wire label `ring-Ed25519`; the requested label, generated key shape,
+persisted configuration, and emitted signature algorithm always agree.
+`ring-Ed25519` remains accepted as a legacy input alias. ES256 is an ecosystem
+compatibility key, never a native `jacsSignature` algorithm.
 
-Existing Ed25519-rooted agents are **grandfathered**: they continue to load,
-sign (each native signature logs a WARN `native_legacy_ed25519_sign`), and
-verify. All key rotations resolve to `pq2025`, so a grandfathered agent
-migrates to post-quantum keys the first time it rotates — see
+All key rotations currently resolve to `pq2025`, so rotation is also the
+supported Ed25519-to-post-quantum migration path — see
 [Key Rotation](key-rotation.md).
 
 ## Supported Algorithms
 
 | Algorithm | Config Value | Public Key | Signature | Status |
 |-----------|-------------|------------|-----------|--------|
-| ML-DSA-87 | `pq2025` | 2,592 bytes | 4,627 bytes | Default and only algorithm for new agents (FIPS-204) |
-| Ed25519 | `ring-Ed25519` | 32 bytes | 64 bytes | Legacy: verify always; sign only for grandfathered pre-existing agents |
+| ML-DSA-87 | `pq2025` | 2,592 bytes | 4,627 bytes | Default; post-quantum (FIPS-204) |
+| Ed25519 | `ring-Ed25519` (input alias: `ed25519`) | 32 bytes | 64 bytes | Supported for creation, signing, and verification |
 
 ## When to Choose Post-Quantum
 
@@ -58,7 +57,9 @@ Or via environment variable:
 export JACS_AGENT_KEY_ALGORITHM=pq2025
 ```
 
-Valid values for new keys: `ring-Ed25519`, `pq2025`
+User-facing values for new keys: `ed25519`, `pq2025`. The historical
+`ring-Ed25519` input remains accepted and is the canonical signature/config
+label emitted for Ed25519.
 
 In Python and Node.js, pass the algorithm to `quickstart(...)`:
 

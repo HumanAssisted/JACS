@@ -30,7 +30,7 @@
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.26.0",
         "express": "^5.0",
-        "jacsnpm": "file:../jacsnpm",
+        "jacsnpm": "file:..",
         "koa": "^3.1.2"
     },
     "devDependencies": {

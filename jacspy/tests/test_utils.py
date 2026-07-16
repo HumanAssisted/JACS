@@ -96,6 +96,15 @@ class TestJacsAgentClass:
         assert agent2 is not None
         assert agent1 is not agent2
 
+    def test_canonicalize_rejects_duplicate_decoded_keys(self):
+        """Ambiguous JSON must be rejected before RFC 8785 canonicalization."""
+        agent = jacs.JacsAgent()
+        with pytest.raises(Exception, match="duplicate JSON object key"):
+            agent.canonicalize_json(
+                '{"role":"reader","role":"admin",'
+                '"agentID":"one","agent\\u0049D":"two"}'
+            )
+
     def test_agent_has_expected_methods(self):
         """Test that JacsAgent has expected methods."""
         agent = jacs.JacsAgent()
@@ -167,6 +176,64 @@ class TestJacsAgentWithFixtures:
         signature = loaded_agent.sign_string(data)
         assert isinstance(signature, str)
         assert len(signature) > 0
+
+    def test_auth_builders_preserve_legacy_and_add_request_binding(
+        self, loaded_agent, monkeypatch
+    ):
+        monkeypatch.delenv("JACS_REJECT_UNBOUND_AUTH_HEADER", raising=False)
+        legacy = loaded_agent.build_auth_header()
+        assert legacy.startswith("JACS ")
+
+        header = loaded_agent.build_request_auth_header(
+            "POST",
+            "https://api.example.test/v1/jobs?mode=fast",
+            '{"task":"review"}',
+            "hai-api",
+        )
+        assert header.startswith("JACS v2.")
+        assert len(header.split(".")) == 3
+
+        monkeypatch.setenv("JACS_REJECT_UNBOUND_AUTH_HEADER", "true")
+        with pytest.raises(Exception, match="(?i)legacy unbound|rejected"):
+            loaded_agent.build_auth_header()
+
+    def test_response_envelope_is_fully_bound_and_unknown_keys_fail_closed(
+        self, loaded_agent
+    ):
+        signed = loaded_agent.sign_response('{"decision":"allow"}')
+        envelope = json.loads(signed)
+        signer_id = envelope["jacsSignature"]["agentID"]
+        keys = json.dumps({signer_id: loaded_agent.get_public_key_pem()})
+
+        assert envelope["version"] == "2.0.0"
+        assert (
+            envelope["jacsSignature"]["signatureContentVersion"]
+            == "jacs-response-v2"
+        )
+        verified = json.loads(loaded_agent.unwrap_signed_event(signed, keys))
+        assert verified["verified"] is True
+        assert verified["status"] == "verified"
+        assert verified["data"] == {"decision": "allow"}
+        assert verified["signerId"] == signer_id
+
+        for pointer, value in [
+            (("version",), "9.9.9"),
+            (("metadata", "issuer"), "attacker"),
+            (("metadata", "hash"), "0" * 64),
+            (("jacsSignature", "date"), "2099-01-01T00:00:00Z"),
+        ]:
+            mutated = json.loads(signed)
+            target = mutated
+            for part in pointer[:-1]:
+                target = target[part]
+            target[pointer[-1]] = value
+            with pytest.raises(
+                Exception, match="(?i)verification|response envelope|hash"
+            ):
+                loaded_agent.unwrap_signed_event(json.dumps(mutated), keys)
+
+        with pytest.raises(Exception, match="(?i)unknown|verification"):
+            loaded_agent.unwrap_signed_event(signed, "{}")
 
     @pytest.mark.skipif(
         os.environ.get("JACS_PRIVATE_KEY_PASSWORD") is None,

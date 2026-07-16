@@ -4,7 +4,7 @@ package jacs
 // 002-004c) on JacsSimpleAgent.
 //
 // New persistent agents mint the ES256 `ecosystem_signing` compatibility
-// key eagerly at creation (native root stays pq2025). Identity exports
+// key eagerly at creation (these fixtures use the default pq2025 root). Identity exports
 // (JWKS, key binding) auto-issue the default identity binding; content
 // exports (AP2 mandate) require the explicit `ap2-mandate` binding scope
 // and must be denied on a fresh agent.
@@ -22,7 +22,7 @@ const sampleAp2Checkout = `{"id":"c1","currency":"USD","line_items":[{"id":"li1"
 
 // newCompatTestAgent creates a persistent SimpleAgent in a temp directory
 // with the default (pq2025) native algorithm, so the eager ES256 compat key
-// is minted and binding signatures chain to the post-quantum root.
+// is minted and binding signatures chain to the selected native root.
 func newCompatTestAgent(t *testing.T) *JacsSimpleAgent {
 	t.Helper()
 	skipIfLibraryMissing(t)
@@ -34,7 +34,7 @@ func newCompatTestAgent(t *testing.T) *JacsSimpleAgent {
 		"name":     "compat-test-agent",
 		"password": testPrivateKeyPassword,
 		// No "algorithm": use the Rust default (pq2025) — the compat
-		// binding assertions below check the PQ-root chain.
+		// binding assertions below check the native-root chain.
 		"data_directory": filepath.Join(tmpDir, "data"),
 		"key_directory":  filepath.Join(tmpDir, "keys"),
 		"config_path":    filepath.Join(tmpDir, "config.json"),
@@ -168,7 +168,7 @@ func TestCompatAp2MandateRequiresBindingScope(t *testing.T) {
 
 // TestCompatIssueBindingGrantsAp2MandateScope is the bindings-level happy
 // path for a content export (deep-review Issue 003): grant the `ap2-mandate`
-// scope explicitly via IssueCompatBinding (PQ root signs the binding), then
+// scope explicitly via IssueCompatBinding (the native root signs the binding), then
 // ExportAp2Mandate SUCCEEDS — no CLI shell-out required.
 func TestCompatIssueBindingGrantsAp2MandateScope(t *testing.T) {
 	agent := newCompatTestAgent(t)

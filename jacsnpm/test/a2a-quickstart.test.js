@@ -17,6 +17,7 @@ const {
   DEFAULT_TRUST_POLICY,
   TRUST_POLICIES,
 } = require('../src/a2a');
+const { configureNativeGenerator } = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient with a mock _agent for testing.
@@ -26,6 +27,11 @@ function createMockClient(overrides = {}) {
     signRequest: sinon.stub(),
     verifyResponse: sinon.stub(),
   };
+  configureNativeGenerator(mockAgent, {
+    agentId: overrides.agentId || 'test-agent-id',
+    name: overrides.name || 'test-agent',
+    skills: overrides.skills || [],
+  });
   return {
     _agent: mockAgent,
     agentId: overrides.agentId || 'test-agent-id',
@@ -97,6 +103,19 @@ describe('A2A Quickstart - [2.4.2] Node.js quickstart one-liner', () => {
         expect(e).to.exist;
       }
     });
+
+    it('should fail immediately and actionably for deprecated wrapper-supplied skills', async () => {
+      let error;
+      try {
+        await JACSA2AIntegration.quickstart({
+          skills: [{ id: 'late', name: 'Late', description: 'Too late', tags: ['test'] }],
+        });
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/skills are deprecated.*native Agent Card.*persist skills/i);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -166,7 +185,7 @@ describe('A2A Quickstart - [2.4.2] Node.js quickstart one-liner', () => {
       }).on('error', done);
     });
 
-    it('should apply defaultSkills when set', (done) => {
+    it('should reject wrapper skill mutation after the native card is signed', () => {
       const mockClient = createMockClient({ agentId: 'skills-test', name: 'skills-agent' });
       const integration = new JACSA2AIntegration(mockClient);
       integration.defaultSkills = [
@@ -174,21 +193,9 @@ describe('A2A Quickstart - [2.4.2] Node.js quickstart one-liner', () => {
         { id: 'summarize', name: 'Summarize', description: 'Summarize text', tags: ['nlp'] },
       ];
 
-      server = integration.listen(0);
-      const port = server.address().port;
-
-      http.get(`http://localhost:${port}/.well-known/agent-card.json`, (res) => {
-        let body = '';
-        res.on('data', (chunk) => { body += chunk; });
-        res.on('end', () => {
-          const card = JSON.parse(body);
-          expect(card.skills).to.have.length(2);
-          expect(card.skills[0].id).to.equal('web-search');
-          expect(card.skills[0].name).to.equal('Web Search');
-          expect(card.skills[1].id).to.equal('summarize');
-          done();
-        });
-      }).on('error', done);
+      expect(() => integration.listen(0)).to.throw(
+        /Cannot override A2A skills after the Agent Card is signed/,
+      );
     });
 
     it('should return the server instance for cleanup', () => {

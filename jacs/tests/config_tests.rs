@@ -195,6 +195,11 @@ fn test_config_from_file_sets_config_dir() {
         Some(expected_parent),
         "config_dir should be set to the parent directory of the config file"
     );
+    assert_eq!(
+        config.source_path(),
+        Some(config_path.as_path()),
+        "source_path should retain the exact config file for bounded recovery"
+    );
 }
 
 /// Test that Config::with_defaults has config_dir = None
@@ -206,6 +211,7 @@ fn test_config_with_defaults_has_no_config_dir() {
         None,
         "Config::with_defaults() should have config_dir = None"
     );
+    assert_eq!(config.source_path(), None);
 }
 
 /// Test that Config::from_file with absolute path sets absolute config_dir

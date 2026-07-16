@@ -5,31 +5,42 @@ on:
     tags:
       - 'wasm-v*'
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
+
+concurrency:
+  group: release-wasm-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
   verify-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Extract version from tag
+      - name: Validate and extract release tag
         id: extract
-        run: |
-          TAG="${GITHUB_REF#refs/tags/wasm-v}"
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+        run: python3 scripts/release_tag.py --surface wasm
 
       - name: Check jacs-wasm/Cargo.toml version matches tag
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
+          set -euo pipefail
           CARGO_VERSION=$(grep '^version = ' jacs-wasm/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
           echo "Cargo version: $CARGO_VERSION"
           echo "Tag version:   $TAG_VERSION"
           if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
@@ -38,45 +49,74 @@ jobs:
           fi
 
       - name: Check package.template.json version matches tag (if present)
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
+          set -euo pipefail
           TEMPLATE=jacs-wasm/package.template.json
           if [ ! -f "$TEMPLATE" ]; then
             echo "::warning::$TEMPLATE not present; skipping template version check."
             exit 0
           fi
           PKG_VERSION=$(node -p "require('./$TEMPLATE').version")
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
           if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::Version mismatch! $TEMPLATE has $PKG_VERSION but tag is $TAG_VERSION"
             exit 1
           fi
 
-  build-and-test:
+  preflight-publish:
     needs: verify-version
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - name: Validate npm trusted-publishing prerequisites
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
+          python3 scripts/check_npm_publish_metadata.py jacs-wasm/package.template.json
+
+  build-and-test:
+    needs: [verify-version, preflight-publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      # Exact workspace Rust plus the wasm32-unknown-unknown target; the
-      # release flow cannot float past the repository toolchain.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      # Stable Rust + the wasm32-unknown-unknown target. The crate sets
+      # Pin the compiler explicitly so release behavior matches Cargo.toml's
+      # rust-version and cannot float with the stable channel.
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: "1.97"
           target: wasm32-unknown-unknown
 
       # wasm-pack — uses the rustwasm action for a pinned binary install.
       - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
         with:
-          version: 'latest'
+          version: '0.12.1'
 
       # Firefox/geckodriver keeps the wasm-bindgen browser test lane on a
       # WebDriver endpoint that is stable in GitHub Actions.
-      - uses: browser-actions/setup-firefox@v1
-      - uses: browser-actions/setup-geckodriver@latest
+      - uses: browser-actions/setup-firefox@0bc507ddf224827e3b1af68e014d5e42ab93e795 # v1
+      - uses: browser-actions/setup-geckodriver@fac5b0424c584257f32cf12c5eb4ba86014c34f8 # latest 2026-07-09
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -86,15 +126,15 @@ jobs:
           geckodriver --version
           echo "GECKODRIVER=$(command -v geckodriver)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
       # ------------------------------------------------------------------
       # Guardrails before publishing: forbidden-deps + tsc --noEmit +
-      # wasm-pack tests + Vite/Playwright smoke (PRD §5.5; matches the
-      # PR-blocking lane in `wasm-pr.yml`).
+      # wasm-pack tests and exact package-shape checks. Browser tooling runs
+      # later in an isolated job against the immutable packed candidate.
       # ------------------------------------------------------------------
       - name: Forbidden-deps — jacs-core
         run: bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
@@ -105,13 +145,15 @@ jobs:
       - name: tsc --noEmit (source-tree)
         run: |
           cd jacs-wasm
-          npx --yes -p typescript@5 tsc --noEmit -p tsconfig.json
+          npx --yes -p typescript@5.9.3 tsc --noEmit -p tsconfig.json
 
       - name: wasm-pack test --headless --firefox
-        run: wasm-pack test --headless --firefox jacs-wasm
+        working-directory: jacs-wasm
+        run: wasm-pack test --headless --firefox . --locked
 
       - name: wasm-pack build --target web --release
-        run: wasm-pack build --target web --release jacs-wasm
+        working-directory: jacs-wasm
+        run: wasm-pack build --target web --release . --locked
 
       - name: finalize-pkg fixture (Issue 008)
         run: bash jacs-wasm/scripts/tests/finalize-pkg.test.sh
@@ -129,51 +171,207 @@ jobs:
       - name: worker-bridge test (Issue 011)
         run: node jacs-wasm/scripts/tests/worker-bridge.test.mjs
 
-      - name: Vite smoke (build + Playwright)
-        working-directory: jacs-wasm/examples/vite-smoke
+      - name: Build exact WASM npm tarball candidate
+        working-directory: jacs-wasm/pkg
         run: |
-          npm install --no-audit --no-fund
-          npx playwright install --with-deps chromium
-          npm run build
-          npx playwright test
+          set -euo pipefail
+          mkdir -p ../../release-candidates/extracted
+          npm pack --ignore-scripts --json --pack-destination ../../release-candidates > /tmp/jacs-wasm-release-pack.json
+          node -e 'const p=require("/tmp/jacs-wasm-release-pack.json"); if (p.length !== 1) throw new Error("expected one npm tarball, got "+p.length)'
+          tarball="$(node -e 'const p=require("/tmp/jacs-wasm-release-pack.json"); process.stdout.write(p[0].filename)')"
+          tar -xzf "../../release-candidates/$tarball" -C ../../release-candidates/extracted
+          (
+            cd ../../release-candidates
+            sha256sum "$tarball" > "$tarball.sha256"
+          )
 
-  publish:
-    needs: build-and-test
+      - name: Generate exact WASM candidate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: release-candidates/extracted/package
+          format: spdx-json
+          output-file: jacs-wasm.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate WASM SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacs-wasm.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacs-wasm.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacs-wasm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: |
+            release-candidates/*.tgz
+            release-candidates/*.tgz.sha256
+            jacs-wasm.spdx.json
+          if-no-files-found: error
+
+  candidate-browser-smoke:
+    needs: [verify-version, build-and-test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          fetch-depth: 0
-          ref: ${{ github.ref }}
-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: "1.97"
-          target: wasm32-unknown-unknown
-
-      - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
-        with:
-          version: 'latest'
-
-      - uses: actions/setup-node@v4
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacs-wasm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release
+      - name: Browser sign and verify exact packed candidate
+        working-directory: jacs-wasm/examples/vite-smoke
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mapfile -t tarballs < <(find "$GITHUB_WORKSPACE/release" -type f -name '*.tgz')
+          mapfile -t checksums < <(find "$GITHUB_WORKSPACE/release" -type f -name '*.tgz.sha256')
+          if [[ "${#tarballs[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
+            echo "::error::expected one WASM tarball and checksum"
+            exit 1
+          fi
+          (
+            cd "$(dirname "${checksums[0]}")"
+            sha256sum -c "$(basename "${checksums[0]}")"
+          )
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --no-save --ignore-scripts "${tarballs[0]}"
+          npx playwright install --with-deps chromium
+          export JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@jacs/wasm"
+          export JACS_WASM_EXPECTED_VERSION="$VERSION"
+          npm run build
+          npm run test
+
+  durable-release-evidence:
+    needs: [verify-version, build-and-test, post-publish-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacs-wasm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release-evidence
+
+      - name: Attest durable WASM release evidence
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            release-evidence/release-candidates/*.tgz.sha256
+            release-evidence/jacs-wasm.spdx.json
+
+      - name: Publish durable WASM release evidence
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: JACS WASM v${{ needs.verify-version.outputs.version }}
+          body: Attested candidate checksum and SPDX SBOM for the npm release.
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release-evidence/release-candidates/*.tgz.sha256
+            release-evidence/jacs-wasm.spdx.json
+
+  publish:
+    needs: [security-gate, verify-version, build-and-test, candidate-browser-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Rebuild pkg for publish
+      - name: Install the trusted-publishing npm CLI
         run: |
-          wasm-pack build --target web --release jacs-wasm
-          if [ -x jacs-wasm/scripts/finalize-pkg.sh ]; then
-            bash jacs-wasm/scripts/finalize-pkg.sh
-          fi
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
 
-      # NPM_TOKEN must be a granular access token with "Packages: Read and
-      # write" + "Bypass 2FA for automation" enabled (npm → Access Tokens
-      # → Generate New Token). Use --provenance once the package is
-      # published once with a normal token.
-      - name: Publish @jacs/wasm to npm
-        working-directory: jacs-wasm/pkg
-        run: npm publish --access public
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacs-wasm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release
+
+      - name: Publish @jacs/wasm with OIDC trusted publishing
+        run: |
+          set -euo pipefail
+          mapfile -t tarballs < <(find release -type f -name '*.tgz')
+          mapfile -t checksums < <(find release -type f -name '*.tgz.sha256')
+          if [[ "${#tarballs[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
+            echo "::error::expected one WASM npm release tarball and checksum"
+            exit 1
+          fi
+          (
+            cd "$(dirname "${checksums[0]}")"
+            sha256sum -c "$(basename "${checksums[0]}")"
+          )
+          npm publish "${tarballs[0]}" --access public --provenance
+
+  post-publish-smoke:
+    needs: [verify-version, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install the provenance-verifying npm CLI
+        run: |
+          npm install --global npm@11.18.0
+          test "$(npm --version)" = "11.18.0"
+      - name: Install and inspect exact published package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if [ "$(npm view "@jacs/wasm@${VERSION}" version 2>/dev/null || true)" = "$VERSION" ]; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              echo "::error::@jacs/wasm@${VERSION} did not become available"
+              exit 1
+            fi
+            sleep 10
+          done
+          mkdir /tmp/jacs-wasm-release-smoke
+          cd /tmp/jacs-wasm-release-smoke
+          npm init -y >/dev/null
+          npm install --ignore-scripts "@jacs/wasm@${VERSION}"
+          node -e 'const p=require("./node_modules/@jacs/wasm/package.json"); if (!p.exports || !p.types) throw new Error("published WASM package lacks exports/types");'
+          npm audit signatures
+      - name: Browser sign and verify with exact registry-installed package
+        working-directory: jacs-wasm/examples/vite-smoke
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --no-save --ignore-scripts "@jacs/wasm@${VERSION}"
+          npx playwright install --with-deps chromium
+          export JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@jacs/wasm"
+          export JACS_WASM_EXPECTED_VERSION="$VERSION"
+          npm run build
+          npm run test

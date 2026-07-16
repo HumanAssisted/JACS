@@ -162,7 +162,8 @@ pub fn regenerate_all() -> std::io::Result<()> {
 
     // Two ephemeral agents: ed25519 + pq2025. These power both the markdown
     // multi-algo fixture and the per-format coverage matrix.
-    let (agent_ed25519, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519");
+    let (agent_ed25519, _) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("grandfathered Ed25519 fixture");
     let (agent_pq2025, _) = SimpleAgent::ephemeral(Some("pq2025")).expect("ephemeral pq2025");
 
     // ----- Unsigned text fixture (also serves as canonical content for the

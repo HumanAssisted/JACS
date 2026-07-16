@@ -17,7 +17,7 @@ class EphemeralAgentAdapter:
 
     def verify_agent(self, agentfile=None):
         result = self._native.verify_self()
-        if not result.get("valid", False):
+        if result.get("valid") is not True:
             errors = result.get("errors", [])
             raise RuntimeError(f"Agent verification failed: {errors}")
         return True
@@ -65,8 +65,10 @@ class EphemeralAgentAdapter:
     def verify_response(self, document_string):
         result = self._native.verify(document_string)
         if not isinstance(result, dict):
-            raise RuntimeError("Ephemeral verify_response returned an unexpected result shape")
-        if not result.get("valid", False):
+            raise RuntimeError(
+                "Ephemeral verify_response returned an unexpected result shape"
+            )
+        if result.get("valid") is not True:
             errors = result.get("errors")
             if isinstance(errors, list) and errors:
                 message = "; ".join(str(e) for e in errors)
@@ -77,9 +79,29 @@ class EphemeralAgentAdapter:
             raise RuntimeError(message)
         return self._unwrap_jacs_payload(result.get("data"))
 
+    def verify_response_with_agent_id(self, document_string):
+        result = self._native.verify(document_string)
+        if not isinstance(result, dict):
+            raise RuntimeError(
+                "Ephemeral verify_response returned an unexpected result shape"
+            )
+        if result.get("valid") is not True:
+            errors = result.get("errors")
+            if isinstance(errors, list) and errors:
+                message = "; ".join(str(error) for error in errors)
+            elif errors:
+                message = str(errors)
+            else:
+                message = "signature verification failed"
+            raise RuntimeError(message)
+        signer_id = result.get("signer_id")
+        if not isinstance(signer_id, str) or not signer_id:
+            raise RuntimeError("Ephemeral verification omitted the signer identity")
+        return signer_id, self._unwrap_jacs_payload(result.get("data"))
+
     def verify_document(self, document_string):
         result = self._native.verify(document_string)
-        return result.get("valid", False)
+        return result.get("valid") is True
 
     def get_agent_json(self):
         return self._native.export_agent()
@@ -129,7 +151,7 @@ class EphemeralAgentAdapter:
 
     def verify_document_by_id(self, document_id):
         result = self._native.verify_by_id(document_id)
-        return result.get("valid", False)
+        return result.get("valid") is True
 
     def reencrypt_key(self, old_password, new_password):
         return self._native.reencrypt_key(old_password, new_password)
@@ -185,9 +207,7 @@ class EphemeralAgentAdapter:
         return self._native.sign_text(file_path, no_backup=no_backup)
 
     def verify_text_file(self, file_path, *, strict=False, key_dir=None):
-        return self._native.verify_text_file(
-            file_path, strict=strict, key_dir=key_dir
-        )
+        return self._native.verify_text_file(file_path, strict=strict, key_dir=key_dir)
 
     def verify_text(self, file_path, *, strict=False, key_dir=None):
         return self._native.verify_text(file_path, strict=strict, key_dir=key_dir)

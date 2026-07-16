@@ -1,10 +1,10 @@
-//! P2 Task 003 — the PQ-root-signed compatibility key binding.
+//! P2 Task 003 — the native-root-signed compatibility key binding.
 //!
-//! The binding is the trust bridge between native (PQ) JACS identity and
+//! The binding is the trust bridge between native JACS identity and
 //! ES256 ecosystems: the native root signs it, so granting or widening a
-//! scope always requires the PQ root. Lifecycle is deliberately small:
+//! scope always requires that root. Lifecycle is deliberately small:
 //! one canonical-JSON file in the key directory, latest issuedAt wins,
-//! PQ-root rotation invalidates (re-issue required), expiry denies.
+//! native-root rotation invalidates (re-issue required), expiry denies.
 
 mod utils;
 
@@ -28,6 +28,13 @@ impl Drop for CwdGuard {
 }
 
 fn setup_agent(name: &str) -> (SimpleAgent, tempfile::TempDir, CwdGuard) {
+    setup_agent_with_algorithm(name, "pq2025")
+}
+
+fn setup_agent_with_algorithm(
+    name: &str,
+    algorithm: &str,
+) -> (SimpleAgent, tempfile::TempDir, CwdGuard) {
     let saved_cwd = std::env::current_dir().expect("get cwd");
     let tmp = tempfile::tempdir().expect("create temp dir");
     let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
@@ -39,6 +46,7 @@ fn setup_agent(name: &str) -> (SimpleAgent, tempfile::TempDir, CwdGuard) {
     let params = CreateAgentParams::builder()
         .name(name)
         .password(TEST_PASSWORD)
+        .algorithm(algorithm)
         .data_directory("./jacs_data")
         .key_directory("./jacs_keys")
         .config_path("./jacs.config.json")
@@ -71,6 +79,26 @@ fn binding_is_signed_with_pq_root() {
     // Round-trips through full verification.
     let (_doc, scopes) = agent.compat_binding().expect("verifies");
     assert!(!scopes.is_empty());
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn binding_is_signed_with_selected_ed25519_native_root() {
+    let _lock = BINDING_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _tmp, _guard) = setup_agent_with_algorithm("binding-ed25519-root", "ed25519");
+
+    let binding = agent
+        .issue_compat_binding(None, None)
+        .expect("issue Ed25519-root binding");
+
+    assert_eq!(
+        binding["compatibilityKeyBinding"]["rootKey"]["algorithm"],
+        "ring-Ed25519"
+    );
+    assert_eq!(binding["jacsSignature"]["signingAlgorithm"], "ring-Ed25519");
+    agent
+        .compat_binding()
+        .expect("Ed25519-root binding verifies");
 }
 
 #[test]

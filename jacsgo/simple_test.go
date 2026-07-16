@@ -472,6 +472,116 @@ func TestGetPublicKeyPEM(t *testing.T) {
 	})
 }
 
+func TestResponseEnvelopeFullyBoundAndUnknownKeysFailClosed(t *testing.T) {
+	withLoadedAgent(t, func(t *testing.T, _ *AgentInfo) {
+		signed, err := globalAgent.SignResponse(`{"decision":"allow"}`)
+		if err != nil {
+			t.Fatalf("SignResponse failed: %v", err)
+		}
+
+		var envelope map[string]interface{}
+		if err := json.Unmarshal([]byte(signed), &envelope); err != nil {
+			t.Fatalf("parse signed response: %v", err)
+		}
+		signature, ok := envelope["jacsSignature"].(map[string]interface{})
+		if !ok {
+			t.Fatal("signed response must contain jacsSignature")
+		}
+		signerID, ok := signature["agentID"].(string)
+		if !ok || signerID == "" {
+			t.Fatal("signed response must identify its signer")
+		}
+		if envelope["version"] != "2.0.0" {
+			t.Fatalf("expected response envelope v2, got %#v", envelope["version"])
+		}
+		if signature["signatureContentVersion"] != "jacs-response-v2" {
+			t.Fatalf("unexpected signature scope: %#v", signature["signatureContentVersion"])
+		}
+
+		publicKey, err := globalAgent.GetPublicKeyPEM()
+		if err != nil {
+			t.Fatalf("GetPublicKeyPEM failed: %v", err)
+		}
+		keyJSON, err := json.Marshal(map[string]string{signerID: publicKey})
+		if err != nil {
+			t.Fatalf("marshal trusted keys: %v", err)
+		}
+		verifiedJSON, err := globalAgent.UnwrapSignedEvent(signed, string(keyJSON))
+		if err != nil {
+			t.Fatalf("UnwrapSignedEvent failed: %v", err)
+		}
+		var verified map[string]interface{}
+		if err := json.Unmarshal([]byte(verifiedJSON), &verified); err != nil {
+			t.Fatalf("parse verified provenance: %v", err)
+		}
+		if verified["verified"] != true || verified["status"] != "verified" {
+			t.Fatalf("expected verified provenance, got %#v", verified)
+		}
+		if verified["signerId"] != signerID {
+			t.Fatalf("expected signerId %q, got %#v", signerID, verified["signerId"])
+		}
+
+		for name, mutate := range map[string]func(map[string]interface{}){
+			"version": func(value map[string]interface{}) { value["version"] = "9.9.9" },
+			"issuer": func(value map[string]interface{}) {
+				value["metadata"].(map[string]interface{})["issuer"] = "attacker"
+			},
+			"payload hash": func(value map[string]interface{}) {
+				value["metadata"].(map[string]interface{})["hash"] = strings.Repeat("0", 64)
+			},
+			"signature date": func(value map[string]interface{}) {
+				value["jacsSignature"].(map[string]interface{})["date"] = "2099-01-01T00:00:00Z"
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				var mutated map[string]interface{}
+				if err := json.Unmarshal([]byte(signed), &mutated); err != nil {
+					t.Fatalf("parse signed response: %v", err)
+				}
+				mutate(mutated)
+				bytes, err := json.Marshal(mutated)
+				if err != nil {
+					t.Fatalf("marshal mutation: %v", err)
+				}
+				if data, err := globalAgent.UnwrapSignedEvent(string(bytes), string(keyJSON)); err == nil {
+					t.Fatalf("mutation was accepted with data %q", data)
+				}
+			})
+		}
+
+		if data, err := globalAgent.UnwrapSignedEvent(signed, `{}`); err == nil {
+			t.Fatalf("unknown signer was accepted with data %q", data)
+		}
+	})
+}
+
+func TestAuthBuildersPreserveLegacyAndAddRequestBinding(t *testing.T) {
+	withLoadedAgent(t, func(t *testing.T, _ *AgentInfo) {
+		t.Setenv("JACS_REJECT_UNBOUND_AUTH_HEADER", "")
+		if header, err := globalAgent.BuildAuthHeader(); err != nil || !strings.HasPrefix(header, "JACS ") {
+			t.Fatalf("legacy auth header: header=%q err=%v", header, err)
+		}
+
+		header, err := globalAgent.BuildRequestAuthHeader(
+			"POST",
+			"https://api.example.test/v1/jobs?mode=fast",
+			[]byte(`{"task":"review"}`),
+			"hai-api",
+		)
+		if err != nil {
+			t.Fatalf("BuildRequestAuthHeader failed: %v", err)
+		}
+		if !strings.HasPrefix(header, "JACS v2.") {
+			t.Fatalf("expected request-bound JACS v2 header, got %q", header)
+		}
+
+		t.Setenv("JACS_REJECT_UNBOUND_AUTH_HEADER", "true")
+		if header, err := globalAgent.BuildAuthHeader(); err == nil {
+			t.Fatalf("strict policy accepted legacy auth header: %q", header)
+		}
+	})
+}
+
 // === Audit tests ===
 
 func TestAudit_ReturnsResult(t *testing.T) {

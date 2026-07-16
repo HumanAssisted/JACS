@@ -21,24 +21,25 @@ This installs the `jacs` binary with the CLI and stdio MCP server built in.
 export JACS_PRIVATE_KEY_PASSWORD='your-password'
 
 jacs quickstart --name my-agent --domain example.com
-jacs document create -f mydata.json
-jacs verify signed-document.json
+jacs document create -f mydata.json --output signed-document.json
+jacs verify jacs_data/signed-document.json
 ```
 
-New agents sign natively with post-quantum `pq2025` (ML-DSA-87) and also get
+New agents default to post-quantum `pq2025` (ML-DSA-87); pass
+`--algorithm ed25519` when explicitly required. Persistent agents also get
 an ES256 ecosystem compatibility key (role `ecosystem_signing`) for
 W3C/JWKS/A2A interop — skip it with `--no-compat-key` on `init` or
 `agent create`, and add it to a pre-existing agent with
 `jacs agent add-compat-key`.
 
-Ecosystem exports are gated by a PQ-root-signed binding:
+Ecosystem exports are gated by a native-root-signed binding:
 `jacs agent issue-compat-binding --scopes ...` grants scopes (content
 scopes like `ap2-mandate` and `agreement-vc` are never auto-issued).
 `jacs ap2 export-mandate --input <JSON, path, or - for stdin>` emits an
 AP2 merchant-authorization mandate as a detached ES256 JWS, and
 `jacs agreement-v2 export-vc --agreement <...>` emits an Agreement-v2
 document as a W3C Verifiable Credential with an `ecdsa-jcs-2019` Data
-Integrity proof. Both verify with stock tooling classically; PQ-root
+Integrity proof. Both verify with stock tooling classically; native-root
 trust additionally requires the binding
 (`jacs agent export-compat-binding`).
 
@@ -47,8 +48,8 @@ trust additionally requires the binding
 ### JSON and files
 
 ```bash
-jacs document create -f mydata.json
-jacs verify signed-document.json
+jacs document create -f mydata.json --output signed-document.json
+jacs verify jacs_data/signed-document.json
 ```
 
 ### Markdown and text
@@ -112,6 +113,26 @@ The W3C view is additive: `jacsId` remains the canonical JACS document identity,
 
 For an executable end-to-end example that exports discovery artifacts, signs a request-bound DID proof, and verifies both success and failure cases, run `examples/w3c_did_interop.sh` from the repository root.
 
+### A2A discovery server
+
+```bash
+# Local development: the exact listener origin is signed into the Agent Card.
+jacs a2a serve --host 127.0.0.1 --port 8080
+
+# Production: bind behind a TLS reverse proxy and sign its public origin.
+jacs a2a serve \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --origin https://agent.example.com
+```
+
+The Agent Card's signed `supportedInterfaces[0].url` determines where verifiers
+resolve `/.well-known/jwks.json` and
+`/.well-known/jacs-compat-binding.json`. Without `--origin`, the built-in
+plaintext server advertises only an exact loopback `http://HOST:PORT` origin.
+Non-loopback listeners fail closed unless an explicit HTTPS origin is supplied;
+use that form when TLS terminates at a reverse proxy.
+
 ## MCP server
 
 ```bash
@@ -127,11 +148,31 @@ Configure in your MCP client:
   "mcpServers": {
     "jacs": {
       "command": "jacs",
-      "args": ["mcp"]
+      "args": ["mcp"],
+      "env": {
+        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
+        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
+        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
+      }
     }
   }
 }
 ```
+
+`JACS_CONFIG` is required. Prefer an owner-readable password file (for
+example, mode `0600`) or the OS keychain instead of embedding
+`JACS_PRIVATE_KEY_PASSWORD` in client configuration.
+
+The default `core` profile exposes document, inline text/media, trust,
+search, key/agent, A2A discovery, and W3C tools. Use `jacs mcp --profile full` for Agreement
+v2, A2A artifact, and attestation tools. When `--profile` is absent,
+`JACS_MCP_PROFILE` is consulted before falling back to `core`; explicit CLI
+selection wins, and unknown values fail startup.
+
+MCP file-tool arguments must be relative to `JACS_MCP_BASE_DIR` (or the
+launch working directory when it is unset). Absolute paths, traversal, and
+symlinks are rejected. Existing outputs require the operator-controlled
+`JACS_MCP_OVERWRITE_OK=1` opt-in before overwrite.
 
 For headless/server environments:
 
@@ -139,6 +180,8 @@ For headless/server environments:
 export JACS_CONFIG=/srv/my-project/jacs.config.json
 export JACS_PASSWORD_FILE=/run/secrets/jacs-password
 export JACS_KEYCHAIN_BACKEND=disabled
+export JACS_MCP_BASE_DIR=/srv/my-project
+# Optional: export JACS_MCP_PROFILE=full
 jacs mcp
 ```
 

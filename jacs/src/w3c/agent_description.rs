@@ -12,7 +12,7 @@ pub fn export_agent_description(agent: &Agent, options: W3cDidOptions) -> Result
 
 /// Agent-aware funnel (P2 Task 004): the description starts as the pre-P2
 /// native-only projection, and when the agent holds an ES256 compat key
-/// AND a valid PQ-root-signed binding granting the `w3c-agent-identity`
+/// AND a valid native-root-signed binding granting the `w3c-agent-identity`
 /// scope, the `jacs` block is enriched with the compat kid and the
 /// binding reference AS A CONTENT HASH (same fields as the DID document —
 /// never a URL, NG8). The `ecosystem_export_generated` event and the

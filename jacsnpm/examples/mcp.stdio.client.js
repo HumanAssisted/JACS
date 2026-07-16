@@ -6,11 +6,12 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { createJACSTransportProxy } from '../mcp.js';
+import { createJACSTransportProxyAsync } from '../mcp.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
 const CLIENT_CONFIG_PATH = "./jacs.client.config.json";
+const EXPECTED_SERVER_AGENT_ID = process.env.JACS_EXPECTED_MCP_SERVER_AGENT_ID;
 
 // Get the server script path
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +24,9 @@ async function main() {
   let client = null;
   
   try {
+    if (!EXPECTED_SERVER_AGENT_ID) {
+      throw new Error('Set JACS_EXPECTED_MCP_SERVER_AGENT_ID to the server jacsSignature.agentID');
+    }
     // Create STDIO transport that spawns our JACS server
     const baseTransport = new StdioClientTransport({
       command: "node",
@@ -35,10 +39,11 @@ async function main() {
     console.log("StdioClientTransport created, spawning server...");
     
     // Wrap with JACS encryption  
-    const secureTransport = createJACSTransportProxy(
+    const secureTransport = await createJACSTransportProxyAsync(
       baseTransport,
       CLIENT_CONFIG_PATH,
-      "client"
+      "client",
+      { expectedPeerAgentId: EXPECTED_SERVER_AGENT_ID },
     );
     console.log("JACS transport proxy created");
     
@@ -105,4 +110,4 @@ async function main() {
   }
 }
 
-main(); 
+main();

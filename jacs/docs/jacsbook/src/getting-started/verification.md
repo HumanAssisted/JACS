@@ -4,6 +4,13 @@ Verify a JACS-signed document in under 2 minutes. Verification confirms two thin
 
 **Verification does NOT require creating an agent.** You only need the signed document (and optionally access to the signer's public key).
 
+Raw JSON is decoded strictly before signing, canonicalization, or verification.
+Duplicate object names are rejected at every nesting level, including names
+that become equal after JSON escape decoding (for example, `agentID` and
+`agent\u0049D`). This prevents two consumers from interpreting the same signed
+bytes with different first-key/last-key rules. Repeated values in arrays are
+ordinary JSON and remain supported.
+
 ## Strict vs permissive verification
 
 `verify-text` and `verify-image` use a **permissive default**: a missing signature is a *typed status*, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.
@@ -176,7 +183,20 @@ For full DNS setup instructions, see [DNS-Based Verification](../rust/dns.md) an
 
 JACS signatures are language-agnostic. A document signed by a Rust agent verifies identically in Python and Node.js, and vice versa. This holds for both Ed25519 and post-quantum (ML-DSA-87/pq2025) algorithms.
 
-This is tested on every commit: Rust generates signed fixtures, then Python calls `verify_standalone()` and Node.js calls `verifyStandalone()` to verify them. Each binding also countersigns the fixture with a different algorithm, proving round-trip interoperability.
+Legacy-v1 signatures that lack `signatureContentVersion` are denied by default
+because their signer, timestamp, nonce, and algorithm metadata was never covered
+by the signature. Use the migration API to re-sign them as v2. For a narrowly
+audited archive workflow, `JACS_ALLOW_LEGACY_SIGNATURE_CONTENT=true` enables
+payload-only compatibility; verification results deliberately leave signer,
+agent-version, and timestamp fields empty. Do not use that mode for
+authorization or identity attribution. The historical
+`JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true` setting remains supported and
+takes precedence.
+
+This is tested on every commit: current v2 fixtures verify by default across
+bindings, while committed v1 fixtures prove both default rejection and explicit
+payload-only compatibility. Each binding also countersigns the fixture with a
+different algorithm, proving round-trip interoperability.
 
 Test sources:
 - Rust fixture generator: `jacs/tests/cross_language/mod.rs`

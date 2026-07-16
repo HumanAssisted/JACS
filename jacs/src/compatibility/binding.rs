@@ -1,12 +1,12 @@
 //! The compatibility key binding document (P2 Task 003).
 //!
-//! A PQ-root-signed JACS document that binds the agent's ES256
+//! A native-root-signed JACS document that binds the agent's ES256
 //! `ecosystem_signing` key to its JACS identity and authorizes explicit
-//! export scopes. The trust bridge between native (post-quantum) JACS
-//! identity and W3C/JOSE ecosystems:
+//! export scopes. The trust bridge between native JACS identity and W3C/JOSE
+//! ecosystems (`pq2025` is the default native root; Ed25519 is supported):
 //!
 //! - the NATIVE root signs the binding, so granting or widening a scope
-//!   always requires the PQ root — the ES256 holder cannot self-escalate;
+//!   always requires that root — the ES256 holder cannot self-escalate;
 //! - the binding persists as ONE canonical-JSON file in the agent key
 //!   directory (`jacs.compat-binding.json`); re-issue replaces it —
 //!   latest `issuedAt` wins, no version chains, no registries; "latest
@@ -18,7 +18,9 @@
 //! - an expired binding denies export; expiry is compared as RFC 3339
 //!   INSTANTS and fails closed — an unparseable `expiresAt` denies at
 //!   verification and is rejected at issuance (issue 007);
-//!   `expiresAt: null` is permitted (revocation/status is a later phase);
+//!   `expiresAt: null` is permitted for local/non-A2A exports. Strict remote
+//!   A2A trust independently limits `issuedAt` to a seven-day acceptance
+//!   window, so a null expiry cannot make a replay valid indefinitely;
 //! - identity scopes are granted by default at issuance; content scopes
 //!   (`ap2-mandate`, `agreement-vc`) require an explicit re-issue.
 //!
@@ -28,9 +30,15 @@
 
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
-use crate::agent::{Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME, SHA256_FIELDNAME};
+use crate::agent::{
+    Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME, JACS_IGNORE_FIELDS, SHA256_FIELDNAME,
+    SIGNATURE_CONTENT_VERSION_FIELDNAME, SIGNATURE_CONTENT_VERSION_V2, build_signature_content_v2,
+    extract_signature_fields,
+};
 use crate::error::JacsError;
+use base64::Engine as _;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use tracing::{info, warn};
 
 /// On-disk name of the current binding inside the key directory.
@@ -49,6 +57,22 @@ pub const ALL_SCOPES: &[&str] = &[
     "ap2-mandate",
     "agreement-vc",
 ];
+
+/// Strict A2A accepts a native-root-signed compatibility binding for at most
+/// seven days after its signed `issuedAt`. This is deliberately independent of
+/// `expiresAt`: legacy/local bindings may have a null or very distant expiry,
+/// but neither can become an indefinite first-contact replay credential.
+pub(crate) const STRICT_A2A_BINDING_MAX_AGE_SECONDS: i64 = 7 * 24 * 60 * 60;
+
+/// Discovery generation refreshes the signed binding one day before Strict's
+/// maximum-age cutoff. The six-day threshold leaves a full day for clock skew,
+/// caches, and rolling replica restarts while keeping the hard verifier window
+/// at seven days.
+pub(crate) const A2A_BINDING_REFRESH_AFTER_SECONDS: i64 = 6 * 24 * 60 * 60;
+
+/// Strict A2A uses the repository-wide five-minute future timestamp tolerance.
+pub(crate) const STRICT_A2A_BINDING_MAX_FUTURE_SECONDS: i64 =
+    crate::time_utils::MAX_FUTURE_TIMESTAMP_SECONDS;
 
 fn binding_path(key_directory: &str) -> String {
     format!(
@@ -196,9 +220,11 @@ pub(crate) fn issue_compat_binding_ctx(
 pub fn load_compat_binding(key_directory: &str) -> Result<Option<Value>, JacsError> {
     let path = binding_path(key_directory);
     match std::fs::read_to_string(&path) {
-        Ok(raw) => Ok(Some(serde_json::from_str(&raw).map_err(|e| {
-            JacsError::ValidationError(format!("binding parse failed ({path}): {e}"))
-        })?)),
+        Ok(raw) => Ok(Some(
+            jacs_core::strict_json::parse_strict_json(&raw).map_err(|e| {
+                JacsError::ValidationError(format!("binding parse failed ({path}): {e}"))
+            })?,
+        )),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(JacsError::FileReadFailed {
             path,
@@ -226,10 +252,329 @@ pub struct BindingVerification {
     pub scopes: Vec<String>,
 }
 
+fn remote_binding_error(reason: impl Into<String>) -> JacsError {
+    JacsError::SignatureVerificationFailed {
+        reason: reason.into(),
+    }
+}
+
+fn required_str<'a>(value: &'a Value, pointer: &str) -> Result<&'a str, JacsError> {
+    value
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .ok_or_else(|| remote_binding_error(format!("compatibility binding is missing {pointer}")))
+}
+
+/// Verify a remotely supplied A2A compatibility binding against a trusted
+/// native JACS root.
+///
+/// This is the trust bridge used by strict A2A verification. It is deliberately
+/// stateless: the relying party supplies the root key it already trusts, the
+/// identity/version expected from the Agent Card, the card's binding hash, and
+/// the exact JWKS entry that verified the ES256 card signature. A
+/// self-advertised JWKS key alone never establishes the claimed JACS identity.
+///
+/// The verifier checks schema, full v2 signature coverage, root fingerprint and
+/// algorithm, native signature, agent id/version, content hash, ES256 JWK and
+/// RFC 7638 `kid`, `a2a-agent-card` scope, issuance/expiry timestamps, a hard
+/// seven-day `issuedAt` freshness window with five-minute future skew, and the
+/// card-to-binding hash reference.
+pub fn verify_remote_a2a_binding(
+    binding: &Value,
+    expected_agent_id: &str,
+    expected_agent_version: &str,
+    expected_binding_hash: &str,
+    expected_compat_jwk: &Value,
+    trusted_native_public_key: &[u8],
+) -> Result<BindingVerification, JacsError> {
+    let schema = crate::schema::Schema::new("v1", "v1", "v1")?;
+    schema.validate_compat_binding(&serde_json::to_string(binding)?)?;
+
+    let body = binding
+        .get("compatibilityKeyBinding")
+        .ok_or_else(|| remote_binding_error("compatibility binding body is missing"))?;
+    let signature = binding
+        .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+        .ok_or_else(|| remote_binding_error("compatibility binding native signature is missing"))?;
+
+    let body_agent_id = required_str(binding, "/compatibilityKeyBinding/agentId")?;
+    let signer_agent_id = required_str(binding, "/jacsSignature/agentID")?;
+    let signer_agent_version = required_str(binding, "/jacsSignature/agentVersion")?;
+    if body_agent_id != expected_agent_id || signer_agent_id != expected_agent_id {
+        return Err(remote_binding_error(format!(
+            "compatibility binding agent identity mismatch: expected '{expected_agent_id}', \
+             body claims '{body_agent_id}', signer claims '{signer_agent_id}'"
+        )));
+    }
+    if signer_agent_version != expected_agent_version {
+        return Err(remote_binding_error(format!(
+            "compatibility binding signer version mismatch: expected '{expected_agent_version}', \
+             got '{signer_agent_version}'"
+        )));
+    }
+
+    let declared_hash = required_str(binding, "/jacsSha256")?;
+    if declared_hash != expected_binding_hash {
+        return Err(remote_binding_error(format!(
+            "Agent Card compatibility binding hash '{expected_binding_hash}' does not match \
+             the resolved binding '{declared_hash}'"
+        )));
+    }
+    let mut hash_input = binding.clone();
+    hash_input
+        .as_object_mut()
+        .ok_or_else(|| remote_binding_error("compatibility binding must be a JSON object"))?
+        .remove(SHA256_FIELDNAME);
+    let canonical = jacs_core::canonical::canonicalize_json_try(&hash_input).map_err(|error| {
+        remote_binding_error(format!("binding canonicalization failed: {error}"))
+    })?;
+    let computed_hash = crate::crypt::hash::hash_string(&canonical);
+    if declared_hash != computed_hash {
+        return Err(remote_binding_error(format!(
+            "compatibility binding content hash mismatch: declared '{declared_hash}', computed \
+             '{computed_hash}'"
+        )));
+    }
+
+    let scope = body
+        .get("scope")
+        .and_then(Value::as_array)
+        .ok_or_else(|| remote_binding_error("compatibility binding scope is missing"))?;
+    if !scope.iter().any(|entry| entry == "a2a-agent-card") {
+        return Err(remote_binding_error(
+            "compatibility binding does not grant required 'a2a-agent-card' scope",
+        ));
+    }
+
+    let issued_at = required_str(binding, "/compatibilityKeyBinding/issuedAt")?;
+    let issued_at_instant = chrono::DateTime::parse_from_rfc3339(issued_at)
+        .map(|value| value.with_timezone(&chrono::Utc))
+        .map_err(|error| {
+            remote_binding_error(format!(
+                "compatibility binding issuedAt is invalid: {error}"
+            ))
+        })?;
+    let now = crate::time_utils::now_utc();
+    let latest_accepted = now + chrono::Duration::seconds(STRICT_A2A_BINDING_MAX_FUTURE_SECONDS);
+    if issued_at_instant > latest_accepted {
+        return Err(remote_binding_error(format!(
+            "compatibility binding issuedAt '{issued_at}' is too far in the future; Strict A2A \
+             allows at most {} seconds of clock skew",
+            STRICT_A2A_BINDING_MAX_FUTURE_SECONDS
+        )));
+    }
+    let oldest_accepted = now - chrono::Duration::seconds(STRICT_A2A_BINDING_MAX_AGE_SECONDS);
+    if issued_at_instant < oldest_accepted {
+        return Err(remote_binding_error(format!(
+            "compatibility binding issuedAt '{issued_at}' is stale; Strict A2A accepts bindings \
+             for at most {} seconds after issuance",
+            STRICT_A2A_BINDING_MAX_AGE_SECONDS
+        )));
+    }
+    if let Some(expires_at) = body.get("expiresAt").and_then(Value::as_str) {
+        match expiry_denies(expires_at) {
+            Ok(false) => {}
+            Ok(true) => {
+                return Err(remote_binding_error(format!(
+                    "compatibility binding expired at {expires_at}"
+                )));
+            }
+            Err(error) => {
+                return Err(remote_binding_error(format!(
+                    "compatibility binding expiresAt is invalid: {error}"
+                )));
+            }
+        }
+    }
+
+    for (pointer, expected) in [
+        (
+            "/compatibilityKeyBinding/compatibilityKey/algorithm",
+            "ES256",
+        ),
+        (
+            "/compatibilityKeyBinding/compatibilityKey/publicJwk/kty",
+            "EC",
+        ),
+        (
+            "/compatibilityKeyBinding/compatibilityKey/publicJwk/crv",
+            "P-256",
+        ),
+        ("/alg", "ES256"),
+        ("/kty", "EC"),
+        ("/crv", "P-256"),
+        ("/use", "sig"),
+    ] {
+        let actual = if pointer.starts_with("/compatibility") {
+            required_str(binding, pointer)?
+        } else {
+            expected_compat_jwk
+                .pointer(pointer)
+                .and_then(Value::as_str)
+                .ok_or_else(|| remote_binding_error(format!("A2A JWKS key is missing {pointer}")))?
+        };
+        if actual != expected {
+            return Err(remote_binding_error(format!(
+                "A2A compatibility key {pointer} must be '{expected}', got '{actual}'"
+            )));
+        }
+    }
+
+    let binding_kid = required_str(binding, "/compatibilityKeyBinding/compatibilityKey/kid")?;
+    let jwks_kid = required_str(expected_compat_jwk, "/kid")?;
+    if binding_kid != jwks_kid {
+        return Err(remote_binding_error(format!(
+            "compatibility binding kid '{binding_kid}' does not match JWKS kid '{jwks_kid}'"
+        )));
+    }
+    let binding_x = required_str(
+        binding,
+        "/compatibilityKeyBinding/compatibilityKey/publicJwk/x",
+    )?;
+    let binding_y = required_str(
+        binding,
+        "/compatibilityKeyBinding/compatibilityKey/publicJwk/y",
+    )?;
+    let jwks_x = required_str(expected_compat_jwk, "/x")?;
+    let jwks_y = required_str(expected_compat_jwk, "/y")?;
+    if binding_x != jwks_x || binding_y != jwks_y {
+        return Err(remote_binding_error(
+            "compatibility binding public JWK does not match the JWKS key that verified the card",
+        ));
+    }
+    let x = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(jwks_x)
+        .map_err(|error| remote_binding_error(format!("invalid P-256 JWK x: {error}")))?;
+    let y = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(jwks_y)
+        .map_err(|error| remote_binding_error(format!("invalid P-256 JWK y: {error}")))?;
+    if x.len() != 32 || y.len() != 32 {
+        return Err(remote_binding_error(format!(
+            "P-256 JWK coordinates must each be 32 bytes (got x={}, y={})",
+            x.len(),
+            y.len()
+        )));
+    }
+    let mut sec1 = Vec::with_capacity(65);
+    sec1.push(0x04);
+    sec1.extend_from_slice(&x);
+    sec1.extend_from_slice(&y);
+    let computed_kid = crate::crypt::es256::rfc7638_thumbprint_p256(&sec1)?;
+    if computed_kid != binding_kid {
+        return Err(remote_binding_error(format!(
+            "compatibility key kid is not the RFC 7638 thumbprint of its JWK: declared \
+             '{binding_kid}', computed '{computed_kid}'"
+        )));
+    }
+
+    let trusted_root_hash = crate::crypt::hash::hash_public_key(trusted_native_public_key);
+    let root_kid = required_str(binding, "/compatibilityKeyBinding/rootKey/kid")?;
+    let signature_kid = required_str(binding, "/jacsSignature/publicKeyHash")?;
+    if root_kid != trusted_root_hash || signature_kid != trusted_root_hash {
+        return Err(remote_binding_error(format!(
+            "compatibility binding native root mismatch: trusted root hash is \
+             '{trusted_root_hash}', binding root is '{root_kid}', signature root is \
+             '{signature_kid}'"
+        )));
+    }
+    let root_algorithm = required_str(binding, "/compatibilityKeyBinding/rootKey/algorithm")?;
+    let signature_algorithm = required_str(binding, "/jacsSignature/signingAlgorithm")?;
+    if root_algorithm != signature_algorithm {
+        return Err(remote_binding_error(format!(
+            "compatibility binding root algorithm '{root_algorithm}' does not match native \
+             signature algorithm '{signature_algorithm}'"
+        )));
+    }
+    if !matches!(root_algorithm, "pq2025" | "ring-Ed25519") {
+        return Err(remote_binding_error(format!(
+            "unsupported compatibility binding root algorithm '{root_algorithm}'"
+        )));
+    }
+
+    if signature
+        .get(SIGNATURE_CONTENT_VERSION_FIELDNAME)
+        .and_then(Value::as_str)
+        != Some(SIGNATURE_CONTENT_VERSION_V2)
+    {
+        return Err(remote_binding_error(
+            "compatibility binding must use fully authenticated v2 signature content",
+        ));
+    }
+    if signature
+        .get("iat")
+        .and_then(Value::as_i64)
+        .is_none_or(|iat| iat < 0)
+    {
+        return Err(remote_binding_error(
+            "compatibility binding signature has missing or invalid iat",
+        ));
+    }
+    if signature
+        .get("jti")
+        .and_then(Value::as_str)
+        .is_none_or(|jti| jti.trim().is_empty())
+    {
+        return Err(remote_binding_error(
+            "compatibility binding signature has missing or empty jti",
+        ));
+    }
+    chrono::DateTime::parse_from_rfc3339(required_str(binding, "/jacsSignature/date")?).map_err(
+        |error| remote_binding_error(format!("binding signature date is invalid: {error}")),
+    )?;
+
+    let fields = extract_signature_fields(binding, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+        .ok_or_else(|| remote_binding_error("compatibility binding v2 signature fields missing"))?;
+    let signed_set: BTreeSet<&str> = fields.iter().map(String::as_str).collect();
+    if signed_set.len() != fields.len() {
+        return Err(remote_binding_error(
+            "compatibility binding signature fields contain duplicates",
+        ));
+    }
+    let expected_set: BTreeSet<&str> = binding
+        .as_object()
+        .ok_or_else(|| remote_binding_error("compatibility binding must be an object"))?
+        .keys()
+        .map(String::as_str)
+        .filter(|key| {
+            *key != DOCUMENT_AGENT_SIGNATURE_FIELDNAME && !JACS_IGNORE_FIELDS.contains(key)
+        })
+        .collect();
+    if signed_set != expected_set {
+        return Err(remote_binding_error(format!(
+            "compatibility binding signature does not cover every non-reserved top-level field: \
+             signed={signed_set:?}, expected={expected_set:?}"
+        )));
+    }
+    let signing_input = build_signature_content_v2(
+        binding,
+        fields,
+        DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+        signature,
+    )?;
+    let signature_base64 = required_str(binding, "/jacsSignature/signature")?;
+    crate::crypt::verify_string_with_algorithm(
+        trusted_native_public_key.to_vec(),
+        &signing_input,
+        signature_base64,
+        root_algorithm,
+    )?;
+
+    Ok(BindingVerification {
+        valid: true,
+        reason: "ok".to_string(),
+        scopes: scope
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+    })
+}
+
 /// Verify a binding document against the CURRENT agent: schema-valid,
 /// signed by the agent's CURRENT native root (a binding signed by a
 /// rotated-away root is superseded), ES256 key material matches the
-/// on-disk ecosystem key, and not expired.
+/// on-disk ecosystem key, signer/body identity and signer version match the
+/// current agent, and the binding is not expired.
 pub fn verify_compat_binding(
     agent: &Agent,
     key_directory: &str,
@@ -246,6 +591,16 @@ pub(crate) fn verify_compat_binding_ctx(
     key_directory: &str,
     binding: &Value,
     requested_export: Option<&str>,
+) -> Result<BindingVerification, JacsError> {
+    verify_compat_binding_ctx_internal(agent, key_directory, binding, requested_export, true)
+}
+
+fn verify_compat_binding_ctx_internal(
+    agent: &Agent,
+    key_directory: &str,
+    binding: &Value,
+    requested_export: Option<&str>,
+    enforce_current_identity: bool,
 ) -> Result<BindingVerification, JacsError> {
     // §9.8 identity fields for the WARN: the agent id and the compat kid
     // the binding CLAIMS (empty when the document is malformed).
@@ -419,6 +774,41 @@ pub(crate) fn verify_compat_binding_ctx(
         }
     }
 
+    // 7. The binding is configuration for this exact current agent version.
+    // A same-root agent update authenticates a new version, but the prior
+    // binding must not silently authorize a card claiming that new version.
+    // Identity exports may reissue an otherwise-authentic stale-version
+    // binding; arbitrary ID mismatches remain hard failures.
+    if enforce_current_identity {
+        let current_id = agent.get_id()?;
+        let current_version = agent.get_version()?;
+        let body_agent_id = body["agentId"].as_str().unwrap_or("");
+        let signer_agent_id = binding[DOCUMENT_AGENT_SIGNATURE_FIELDNAME]["agentID"]
+            .as_str()
+            .unwrap_or("");
+        if body_agent_id != current_id || signer_agent_id != current_id {
+            return fail(
+                "identity_mismatch",
+                format!(
+                    "binding identity does not match the current agent: current '{current_id}', \
+                     body '{body_agent_id}', signer '{signer_agent_id}'"
+                ),
+            );
+        }
+        let signer_version = binding[DOCUMENT_AGENT_SIGNATURE_FIELDNAME]["agentVersion"]
+            .as_str()
+            .unwrap_or("");
+        if signer_version != current_version {
+            return fail(
+                "version_mismatch",
+                format!(
+                    "binding signer agentVersion '{signer_version}' does not match current agent \
+                     version '{current_version}'; re-issue the compatibility binding"
+                ),
+            );
+        }
+    }
+
     let scopes = body["scope"]
         .as_array()
         .map(|a| {
@@ -433,6 +823,38 @@ pub(crate) fn verify_compat_binding_ctx(
         reason: "ok".to_string(),
         scopes,
     })
+}
+
+/// Whether `binding` is fully valid under the current root, compatibility key,
+/// hash, watermark, and expiry but was signed for an earlier version of this
+/// same agent. Identity exporters use this narrow predicate to repair a normal
+/// same-root agent update without treating corruption or identity substitution
+/// as a reason to invoke the native signing key.
+pub(crate) fn authentic_binding_has_stale_agent_version(
+    agent: &Agent,
+    key_directory: &str,
+    binding: &Value,
+) -> Result<bool, JacsError> {
+    let current_id = agent.get_id()?;
+    let current_version = agent.get_version()?;
+    let body_agent_id = binding["compatibilityKeyBinding"]["agentId"]
+        .as_str()
+        .unwrap_or("");
+    let signer_agent_id = binding[DOCUMENT_AGENT_SIGNATURE_FIELDNAME]["agentID"]
+        .as_str()
+        .unwrap_or("");
+    let signer_version = binding[DOCUMENT_AGENT_SIGNATURE_FIELDNAME]["agentVersion"]
+        .as_str()
+        .unwrap_or("");
+    if body_agent_id != current_id
+        || signer_agent_id != current_id
+        || signer_version.is_empty()
+        || signer_version == current_version
+    {
+        return Ok(false);
+    }
+    let verdict = verify_compat_binding_ctx_internal(agent, key_directory, binding, None, false)?;
+    Ok(verdict.valid)
 }
 
 /// Authorization gate used by exporters: the CURRENT binding must verify
@@ -480,7 +902,7 @@ pub(crate) fn require_scope_on(
             format = %scope,
             required_scope = %scope,
             binding_hash = %binding_hash(&binding),
-            "export denied: scope not granted by the PQ-root-signed binding"
+            "export denied: scope not granted by the native-root-signed binding"
         );
         super::record_export_error(scope, "scope_denied");
         let mut tags = std::collections::HashMap::new();
@@ -492,7 +914,7 @@ pub(crate) fn require_scope_on(
         );
         return Err(JacsError::ValidationError(format!(
             "scope '{scope}' is not granted by the compatibility binding; re-issue the binding \
-             with that scope (requires the PQ root)"
+             with that scope (requires the current native root)"
         )));
     }
     Ok(binding)
@@ -516,12 +938,8 @@ pub(crate) fn compat_enrichment_if_authorized(
     agent: &Agent,
     scope: &str,
 ) -> Result<Option<(crate::keystore::compat::CompatKeyInfo, Value)>, JacsError> {
-    let key_directory = match agent.config.as_ref() {
-        Some(config) => config.jacs_key_directory().clone().unwrap_or_else(|| {
-            crate::paths::local_keys_dir()
-                .to_string_lossy()
-                .into_owned()
-        }),
+    let key_directory = match agent.key_paths() {
+        Some(paths) => paths.key_directory.clone(),
         None => return Ok(None),
     };
     let compat = match crate::keystore::compat::probe_ecosystem_key_info(&key_directory) {

@@ -24,8 +24,8 @@ npm install
 ```bash
 # Create a new agent in this directory
 cd examples/langchain
-npx jacs init
-npx jacs create
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+npx jacs-cli quickstart --name langchain-agent --domain langchain.local
 
 # Or set the config path if you have an existing agent
 export JACS_CONFIG=./path/to/jacs.config.json
@@ -145,7 +145,7 @@ for (const signedOutput of callback.auditTrail.getAll()) {
 
 This project uses ES modules. The examples require:
 
-- Node.js 18+ (for native fetch)
+- Node.js 20+ (matching the JACS Node package runtime contract)
 - tsx for running TypeScript directly
 
 See `tsconfig.json` for the full configuration.

@@ -65,13 +65,13 @@
     },
     {
       "path": "agent export-compat-binding",
-      "about": "Export the PQ-root-signed compatibility key binding (traces the ES256 key to the post-quantum root)",
+      "about": "Export the native-root-signed compatibility key binding (traces the ES256 key to the agent's native root)",
       "mcp_tool": null,
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     },
     {
       "path": "agent issue-compat-binding",
-      "about": "Issue (or re-issue) the PQ-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command",
+      "about": "Issue (or re-issue) the native-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command",
       "mcp_tool": null,
       "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     },

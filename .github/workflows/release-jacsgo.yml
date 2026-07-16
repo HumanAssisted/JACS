@@ -1,0 +1,330 @@
+name: Release jacsgo Native Libraries
+
+on:
+  push:
+    tags:
+      - "jacsgo/v*"
+
+permissions: {}
+
+concurrency:
+  group: release-jacsgo-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/jacsgo.yml
+
+  verify-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate and extract release tag
+        id: version
+        run: python3 scripts/release_tag.py --surface jacsgo
+
+      - name: Verify Go library version matches tag
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' jacsgo/lib/Cargo.toml | head -1)"
+          if [[ "$cargo_version" != "$TAG_VERSION" ]]; then
+            echo "::error::jacsgo/lib/Cargo.toml is $cargo_version but the tag is $TAG_VERSION"
+            exit 1
+          fi
+
+  build:
+    needs: [verify-version, functional-gate]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            goos: darwin
+            goarch: arm64
+            extension: dylib
+          - os: macos-14
+            target: x86_64-apple-darwin
+            goos: darwin
+            goarch: amd64
+            extension: dylib
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            goos: linux
+            goarch: amd64
+            extension: so
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            goos: linux
+            goarch: arm64
+            extension: so
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.verify-version.outputs.version }}
+      ASSET_NAME: jacsgo-v${{ needs.verify-version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.extension }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Linux native build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97"
+          targets: ${{ matrix.target }}
+
+      - name: Build native library
+        run: cargo build --locked --release -p jacsgo --target ${{ matrix.target }}
+
+      - name: Stage native library and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir dist
+          cp "target/${{ matrix.target }}/release/libjacsgo.${{ matrix.extension }}" "dist/${ASSET_NAME}"
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ASSET_NAME" > "$ASSET_NAME.sha256"
+          else
+            shasum -a 256 "$ASSET_NAME" > "$ASSET_NAME.sha256"
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacsgo-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  prepare-release:
+    needs: [verify-version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.verify-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Stage project license and third-party notices
+        run: |
+          cp LICENSE-APACHE artifacts/LICENSE-APACHE
+          cp THIRD-PARTY-NOTICES artifacts/THIRD-PARTY-NOTICES
+
+      - name: Build checksum manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="jacsgo-v${VERSION}-sha256sums.txt"
+          find artifacts -maxdepth 1 -type f -name '*.sha256' -exec cat {} \; | sort -k2 > "$manifest"
+          expected=4
+          actual="$(wc -l < "$manifest" | tr -d ' ')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::expected $expected native checksums, found $actual"
+            exit 1
+          fi
+          cd artifacts
+          sha256sum -c "../$manifest"
+
+      - name: Generate Go native-library SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: artifacts
+          format: spdx-json
+          output-file: jacsgo.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate Go native-library SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacsgo.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacsgo.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacsgo-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: |
+            artifacts/*
+            jacsgo-v${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            jacsgo.spdx.json
+          if-no-files-found: error
+
+  candidate-consumer-smoke:
+    needs: [verify-version, prepare-release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            goarch: arm64
+          - os: macos-14
+            goarch: amd64
+          - os: ubuntu-latest
+            goarch: amd64
+          - os: ubuntu-24.04-arm
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.verify-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.21"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacsgo-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: candidate
+
+      - name: Confirm runner architecture
+        shell: bash
+        run: test "$(go env GOARCH)" = "${{ matrix.goarch }}"
+
+      - name: Verify and run an external consumer against the staged native library
+        run: bash jacsgo/scripts/staged-consumer-smoke.sh "$VERSION" "$GITHUB_WORKSPACE/candidate"
+
+  release:
+    needs: [security-gate, verify-version, prepare-release, candidate-consumer-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacsgo-${{ needs.verify-version.outputs.version }}-release-bundle
+
+      - name: Attest Go native libraries, checksums, and SBOM
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            artifacts/*
+            jacsgo-v${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            jacsgo.spdx.json
+
+      - name: Create jacsgo release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: jacsgo/v${{ needs.verify-version.outputs.version }}
+          name: jacsgo v${{ needs.verify-version.outputs.version }}
+          body: |
+            Versioned Go module source and checksum-verified native libraries.
+
+            Install from an external Go module:
+
+            ```bash
+            go get github.com/HumanAssisted/JACS/jacsgo@v${{ needs.verify-version.outputs.version }}
+            go mod vendor
+            go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v${{ needs.verify-version.outputs.version }} -version v${{ needs.verify-version.outputs.version }}
+            ```
+
+            Supported prebuilt targets: macOS arm64/amd64 and glibc Linux arm64/amd64.
+
+            GitHub build provenance is attached to every native library,
+            checksum manifest, and SBOM. Verify a download with
+            `gh attestation verify <artifact> --repo HumanAssisted/JACS`.
+          files: |
+            artifacts/*
+            jacsgo-v${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            jacsgo.spdx.json
+
+  verify-release-attestations:
+    needs: [verify-version, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download and verify every public Go release asset attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: jacsgo/v${{ needs.verify-version.outputs.version }}
+        run: |
+          python3 scripts/verify_github_release_attestations.py \
+            "$RELEASE_TAG" \
+            "HumanAssisted/JACS/.github/workflows/release-jacsgo.yml"
+
+  external-consumer-smoke:
+    needs: [verify-version, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            goarch: arm64
+          - os: macos-14
+            goarch: amd64
+          - os: ubuntu-latest
+            goarch: amd64
+          - os: ubuntu-24.04-arm
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.21"
+
+      - name: Confirm runner architecture
+        shell: bash
+        run: test "$(go env GOARCH)" = "${{ matrix.goarch }}"
+
+      - name: Build and run an external consumer from the semantic tag
+        env:
+          GOPROXY: direct
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: bash jacsgo/scripts/external-consumer-smoke.sh "v$VERSION"

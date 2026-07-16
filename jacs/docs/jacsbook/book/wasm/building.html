@@ -179,14 +179,26 @@
 web page needs to create a browser-local JACS agent, sign JSON, verify
 signed JACS documents, or collect multi-party agreement signatures
 without calling a backend service.</p>
+<blockquote>
+<p><strong>Distribution status (observed 2026-07-11):</strong> <code>@jacs/wasm</code> is not published
+on npm. The API on this page is available from a source build; the registry
+install command becomes valid only after a release is published and
+smoke-tested.</p>
+</blockquote>
 <p>For Node.js server applications, use the native <code>@hai.ai/jacs</code> package
 instead. <code>@jacs/wasm</code> is browser-only: no filesystem access, no DNS
 trust lookup, no MCP server, and no CLI process.</p>
-<h2 id="install"><a class="header" href="#install">Install</a></h2>
-<pre><code class="language-sh">npm install @jacs/wasm
+<h2 id="build-and-install-today"><a class="header" href="#build-and-install-today">Build and install today</a></h2>
+<pre><code class="language-sh">git clone https://github.com/HumanAssisted/JACS.git
+cd JACS
+make build-wasm
+# From your consuming project:
+npm install /absolute/path/to/JACS/jacs-wasm/pkg
 </code></pre>
 <p>Bundlers must be able to load an ES module plus the generated
-<code>jacs_wasm_bg.wasm</code> asset. Vite works with the package as published.</p>
+<code>jacs_wasm_bg.wasm</code> asset. The source package is smoke-tested with Vite and
+Chromium. After the first registry publication, the consumer command becomes
+<code>npm install @jacs/wasm</code>.</p>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><code class="language-ts">import { createEphemeral, initJacsWasm } from "@jacs/wasm";
 

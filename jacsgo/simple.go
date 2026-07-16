@@ -20,7 +20,8 @@ var (
 type CreateAgentOptions struct {
 	// Password for encrypting the private key. Required unless JACS_PRIVATE_KEY_PASSWORD is set.
 	Password string
-	// Algorithm is the signing algorithm: "pq2025" (default) or "ring-Ed25519".
+	// Algorithm is the signing algorithm: "pq2025" (default) or "ed25519".
+	// "ring-Ed25519" remains accepted as a legacy input alias.
 	Algorithm string
 	// DataDirectory is the directory for agent data (default: "./jacs_data").
 	DataDirectory string
@@ -354,16 +355,22 @@ func Verify(signedDocument string) (*VerificationResult, error) {
 
 	// Verify using agent
 	err := globalAgent.VerifyDocument(signedDocument)
+	legacySignature := false
+	if signature, ok := doc["jacsSignature"].(map[string]interface{}); ok {
+		_, hasContentVersion := signature["signatureContentVersion"]
+		legacySignature = !hasContentVersion
+	}
 
 	result := &VerificationResult{
-		Valid:     err == nil,
-		SignerID:  getNestedStringField(doc, "jacsSignature", "agentID"),
-		Timestamp: getNestedStringField(doc, "jacsSignature", "date"),
-		Data:      doc["content"],
+		Valid: err == nil,
+		Data:  doc["content"],
 	}
 
 	if err != nil {
 		result.Errors = []string{err.Error()}
+	} else if !legacySignature {
+		result.SignerID = getNestedStringField(doc, "jacsSignature", "agentID")
+		result.Timestamp = getNestedStringField(doc, "jacsSignature", "date")
 	}
 
 	return result, nil

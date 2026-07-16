@@ -10,11 +10,13 @@
 //! independent of wall-clock time. This is a deliberate design choice:
 //! provenance and identity signatures are archival.
 //!
-//! The single exception is HTTP / RPC payload envelopes, where replay
-//! protection lives in `crate::replay` and is controlled by
-//! `JACS_PAYLOAD_MAX_REPLAY_SECONDS` (default 300s). That module is the
-//! only place in the codebase that enforces signature freshness, and it
-//! applies only to short-lived payloads — never to documents.
+//! Two trust-boundary artifacts have explicit freshness policies without
+//! changing archival document-signature semantics:
+//! - HTTP / RPC payload envelopes use `crate::replay`, controlled by
+//!   `JACS_PAYLOAD_MAX_REPLAY_SECONDS` (default 300s).
+//! - Strict A2A identity admission accepts a native-root-signed compatibility
+//!   binding for at most seven days after `issuedAt` (with this module's
+//!   five-minute future skew); discovery refreshes it after six days.
 //!
 //! Future work: cross-check `iat` against the signing key's rotation
 //! timeline so signatures produced by a key that has since been rotated
@@ -189,7 +191,8 @@ pub fn validate_timestamp_not_expired(
 /// a forgery. There is **no** maximum-age check: JACS document and
 /// agent-identity signatures are archival and valid for the working life
 /// of their signing key. Replay protection for HTTP / RPC payloads is
-/// handled separately in `crate::replay`.
+/// handled separately in `crate::replay`; Strict A2A compatibility-binding
+/// freshness is handled by `crate::compatibility::binding`.
 ///
 /// # Arguments
 ///

@@ -1,0 +1,10 @@
+# Reviewed 2026-07-09. Exact historical fingerprints only; never allowlist a
+# whole path or detector rule. These private-key bytes remain intentionally in
+# the current tree as deterministic test fixtures under
+# jacs/tests/fixtures/keys/agent-{one,two}.private.pem. They are public test
+# material and must never be used as trusted credentials. The fingerprints
+# below suppress only their original historical findings.
+84378541f6b6ab878604210b251dbae4fb015f20:jacs-mcp/README.md:generic-api-key:9
+0a5106987fd95aac4d6858905fe1c74d85663320:jacs/src/simple/core.rs:generic-api-key:703
+64d1171736a9342ab3ce68586bc39131d5a48fda:examples/keys/agent_two_private.pem:private-key:1
+64d1171736a9342ab3ce68586bc39131d5a48fda:examples/keys/agent_one_private.pem:private-key:1

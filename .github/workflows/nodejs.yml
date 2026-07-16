@@ -1,11 +1,14 @@
 name: Node.js (jacsnpm)
 
 on:
+  workflow_call:
   push:
     branches: ["main"]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
+      - 'jacs-core/**'
+      - 'jacs-media/**'
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   pull_request:
@@ -13,9 +16,14 @@ on:
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
+      - 'jacs-core/**'
+      - 'jacs-media/**'
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   workflow_dispatch: # Allows manual triggering
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,10 +44,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
           toolchain: "1.97"
 
@@ -47,22 +57,22 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: jacsnpm/package-lock.json
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Install dependencies
         working-directory: jacsnpm
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run npm audit
         working-directory: jacsnpm
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
 
       - name: Build native module
         working-directory: jacsnpm
@@ -107,4 +117,7 @@ jobs:
           cd /tmp/jacs-npm-smoke
           npm init -y >/dev/null
           npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
+          test -f node_modules/@hai.ai/jacs/bin/jacs-cli.js
+          test ! -e node_modules/@hai.ai/jacs/bin/jacs-cli
+          test ! -e node_modules/@hai.ai/jacs/bin/jacs-cli.exe
           ls node_modules/@hai.ai/jacs/package.json && echo "smoke install ok"

@@ -208,7 +208,7 @@ anything beyond the schema's required core fields. Operators granting the
 payloads.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <p>The <code>ap2-mandate</code> binding scope is a <strong>content scope</strong>: it is never
-auto-issued. Grant it explicitly first (this requires the PQ root's
+auto-issued. Grant it explicitly first (this requires the native root's
 signature):</p>
 <pre><code class="language-bash">jacs agent issue-compat-binding \
   --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate
@@ -227,10 +227,10 @@ agent's JWKS — see the committed reference verifier:</p>
 npm install jose canonicalize
 node scripts/smoke/verify_ap2_jws.mjs export.json jwks.json
 </code></pre>
-<p><strong>Classical verification is not PQ trust.</strong> The ES256 check proves
+<p><strong>Classical verification is not native-root trust.</strong> The ES256 check proves
 possession of the compatibility key only. To trace the mandate to the
-agent's post-quantum root, a JACS-aware relying party additionally
-verifies the PQ-signed compatibility key binding
+agent's native root, a JACS-aware relying party additionally verifies the
+native-root-signed compatibility key binding
 (<code>jacs agent export-compat-binding</code>) whose content hash the export
 references. Native JACS documents are never touched by this export —
 signing a mandate does not create or modify any <code>jacsSignature</code>.</p>

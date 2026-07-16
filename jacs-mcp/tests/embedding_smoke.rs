@@ -3,13 +3,17 @@
 mod support;
 
 use rmcp::ServerHandler;
-use support::{ENV_LOCK, ScopedEnvVar, TEST_PASSWORD, cleanup_workspace, prepare_temp_workspace};
+use support::{
+    ENV_LOCK, LEGACY_SIGNATURE_CONTENT_ENV_VAR, ScopedEnvVar, TEST_PASSWORD, cleanup_workspace,
+    prepare_temp_workspace,
+};
 
 #[test]
 fn embedders_can_construct_server_in_process() -> anyhow::Result<()> {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let (config_path, workspace) = prepare_temp_workspace();
     let _password = ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    let _legacy_fixture = ScopedEnvVar::set(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true");
 
     let agent = jacs_mcp::load_agent_from_config_path(&config_path)?;
     let server = jacs_mcp::JacsMcpServer::new(agent);

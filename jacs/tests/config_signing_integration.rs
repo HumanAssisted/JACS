@@ -7,6 +7,7 @@
 
 mod utils;
 
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::simple::{self, CreateAgentParams, SimpleAgent, advanced};
 use serde_json::Value;
 use serial_test::serial;
@@ -40,9 +41,8 @@ fn create_test_agent(name: &str) -> (SimpleAgent, simple::AgentInfo, tempfile::T
         .config_path("./jacs.config.json")
         .build();
 
-    // Build a GRANDFATHERED Ed25519 agent via the legacy/test-only escape
-    // hatch: public creation paths are PQ-only (P2 Task 001), but these
-    // tests exercise pre-P2 agents (old-algorithm proofs, migration on
+    // Build a historical Ed25519 agent via the legacy/test-only escape
+    // hatch. These tests exercise pre-P2 agents (old-algorithm proofs, migration on
     // rotation), so they need a genuine Ed25519 root.
     let (agent, info) =
         SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params).expect("create test agent");
@@ -409,25 +409,24 @@ fn test_cross_algorithm_rotation_ed25519_to_pq2025() {
     );
 }
 
-/// P2 Task 001: rotation is the Ed25519->PQ migration path. A grandfathered
-/// Ed25519 agent that rotates with NO argument migrates to pq2025 — rotation
-/// never re-mints Ed25519 from config (the old config fallback is gone).
+/// Routine no-argument rotation preserves a grandfathered Ed25519 identity's
+/// algorithm. Moving to pq2025 remains an explicit, separately tested upgrade.
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn grandfathered_agent_rotation_migrates_to_pq2025() {
+fn grandfathered_agent_rotation_preserves_ed25519_by_default() {
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let (agent, _info, _tmp, _guard) = create_test_agent("grandfather-migrate-test");
 
     let result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
-    // Config on disk is stamped pq2025 — the agent is fully migrated.
+    // Config on disk remains aligned with the replacement Ed25519 key.
     let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
     let config: Value = serde_json::from_str(&config_str).expect("parse config");
     assert_eq!(
         config["jacs_agent_key_algorithm"].as_str(),
-        Some("pq2025"),
-        "No-argument rotation of a grandfathered Ed25519 agent must migrate to pq2025"
+        Some("ring-Ed25519"),
+        "No-argument rotation must preserve the current algorithm"
     );
 
     // The transition proof is signed with the OLD (Ed25519) key — the
@@ -441,22 +440,22 @@ fn grandfathered_agent_rotation_migrates_to_pq2025() {
         "Transition proof must be signed by the old Ed25519 key"
     );
 
-    // And the migrated agent signs + verifies with pq2025.
+    // And the replacement key signs + verifies with Ed25519.
     let signed = agent
         .sign_message(&serde_json::json!({"migrated": true}))
         .expect("sign after migration");
     let signed_value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
     assert_eq!(
         signed_value["jacsSignature"]["signingAlgorithm"].as_str(),
-        Some("pq2025"),
-        "post-migration signatures must be pq2025"
+        Some("ring-Ed25519"),
+        "post-rotation signatures must preserve Ed25519"
     );
     let verification = agent.verify(&signed.raw).expect("verify");
     assert!(verification.valid, "{:?}", verification.errors);
 }
 
-/// P2 Task 001: a grandfathered Ed25519 agent keeps signing (load-and-sign
-/// is grandfathered; only creation and rotation are PQ-only).
+/// Existing Ed25519 agents keep signing and remain reloadable. Rotation still
+/// defaults to the pq2025 migration target.
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn existing_ed25519_agent_still_signs_grandfathered() {
@@ -489,11 +488,11 @@ fn existing_ed25519_agent_still_signs_grandfathered() {
     );
 }
 
-/// P2 Task 001 / FR1: a config requesting ring-Ed25519 for a NEW agent does
-/// not mint an Ed25519 root — public creation resolves to pq2025 (+ WARN).
+/// A config requesting ring-Ed25519 for a new agent is honored without
+/// rewriting either the returned metadata or persisted configuration.
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn config_ed25519_does_not_create_new_ed25519_signing_agent() {
+fn config_ed25519_creates_matching_ed25519_signing_agent() {
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let saved_cwd = std::env::current_dir().expect("get cwd");
@@ -509,12 +508,17 @@ fn config_ed25519_does_not_create_new_ed25519_signing_agent() {
         .key_directory("./jacs_keys")
         .config_path("./jacs.config.json")
         .build();
-    let (_agent, info) =
-        SimpleAgent::create_with_params(params).expect("creation resolves, does not error");
-    assert!(
-        info.algorithm.contains("pq2025"),
-        "new-agent Ed25519 request must resolve to pq2025, got {}",
-        info.algorithm
+    let (agent, info) = SimpleAgent::create_with_params(params).expect("Ed25519 creation");
+    assert_eq!(info.algorithm, "ring-Ed25519");
+    assert_eq!(agent.get_public_key().expect("public key").len(), 32);
+
+    let signed = agent
+        .sign_message(&serde_json::json!({"algorithm": "ed25519"}))
+        .expect("Ed25519 signing");
+    let signed: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+    assert_eq!(
+        signed["jacsSignature"]["signingAlgorithm"].as_str(),
+        Some("ring-Ed25519")
     );
 
     let config: Value =
@@ -522,8 +526,8 @@ fn config_ed25519_does_not_create_new_ed25519_signing_agent() {
             .expect("parse");
     assert_eq!(
         config["jacs_agent_key_algorithm"].as_str(),
-        Some("pq2025"),
-        "config written for a NEW agent must record pq2025"
+        Some("ring-Ed25519"),
+        "config must record the algorithm actually minted"
     );
 }
 
@@ -582,7 +586,7 @@ fn test_crash_recovery_full_flow() {
         .expect("overwrite config with stale version");
 
     // Write a journal file to indicate incomplete rotation
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
@@ -591,6 +595,9 @@ fn test_crash_recovery_full_flow() {
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload the agent -- should auto-repair
     let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
@@ -809,8 +816,8 @@ fn test_rotate_journal_not_created_for_ephemeral() {
     let _guard = CwdGuard { saved: saved_cwd };
 
     // Create ephemeral agent (no disk state)
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("ring-Ed25519")).expect("create ephemeral agent");
+    let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("create grandfathered Ed25519 fixture");
 
     // Rotate the ephemeral agent
     let result = advanced::rotate(&agent, None).expect("ephemeral rotation should succeed");
@@ -880,7 +887,7 @@ fn test_crash_recovery_updates_id_and_version() {
         .expect("overwrite config with stale version");
 
     // Write a journal file
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
@@ -889,6 +896,9 @@ fn test_crash_recovery_updates_id_and_version() {
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload agent -- triggers auto-repair
     let _reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
@@ -943,13 +953,21 @@ fn test_crash_recovery_refuses_tampered_config_even_with_valid_journal() {
     let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
     tampered_config["agent_email"] = serde_json::json!("attacker@example.com");
+    let mut hash_input = tampered_config.clone();
+    hash_input
+        .as_object_mut()
+        .expect("config object")
+        .remove("jacsSha256");
+    let canonical = jacs_core::canonical::canonicalize_json_try(&hash_input)
+        .expect("canonicalize tampered config");
+    tampered_config["jacsSha256"] = serde_json::json!(jacs::crypt::hash::hash_string(&canonical));
     std::fs::write(
         "./jacs.config.json",
         serde_json::to_string_pretty(&tampered_config).expect("serialize tampered config"),
     )
     .expect("write tampered stale config");
 
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
@@ -958,9 +976,21 @@ fn test_crash_recovery_refuses_tampered_config_even_with_valid_journal() {
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
-    let _reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
-        .expect("agent should still load even when auto-repair is refused");
+    let load_result = SimpleAgent::load(Some("./jacs.config.json"), None);
+    assert!(
+        load_result.is_err(),
+        "tampered signed config must fail closed even when a journal exists"
+    );
+    let load_error = load_result.err().expect("tampered load error").to_string();
+    assert!(
+        load_error.contains("Signed config failed verification")
+            || load_error.contains("historical"),
+        "error must identify config integrity failure, got: {load_error}"
+    );
 
     let config_after_str =
         std::fs::read_to_string("./jacs.config.json").expect("read config after load");
@@ -982,4 +1012,247 @@ fn test_crash_recovery_refuses_tampered_config_even_with_valid_journal() {
         std::path::Path::new(&RotationJournal::journal_path("./jacs_keys")).exists(),
         "Journal should remain present when crash recovery is refused"
     );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn signed_config_signature_stripping_is_rejected_by_default() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (_agent, _info, _tmp, _guard) = create_test_agent("config-strip-test");
+
+    unsafe {
+        std::env::remove_var("JACS_ALLOW_UNSIGNED_AGENT_CONFIG");
+    }
+
+    let config_str = std::fs::read_to_string("./jacs.config.json").expect("read signed config");
+    let mut config: Value = serde_json::from_str(&config_str).expect("parse signed config");
+    for field in [
+        "jacsSignature",
+        "jacsSha256",
+        "jacsId",
+        "jacsVersion",
+        "jacsVersionDate",
+        "jacsType",
+        "jacsLevel",
+    ] {
+        config.as_object_mut().expect("config object").remove(field);
+    }
+    std::fs::write(
+        "./jacs.config.json",
+        serde_json::to_string_pretty(&config).expect("serialize stripped config"),
+    )
+    .expect("write stripped config");
+
+    let result = SimpleAgent::load(Some("./jacs.config.json"), None);
+    assert!(
+        result.is_err(),
+        "removing signed-config metadata must not downgrade an existing identity to unsigned"
+    );
+    assert!(
+        result
+            .err()
+            .expect("unsigned downgrade error")
+            .to_string()
+            .contains("unsigned agent config"),
+        "error should explain the explicit unsigned migration policy"
+    );
+
+    unsafe {
+        std::env::set_var("JACS_ALLOW_UNSIGNED_AGENT_CONFIG", "true");
+    }
+    let migrated = SimpleAgent::load(Some("./jacs.config.json"), None);
+    unsafe {
+        std::env::remove_var("JACS_ALLOW_UNSIGNED_AGENT_CONFIG");
+    }
+    assert!(
+        migrated.is_ok(),
+        "the explicit legacy-migration switch should allow a known unsigned identity: {:?}",
+        migrated.err()
+    );
+
+    config
+        .as_object_mut()
+        .expect("config object")
+        .remove("jacs_agent_id_and_version");
+    std::fs::write(
+        "./jacs.config.json",
+        serde_json::to_string_pretty(&config).expect("serialize identity-stripped config"),
+    )
+    .expect("write identity-stripped config");
+    let identity_stripped = SimpleAgent::load(Some("./jacs.config.json"), None);
+    assert!(
+        identity_stripped.is_err(),
+        "stripping both signature metadata and the identity must not turn load into a successful empty agent"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn signed_config_is_verified_before_storage_selection() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (_agent, _info, _tmp, _guard) = create_test_agent("config-storage-tamper-test");
+
+    let config_str = std::fs::read_to_string("./jacs.config.json").expect("read signed config");
+    let mut config: Value = serde_json::from_str(&config_str).expect("parse signed config");
+    config["jacs_default_storage"] = serde_json::json!("memory");
+    std::fs::write(
+        "./jacs.config.json",
+        serde_json::to_string_pretty(&config).expect("serialize tampered config"),
+    )
+    .expect("write tampered config");
+
+    let error = SimpleAgent::load(Some("./jacs.config.json"), None)
+        .err()
+        .expect("tampered config must fail")
+        .to_string();
+    assert!(
+        error.contains("Signed config failed verification"),
+        "signature failure must precede backend initialization, got: {error}"
+    );
+    assert!(
+        !error.contains("Unknown storage type"),
+        "untrusted storage selection must not run before verification"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn from_config_verifies_signature_before_applying_storage_selection() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (_agent, _info, _tmp, _guard) = create_test_agent("from-config-tamper-test");
+
+    let config_str = std::fs::read_to_string("./jacs.config.json").expect("read signed config");
+    let mut config_value: Value = serde_json::from_str(&config_str).expect("parse signed config");
+    config_value["jacs_default_storage"] = serde_json::json!("memory");
+    std::fs::write(
+        "./jacs.config.json",
+        serde_json::to_string_pretty(&config_value).expect("serialize tampered config"),
+    )
+    .expect("write tampered config");
+
+    let config = jacs::config::Config::from_file("./jacs.config.json")
+        .expect("tampered config remains structurally valid");
+    let error = jacs::agent::Agent::from_config(config, Some("ConfigSignTest!2026"))
+        .expect_err("Agent::from_config must reject tampered signed config")
+        .to_string();
+    assert!(
+        error.contains("Signed config failed verification"),
+        "canonical from_config path must fail on signature verification first, got: {error}"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn current_signed_config_does_not_require_historical_key_archive() {
+    use jacs::crypt::hash::hash_public_key;
+
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _info, _tmp, _guard) = create_test_agent("current-key-no-archive-test");
+    let current_hash = hash_public_key(agent.get_public_key().expect("current public key"));
+    std::fs::remove_file(format!("./jacs_data/public_keys/{current_hash}.pem"))
+        .expect("remove redundant content-addressed key");
+
+    SimpleAgent::load(Some("./jacs.config.json"), None)
+        .expect("current configured public key is sufficient for config verification");
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn signed_config_public_key_read_is_bounded_before_use() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (_agent, _info, _tmp, _guard) = create_test_agent("bounded-config-key-test");
+
+    std::fs::write("./jacs_keys/oversized.public", vec![0x41; 64 * 1024 + 1])
+        .expect("write oversized public key candidate");
+    let config_str = std::fs::read_to_string("./jacs.config.json").expect("read signed config");
+    let mut config: Value = serde_json::from_str(&config_str).expect("parse signed config");
+    config["jacs_agent_public_key_filename"] = serde_json::json!("oversized.public");
+    std::fs::write(
+        "./jacs.config.json",
+        serde_json::to_string_pretty(&config).expect("serialize tampered config"),
+    )
+    .expect("write tampered config");
+
+    unsafe {
+        std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
+    }
+    let error = SimpleAgent::load(Some("./jacs.config.json"), None)
+        .err()
+        .expect("oversized attacker-selected key must fail closed")
+        .to_string();
+    unsafe {
+        std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+    }
+    assert!(
+        error.contains("65536-byte limit"),
+        "bounded read should be visible in the failure, got: {error}"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn failed_config_load_does_not_partially_reconfigure_existing_agent() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (_agent, info, tmp, _guard) = create_test_agent("transactional-config-load-test");
+
+    let mut raw_agent = jacs::get_empty_agent();
+    raw_agent
+        .load_by_config("./jacs.config.json".to_string())
+        .expect("initial agent load");
+    let preserved_root = tmp.path().join("preserved-storage-root");
+    raw_agent
+        .set_storage_root(preserved_root.clone())
+        .expect("set distinguishable storage root");
+    let preserved_lookup = raw_agent.get_lookup_id().expect("loaded lookup");
+
+    std::fs::write(
+        "./jacs_keys/jacs.private.pem.enc",
+        b"not-an-encrypted-private-key",
+    )
+    .expect("corrupt private key after config preflight material is established");
+    let result = raw_agent.load_by_config("./jacs.config.json".to_string());
+    assert!(result.is_err(), "staged identity load should fail");
+    assert_eq!(
+        raw_agent
+            .get_lookup_id()
+            .expect("original identity retained"),
+        preserved_lookup
+    );
+    assert_eq!(
+        preserved_lookup,
+        format!("{}:{}", info.agent_id, info.version)
+    );
+    assert_eq!(
+        raw_agent.storage_ref().root(),
+        Some(preserved_root.as_path()),
+        "failed load must not commit its staged storage configuration"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn reencrypt_uses_authenticated_config_relative_key_path_outside_config_directory() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().expect("temp project");
+    let tmp_root = tmp.path().canonicalize().expect("canonical temp project");
+    let config_path = tmp_root.join("jacs.config.json");
+    let params = CreateAgentParams::builder()
+        .name("config-relative-reencrypt-test")
+        .password("ConfigRelativeOld!2026")
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path(config_path.to_str().expect("UTF-8 config path"))
+        .build();
+    let (agent, _info) =
+        SimpleAgent::create_with_params(params).expect("create config-relative agent");
+    let encrypted_key = tmp_root.join("jacs_keys/jacs.private.pem.enc");
+    assert!(
+        encrypted_key.is_file(),
+        "creation must resolve the key directory from the config location"
+    );
+
+    advanced::reencrypt_key(&agent, "ConfigRelativeOld!2026", "ConfigRelativeNew!2026")
+        .expect("re-encrypt through authenticated resolved key path");
+    advanced::reencrypt_key(&agent, "ConfigRelativeNew!2026", "ConfigRelativeOld!2026")
+        .expect("restored password proves the same config-relative key was selected");
 }

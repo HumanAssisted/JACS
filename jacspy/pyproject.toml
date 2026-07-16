@@ -1,13 +1,13 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"] 
-build-backend = "maturin"       
+requires = ["maturin==1.5.0"]
+build-backend = "maturin"
 [project]
 name = "jacs"
 version = "0.11.4"
 description = "JACS - JSON AI Communication Standard: Cryptographic signing and verification for AI agents."
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+requires-python = ">=3.10,<3.15"
+license = { file = "LICENSE-APACHE" }
 authors = [
     { name = "HAI.AI", email = "engineering@hai.io" },
 ]
@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Security :: Cryptography",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -86,10 +87,11 @@ constraint-dependencies = [
 ]
 
 [tool.maturin]
-features = ["extension-module", "agreements"]
+features = ["extension-module", "agreements", "a2a", "attestation"]
 module-name = "jacs"  
 python-source = "python" 
 binding = "pyo3"  
+include = ["THIRD-PARTY-NOTICES"]
 # binaries = ["jacs"]
 
  

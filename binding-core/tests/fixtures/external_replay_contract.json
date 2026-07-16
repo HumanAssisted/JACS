@@ -1,0 +1,93 @@
+{
+  "_description": "Cross-language contract for releasing a signed event through an application-owned shared replay store.",
+  "contractVersion": 1,
+  "preparation": {
+    "status": "crypto_verified_replay_pending",
+    "exactFieldSet": true,
+    "duplicateDecodedFields": "reject",
+    "eventDigest": "lowercase SHA-256 hex over the exact well-formed UTF-8 event string",
+    "replayScope": "signed-event:<signerId>",
+    "replayKey": "jacs-replay-v1:<UTF-8 byte length of replayScope>:<replayScope>:<documentId>",
+    "timestamp": "strict RFC 3339 instant with uppercase T and Z or a numeric offset; optional fraction is 1-9 digits",
+    "futureSkewSeconds": 300,
+    "expiryFormula": "floor(timestamp Unix seconds) + maxAgeSeconds",
+    "expiryBoundary": "inclusive; expired only when nowUnixSeconds > expiresAtUnixSeconds",
+    "ttlMinimum": "expiresAtUnixSeconds - nowUnixSeconds + 1",
+    "ttlMaximum": "maxAgeSeconds + futureSkewSeconds + 1",
+    "requiredFields": [
+      "contractVersion",
+      "status",
+      "cryptographicallyVerified",
+      "freshnessVerified",
+      "replayConsumed",
+      "signerId",
+      "timestamp",
+      "algorithm",
+      "documentId",
+      "eventSha256",
+      "replayKey",
+      "replayTtlSeconds",
+      "expiresAtUnixSeconds"
+    ],
+    "forbiddenFields": ["data", "valid", "verified"],
+    "fixedValues": {
+      "cryptographicallyVerified": true,
+      "freshnessVerified": true,
+      "replayConsumed": false
+    }
+  },
+  "sharedStore": {
+    "requiredScope": "shared",
+    "requiredName": "nonblank operational identifier",
+    "consumeAtomicity": "exactly one concurrent caller receives literal true for a new key",
+    "consumeExecution": "must be nonblocking; Node requires a declared async function and all runtimes require backend I/O to yield or run off the event loop",
+    "timeout": "helper returns by its configured deadline without releasing payload when a nonblocking backend ignores cancellation; a late backend side effect never authorizes payload release",
+    "errorRedaction": "backend names, causes, credentials, replay keys, signatures, and payloads are not exposed through public errors or causes",
+    "consumeTrueMeans": "first_use_accepted",
+    "consumeFalseMeans": "duplicate_rejected",
+    "errorSemantics": {
+      "wrongScope": "replay_store_not_shared",
+      "invalidName": "replay_store_invalid_result",
+      "metadataUnavailable": "replay_store_unavailable",
+      "backendUnavailable": "replay_store_unavailable",
+      "backendTimeout": "replay_store_timeout",
+      "duplicate": "replay_duplicate",
+      "invalidBackendResult": "replay_store_invalid_result",
+      "invalidPreparation": "replay_store_invalid_result",
+      "expired": "signed_event_expired"
+    },
+    "requiredErrors": [
+      "replay_duplicate",
+      "replay_store_unavailable",
+      "replay_store_timeout",
+      "replay_store_invalid_result",
+      "replay_store_not_shared",
+      "signed_event_expired"
+    ]
+  },
+  "verifiedResult": {
+    "status": "verified",
+    "requiredFields": [
+      "status",
+      "verified",
+      "replayConsumed",
+      "data",
+      "signerId",
+      "timestamp",
+      "algorithm",
+      "documentId"
+    ],
+    "fixedValues": {
+      "verified": true,
+      "replayConsumed": true
+    }
+  },
+  "observability": {
+    "level": "warn",
+    "event": "jacs_security_outcome",
+    "operation": "signed_event_replay",
+    "outcome": "rejected",
+    "errorCodeField": "error_code",
+    "redaction": "do not emit backend names or causes, credentials, replay keys, signatures, keys, event JSON, or payload data"
+  }
+}

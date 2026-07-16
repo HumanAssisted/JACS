@@ -146,8 +146,9 @@ async def discover_and_assess(
         url: Base URL of the remote agent.
         policy: Trust policy to apply — ``"open"``, ``"verified"``
             (default), or ``"strict"``.
-        client: Optional ``JacsClient`` instance used for trust store
-            lookups when ``policy="strict"``.
+        client: ``JacsClient`` whose native assessor performs JWS/JWKS,
+            TOFU-pin, and strict compatibility-binding verification. Without
+            it, only ``open`` can allow a result.
         timeout: HTTP request timeout in seconds.
 
     Returns:
@@ -158,6 +159,7 @@ async def discover_and_assess(
                 "jacs_registered": bool,   # has JACS extension?
                 "trust_level": str,        # "untrusted" | "jacs_registered" | "trusted"
                 "allowed": bool,           # passes the policy?
+                "first_contact": bool,     # TOFU key was pinned on this assessment?
             }
 
     Raises:
@@ -172,28 +174,34 @@ async def discover_and_assess(
     if client is not None and hasattr(client, "_agent"):
         import json as _json
         try:
-            canonical_json = client._agent.assess_a2a_agent(
-                _json.dumps(card), effective_policy
+            canonical_json = await asyncio.to_thread(
+                client._agent.assess_a2a_agent,
+                _json.dumps(card),
+                effective_policy,
             )
             trust = _json.loads(canonical_json)
+            allowed = trust.get("allowed") is True
             return {
                 "card": card,
-                "jacs_registered": trust.get("jacsRegistered", False),
-                "trust_level": trust.get("trustLevel", "untrusted"),
-                "allowed": trust.get("allowed", False),
+                "jacs_registered": trust.get("jacsRegistered") is True,
+                "trust_level": trust.get("trustLevel", "untrusted") if allowed else "Untrusted",
+                "allowed": allowed,
+                "reason": trust.get("reason", ""),
+                "first_contact": trust.get("firstContact") is True,
             }
-        except (ImportError, AttributeError, TypeError):
+        except Exception as exc:
             logger.warning(
-                "Falling back to local trust policy evaluation "
-                "— binding-core assess_a2a_agent unavailable"
+                "Native A2A trust assessment unavailable; failing identity policy closed: %s",
+                exc,
             )
 
-    # Fallback: deprecated local logic when no client is available
-    is_trusted = getattr(client, "is_trusted", None) if client is not None else None
+    # No wrapper-only shortcut may turn an extension or trust-store boolean
+    # into verified identity. The fallback is informational under `open` and
+    # fail-closed for `verified`/`strict`.
     trust = _evaluate_trust_policy(
         card,
         policy=effective_policy,
-        is_trusted=is_trusted,
+        is_trusted=None,
     )
 
     return {
@@ -322,35 +330,24 @@ def _evaluate_trust_policy(
 
     effective_policy = _validate_trust_policy(policy)
 
+    _ = is_trusted
     jacs_registered = _has_jacs_extension(card)
-    trust_level = "jacs_registered" if jacs_registered else "untrusted"
-
-    if (
-        effective_policy == "strict"
-        and callable(is_trusted)
-        and jacs_registered
-    ):
-        agent_id = _extract_agent_id(card)
-        if agent_id:
-            try:
-                if is_trusted(agent_id):
-                    trust_level = "trusted"
-            except Exception:
-                logger.debug("Trust store lookup failed for %s", agent_id)
-
-    if effective_policy == "open":
-        allowed = True
-    elif effective_policy == "verified":
-        allowed = jacs_registered
-    elif effective_policy == "strict":
-        allowed = trust_level == "trusted"
-    else:
-        allowed = False
+    trust_level = "untrusted"
+    allowed = effective_policy == "open"
+    reason = (
+        "Open policy: agent allowed without native cryptographic assessment; "
+        "no identity assurance is claimed"
+        if allowed
+        else f"{effective_policy.capitalize()} policy: native cryptographic assessment "
+        "is unavailable; an Agent Card extension or trust-store name alone does not prove identity"
+    )
 
     return {
         "jacs_registered": jacs_registered,
         "trust_level": trust_level,
         "allowed": allowed,
+        "reason": reason,
+        "first_contact": False,
     }
 
 

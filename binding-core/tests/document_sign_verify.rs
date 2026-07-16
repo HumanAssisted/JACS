@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 fn create_ephemeral_wrapper() -> AgentWrapper {
     let wrapper = AgentWrapper::new();
     wrapper
-        .ephemeral(Some("ed25519"))
+        .ephemeral(Some("pq2025"))
         .expect("Failed to create ephemeral agent");
     wrapper
 }

@@ -85,7 +85,7 @@ describe('ES256 compatibility exports', function () {
 
   it('issueCompatBinding grants ap2-mandate and exportAp2Mandate succeeds', function () {
     // Happy path (P2 Task 003 / issue 003): granting the content scope via
-    // an explicit PQ-root-signed binding makes the content export usable
+    // an explicit native-root-signed binding makes the content export usable
     // from the Node binding. Uses a SEPARATE agent so the shared `agent`
     // above stays ungranted for the denial assertion.
     const grantedDir = fs.realpathSync(

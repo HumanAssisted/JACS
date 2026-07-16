@@ -2,7 +2,9 @@
 //!
 //! Proves P2 did NOT reopen the old broad projection design:
 //!
-//! * committed legacy fixtures (Ed25519 + pq2025) still verify unchanged;
+//! * a committed legacy Ed25519 fixture and a generated true-v1 pq2025
+//!   fixture are denied by default and remain available only through explicit
+//!   compatibility/migration mode;
 //! * the native signature schema enum stays exactly
 //!   `["ring-Ed25519", "pq2025"]` — the jacs-core lowercase `"ed25519"`
 //!   wire form remains an intentional, pinned gap;
@@ -17,6 +19,9 @@
 //! fails loudly.
 
 use jacs::agent::Agent;
+use jacs::agent::boilerplate::BoilerPlate;
+use jacs::agent::document::DocumentTraits;
+use jacs::crypt::KeyManager;
 use jacs::error::JacsError;
 use jacs::simple::SimpleAgent;
 use jacs_binding_core::verify_document_standalone;
@@ -36,6 +41,8 @@ const SIGNATURE_SCHEMA_JSON: &str =
     include_str!("../schemas/components/signature/v1/signature.schema.json");
 
 const IAT_SKEW_ENV_VAR: &str = "JACS_MAX_IAT_SKEW_SECONDS";
+const ALLOW_LEGACY_SIGNATURE_ENV_VAR: &str = "JACS_ALLOW_LEGACY_SIGNATURE_CONTENT";
+const REJECT_LEGACY_SIGNATURE_ENV_VAR: &str = "JACS_REJECT_LEGACY_SIGNATURE_CONTENT";
 
 struct EnvVarGuard {
     key: &'static str,
@@ -49,6 +56,16 @@ impl EnvVarGuard {
         // is single-threaded here.
         unsafe {
             std::env::set_var(key, value);
+        }
+        Self { key, previous }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let previous = std::env::var_os(key);
+        // SAFETY: callers are #[serial(jacs_env, cwd_env)], so env mutation
+        // is single-threaded here.
+        unsafe {
+            std::env::remove_var(key);
         }
         Self { key, previous }
     }
@@ -66,49 +83,65 @@ impl Drop for EnvVarGuard {
     }
 }
 
-/// Root of the committed cross-language fixtures.
-fn fixtures_dir() -> PathBuf {
+/// Root of the committed test fixtures.
+fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
-        .join("cross-language")
 }
 
-/// Verify a committed `{prefix}_signed.json` fixture exactly the way
-/// `tests/cross_language/mod.rs::verify_fixture` does: standalone
-/// verification against an isolated key cache built from the committed
-/// public key + metadata.
-fn verify_committed_fixture(prefix: &str) {
+fn legacy_ed25519_paths() -> (PathBuf, PathBuf) {
+    let root = fixtures_root();
+    (
+        root.join("agent")
+            .join("22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a.json"),
+        root.join("keys").join("agent-ed25519.public.pem"),
+    )
+}
+
+/// Verify a committed legacy-v1 document through standalone verification
+/// against an isolated key cache built from its committed public key.
+fn verify_committed_legacy_fixture(signed_path: &Path, raw_key_path: &Path) {
+    assert!(signed_path.exists(), "missing {}", signed_path.display());
+    assert!(raw_key_path.exists(), "missing {}", raw_key_path.display());
+
+    let signed_doc = fs::read_to_string(signed_path).expect("read signed fixture");
+    let raw_key_bytes = fs::read(raw_key_path).expect("read fixture public key bytes");
+    verify_legacy_fixture(
+        &signed_doc,
+        &raw_key_bytes,
+        &signed_path.display().to_string(),
+    );
+}
+
+fn verify_legacy_fixture(signed_doc: &str, raw_key_bytes: &[u8], fixture_label: &str) {
     // Committed fixtures are intentionally stable snapshots; disable iat
     // skew enforcement like the cross-language suite does.
     let _iat_guard = EnvVarGuard::set(IAT_SKEW_ENV_VAR, "0");
+    let _allow_legacy_guard = EnvVarGuard::set(ALLOW_LEGACY_SIGNATURE_ENV_VAR, "true");
+    let _reject_legacy_guard = EnvVarGuard::remove(REJECT_LEGACY_SIGNATURE_ENV_VAR);
 
-    let out = fixtures_dir();
-    let signed_path = out.join(format!("{}_signed.json", prefix));
-    let meta_path = out.join(format!("{}_metadata.json", prefix));
-    let raw_key_path = out.join(format!("{}_public_key.pem", prefix));
-    assert!(signed_path.exists(), "missing {}", signed_path.display());
-    assert!(meta_path.exists(), "missing {}", meta_path.display());
-    assert!(raw_key_path.exists(), "missing {}", raw_key_path.display());
-
-    let signed_doc = fs::read_to_string(&signed_path).expect("read signed fixture");
-    let metadata: Value =
-        serde_json::from_str(&fs::read_to_string(&meta_path).expect("read fixture metadata"))
-            .expect("fixture metadata should be valid JSON");
-    let public_key_hash = metadata["public_key_hash"]
+    let document: Value =
+        serde_json::from_str(signed_doc).expect("fixture document should be valid JSON");
+    let signature = document["jacsSignature"]
+        .as_object()
+        .expect("fixture should carry jacsSignature");
+    assert!(
+        !signature.contains_key("signatureContentVersion"),
+        "legacy guardrail fixture must remain v1: {fixture_label}"
+    );
+    let public_key_hash = signature["publicKeyHash"]
         .as_str()
-        .expect("metadata should include public_key_hash");
-    let signing_algorithm = metadata["signing_algorithm"]
+        .expect("signature should include publicKeyHash");
+    let signing_algorithm = signature["signingAlgorithm"]
         .as_str()
-        .expect("metadata should include signing_algorithm");
+        .expect("signature should include signingAlgorithm");
     // Committed legacy fixtures only ever carry native wire forms.
     assert!(
         NATIVE_SIGNING_ALGORITHMS.contains(&signing_algorithm),
         "fixture algorithm '{}' is not a native wire form",
         signing_algorithm
     );
-    let raw_key_bytes = fs::read(&raw_key_path).expect("read fixture public key bytes");
-
     // Isolated local key cache from the committed artifacts.
     let cache = tempfile::tempdir().expect("create temp key cache");
     let cache_root = cache.path().canonicalize().expect("canonical temp dir");
@@ -116,7 +149,7 @@ fn verify_committed_fixture(prefix: &str) {
     fs::create_dir_all(&cache_pk).expect("create public_keys dir");
     fs::write(
         cache_pk.join(format!("{}.pem", public_key_hash)),
-        &raw_key_bytes,
+        raw_key_bytes,
     )
     .expect("write hash-indexed public key");
     fs::write(
@@ -127,29 +160,122 @@ fn verify_committed_fixture(prefix: &str) {
 
     let out_str = cache_root.to_str().unwrap();
     let result =
-        verify_document_standalone(&signed_doc, Some("local"), Some(out_str), Some(out_str))
+        verify_document_standalone(signed_doc, Some("local"), Some(out_str), Some(out_str))
             .expect("standalone verify should not error");
     assert!(
         result.valid,
-        "{} fixture verification failed. signer_id={}, timestamp={}",
-        prefix, result.signer_id, result.timestamp
+        "{fixture_label} verification failed. signer_id={}, timestamp={}, result={result:?}",
+        result.signer_id, result.timestamp
+    );
+    assert!(
+        result.signer_id.is_empty()
+            && result.timestamp.is_empty()
+            && result.agent_version.is_empty(),
+        "legacy compatibility verification must not surface unauthenticated metadata: {result:?}"
     );
 }
 
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn legacy_fixture_is_rejected_by_default() {
+    let _iat_guard = EnvVarGuard::set(IAT_SKEW_ENV_VAR, "0");
+    let _allow_legacy_guard = EnvVarGuard::remove(ALLOW_LEGACY_SIGNATURE_ENV_VAR);
+    let _reject_legacy_guard = EnvVarGuard::remove(REJECT_LEGACY_SIGNATURE_ENV_VAR);
+
+    let (signed_path, raw_key_path) = legacy_ed25519_paths();
+    let signed_doc = fs::read_to_string(&signed_path).expect("read signed fixture");
+    let document: Value = serde_json::from_str(&signed_doc).expect("parse signed fixture");
+    let signature = &document["jacsSignature"];
+    let public_key_hash = signature["publicKeyHash"].as_str().expect("key hash");
+    let signing_algorithm = signature["signingAlgorithm"].as_str().expect("algorithm");
+
+    let cache = tempfile::tempdir().expect("create key cache");
+    let public_keys = cache.path().join("public_keys");
+    fs::create_dir_all(&public_keys).expect("create public key directory");
+    fs::copy(
+        raw_key_path,
+        public_keys.join(format!("{public_key_hash}.pem")),
+    )
+    .expect("copy key");
+    fs::write(
+        public_keys.join(format!("{public_key_hash}.enc_type")),
+        signing_algorithm,
+    )
+    .expect("write key type");
+
+    let root = cache.path().to_str().expect("temp path");
+    let result = verify_document_standalone(&signed_doc, Some("local"), Some(root), Some(root))
+        .expect("verification should return a typed result");
+    assert!(!result.valid, "legacy v1 must be denied by default");
+    assert!(result.signer_id.is_empty());
+    assert!(result.timestamp.is_empty());
+    assert!(result.agent_version.is_empty());
+}
+
 // ---------------------------------------------------------------------------
-// 1 + 2 — the grandfathered legacy fixtures MUST keep verifying after P2.
+// 1 + 2 — grandfathered fixtures remain usable only through explicit
+// compatibility mode, and their unauthenticated metadata is never surfaced.
 // ---------------------------------------------------------------------------
 
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn legacy_ed25519_fixture_still_verifies() {
-    verify_committed_fixture("ed25519");
+    let (signed_path, raw_key_path) = legacy_ed25519_paths();
+    verify_committed_legacy_fixture(&signed_path, &raw_key_path);
 }
 
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn legacy_pq2025_fixture_still_verifies() {
-    verify_committed_fixture("pq2025");
+    // Generate a true v1 payload with current PQ keys. The primary
+    // cross-language fixture is intentionally regenerated as v2, so using it
+    // here would either test the wrong protocol or require stale key material.
+    let mut agent = Agent::ephemeral("pq2025").expect("create PQ agent");
+    let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+        .expect("create agent template");
+    agent
+        .create_agent_and_load(&agent_json, true, Some("pq2025"))
+        .expect("load PQ agent");
+
+    let mut legacy = agent
+        .sign_config(&json!({
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "pq2025",
+            "jacs_default_storage": "memory",
+            "agent_email": "legacy-pq-fixture@hai.ai"
+        }))
+        .expect("create v2 source document");
+
+    let fields = legacy["jacsSignature"]["fields"]
+        .as_array()
+        .expect("signature fields")
+        .iter()
+        .map(|field| field.as_str().expect("field name").to_string())
+        .collect::<Vec<_>>();
+    legacy["jacsSignature"]
+        .as_object_mut()
+        .expect("signature object")
+        .remove("signatureContentVersion");
+
+    let payload = fields
+        .iter()
+        .filter_map(|field| legacy.get(field))
+        .map(|value| {
+            jacs_core::canonical::canonicalize_json_try(value)
+                .expect("canonicalize legacy signed field")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    legacy["jacsSignature"]["signature"] =
+        json!(agent.sign_string(&payload).expect("sign v1 PQ payload"));
+    legacy["jacsSha256"] = json!(agent.hash_doc(&legacy).expect("hash v1 PQ document"));
+
+    let signed_doc = serde_json::to_string(&legacy).expect("serialize v1 PQ document");
+    let public_key = agent.get_public_key().expect("PQ public key");
+    verify_legacy_fixture(&signed_doc, &public_key, "generated pq2025 v1 fixture");
 }
 
 // ---------------------------------------------------------------------------
@@ -263,111 +389,31 @@ fn new_native_es256_signing_is_unavailable() {
 }
 
 // ---------------------------------------------------------------------------
-// 4b — the FR1 PQ-only wall also covers the low-level jacs-crate creation
-// paths (Issue 001): Agent::ephemeral and the create_keys branch of
-// create_agent_and_load resolve Ed25519 to pq2025 with a WARN, exactly like
-// SimpleAgent creation. Loading EXISTING Ed25519 agents stays grandfathered
-// (pinned by tests 1 + 2 above).
+// 4b — low-level creation preserves explicit supported algorithm selection.
+// The returned metadata, key shape, persisted configuration, and emitted
+// signature must all agree; silent substitution is never acceptable.
 // ---------------------------------------------------------------------------
 
-/// Shared in-memory writer so a thread-local fmt subscriber can capture the
-/// resolver's WARN output for assertion.
-#[derive(Clone, Default)]
-struct SharedLogBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-
-impl std::io::Write for SharedLogBuf {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .expect("log buffer lock")
-            .extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for SharedLogBuf {
-    type Writer = SharedLogBuf;
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
-
-/// Run `f` under a thread-local WARN-level subscriber; return captured logs.
-fn capture_warn_logs<T>(f: impl FnOnce() -> T) -> (String, T) {
-    let buf = SharedLogBuf::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .with_writer(buf.clone())
-        .with_ansi(false)
-        .finish();
-    let out = tracing::subscriber::with_default(subscriber, f);
-    let logs = String::from_utf8(buf.0.lock().expect("log buffer lock").clone())
-        .expect("captured logs are UTF-8");
-    (logs, out)
-}
-
-fn assert_non_pq_warn(logs: &str, context: &str) {
-    assert!(
-        logs.contains("native_non_pq_sign_rejected"),
-        "{context}: expected the native_non_pq_sign_rejected WARN, got logs: {logs}"
-    );
-    assert!(
-        logs.contains("WARN"),
-        "{context}: resolution must log at WARN level, got logs: {logs}"
-    );
-}
-
 #[test]
-fn agent_ephemeral_resolves_ed25519_to_pq2025() {
-    let (logs, (agent, instance)) = capture_warn_logs(|| {
-        // The low-level public path must NOT mint a new Ed25519 root: the
-        // request resolves to pq2025 (grandfathering applies only to
-        // EXISTING agents, never to new key generation).
-        let mut agent =
-            Agent::ephemeral("ring-Ed25519").expect("ephemeral must resolve, not error");
-        let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
-            .expect("minimal agent template");
-        let instance = agent
-            .create_agent_and_load(&agent_json, true, Some("ring-Ed25519"))
-            .expect("create ephemeral agent");
-        (agent, instance)
-    });
+fn agent_ephemeral_honors_ed25519_without_substitution() {
+    let mut agent = Agent::ephemeral("ring-Ed25519").expect("supported Ed25519 creation");
+    let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+        .expect("minimal agent template");
+    let created = agent
+        .create_agent_and_load(&agent_json, true, None)
+        .expect("create Ed25519 agent");
 
-    assert_non_pq_warn(&logs, "Agent::ephemeral(\"ring-Ed25519\")");
-    assert_eq!(
-        instance["jacsSignature"]["signingAlgorithm"],
-        json!("pq2025"),
-        "new agent self-signature must be pq2025"
-    );
     assert_eq!(
         agent.get_key_algorithm().map(String::as_str),
-        Some("pq2025"),
-        "minted key algorithm must be pq2025"
+        Some("ring-Ed25519")
     );
-    assert_eq!(
-        agent
-            .config
-            .as_ref()
-            .expect("ephemeral agent has a config")
-            .get_key_algorithm()
-            .expect("config algorithm"),
-        "pq2025",
-        "agent config must carry the resolved algorithm"
-    );
-    use jacs::agent::boilerplate::BoilerPlate;
-    assert_eq!(
-        agent.get_public_key().expect("public key").len(),
-        jacs::crypt::constants::ML_DSA_87_PUBLIC_KEY_SIZE,
-        "public key must be ML-DSA-87 (pq2025) material, not Ed25519"
-    );
+    assert_eq!(agent.get_public_key().expect("public key").len(), 32);
+    assert_eq!(created["jacsSignature"]["signingAlgorithm"], "ring-Ed25519");
 }
 
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn create_agent_and_load_ignores_config_ed25519_for_new_keys() {
+fn create_agent_and_load_honors_configured_ed25519() {
     let _pw_guard = EnvVarGuard::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
     let tmp = tempfile::tempdir().expect("create temp dir");
     let root = tmp.path().canonicalize().expect("canonical temp dir");
@@ -377,8 +423,8 @@ fn create_agent_and_load_ignores_config_ed25519_for_new_keys() {
     fs::create_dir_all(data_dir.join("public_keys")).expect("create public_keys dir");
     fs::create_dir_all(&key_dir).expect("create key dir");
 
-    // A crates.io consumer's config explicitly requesting ring-Ed25519
-    // for a brand-NEW agent (the exact FR1 bypass scenario).
+    // A crates.io consumer's config explicitly requests ring-Ed25519 for a
+    // brand-new agent. Every observable surface must preserve that choice.
     let config = jacs::config::Config::builder()
         .key_algorithm("ring-Ed25519")
         .data_directory(data_dir.to_str().expect("utf-8 path"))
@@ -399,23 +445,15 @@ fn create_agent_and_load_ignores_config_ed25519_for_new_keys() {
 
     let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
         .expect("minimal agent template");
-    let (logs, instance) = capture_warn_logs(|| {
-        agent
-            .create_agent_and_load(&agent_json, true, None)
-            .expect("create agent with filesystem keys")
-    });
+    let created = agent
+        .create_agent_and_load(&agent_json, true, None)
+        .expect("configured Ed25519 creation");
 
-    assert_non_pq_warn(&logs, "create_agent_and_load with ring-Ed25519 config");
-    assert_eq!(
-        instance["jacsSignature"]["signingAlgorithm"],
-        json!("pq2025"),
-        "new agent self-signature must be pq2025 despite the Ed25519 config"
-    );
     assert_eq!(
         agent.get_key_algorithm().map(String::as_str),
-        Some("pq2025"),
-        "minted key algorithm must be pq2025"
+        Some("ring-Ed25519")
     );
+    assert_eq!(agent.get_public_key().expect("public key").len(), 32);
     assert_eq!(
         agent
             .config
@@ -423,15 +461,11 @@ fn create_agent_and_load_ignores_config_ed25519_for_new_keys() {
             .expect("config present")
             .get_key_algorithm()
             .expect("config algorithm"),
-        "pq2025",
-        "config must be updated to match the keys actually minted"
+        "ring-Ed25519",
+        "configured algorithm must not be silently rewritten"
     );
-    use jacs::agent::boilerplate::BoilerPlate;
-    assert_eq!(
-        agent.get_public_key().expect("public key").len(),
-        jacs::crypt::constants::ML_DSA_87_PUBLIC_KEY_SIZE,
-        "on-disk keypair must be ML-DSA-87 (pq2025) material, not Ed25519"
-    );
+    assert!(key_dir.join("jacs.public.pem").exists());
+    assert_eq!(created["jacsSignature"]["signingAlgorithm"], "ring-Ed25519");
 }
 
 // ---------------------------------------------------------------------------

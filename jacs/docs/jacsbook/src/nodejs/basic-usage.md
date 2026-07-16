@@ -1,5 +1,7 @@
 # Basic Usage
 
+{{#include ../_snippets/node-registry-status.md}}
+
 This chapter covers fundamental JACS operations in Node.js, including agent initialization, document creation, signing, and verification.
 
 ## v0.7.0: Async-First API

@@ -55,6 +55,7 @@ function createMockClient({ trustedAgents = [] } = {}) {
     name: 'local-agent',
     isTrusted: sinon.stub().callsFake((id) => trustedAgents.includes(id)),
     trustAgent: sinon.stub().returns('ok'),
+    trustAgentWithKey: sinon.stub().returns('ok'),
     listTrustedAgents: sinon.stub().returns(trustedAgents),
   };
 }
@@ -96,7 +97,7 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
       const result = integration.assessRemoteAgent(card);
 
       expect(result.allowed).to.be.true;
-      expect(result.trustLevel).to.equal('jacs_registered');
+      expect(result.trustLevel).to.equal('untrusted');
       expect(result.jacsRegistered).to.be.true;
     });
   });
@@ -105,17 +106,47 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
   // assessRemoteAgent - verified policy
   // -------------------------------------------------------------------------
   describe('assessRemoteAgent (verified policy)', () => {
-    it('should allow agents with JACS extension', () => {
+    it('surfaces native first-contact TOFU state', () => {
+      const client = createMockClient();
+      client._agent.assessA2aAgentSync = sinon.stub().returns(JSON.stringify({
+        allowed: true,
+        trustLevel: 'JacsVerified',
+        jacsRegistered: true,
+        reason: 'origin key pinned on first contact',
+        policy: 'Verified',
+        firstContact: true,
+      }));
+      const integration = new JACSA2AIntegration(client, TRUST_POLICIES.VERIFIED);
+
+      const result = integration.assessRemoteAgent(buildAgentCard({ jacsExtension: true }));
+      expect(result.allowed).to.be.true;
+      expect(result.firstContact).to.be.true;
+    });
+
+    it('fails closed when native assessment omits allowed', () => {
+      const client = createMockClient();
+      client._agent.assessA2aAgentSync = sinon.stub().returns(JSON.stringify({
+        trustLevel: 'JacsVerified',
+        jacsRegistered: true,
+        reason: 'malformed result',
+      }));
+      const integration = new JACSA2AIntegration(client, TRUST_POLICIES.VERIFIED);
+
+      const result = integration.assessRemoteAgent(buildAgentCard({ jacsExtension: true }));
+      expect(result.allowed).to.be.false;
+    });
+
+    it('fails closed when native cryptographic assessment is unavailable', () => {
       const client = createMockClient();
       const integration = new JACSA2AIntegration(client, TRUST_POLICIES.VERIFIED);
 
       const card = buildAgentCard({ jacsExtension: true });
       const result = integration.assessRemoteAgent(card);
 
-      expect(result.allowed).to.be.true;
-      expect(result.trustLevel).to.equal('jacs_registered');
+      expect(result.allowed).to.be.false;
+      expect(result.trustLevel).to.equal('untrusted');
       expect(result.jacsRegistered).to.be.true;
-      expect(result.reason).to.include('JACS extension');
+      expect(result.reason).to.include('native cryptographic assessment');
     });
 
     it('should reject agents without JACS extension', () => {
@@ -128,7 +159,7 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
       expect(result.allowed).to.be.false;
       expect(result.trustLevel).to.equal('untrusted');
       expect(result.jacsRegistered).to.be.false;
-      expect(result.reason).to.include('does not declare JACS extension');
+      expect(result.reason).to.include('native cryptographic assessment');
     });
 
     it('should use verified as the default policy', () => {
@@ -144,18 +175,17 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
   // assessRemoteAgent - strict policy
   // -------------------------------------------------------------------------
   describe('assessRemoteAgent (strict policy)', () => {
-    it('should allow agents in the trust store', () => {
+    it('does not accept a trust-store boolean without native binding verification', () => {
       const client = createMockClient({ trustedAgents: ['remote-agent-123'] });
       const integration = new JACSA2AIntegration(client, TRUST_POLICIES.STRICT);
 
       const card = buildAgentCard({ jacsExtension: true, agentId: 'remote-agent-123' });
       const result = integration.assessRemoteAgent(card);
 
-      expect(result.allowed).to.be.true;
-      expect(result.trustLevel).to.equal('trusted');
-      expect(result.inTrustStore).to.be.true;
-      expect(result.reason).to.include('trust store');
-      expect(client.isTrusted.calledWith('remote-agent-123')).to.be.true;
+      expect(result.allowed).to.be.false;
+      expect(result.trustLevel).to.equal('untrusted');
+      expect(result.inTrustStore).to.be.false;
+      expect(result.reason).to.include('native cryptographic assessment');
     });
 
     it('should reject agents not in the trust store', () => {
@@ -166,7 +196,7 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
       const result = integration.assessRemoteAgent(card);
 
       expect(result.allowed).to.be.false;
-      expect(result.trustLevel).to.equal('jacs_registered');
+      expect(result.trustLevel).to.equal('untrusted');
       expect(result.inTrustStore).to.be.false;
       expect(result.reason).to.include('Strict policy');
     });
@@ -205,29 +235,48 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
   // trustA2AAgent
   // -------------------------------------------------------------------------
   describe('trustA2AAgent', () => {
-    it('should call client.trustAgent with the card JSON string', () => {
+    it('requires a native agent document and explicit public key', () => {
       const client = createMockClient();
       const integration = new JACSA2AIntegration(client);
 
-      const card = buildAgentCard();
-      integration.trustA2AAgent(card);
+      const agentDocument = {
+        jacsId: 'remote-agent-123',
+        jacsVersion: 'version-1',
+        jacsSignature: { publicKeyHash: 'sha256-placeholder' },
+      };
+      integration.trustA2AAgent(agentDocument, '-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----');
 
-      expect(client.trustAgent.calledOnce).to.be.true;
-      const arg = client.trustAgent.firstCall.args[0];
+      expect(client.trustAgent.called).to.be.false;
+      expect(client.trustAgentWithKey.calledOnce).to.be.true;
+      const [arg, key] = client.trustAgentWithKey.firstCall.args;
       expect(typeof arg).to.equal('string');
       const parsed = JSON.parse(arg);
-      expect(parsed.name).to.equal('Test Remote Agent');
+      expect(parsed.jacsId).to.equal('remote-agent-123');
+      expect(key).to.include('BEGIN PUBLIC KEY');
     });
 
-    it('should accept a JSON string directly', () => {
+    it('rejects an unauthenticated Agent Card even when a key is supplied', () => {
       const client = createMockClient();
       const integration = new JACSA2AIntegration(client);
 
       const cardStr = JSON.stringify(buildAgentCard());
-      integration.trustA2AAgent(cardStr);
+      expect(() => integration.trustA2AAgent(cardStr, 'public-key')).to.throw(
+        /full native JACS agent document/,
+      );
+      expect(client.trustAgentWithKey.called).to.be.false;
+    });
 
-      expect(client.trustAgent.calledOnce).to.be.true;
-      expect(client.trustAgent.firstCall.args[0]).to.equal(cardStr);
+    it('rejects a missing explicit public key', () => {
+      const client = createMockClient();
+      const integration = new JACSA2AIntegration(client);
+      const document = JSON.stringify({
+        jacsId: 'remote-agent-123',
+        jacsVersion: 'version-1',
+        jacsSignature: {},
+      });
+
+      expect(() => integration.trustA2AAgent(document, '')).to.throw(/explicit public key/);
+      expect(client.trustAgentWithKey.called).to.be.false;
     });
   });
 
@@ -253,13 +302,18 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
         },
       };
 
-      const result = await integration.verifyWrappedArtifact(artifact);
+      const result = await integration.verifyWrappedArtifact(
+        artifact,
+        buildAgentCard({ agentId: 'signer-agent-abc' }),
+      );
 
-      expect(result.valid).to.be.true;
+      expect(result.valid).to.be.false;
       expect(result.trustAssessment).to.exist;
-      expect(result.trustAssessment.allowed).to.be.true;
-      expect(result.trustAssessment.jacsRegistered).to.be.true;
-      expect(result.trustAssessment.trustLevel).to.equal('JacsVerified');
+      expect(result.trustAssessment.allowed).to.be.false;
+      expect(result.trustAssessment.jacsRegistered).to.be.false;
+      expect(result.trustAssessment.trustLevel).to.equal('Untrusted');
+      expect(result.trustAssessment.reason).to.include('cannot elevate trust');
+      expect(client._agent.verifyResponse.called).to.be.false;
     });
 
     it('should reject untrusted signer under strict policy', async () => {
@@ -279,16 +333,20 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
         },
       };
 
-      const result = await integration.verifyWrappedArtifact(artifact);
+      const result = await integration.verifyWrappedArtifact(
+        artifact,
+        buildAgentCard({ agentId: 'untrusted-signer' }),
+      );
 
       expect(result.valid).to.be.false;
       expect(result.trustAssessment).to.exist;
       expect(result.trustAssessment.allowed).to.be.false;
       expect(result.trustAssessment.inTrustStore).to.be.false;
-      expect(result.trustAssessment.reason).to.include('Strict policy');
+      expect(result.trustAssessment.reason).to.include('canonical native A2A verification');
+      expect(client._agent.verifyResponse.called).to.be.false;
     });
 
-    it('should allow trusted signer under strict policy', async () => {
+    it('does not allow a trust-store boolean without native binding verification', async () => {
       const client = createMockClient({ trustedAgents: ['trusted-signer'] });
       client._agent.verifyResponse.returns(true);
       const integration = new JACSA2AIntegration(client, TRUST_POLICIES.STRICT);
@@ -305,13 +363,16 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
         },
       };
 
-      const result = await integration.verifyWrappedArtifact(artifact);
+      const result = await integration.verifyWrappedArtifact(
+        artifact,
+        buildAgentCard({ agentId: 'trusted-signer' }),
+      );
 
-      expect(result.valid).to.be.true;
+      expect(result.valid).to.be.false;
       expect(result.trustAssessment).to.exist;
-      expect(result.trustAssessment.allowed).to.be.true;
-      expect(result.trustAssessment.inTrustStore).to.be.true;
-      expect(result.trustAssessment.trustLevel).to.equal('ExplicitlyTrusted');
+      expect(result.trustAssessment.allowed).to.be.false;
+      expect(result.trustAssessment.inTrustStore).to.be.false;
+      expect(result.trustAssessment.trustLevel).to.equal('Untrusted');
     });
   });
 
@@ -326,12 +387,20 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
       const card = buildAgentCard({ jacsExtension: true });
       const result = integration.assessRemoteAgent(card);
 
-      expect(result).to.have.all.keys('allowed', 'trustLevel', 'jacsRegistered', 'inTrustStore', 'reason');
+      expect(result).to.have.all.keys(
+        'allowed',
+        'trustLevel',
+        'jacsRegistered',
+        'inTrustStore',
+        'reason',
+        'firstContact',
+      );
       expect(typeof result.allowed).to.equal('boolean');
       expect(typeof result.trustLevel).to.equal('string');
       expect(typeof result.jacsRegistered).to.equal('boolean');
       expect(typeof result.inTrustStore).to.equal('boolean');
       expect(typeof result.reason).to.equal('string');
+      expect(typeof result.firstContact).to.equal('boolean');
     });
   });
 });

@@ -27,7 +27,7 @@ pub fn c_string_to_json(c_str: *const c_char) -> Result<Value, String> {
             .map_err(|e| e.to_string())?
     };
 
-    serde_json::from_str(json_str).map_err(|e| e.to_string())
+    jacs::strict_json::parse_strict_json(json_str).map_err(|e| e.to_string())
 }
 
 /// Encode binary data with type information for cross-language compatibility

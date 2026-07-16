@@ -26,9 +26,78 @@ fn load_parity_inputs() -> Value {
 }
 
 fn ephemeral(algo: &str) -> SimpleAgentWrapper {
+    if algo == "ed25519" {
+        let (agent, _info) = jacs::simple::SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+            .expect("grandfathered Ed25519 fixture should succeed");
+        return SimpleAgentWrapper::from_agent(agent);
+    }
     let (wrapper, _info) =
         SimpleAgentWrapper::ephemeral(Some(algo)).expect("ephemeral should succeed");
     wrapper
+}
+
+#[test]
+fn test_parity_rfc8785_canonicalization_vectors() {
+    let fixtures = load_parity_inputs();
+    let wrapper = ephemeral("ed25519");
+
+    for vector in fixtures["canonicalization_vectors"]
+        .as_array()
+        .expect("canonicalization_vectors must be an array")
+    {
+        let name = vector["name"].as_str().expect("vector name");
+        let input = serde_json::to_string(&vector["data"]).expect("serialize vector data");
+        let expected = vector["expected"]
+            .as_str()
+            .expect("expected canonical JSON");
+        let actual = wrapper
+            .canonicalize_json(&input)
+            .unwrap_or_else(|error| panic!("canonicalize {name}: {error}"));
+        assert_eq!(actual, expected, "RFC 8785 drift for {name}");
+    }
+}
+
+#[test]
+fn test_parity_canonicalization_rejects_unsafe_integer_tokens() {
+    let fixtures = load_parity_inputs();
+    let wrapper = ephemeral("ed25519");
+
+    for vector in fixtures["canonicalization_rejections"]
+        .as_array()
+        .expect("canonicalization_rejections must be an array")
+    {
+        let name = vector["name"].as_str().expect("vector name");
+        let input = vector["input"].as_str().expect("raw JSON input");
+        let pattern = vector["message_pattern"].as_str().expect("message pattern");
+        let error = match wrapper.canonicalize_json(input) {
+            Err(error) => error,
+            Ok(actual) => panic!("canonicalization must reject {name}, got {actual}"),
+        };
+        assert!(
+            error.message.contains(pattern),
+            "unexpected error for {name}: {error}"
+        );
+    }
+}
+
+#[test]
+fn test_parity_canonicalization_preserves_rfc8785_binary64_equivalence() {
+    let fixtures = load_parity_inputs();
+    let wrapper = ephemeral("ed25519");
+
+    for vector in fixtures["canonicalization_equivalences"]
+        .as_array()
+        .expect("canonicalization_equivalences must be an array")
+    {
+        let name = vector["name"].as_str().expect("vector name");
+        let expected = vector["expected"].as_str().expect("expected output");
+        for input in vector["inputs"].as_array().expect("equivalent inputs") {
+            let actual = wrapper
+                .canonicalize_json(input.as_str().expect("raw JSON input"))
+                .unwrap_or_else(|error| panic!("canonicalize {name}: {error}"));
+            assert_eq!(actual, expected, "RFC 8785 equivalence drift for {name}");
+        }
+    }
 }
 
 // =============================================================================
@@ -247,6 +316,71 @@ fn parity_verify_with_key(algo: &str) {
         "[{}] verify with explicit key should succeed",
         algo
     );
+}
+
+#[test]
+fn test_parity_generic_verify_with_key_accepts_only_bound_response_v2() {
+    let fixtures = load_parity_inputs();
+    let contract = &fixtures["response_v2_generic_verification"];
+    let algorithm = contract["algorithm"].as_str().expect("response algorithm");
+    let wrapper = ephemeral(algorithm);
+    let key_b64 = wrapper
+        .get_public_key_base64()
+        .expect("response verification key");
+    let payload_json = serde_json::to_string(&contract["payload"]).expect("response payload");
+    let signed_json = wrapper
+        .sign_response(&payload_json)
+        .expect("sign bound response-v2 envelope");
+    let envelope: Value = serde_json::from_str(&signed_json).expect("response envelope JSON");
+
+    assert_eq!(
+        envelope["jacsSignature"]["signatureContentVersion"],
+        contract["signature_content_version"]
+    );
+    let verified_json = wrapper
+        .verify_with_key_json(&signed_json, &key_b64)
+        .expect("generic explicit-key verification must accept response-v2");
+    let verified: Value = serde_json::from_str(&verified_json).expect("verification result JSON");
+    assert_eq!(verified["valid"], true);
+    assert_eq!(verified["data"], contract["payload"]);
+    assert!(
+        verified["signer_id"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()),
+        "valid response must include authenticated signer provenance"
+    );
+
+    for tamper in contract["tamper_cases"]
+        .as_array()
+        .expect("response tamper cases")
+    {
+        let name = tamper["name"].as_str().expect("tamper name");
+        let pointer = tamper["pointer"].as_str().expect("tamper pointer");
+        let mut attacked = envelope.clone();
+        *attacked
+            .pointer_mut(pointer)
+            .unwrap_or_else(|| panic!("fixture pointer must exist: {pointer}")) =
+            tamper["replacement"].clone();
+        let attacked_json = serde_json::to_string(&attacked).expect("tampered response JSON");
+        let rejected_json = wrapper
+            .verify_with_key_json(&attacked_json, &key_b64)
+            .unwrap_or_else(|error| {
+                panic!("{name} must return a redacted invalid result: {error}")
+            });
+        let rejected: Value =
+            serde_json::from_str(&rejected_json).expect("invalid verification result JSON");
+        let expected = &contract["invalid_result"];
+        assert_eq!(rejected["valid"], expected["valid"], "{name}");
+        assert_eq!(rejected["data"], expected["data"], "{name}");
+        assert_eq!(rejected["signer_id"], expected["signer_id"], "{name}");
+        assert_eq!(rejected["timestamp"], expected["timestamp"], "{name}");
+        assert!(
+            rejected["errors"]
+                .as_array()
+                .is_some_and(|errors| !errors.is_empty()),
+            "{name} must explain the verification failure"
+        );
+    }
 }
 
 // =============================================================================

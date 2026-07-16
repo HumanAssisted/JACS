@@ -181,8 +181,8 @@ impl FilesystemDocumentService {
 impl DocumentService for FilesystemDocumentService {
     fn create(&self, json: &str, options: CreateOptions) -> Result<JACSDocument, JacsError> {
         // Merge options into the JSON payload
-        let mut value: serde_json::Value =
-            serde_json::from_str(json).map_err(|e| JacsError::DocumentError(e.to_string()))?;
+        let mut value: serde_json::Value = jacs_core::strict_json::parse_strict_json(json)
+            .map_err(|e| JacsError::DocumentError(e.to_string()))?;
 
         if let Some(obj) = value.as_object_mut() {
             obj.insert("jacsType".to_string(), serde_json::json!(options.jacs_type));
@@ -279,8 +279,8 @@ impl DocumentService for FilesystemDocumentService {
         // Build the updated document payload.
         // Agent::update_document() requires the new document to have the SAME
         // jacsId and jacsVersion as the old one — it then assigns a new version.
-        let mut value: serde_json::Value =
-            serde_json::from_str(new_json).map_err(|e| JacsError::DocumentError(e.to_string()))?;
+        let mut value: serde_json::Value = jacs_core::strict_json::parse_strict_json(new_json)
+            .map_err(|e| JacsError::DocumentError(e.to_string()))?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),

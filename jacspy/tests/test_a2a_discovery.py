@@ -151,7 +151,7 @@ class TestDiscoverAndAssess:
         assert result["trust_level"] == "untrusted"
 
     @pytest.mark.asyncio
-    async def test_verified_allows_jacs_registered(self):
+    async def test_verified_requires_native_cryptographic_assessor(self):
         with patch("jacs.a2a_discovery.discover_agent", new_callable=AsyncMock) as mock_disc:
             mock_disc.return_value = SAMPLE_CARD
 
@@ -159,9 +159,54 @@ class TestDiscoverAndAssess:
                 "https://jacs-agent.example.com", policy="verified"
             )
 
-        assert result["allowed"] is True
+        assert result["allowed"] is False
         assert result["jacs_registered"] is True
-        assert result["trust_level"] == "jacs_registered"
+        assert result["trust_level"] == "untrusted"
+        assert "native cryptographic assessment" in result["reason"]
+
+    @pytest.mark.asyncio
+    async def test_verified_uses_native_assessor_and_surfaces_first_contact(self):
+        mock_client = MagicMock()
+        mock_client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": True,
+            "trustLevel": "JacsVerified",
+            "jacsRegistered": True,
+            "reason": "origin key pinned",
+            "firstContact": True,
+        })
+        with patch("jacs.a2a_discovery.discover_agent", new_callable=AsyncMock) as mock_disc:
+            mock_disc.return_value = SAMPLE_CARD
+            result = await discover_and_assess(
+                "https://jacs-agent.example.com",
+                policy="verified",
+                client=mock_client,
+            )
+
+        assert result["allowed"] is True
+        assert result["trust_level"] == "JacsVerified"
+        assert result["first_contact"] is True
+
+    @pytest.mark.asyncio
+    async def test_native_assessor_truthy_strings_fail_closed(self):
+        mock_client = MagicMock()
+        mock_client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": "false",
+            "trustLevel": "JacsVerified",
+            "jacsRegistered": "true",
+            "reason": "malformed native result",
+            "firstContact": "true",
+        })
+        with patch("jacs.a2a_discovery.discover_agent", new_callable=AsyncMock) as mock_disc:
+            mock_disc.return_value = SAMPLE_CARD
+            result = await discover_and_assess(
+                "https://jacs-agent.example.com",
+                policy="verified",
+                client=mock_client,
+            )
+
+        assert result["allowed"] is False
+        assert result["jacs_registered"] is False
+        assert result["first_contact"] is False
 
     @pytest.mark.asyncio
     async def test_verified_rejects_non_jacs(self):
@@ -176,7 +221,7 @@ class TestDiscoverAndAssess:
         assert result["jacs_registered"] is False
 
     @pytest.mark.asyncio
-    async def test_strict_requires_trust_store(self):
+    async def test_strict_does_not_accept_trust_store_boolean_without_native_assessment(self):
         mock_client = MagicMock()
         mock_client.is_trusted.return_value = True
 
@@ -189,9 +234,8 @@ class TestDiscoverAndAssess:
                 client=mock_client,
             )
 
-        assert result["allowed"] is True
-        assert result["trust_level"] == "trusted"
-        mock_client.is_trusted.assert_called_once_with("remote-agent-42")
+        assert result["allowed"] is False
+        assert result["trust_level"] == "untrusted"
 
     @pytest.mark.asyncio
     async def test_strict_rejects_untrusted(self):
@@ -208,7 +252,7 @@ class TestDiscoverAndAssess:
             )
 
         assert result["allowed"] is False
-        assert result["trust_level"] == "jacs_registered"
+        assert result["trust_level"] == "untrusted"
 
     @pytest.mark.asyncio
     async def test_strict_without_client_rejects(self):
@@ -263,7 +307,7 @@ class TestSyncWrappers:
                 "https://agent.example.com", policy="verified"
             )
 
-        assert result["allowed"] is True
+        assert result["allowed"] is False
         assert result["jacs_registered"] is True
 
     def test_sync_wrapper_leaves_event_loop_available(self):

@@ -1,0 +1,4 @@
+This project is licensed under Apache-2.0.
+
+The complete license text lives at ../LICENSE-APACHE in source checkouts.
+The release finalizer copies that text into this file in the npm package.

@@ -175,6 +175,13 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="serve-your-agent-card"><a class="header" href="#serve-your-agent-card">Serve Your Agent Card</a></h1>
+<blockquote>
+<p><strong>Registry status (observed 2026-07-11):</strong> npm serves
+<code>@hai.ai/jacs@0.10.1</code>, while these pages describe source <code>0.11.4</code>. The
+registry package does not expose every method shown here. Pin the version and
+inspect its exports; use a source build only when that is an explicit
+deployment choice.</p>
+</blockquote>
 <p>Make your JACS agent discoverable by other A2A agents.</p>
 <blockquote>
 <p><strong>Prerequisites:</strong> <code>pip install jacs[a2a-server]</code> (Python) or <code>npm install @hai.ai/jacs express</code> (Node.js).</p>
@@ -222,16 +229,29 @@ app.listen(8080);
 </div>
 </div>
 <h2 id="what-gets-served"><a class="header" href="#what-gets-served">What Gets Served</a></h2>
-<p>All five <code>.well-known</code> endpoints are served automatically:</p>
+<p>The native generator serves six <code>.well-known</code> endpoints automatically:</p>
 <div class="table-wrapper"><table><thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead><tbody>
 <tr><td><code>/.well-known/agent-card.json</code></td><td>A2A Agent Card with JWS signature</td></tr>
-<tr><td><code>/.well-known/jwks.json</code></td><td>JWK set for A2A verifiers</td></tr>
+<tr><td><code>/.well-known/jwks.json</code></td><td>Stable ES256 compatibility JWK used by the Agent Card</td></tr>
+<tr><td><code>/.well-known/jacs-compat-binding.json</code></td><td>Native-root-signed binding from the ES256 key to the claimed JACS identity</td></tr>
 <tr><td><code>/.well-known/jacs-agent.json</code></td><td>JACS agent descriptor</td></tr>
 <tr><td><code>/.well-known/jacs-pubkey.json</code></td><td>JACS public key</td></tr>
 <tr><td><code>/.well-known/jacs-extension.json</code></td><td>JACS provenance extension descriptor</td></tr>
 </tbody></table>
 </div>
 <p>The Agent Card includes the <code>urn:jacs:provenance-v1</code> extension in <code>capabilities.extensions</code>, signaling to other JACS agents that your agent supports cryptographic provenance.</p>
+<p>The card and JWKS reuse the persisted ES256 compatibility key across calls and
+restarts. The card references
+<code>/.well-known/jacs-compat-binding.json</code> by both fixed path and content hash;
+strict verification checks that native-root-signed artifact before treating the
+card as the explicitly trusted JACS identity. Existing pre-compatibility agents
+must run <code>jacs agent add-compat-key</code> once before serving. Local loopback trust
+tests additionally require <code>JACS_ALLOW_PRIVATE_JWKS=true</code>; private-address JWKS
+fetching is otherwise denied.</p>
+<p>Strict verifiers accept a compatibility binding for at most seven days after
+its signed <code>issuedAt</code>, with five minutes of future clock skew. Generating the
+well-known set refreshes an authentic binding after six days under the shared
+issuance lock, preserving its scopes and any explicit <code>expiresAt</code>.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><strong><a href="a2a-discover.html">Discover &amp; Trust Remote Agents</a></strong> -- Find other agents and assess their trustworthiness</li>

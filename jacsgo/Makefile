@@ -1,4 +1,4 @@
-.PHONY: all build clean test install dev build-rust build-go examples
+.PHONY: all build clean test test-competing-cargo install dev build-rust build-go build-cli examples
 
 # Default target
 all: build
@@ -21,6 +21,11 @@ build-go: build-rust
 	go build -v ./...
 	@echo "Go module built successfully"
 
+# Build the CLI once for Go->Rust provenance verification. Tests execute this
+# binary directly through JACS_CLI_BIN; they never start a nested Cargo build.
+build-cli:
+	cd .. && cargo build -p jacs-cli --bin jacs
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
@@ -30,12 +35,19 @@ clean:
 	@echo "Clean completed successfully"
 
 # Run tests
-test: build
+test: build build-cli
 	@echo "Running Rust tests..."
 	cd lib && cargo test
-	@echo "Running Go tests..."
-	go test -v ./...
+	@echo "Running Go tests with the race detector..."
+	JACS_CLI_BIN="$(abspath ../target/debug/jacs)" go test -race -v ./...
 	@echo "Tests completed successfully"
+
+# Regression for JACS_REVIEW_ISSUE_014: the Go->Rust provenance test executes
+# a prebuilt CLI directly and must finish while another real Cargo build is
+# active. The script applies both the Go package timeout and the CLI's own
+# CommandContext deadline, and preserves the competing build log on failure.
+test-competing-cargo: build build-cli
+	JACS_CLI_BIN="$(abspath ../target/debug/jacs)" ./scripts/test-competing-cargo.sh
 
 # Install dependencies
 install:

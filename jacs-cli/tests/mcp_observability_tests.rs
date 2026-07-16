@@ -217,3 +217,24 @@ fn machine_readable_stdout_stays_pure_json_with_rust_log_info() {
         jwks_stdout
     );
 }
+
+#[test]
+fn quickstart_sign_rejects_duplicate_json_keys_before_signing() {
+    let dir = TempDir::new().expect("tempdir");
+    bootstrap_agent(&dir);
+
+    jacs_cmd()
+        .current_dir(dir.path())
+        .args([
+            "quickstart",
+            "--name",
+            "duplicate-json-test",
+            "--domain",
+            "localhost",
+            "--sign",
+        ])
+        .write_stdin(r#"{"decision":"allow","decision":"deny"}"#)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("duplicate JSON object key"));
+}

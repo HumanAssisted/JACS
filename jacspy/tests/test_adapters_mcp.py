@@ -2,6 +2,7 @@
 
 import json
 import os
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,7 +17,7 @@ from jacs.adapters.mcp import (  # noqa: E402
     _is_untrust_allowed,
 )
 from jacs.client import JacsClient  # noqa: E402
-from conftest import TEST_ALGORITHM, TEST_ALGORITHM_INTERNAL
+from conftest import TEST_ALGORITHM, TEST_ALGORITHM_INTERNAL  # noqa: E402
 
 
 @pytest.fixture
@@ -39,6 +40,7 @@ class FakeMCP:
         def decorator(fn):
             self.tools[name] = {"fn": fn, "description": description}
             return fn
+
         return decorator
 
     def add_middleware(self, mw):
@@ -77,7 +79,9 @@ class TestRegisterJacsTools:
 
     def test_registers_subset_of_tools(self, client):
         mcp = FakeMCP()
-        register_jacs_tools(mcp, client=client, tools=["sign_document", "verify_document"])
+        register_jacs_tools(
+            mcp, client=client, tools=["sign_document", "verify_document"]
+        )
         assert "jacs_sign_document" in mcp.tools
         assert "jacs_verify_document" in mcp.tools
         assert len(mcp.tools) == 2
@@ -91,6 +95,27 @@ class TestRegisterJacsTools:
         mcp = FakeMCP()
         result = register_jacs_tools(mcp, client=client)
         assert result is mcp
+
+    @pytest.mark.parametrize(
+        ("registrar", "tool_name", "client_method", "arguments"),
+        [
+            (register_jacs_tools, "jacs_sign_document", "sign_message", ("{}",)),
+            (register_a2a_tools, "jacs_export_agent_card", "export_agent_card", ()),
+            (register_trust_tools, "jacs_trust_agent", "trust_agent", ("{}",)),
+        ],
+    )
+    def test_strict_registration_reraises_tool_failures(
+        self, registrar, tool_name, client_method, arguments
+    ):
+        failing_client = MagicMock()
+        getattr(failing_client, client_method).side_effect = ValueError(
+            "operation unavailable"
+        )
+        mcp = FakeMCP()
+        registrar(mcp, client=failing_client, strict=True)
+
+        with pytest.raises(ValueError, match="operation unavailable"):
+            mcp.tools[tool_name]["fn"](*arguments)
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +152,26 @@ class TestSignDocumentTool:
         result = fn("not valid json")
         parsed = json.loads(result)
         assert parsed["success"] is False
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "",
+            '{"plain":true}',
+            '{"jacsId":"d","jacsVersion":"1","jacsSignature":'
+            '{"signature":"s","agentID":"a","agentVersion":"1",'
+            '"publicKeyHash":"h","date":"now",'
+            '"signatureContentVersion":"jacs-signature-v1"}}',
+        ],
+    )
+    def test_sign_document_rejects_malformed_native_output(self, raw):
+        malformed_client = MagicMock()
+        malformed_client.sign_message.return_value.raw = raw
+        mcp = FakeMCP()
+        register_jacs_tools(mcp, client=malformed_client, strict=True)
+
+        with pytest.raises(ValueError, match="portable v2"):
+            mcp.tools["jacs_sign_document"]["fn"]("{}")
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +315,125 @@ class TestJacsMCPMiddleware:
         mw = JacsMCPMiddleware(client=client, verify_tool_inputs=True)
         assert mw._verify is True
 
+    @pytest.mark.parametrize(
+        "signed_argument",
+        [
+            '{ "jacsSignature" : {"signature":"test"}, "content": 1 }',
+            {"jacsSignature": {"signature": "test"}, "content": 1},
+        ],
+    )
+    async def test_real_fastmcp_context_dispatches_and_structurally_verifies_inputs(
+        self, client, signed_argument
+    ):
+        from fastmcp.server.middleware import MiddlewareContext
+        from mcp.types import CallToolRequestParams
+
+        mw = JacsMCPMiddleware(
+            client=client,
+            verify_tool_inputs=True,
+            sign_tool_results=False,
+        )
+        mw._adapter.verify_input = MagicMock(return_value={"verified": "payload"})
+        context = MiddlewareContext(
+            message=CallToolRequestParams(
+                name="example",
+                arguments={"input": signed_argument},
+            ),
+            method="tools/call",
+        )
+
+        async def call_next(received_context):
+            assert received_context.message.arguments == {
+                "input": {"verified": "payload"}
+            }
+            return "tool-result"
+
+        assert await mw(context, call_next) == "tool-result"
+        mw._adapter.verify_input.assert_called_once()
+
+    async def test_real_tool_result_remains_fastmcp_compatible_and_signed(
+        self, client
+    ):
+        from fastmcp.server.middleware import MiddlewareContext
+        from fastmcp.tools.tool import ToolResult
+        from mcp.types import CallToolRequestParams
+
+        mw = JacsMCPMiddleware(client=client)
+        context = MiddlewareContext(
+            message=CallToolRequestParams(name="example", arguments={}),
+            method="tools/call",
+        )
+
+        async def call_next(_context):
+            return ToolResult(
+                content="raw output",
+                structured_content={"value": 7},
+                meta={"source": "test"},
+            )
+
+        result = await mw(context, call_next)
+
+        assert isinstance(result, ToolResult)
+        assert result.structured_content == {"value": 7}
+        assert result.content[0].text == "raw output"
+        assert result.meta["source"] == "test"
+        signed_document = result.meta["jacsSignedDocument"]
+        signed_json = json.dumps(signed_document)
+        assert client.verify(signed_json).valid is True
+        verified_payload = mw._adapter.verify_input(signed_json)
+        assert verified_payload["jacsDocument"]["content"] == {
+            "content": [
+                {"type": "text", "text": "raw output"},
+            ],
+            "structuredContent": {"value": 7},
+            "meta": {"source": "test"},
+        }
+        mcp_result = result.to_mcp_result()
+        assert mcp_result.structuredContent == {"value": 7}
+        assert mcp_result.meta["jacsSignedDocument"] == signed_document
+
+    async def test_create_task_result_keeps_protocol_type_and_attaches_proof(
+        self, client
+    ):
+        from datetime import datetime, timezone
+
+        from fastmcp.server.middleware import MiddlewareContext
+        from mcp.types import CallToolRequestParams, CreateTaskResult, Task
+
+        mw = JacsMCPMiddleware(client=client)
+        context = MiddlewareContext(
+            message=CallToolRequestParams(name="example", arguments={}),
+            method="tools/call",
+        )
+        now = datetime.now(timezone.utc)
+        original = CreateTaskResult(
+            task=Task(
+                taskId="task-1",
+                status="working",
+                createdAt=now,
+                lastUpdatedAt=now,
+                ttl=None,
+            ),
+            _meta={"source": "task-test"},
+        )
+
+        async def call_next(_context):
+            return original
+
+        result = await mw(context, call_next)
+
+        assert isinstance(result, CreateTaskResult)
+        assert result.task == original.task
+        assert result.meta["source"] == "task-test"
+        proof = result.meta["jacsSignedDocument"]
+        assert client.verify(json.dumps(proof)).valid is True
+        verified_payload = mw._adapter.verify_input(json.dumps(proof))
+        assert verified_payload["jacsDocument"]["content"] == original.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_none=True,
+        )
+
     async def test_on_call_tool_signs_result(self, client):
         mw = JacsMCPMiddleware(client=client)
 
@@ -297,6 +461,100 @@ class TestJacsMCPMiddleware:
 
         result = await mw.on_call_tool(FakeContext(), call_next)
         assert result == original
+
+    async def test_signing_failure_fails_closed_by_default(self, client):
+        mw = JacsMCPMiddleware(client=client)
+        mw._adapter.sign_output = lambda _value: (_ for _ in ()).throw(
+            ValueError("signing unavailable")
+        )
+
+        class FakeContext:
+            arguments = {}
+
+        async def call_next(ctx):
+            return '{"secret":"downstream output"}'
+
+        with pytest.raises(ValueError, match="signing unavailable"):
+            await mw.on_call_tool(FakeContext(), call_next)
+
+    async def test_unsigned_output_requires_explicit_opt_in(self, client):
+        mw = JacsMCPMiddleware(client=client, allow_unsigned_output=True)
+        mw._adapter.sign_output = lambda _value: (_ for _ in ()).throw(
+            ValueError("signing unavailable")
+        )
+
+        class FakeContext:
+            arguments = {}
+
+        async def call_next(ctx):
+            return "legacy unsigned output"
+
+        assert (
+            await mw.on_call_tool(FakeContext(), call_next) == "legacy unsigned output"
+        )
+
+    async def test_strict_overrides_unsigned_output_opt_in(self, client):
+        mw = JacsMCPMiddleware(
+            client=client,
+            strict=True,
+            allow_unsigned_output=True,
+        )
+        mw._adapter.sign_output = lambda _value: (_ for _ in ()).throw(
+            ValueError("signing unavailable")
+        )
+
+        class FakeContext:
+            arguments = {}
+
+        async def call_next(ctx):
+            return "must-not-escape"
+
+        with pytest.raises(ValueError, match="signing unavailable"):
+            await mw.on_call_tool(FakeContext(), call_next)
+
+    async def test_enabled_verification_fails_closed_by_default(self, client):
+        mw = JacsMCPMiddleware(
+            client=client,
+            verify_tool_inputs=True,
+            sign_tool_results=False,
+        )
+        mw._adapter.verify_input = lambda _value: (_ for _ in ()).throw(
+            ValueError("invalid signature")
+        )
+
+        class FakeContext:
+            arguments = {"input": '{"jacsSignature":{"signature":"bad"}}'}
+
+        called = False
+
+        async def call_next(ctx):
+            nonlocal called
+            called = True
+            return "must-not-run"
+
+        with pytest.raises(ValueError, match="invalid signature"):
+            await mw.on_call_tool(FakeContext(), call_next)
+        assert called is False
+
+    async def test_unverified_input_passthrough_requires_explicit_opt_in(self, client):
+        mw = JacsMCPMiddleware(
+            client=client,
+            verify_tool_inputs=True,
+            sign_tool_results=False,
+            allow_unverified_passthrough=True,
+        )
+        mw._adapter.verify_input = lambda _value: (_ for _ in ()).throw(
+            ValueError("invalid signature")
+        )
+
+        class FakeContext:
+            arguments = {"input": '{"jacsSignature":{"signature":"bad"}}'}
+
+        async def call_next(ctx):
+            return "legacy-result"
+
+        result = await mw.on_call_tool(FakeContext(), call_next)
+        assert result == "legacy-result"
 
 
 # ---------------------------------------------------------------------------

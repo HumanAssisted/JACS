@@ -140,17 +140,19 @@ pub fn handle_config_create() -> Result<(), JacsError> {
         match storage.file_exists(&agent_filename, None) {
             Ok(true) => match storage.get_file(&agent_filename, None) {
                 Ok(agent_content_bytes) => match String::from_utf8(agent_content_bytes) {
-                    Ok(agent_content) => match serde_json::from_str::<Value>(&agent_content) {
-                        Ok(agent_json) => {
-                            let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
-                            let jacs_version = agent_json["jacsVersion"].as_str().unwrap_or("");
-                            format!("{}:{}", jacs_id, jacs_version)
+                    Ok(agent_content) => {
+                        match jacs_core::strict_json::parse_strict_json(&agent_content) {
+                            Ok(agent_json) => {
+                                let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
+                                let jacs_version = agent_json["jacsVersion"].as_str().unwrap_or("");
+                                format!("{}:{}", jacs_id, jacs_version)
+                            }
+                            Err(e) => {
+                                println!("Error parsing agent JSON from {}: {}", agent_filename, e);
+                                String::new()
+                            }
                         }
-                        Err(e) => {
-                            println!("Error parsing agent JSON from {}: {}", agent_filename, e);
-                            String::new()
-                        }
-                    },
+                    }
                     Err(e) => {
                         println!(
                             "Error converting agent file content to UTF-8 {}: {}",
@@ -199,7 +201,7 @@ pub fn handle_config_create() -> Result<(), JacsError> {
     let jacs_agent_public_key_filename =
         request_string("Enter the public key filename:", "jacs.public.pem");
     let jacs_agent_key_algorithm = request_string(
-        "Enter the agent key algorithm (pq2025 or ring-Ed25519)",
+        "Enter the agent key algorithm (pq2025 or ed25519; ring-Ed25519 is a legacy alias)",
         "pq2025",
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
@@ -482,7 +484,8 @@ fn handle_agent_create_inner(
     };
 
     // -- Modify the agent template with remaining user input (agent_type) --
-    let mut agent_json: Value = serde_json::from_str(&agent_template_string).map_err(|e| {
+    let mut agent_json: Value = jacs_core::strict_json::parse_strict_json(&agent_template_string)
+        .map_err(|e| {
         format!(
             "Failed to parse agent template JSON: {}\nTemplate content:\n{}",
             e, agent_template_string
@@ -509,11 +512,8 @@ fn handle_agent_create_inner(
         println!(
             "Keys created in {}. Don't loose them! Keep them in a safe place. ",
             agent
-                .config
-                .as_ref()
-                .unwrap()
-                .jacs_key_directory()
-                .as_deref()
+                .key_paths()
+                .map(|paths| paths.key_directory.as_str())
                 .unwrap_or_default()
         );
         // If a domain is configured, emit DNS fingerprint instructions (non-strict at creation time)
@@ -556,14 +556,10 @@ fn handle_agent_create_inner(
     // password + AES-256-GCM/Argon2id envelope as the native root key.
     if create_keys && !no_compat_key {
         let key_directory = agent
-            .config
-            .as_ref()
-            .and_then(|c| c.jacs_key_directory().clone())
-            .unwrap_or_else(|| {
-                crate::paths::local_keys_dir()
-                    .to_string_lossy()
-                    .into_owned()
-            });
+            .key_paths()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .key_directory
+            .clone();
         let native_algorithm = agent
             .config
             .as_ref()

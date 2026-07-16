@@ -345,13 +345,11 @@ fn content_export_scope_denied_logs_warn() {
     );
 }
 
-/// Grandfathered Ed25519 native signing keeps emitting
-/// `native_legacy_ed25519_sign` at WARN (fleet-drift signal; the fix is
-/// rotation to pq2025). Uses the doc-hidden legacy fixture hatch — the
-/// public creation paths are PQ-only.
+/// Supported Ed25519 signing must not be mislabeled as a legacy or rejected
+/// operation. The normal completion event carries the actual algorithm.
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn grandfathered_ed25519_sign_logs_warn() {
+fn supported_ed25519_sign_has_truthful_operational_signal() {
     let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let (tmp, _guard) = enter_temp_cwd();
     let _ = &tmp;
@@ -363,29 +361,29 @@ fn grandfathered_ed25519_sign_logs_warn() {
         .key_directory("./jacs_keys")
         .config_path("./jacs.config.json")
         .build();
-    let (agent, info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
-        .expect("legacy fixture agent");
-    assert!(
-        info.algorithm.contains("Ed25519"),
-        "fixture builder must produce a genuine Ed25519 root, got {}",
-        info.algorithm
-    );
+    let (agent, info) = SimpleAgent::create_with_params(params).expect("Ed25519 agent");
+    assert_eq!(info.algorithm, "ring-Ed25519");
 
     let events = with_captured_logs(|| {
         agent
-            .sign_message(&json!({"legacy": true}))
-            .expect("grandfathered Ed25519 sign must still succeed");
+            .sign_message(&json!({"algorithm": "ed25519"}))
+            .expect("supported Ed25519 sign");
     });
 
     let warns = events_with_name(&events, "native_legacy_ed25519_sign");
     assert!(
-        !warns.is_empty(),
-        "grandfathered sign must emit native_legacy_ed25519_sign. Events: {:?}",
+        warns.is_empty(),
+        "supported Ed25519 must not emit a false legacy warning. Events: {:?}",
         events.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
-    assert_eq!(warns[0].level, Level::WARN, "must be WARN, not DEBUG");
-    // §9.8 names the identity field `jacs_id` (not `agent_id`).
-    assert_has_field(warns[0], "jacs_id");
+    let completions = events_with_name(&events, "signing_procedure_complete");
+    assert_eq!(
+        completions.len(),
+        1,
+        "one signing completion event expected"
+    );
+    assert_eq!(get_field(completions[0], "algorithm"), Some("ring-Ed25519"));
+    assert_has_field(completions[0], "agent_id");
 }
 
 // ---------------------------------------------------------------------------
@@ -997,12 +995,11 @@ mod counters {
         );
     }
 
-    /// Requesting Ed25519 on a PUBLIC creation path increments
-    /// `jacs_native_non_pq_sign_rejected_total` (creation still succeeds,
-    /// resolved to pq2025 — the counter tracks rejected requests).
+    /// Supported Ed25519 creation and signing do not increment obsolete
+    /// rejection or legacy-operation counters.
     #[test]
     #[serial(jacs_env, cwd_env)]
-    fn non_pq_sign_rejected_increments_counter() {
+    fn supported_ed25519_does_not_increment_rejection_counters() {
         let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (tmp, _guard) = enter_temp_cwd();
         let _ = &tmp;
@@ -1016,59 +1013,21 @@ mod counters {
             .key_directory("./jacs_keys")
             .config_path("./jacs.config.json")
             .build();
-        let (_agent, info) =
-            SimpleAgent::create_with_params(params).expect("creation resolves to pq2025");
-        assert!(
-            !info.algorithm.contains("Ed25519"),
-            "public creation must not produce an Ed25519 root, got {}",
-            info.algorithm
-        );
+        let (agent, info) = SimpleAgent::create_with_params(params).expect("Ed25519 creation");
+        assert_eq!(info.algorithm, "ring-Ed25519");
+        agent
+            .sign_message(&json!({"algorithm": "ed25519"}))
+            .expect("Ed25519 signing");
 
         assert_eq!(
             counter_value(&reader, "jacs_native_non_pq_sign_rejected_total", &[]),
-            1,
-            "requesting ring-Ed25519 on the public creation path must increment \
-             jacs_native_non_pq_sign_rejected_total once"
+            0,
+            "supported Ed25519 creation must not be counted as rejected"
         );
-    }
-
-    /// A grandfathered Ed25519 agent signing natively increments
-    /// `jacs_native_legacy_ed25519_sign_total` (fleet-drift signal, same
-    /// call site as the `native_legacy_ed25519_sign` WARN).
-    #[test]
-    #[serial(jacs_env, cwd_env)]
-    fn legacy_ed25519_sign_increments_counter() {
-        let _lock = EXPORT_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (tmp, _guard) = enter_temp_cwd();
-        let _ = &tmp;
-        let params = CreateAgentParams::builder()
-            .name("obs-counter-legacy")
-            .password(TEST_PASSWORD)
-            .algorithm("ring-Ed25519")
-            .data_directory("./jacs_data")
-            .key_directory("./jacs_keys")
-            .config_path("./jacs.config.json")
-            .build();
-        let (agent, info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
-            .expect("legacy fixture agent");
-        assert!(
-            info.algorithm.contains("Ed25519"),
-            "fixture builder must produce a genuine Ed25519 root, got {}",
-            info.algorithm
-        );
-
-        // Install AFTER creation so the agent's self-signature during
-        // bootstrap is not counted — only the sign under test.
-        let reader = install_metrics_reader();
-        agent
-            .sign_message(&json!({"legacy": true}))
-            .expect("grandfathered Ed25519 sign must still succeed");
-
         assert_eq!(
             counter_value(&reader, "jacs_native_legacy_ed25519_sign_total", &[]),
-            1,
-            "a grandfathered Ed25519 native sign must increment \
-             jacs_native_legacy_ed25519_sign_total once"
+            0,
+            "supported Ed25519 signing must not be counted as legacy"
         );
     }
 }
