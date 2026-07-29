@@ -23,12 +23,16 @@ use jacs::validation::require_relative_path_safe;
 use jacs_binding_core::AgentWrapper;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability};
+use rmcp::model::{
+    CacheScope, Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
+};
 use rmcp::{ServerHandler, tool, tool_router};
 use sha2::{Digest, Sha256};
 
 use crate::tools::*;
 use std::sync::Arc;
+
+const TOOLS_LIST_CACHE_TTL_MS: u64 = 300_000;
 
 // =============================================================================
 // Helper Functions
@@ -2975,9 +2979,9 @@ impl ServerHandler for JacsMcpServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
         let mut capabilities = ServerCapabilities::default();
-        capabilities.tools = Some(ToolsCapability {
-            list_changed: Some(false),
-        });
+        let mut tools = ToolsCapability::default();
+        tools.list_changed = Some(false);
+        capabilities.tools = Some(tools);
         info.capabilities = capabilities;
         info.server_info = Implementation::new("jacs-mcp", env!("CARGO_PKG_VERSION"))
             .with_title("JACS MCP Server")
@@ -2995,11 +2999,11 @@ impl ServerHandler for JacsMcpServer {
         _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::ListToolsResult, rmcp::model::ErrorData> {
-        Ok(rmcp::model::ListToolsResult {
-            tools: self.active_tools(),
-            meta: None,
-            next_cursor: None,
-        })
+        Ok(
+            rmcp::model::ListToolsResult::with_all_items(self.active_tools())
+                .with_ttl_ms(TOOLS_LIST_CACHE_TTL_MS)
+                .with_cache_scope(CacheScope::Public),
+        )
     }
 
     /// Dispatch a tool call, but only if the tool is in the active profile.
@@ -3010,7 +3014,7 @@ impl ServerHandler for JacsMcpServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<rmcp::model::CallToolResult, rmcp::model::ErrorData> {
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::model::ErrorData> {
         // Check that the requested tool is in the active profile.
         let active = self.active_tools();
         let tool_allowed = active.iter().any(|t| t.name == request.name);

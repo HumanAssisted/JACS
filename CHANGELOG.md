@@ -8,6 +8,12 @@
   additional restriction has been removed from the project license and all
   first-party package license files. Third-party notices continue to identify
   dependency licenses separately.
+- **The Rust MCP server now supports MCP `2026-07-28` through RMCP 3.0.**
+  Modern stdio clients can use `server/discover` without an initialization
+  handshake, while legacy `2025-11-25` clients retain the existing
+  `initialize` flow. Tool catalogs include a five-minute public cache hint;
+  JACS remains stdio-only and does not enable RMCP HTTP, SSE, or OAuth
+  transports.
 - **New-agent algorithm selection is truthful across every binding.**
   `pq2025` remains the default, while explicit `ed25519` / `ring-Ed25519`
   requests now create genuine 32-byte Ed25519 public keys and emit the
