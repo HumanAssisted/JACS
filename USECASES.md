@@ -67,4 +67,4 @@ See the [A2A interoperability guide](https://humanassisted.github.io/JACS/integr
 
 ## Add hosted verification with HAI.AI
 
-For verified documents, agent behavior, benchmarks, and platform workflows built around JACS identities, use [HumanAssisted/haiai](https://github.com/HumanAssisted/haiai). JACS remains the local open source signing and verification layer; HAI.AI is the hosted platform path.
+For verified documents, hosted agent identities, and `@hai.ai` mail built around JACS identities, use [HumanAssisted/haiai](https://github.com/HumanAssisted/haiai) — the SDK for the agreement factory at [hai.ai](https://hai.ai), where people and their advocate agents interview, draft, and confirm agreements. JACS remains the local open source signing and verification layer; HAI.AI is the hosted platform path, and its research evaluation is published on [MediationBench](https://whatisprogress.com).

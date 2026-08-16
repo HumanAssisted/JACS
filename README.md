@@ -114,7 +114,7 @@ File-tool paths must be relative to `JACS_MCP_BASE_DIR` (or the launch working d
 
 **Agent boundaries** — Sign tool outputs, API responses, MCP calls, A2A artifacts, or standalone Agreement v2 documents when data crosses a trust boundary.
 
-**Platform verification** — For verified documents, agent behavior, benchmarks, and hosted workflows around JACS identities, see [HumanAssisted/haiai](https://github.com/HumanAssisted/haiai).
+**Platform verification** — For verified documents, hosted agent identities, and `@hai.ai` mail built on JACS, see [HumanAssisted/haiai](https://github.com/HumanAssisted/haiai) — the SDK for the agreement factory at [hai.ai](https://hai.ai), where people and their advocate agents interview, draft, and confirm agreements. HAI.AI's research evaluation is published on [MediationBench](https://whatisprogress.com).
 
 ## When you do not need JACS
 
