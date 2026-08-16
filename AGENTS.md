@@ -32,7 +32,7 @@ README.md and CHANGELOG.md may be useful to understand some future goals and wha
 
 ## Sibling Repos
 
-- **haisdk** at `~/personal/haisdk` — wraps JACS, pins exact JACS versions in `rust/Cargo.toml`, `python/pyproject.toml`, and `node/package.json`. Local dev: haisdk's `rust/Cargo.toml` patches to `../../JACS/jacs`, `../../JACS/binding-core`, `../../JACS/jacs-mcp`. After a JACS bump, run `make check-versions` in haisdk before publishing JACS.
+- **haiai** at `~/personal/haiai` — wraps JACS, pins exact JACS versions in `rust/Cargo.toml`, `python/pyproject.toml`, and `node/package.json`. Local dev: haiai's `rust/Cargo.toml` patches to `../../JACS/jacs`, `../../JACS/binding-core`, `../../JACS/jacs-mcp`. After a JACS bump, run `make check-versions` in haiai before publishing JACS.
 - **hai (API)** at `~/personal/hai/api` — verifies JACS signatures via middleware. Will fail at startup if the JACS auth contract changes.
 
 ## Standard Test Recipe
@@ -198,15 +198,15 @@ if the tag already exists.
 | `jacs-cli/README.md` | Footer version line |
 | `CHANGELOG.md` | Add new `## X.Y.Z` section at top |
 
-### haisdk Repo — JACS version pins
+### haiai Repo — JACS version pins
 
-These pin the exact JACS version used by haisdk. Update after publishing JACS to crates.io.
+These pin the exact JACS version used by haiai. Update after publishing JACS to crates.io.
 
 | File | Dependencies |
 |------|-------------|
-| `rust/haisdk/Cargo.toml` | `jacs = { version = "=X.Y.Z" }` and `jacs_local_path` |
+| `rust/haiai/Cargo.toml` | `jacs = { version = "=X.Y.Z" }` and `jacs_local_path` |
 | `rust/hai-mcp/Cargo.toml` | `jacs`, `jacs-binding-core`, `jacs-mcp` version pins |
-| `rust/haisdk-cli/Cargo.toml` | `jacs-mcp` version pin |
+| `rust/haiai-cli/Cargo.toml` | `jacs-mcp` version pin |
 | `python/pyproject.toml` | `jacs==X.Y.Z` |
 
 ## Verification

@@ -199,8 +199,8 @@ Report vulnerabilities to security@hai.ai. Do not open public issues for securit
 - [Image and Media Signatures](https://humanassisted.github.io/JACS/guides/media-signing.html)
 - [Email Signing and Verification](https://humanassisted.github.io/JACS/guides/email-signing.html)
 - [Development Guide](DEVELOPMENT.md)
-- [HAI.AI Platform](https://github.com/HumanAssisted/haiai)
-- [HAI SDK](https://github.com/HumanAssisted/haisdk)
+- [HAI.AI Platform](https://github.com/HumanAssisted/hai)
+- [haiai SDK](https://github.com/HumanAssisted/haiai)
 
 ---
 
