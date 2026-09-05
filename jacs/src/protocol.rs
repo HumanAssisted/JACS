@@ -754,6 +754,87 @@ fn nonempty_request_auth_value<'a>(value: &'a str, field: &str) -> Result<&'a st
 pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsError> {
     let jacs_id = agent.get_lookup_id()?;
     let now = now_rfc3339();
+    let signing_algorithm = configured_agent_signing_algorithm(agent, "response signing")?;
+    let public_key = agent.get_public_key()?;
+    let public_key_hash = crate::crypt::hash::hash_public_key(&public_key);
+    assemble_response_envelope(
+        payload,
+        &jacs_id,
+        &now,
+        &Uuid::new_v4().to_string(),
+        &signing_algorithm,
+        &public_key_hash,
+        |input| agent.sign_string(input),
+    )
+}
+
+/// Sign a TP-34 response-v2 context with the authorized operation selected by
+/// the calling interface. Legacy sign_response remains available for inspection.
+pub fn sign_response_with_context(
+    agent: &mut Agent,
+    data: &jacs_core::response_context::ResponseData,
+    operation: jacs_core::response_context::ResponseOperation,
+) -> Result<Value, JacsError> {
+    let lookup_id = agent.get_lookup_id()?;
+    let algorithm = configured_agent_signing_algorithm(agent, "contextual response signing")?;
+    let public_key_hash = crate::crypt::hash::hash_public_key(&agent.get_public_key()?);
+    build_response_with_context_and_signer(
+        &lookup_id,
+        &algorithm,
+        &public_key_hash,
+        data,
+        operation,
+        |input| agent.sign_string(input),
+    )
+}
+
+/// Restricted remote/local signer adapter. Context and envelope construction
+/// remain in JACS; the callback signs the exact domain-separated input.
+pub fn build_response_with_context_and_signer(
+    signer_lookup_id: &str,
+    signing_algorithm: &str,
+    public_key_hash: &str,
+    data: &jacs_core::response_context::ResponseData,
+    operation: jacs_core::response_context::ResponseOperation,
+    sign: impl FnOnce(&str) -> Result<String, JacsError>,
+) -> Result<Value, JacsError> {
+    if data.operation() != operation {
+        return Err(JacsError::SigningFailed {
+            reason: "response context class does not match the authorized signing operation".into(),
+        });
+    }
+    nonempty_request_auth_value(signer_lookup_id, "signer_lookup_id")?;
+    nonempty_request_auth_value(signing_algorithm, "signing_algorithm")?;
+    nonempty_request_auth_value(public_key_hash, "public_key_hash")?;
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let document_id = Uuid::new_v4().to_string();
+    let mut data = data.clone();
+    data.bind_event_metadata(signer_lookup_id, &document_id, &now);
+    data.validate()?;
+    let payload = serde_json::to_value(&data).map_err(|error| JacsError::Internal {
+        message: error.to_string(),
+    })?;
+    assemble_response_envelope(
+        &payload,
+        signer_lookup_id,
+        &now,
+        &document_id,
+        signing_algorithm,
+        public_key_hash,
+        sign,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assemble_response_envelope(
+    payload: &Value,
+    jacs_id: &str,
+    now: &str,
+    document_id: &str,
+    signing_algorithm: &str,
+    public_key_hash: &str,
+    sign: impl FnOnce(&str) -> Result<String, JacsError>,
+) -> Result<Value, JacsError> {
     let canonical =
         jacs_core::canonical::canonicalize_json_try(payload).map_err(JacsError::from)?;
 
@@ -764,10 +845,6 @@ pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsEr
         hex::encode(hasher.finalize())
     };
 
-    let signing_algorithm = configured_agent_signing_algorithm(agent, "response signing")?;
-    let public_key = agent.get_public_key()?;
-    let public_key_hash = crate::crypt::hash::hash_public_key(&public_key);
-
     let data: Value = serde_json::from_str(&canonical)
         .map_err(|e| format!("sign_response: failed to re-parse canonical JSON: {e}"))?;
 
@@ -777,7 +854,7 @@ pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsEr
         "data": data,
         "metadata": {
             "issuer": jacs_id,
-            "document_id": Uuid::new_v4().to_string(),
+            "document_id": document_id,
             "created_at": now,
             "hash": hash,
         },
@@ -791,10 +868,34 @@ pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsEr
     });
 
     let signing_input = response_signing_input(&envelope)?;
-    let signature = agent.sign_string(&signing_input)?;
+    let signature = sign(&signing_input)?;
     envelope["jacsSignature"]["signature"] = Value::String(signature);
 
     Ok(envelope)
+}
+
+/// Verify the frozen response-v2 signature plus an independently supplied
+/// TP-34 context. This does not consume replay state or apply application
+/// authorization; live event consumers must do both before releasing payloads.
+pub fn verify_response_for_context_with_trusted_key(
+    envelope: &Value,
+    public_key: &[u8],
+    expected: &jacs_core::response_context::ResponseExpectation,
+) -> Result<jacs_core::response_context::ResponseData, JacsError> {
+    verify_response_envelope_with_trusted_key(envelope, public_key)?;
+    jacs_core::response_context::require_response_context(envelope, expected)
+        .map_err(JacsError::from)
+}
+
+/// Strict exact-JSON variant of contextual response verification.
+pub fn verify_response_json_for_context_with_trusted_key(
+    raw: &str,
+    public_key: &[u8],
+    expected: &jacs_core::response_context::ResponseExpectation,
+) -> Result<jacs_core::response_context::ResponseData, JacsError> {
+    crate::schema::utils::check_document_size(raw)?;
+    let envelope = jacs_core::strict_json::parse_strict_json(raw)?;
+    verify_response_for_context_with_trusted_key(&envelope, public_key, expected)
 }
 
 /// Build the versioned, domain-separated response signature input.
@@ -803,18 +904,7 @@ pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsEr
 /// Unknown fields are intentionally retained, so inserting or removing one
 /// after signing invalidates the signature.
 pub fn response_signing_input(envelope: &Value) -> Result<String, JacsError> {
-    let mut unsigned = envelope.clone();
-    let signature = unsigned
-        .get_mut("jacsSignature")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature".to_string(),
-            reason: "response envelope is missing the signature object".to_string(),
-        })?;
-    signature.remove("signature");
-    let canonical =
-        jacs_core::canonical::canonicalize_json_try(&unsigned).map_err(JacsError::from)?;
-    Ok(format!("{RESPONSE_SIGNATURE_DOMAIN}{canonical}"))
+    jacs_core::response_context::response_signing_input(envelope).map_err(JacsError::from)
 }
 
 fn response_field<'a>(value: &'a Value, pointer: &str) -> Result<&'a str, JacsError> {
@@ -2225,6 +2315,92 @@ mod tests {
         let duplicate = verify_signed_event_with_replay_store(&envelope, &keys, &store, 300)
             .expect_err("duplicate signed event must fail closed");
         assert!(duplicate.to_string().contains("Replay attack"));
+    }
+
+    #[test]
+    fn contextual_response_preserves_frozen_family_and_requires_expected_recipient() {
+        use jacs_core::response_context::{
+            RequestBinding, ResponseData, ResponseExpectation, ResponseOperation,
+        };
+        let mut agent = make_test_agent();
+        let key = agent.get_public_key().unwrap();
+        let data = ResponseData::DirectResponse {
+            request_id: "request-1".into(),
+            request_binding: RequestBinding::RequestNonce("nonce-1".into()),
+            audience: "recipient-1".into(),
+            response_type: "job-result".into(),
+            payload: json!({"answer":42}),
+        };
+        assert!(
+            sign_response_with_context(&mut agent, &data, ResponseOperation::SignAsyncEvent)
+                .is_err()
+        );
+        let envelope =
+            sign_response_with_context(&mut agent, &data, ResponseOperation::SignBoundResponse)
+                .unwrap();
+        let expected = ResponseExpectation::ExactContext {
+            value: data.operation_context().unwrap(),
+        };
+        let verified =
+            verify_response_for_context_with_trusted_key(&envelope, &key, &expected).unwrap();
+        assert_eq!(verified.payload()["answer"], 42);
+        assert_eq!(envelope["version"], RESPONSE_ENVELOPE_VERSION);
+        let mut wrong = data.operation_context().unwrap();
+        wrong["audience"] = json!("recipient-2");
+        assert!(
+            verify_response_for_context_with_trusted_key(
+                &envelope,
+                &key,
+                &ResponseExpectation::ExactContext { value: wrong }
+            )
+            .is_err()
+        );
+        let legacy = sign_response(&mut agent, &json!({"answer":42})).unwrap();
+        assert!(verify_response_for_context_with_trusted_key(&legacy, &key, &expected).is_err());
+        assert!(
+            jacs_core::response_context::inspect_response_context(&legacy)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn contextual_event_metadata_is_signer_owned_and_exact() {
+        use jacs_core::response_context::{
+            EventCausation, EventTransport, ResponseData, ResponseOperation,
+        };
+        let mut agent = make_test_agent();
+        let data = ResponseData::PrivateEvent {
+            event_type: "heartbeat".into(),
+            contract: "test.events".into(),
+            contract_version: "2".into(),
+            transport: EventTransport::Stream("stream-1".into()),
+            issuer: "caller supplied".into(),
+            tenant: "tenant-1".into(),
+            audience: "recipient-1".into(),
+            event_id: String::new(),
+            emitted_at: String::new(),
+            causation: EventCausation::None { id: () },
+            payload: json!({"type":"heartbeat"}),
+        };
+        let envelope =
+            sign_response_with_context(&mut agent, &data, ResponseOperation::SignAsyncEvent)
+                .unwrap();
+        let context = jacs_core::response_context::inspect_response_context(&envelope)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            envelope["data"]["issuer"],
+            envelope["jacsSignature"]["agentID"]
+        );
+        assert_eq!(
+            envelope["data"]["eventId"],
+            envelope["metadata"]["document_id"]
+        );
+        assert!(context.validate_envelope_metadata(&envelope).is_ok());
+        let mut wrong = envelope;
+        wrong["data"]["emittedAt"] = json!("2000-01-01T00:00:00Z");
+        assert!(jacs_core::response_context::inspect_response_context(&wrong).is_err());
     }
 
     #[test]

@@ -243,13 +243,13 @@ async fn legacy_initialize_and_tools_list_remain_compatible() -> anyhow::Result<
     );
 
     let names = tool_names(&listed);
-    let expected_tools = jacs_mcp::Profile::Core.tools();
+    let expected_tools = jacs_mcp::Profile::VerifyOnly.tools();
     let expected_names: Vec<&str> = expected_tools
         .iter()
         .map(|tool| tool.name.as_ref())
         .collect();
     assert_eq!(names, expected_names);
-    assert!(names.contains(&"jacs_sign_document"));
+    assert!(!names.contains(&"jacs_sign_document"));
     assert!(!names.contains(&"jacs_create_agreement"));
 
     session.shutdown().await;
@@ -298,13 +298,13 @@ async fn modern_discover_lists_cached_tools_and_calls_a_tool() -> anyhow::Result
     assert_eq!(listed["result"]["ttlMs"], EXPECTED_TOOLS_TTL_MS);
     assert_eq!(listed["result"]["cacheScope"], "public");
     let names = tool_names(&listed);
-    let expected_tools = jacs_mcp::Profile::Core.tools();
+    let expected_tools = jacs_mcp::Profile::VerifyOnly.tools();
     let expected_names: Vec<&str> = expected_tools
         .iter()
         .map(|tool| tool.name.as_ref())
         .collect();
     assert_eq!(names, expected_names);
-    assert!(names.contains(&"jacs_sign_document"));
+    assert!(!names.contains(&"jacs_sign_document"));
     assert!(!names.contains(&"jacs_create_agreement"));
 
     let listed_again = session

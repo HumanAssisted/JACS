@@ -532,19 +532,14 @@ pub extern "C" fn jacs_agent_verify_document(
             Err(_) => return -3,
         };
 
-        let doc = match agent.load_document(doc_str) {
-            Ok(doc) => doc,
+        let value = match agent.validate_header(doc_str) {
+            Ok(value) => value,
             Err(_) => return -4,
         };
-
-        let document_key = doc.getkey();
-        let value = doc.getvalue();
-
-        if agent.verify_hash(value).is_err() {
+        if agent.verify_hash(&value).is_err() {
             return -5;
         }
-
-        match agent.verify_external_document_signature(&document_key) {
+        match agent.verify_external_document_signature_value(&value) {
             Ok(_) => 0,
             Err(_) => -6,
         }
@@ -597,19 +592,14 @@ pub extern "C" fn jacs_agent_verify_document_by_id(
             Err(_) => return -7,
         };
 
-        let loaded_doc = match agent.load_document(&doc_str) {
-            Ok(d) => d,
+        let value = match agent.validate_header(&doc_str) {
+            Ok(value) => value,
             Err(_) => return -8,
         };
-
-        let document_key = loaded_doc.getkey();
-        let value = loaded_doc.getvalue();
-
-        if agent.verify_hash(value).is_err() {
+        if agent.verify_hash(&value).is_err() {
             return -9;
         }
-
-        match agent.verify_external_document_signature(&document_key) {
+        match agent.verify_external_document_signature_value(&value) {
             Ok(_) => 0,
             Err(_) => -10,
         }
@@ -1759,19 +1749,14 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
             Err(_) => return -3,
         };
 
-        let doc = match agent.load_document(doc_str) {
-            Ok(doc) => doc,
+        let value = match agent.validate_header(doc_str) {
+            Ok(value) => value,
             Err(_) => return -4,
         };
-
-        let document_key = doc.getkey();
-        let value = doc.getvalue();
-
-        if agent.verify_hash(value).is_err() {
+        if agent.verify_hash(&value).is_err() {
             return -5;
         }
-
-        match agent.verify_external_document_signature(&document_key) {
+        match agent.verify_external_document_signature_value(&value) {
             Ok(_) => 0,
             Err(_) => -6,
         }
@@ -1812,7 +1797,10 @@ pub extern "C" fn jacs_verify_document_standalone(
         };
         match jacs_binding_core::verify_document_standalone(doc_str, kr, dd, kd) {
             Ok(r) => {
-                let json = serde_json::json!({ "valid": r.valid, "signer_id": r.signer_id });
+                let json = serde_json::json!({
+                    "valid": r.valid, "signer_id": r.signer_id,
+                    "identity_bound": r.identity_bound(), "policy_accepted": r.policy_accepted()
+                });
                 match CString::new(json.to_string()) {
                     Ok(cs) => cs.into_raw(),
                     Err(_) => ptr::null_mut(),
@@ -2175,16 +2163,14 @@ pub extern "C" fn jacs_verify_signature(
             Err(_) => return -3,
         };
 
-        let doc = match agent.load_document(doc_str) {
-            Ok(doc) => doc,
+        let value = match agent.validate_header(doc_str) {
+            Ok(value) => value,
             Err(_) => return -4,
         };
-
-        let document_key = doc.getkey();
         let sig_field_opt = c_string_to_option(signature_field);
 
-        match agent.verify_document_signature(
-            &document_key,
+        match agent.verify_document_signature_value(
+            &value,
             sig_field_opt.as_deref(),
             None,
             None,

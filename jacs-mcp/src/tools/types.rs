@@ -75,7 +75,7 @@ pub struct SignAgreementResult {
     pub error: Option<String>,
 }
 
-/// Parameters for checking agreement status.
+/// Parameters for inspecting legacy Agreement v1 signatures and claimed status metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CheckAgreementParams {
     #[schemars(description = "The agreement JSON to check status of")]
@@ -84,11 +84,20 @@ pub struct CheckAgreementParams {
     pub agreement_fieldname: Option<String>,
 }
 
-/// Result of checking an agreement's status.
+/// Non-actionable result of inspecting a legacy Agreement v1 artifact.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CheckAgreementResult {
+    /// Whether the legacy v1 signature checks that were actually run passed.
+    /// This is not an authorization or agreement-completion decision.
+    pub mathematical_checks_valid: bool,
     pub success: bool,
+    /// Always false for legacy Agreement v1.
     pub complete: bool,
+    /// Always false for legacy Agreement v1 because its policy sidecar is not signed.
+    pub policy_authenticated: bool,
+    /// Always false for legacy Agreement v1.
+    pub policy_accepted: bool,
+    pub overall_scope: String,
     pub total_agents: usize,
     pub signatures_collected: usize,
     pub signatures_required: usize,
@@ -102,6 +111,8 @@ pub struct CheckAgreementResult {
     pub timeout: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
 }
 
 // =============================================================================

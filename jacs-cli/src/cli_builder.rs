@@ -388,7 +388,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("check-agreement")
-                        .about("List the agents that should sign a document's agreement (legacy v1; prefer `jacs agreement-v2`)")
+                        .about("Inspect legacy v1 signatures and claimed signer metadata; never reports completion or policy acceptance (use Agreement v3 for actionable decisions)")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -804,9 +804,11 @@ pub fn build_cli() -> Command {
                     Arg::new("profile")
                         .long("profile")
                         .help(
-                            "Tool profile: 'core' (default; document, trust, search, key, and W3C tools) or \
-                             'full' (adds agreement, A2A, and attestation tools). When omitted, \
-                             JACS_MCP_PROFILE is used before falling back to core.",
+                            "Security profile: 'verify-only' (default), 'local-sign', 'trust-admin', or \
+                             compatibility-only 'legacy-core'. Privileged profiles require the complete \
+                             independently authorized TP-39 capability/status/approval broker and fail \
+                             startup when it is unavailable. When omitted, JACS_MCP_PROFILE is used before \
+                             falling back to verify-only.",
                         ),
                 )
                 .subcommand(

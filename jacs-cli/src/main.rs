@@ -1004,7 +1004,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         tracing::error!(
                             event = "mcp_profile_invalid",
                             profile = error.value(),
-                            allowed_profiles = "core,full",
+                            allowed_profiles = "verify-only,local-sign,trust-admin,legacy-core",
                             "MCP profile selection failed"
                         );
                         eprintln!("{error}");
@@ -1018,8 +1018,26 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     profile = %profile,
                     "Starting JACS MCP server (stdio transport)"
                 );
-                let (agent, _info) = jacs_mcp::load_agent_from_config_env_with_info()?;
-                let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
+                // `Profile::resolve` currently admits only verify-only. An
+                // optional config opens authenticated public identity and
+                // document storage through the public-only loader; it never
+                // resolves a password or reads/decrypts a private key.
+                let server = match std::env::var("JACS_CONFIG") {
+                    Ok(_) => {
+                        let (agent, _info) =
+                            jacs_mcp::load_public_agent_from_config_env_with_info()?;
+                        jacs_mcp::JacsMcpServer::with_profile(agent, profile)
+                    }
+                    Err(std::env::VarError::NotPresent) => {
+                        jacs_mcp::JacsMcpServer::verification_only()
+                    }
+                    Err(std::env::VarError::NotUnicode(_)) => {
+                        return Err(Box::new(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "JACS_CONFIG is not valid Unicode",
+                        )));
+                    }
+                };
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(jacs_mcp::serve_stdio(server))?;
             }

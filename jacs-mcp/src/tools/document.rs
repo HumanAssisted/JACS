@@ -50,10 +50,19 @@ pub struct SignDocumentResult {
 
 /// Parameters for verifying a raw signed JACS document string.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct VerifyDocumentParams {
     /// The full JACS signed document as a JSON string.
     #[schemars(description = "The full signed JACS document JSON string to verify")]
     pub document: String,
+
+    /// Exact raw public-key bytes selected by the caller. Supplying a key
+    /// proves signature integrity only; it does not establish signer trust.
+    #[schemars(description = "Exact raw Ed25519 or ML-DSA-87 public-key bytes")]
+    pub public_key: Vec<u8>,
+
+    /// Exact verification algorithm (`ed25519` or `pq2025`).
+    pub algorithm: String,
 }
 
 /// Result of verifying a signed document.
@@ -150,10 +159,9 @@ pub fn tools() -> Vec<Tool> {
         ),
         Tool::new(
             "jacs_verify_document",
-            "Verify a signed JACS document given its full JSON string. Checks both the \
-             content hash and cryptographic signature. Use this when you have a signed \
-             document in memory (e.g. from an approval context or signed payload) and \
-             need to confirm its integrity and authenticity.",
+            "Verify exact submitted JACS document bytes with an explicit caller-selected \
+             raw public key and algorithm. This checks integrity only; it does not establish \
+             signer identity, trust, authorization, freshness, or revocation status.",
             schema_map::<VerifyDocumentParams>(),
         ),
         Tool::new(

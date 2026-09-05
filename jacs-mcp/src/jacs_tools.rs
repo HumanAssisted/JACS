@@ -221,7 +221,27 @@ pub struct JacsMcpServer {
 
 #[allow(dead_code)]
 impl JacsMcpServer {
-    /// Create a new JACS MCP server with the given agent and the safe `Core`
+    /// Construct the default MCP process without reading configuration or
+    /// loading/decrypting any private key. Only tools in the closed
+    /// verification-only inventory are dispatchable from this instance.
+    pub fn verification_only() -> Self {
+        let registration_allowed = false;
+        let untrust_allowed = false;
+        let profile = crate::profile::Profile::VerifyOnly;
+        tracing::info!(profile = %profile, "Tool profile active without a signing identity");
+        Self {
+            agent: Arc::new(AgentWrapper::new()),
+            document_service: None,
+            simple_agent: None,
+            tool_router: Self::tool_router(),
+            registration_allowed,
+            untrust_allowed,
+            profile,
+        }
+    }
+
+    /// Create a new JACS MCP server with the given agent and the safe
+    /// `verify-only`
     /// profile.
     ///
     /// This embedding constructor is intentionally deterministic and does not
@@ -238,7 +258,7 @@ impl JacsMcpServer {
     /// * `JACS_MCP_ALLOW_REGISTRATION` - Set to "true" to enable the jacs_create_agent tool
     /// * `JACS_MCP_ALLOW_UNTRUST` - Set to "true" to enable the jacs_untrust_agent tool
     pub fn new(agent: AgentWrapper) -> Self {
-        Self::with_profile(agent, crate::profile::Profile::Core)
+        Self::with_profile(agent, crate::profile::Profile::VerifyOnly)
     }
 
     /// Create a new JACS MCP server with an explicit runtime profile.
@@ -259,20 +279,10 @@ impl JacsMcpServer {
         // a higher-level facade over the raw Agent. We materialise one here from
         // the same config the AgentWrapper already loaded, so the new tools share
         // the server's identity rather than spinning up an ephemeral throwaway.
-        let simple_agent = match Self::load_simple_agent_from_env() {
-            Ok(Some(sa)) => Some(Arc::new(sa)),
-            Ok(None) => None,
-            Err(err) => {
-                tracing::warn!(
-                    "SimpleAgent unavailable for inline-text / media tools: {}. \
-                     jacs_sign_text / jacs_verify_text / jacs_sign_image / \
-                     jacs_verify_image / jacs_extract_media_signature will return \
-                     a clear error envelope when called.",
-                    err
-                );
-                None
-            }
-        };
+        // A profile name is not TP-39 signing authority. No currently
+        // constructible MCP profile may materialize an additional
+        // signing-capable SimpleAgent from ambient process configuration.
+        let simple_agent = None;
 
         if registration_allowed {
             tracing::info!("Agent creation is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
@@ -359,7 +369,7 @@ impl JacsMcpServer {
             .join("\n");
 
         format!(
-            "JACS MCP profile '{}' exposes {} active tools for local data provenance, signing, and verification. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n{}",
+            "JACS MCP profile '{}' exposes {} authorized tools. The default is verification-only; a listed tool is the sole runtime authority surface. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n{}",
             self.profile.as_str(),
             names.len(),
             tool_list
@@ -832,14 +842,16 @@ impl JacsMcpServer {
         inject_meta(&serialized, None)
     }
 
-    /// Check the status of an agreement.
+    /// Inspect legacy v1 signature mathematics and claimed status metadata.
     ///
-    /// Returns whether quorum is met, which agents have signed, whether the
-    /// agreement has expired, and how many more signatures are needed.
+    /// Claimed participants, quorum, timeout, and completion policy are not
+    /// authenticated by the v1 proof, so this endpoint always returns
+    /// `complete=false` and `policy_accepted=false`.
     #[tool(
         name = "jacs_check_agreement",
-        description = "Check agreement status: who has signed, whether quorum is met, \
-                       whether it has expired, and who still needs to sign."
+        description = "Inspect present signatures and claimed status metadata on a legacy \
+                       Agreement v1 document. V1 policy is unauthenticated, so this tool \
+                       never reports agreement completion or policy acceptance."
     )]
     pub async fn jacs_check_agreement(
         &self,
@@ -849,26 +861,70 @@ impl JacsMcpServer {
             .agreement_fieldname
             .unwrap_or_else(|| "jacsAgreement".to_string());
 
-        if let Err(e) = self
+        let inspection = match self
             .agent
             .check_agreement(&params.signed_agreement, Some(fieldname.clone()))
         {
-            let result = CheckAgreementResult {
-                success: false,
-                complete: false,
-                total_agents: 0,
-                signatures_collected: 0,
-                signatures_required: 0,
-                quorum_met: false,
-                expired: false,
-                signed_by: None,
-                unsigned: None,
-                timeout: None,
-                error: Some(format!("Failed to check agreement: {}", e)),
-            };
-            return serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|e| format!("Error: {}", e));
-        }
+            Ok(report) => report,
+            Err(e) => {
+                let result = CheckAgreementResult {
+                    mathematical_checks_valid: false,
+                    success: false,
+                    complete: false,
+                    policy_authenticated: false,
+                    policy_accepted: false,
+                    overall_scope: "legacy_v1_present_signature_inspection".to_string(),
+                    total_agents: 0,
+                    signatures_collected: 0,
+                    signatures_required: 0,
+                    quorum_met: false,
+                    expired: false,
+                    signed_by: None,
+                    unsigned: None,
+                    timeout: None,
+                    error: Some(format!("Failed to check agreement: {}", e)),
+                    warnings: Some(vec![
+                        "Agreement v1 cannot produce an actionable or complete verdict".to_string(),
+                    ]),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mathematical_checks_valid = match jacs::strict_json::parse_strict_json(&inspection) {
+            Ok(report) => report
+                .get("mathematical_checks_valid")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false),
+            Err(e) => {
+                let result = CheckAgreementResult {
+                    mathematical_checks_valid: false,
+                    success: false,
+                    complete: false,
+                    policy_authenticated: false,
+                    policy_accepted: false,
+                    overall_scope: "legacy_v1_present_signature_inspection".to_string(),
+                    total_agents: 0,
+                    signatures_collected: 0,
+                    signatures_required: 0,
+                    quorum_met: false,
+                    expired: false,
+                    signed_by: None,
+                    unsigned: None,
+                    timeout: None,
+                    error: Some(format!(
+                        "Legacy agreement inspector returned an invalid report: {}",
+                        e
+                    )),
+                    warnings: Some(vec![
+                        "Agreement v1 cannot produce an actionable or complete verdict".to_string(),
+                    ]),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
 
         // Parse the verified agreement to extract status details.
         let doc: serde_json::Value =
@@ -876,8 +932,12 @@ impl JacsMcpServer {
                 Ok(v) => v,
                 Err(e) => {
                     let result = CheckAgreementResult {
+                        mathematical_checks_valid: false,
                         success: false,
                         complete: false,
+                        policy_authenticated: false,
+                        policy_accepted: false,
+                        overall_scope: "legacy_v1_present_signature_inspection".to_string(),
                         total_agents: 0,
                         signatures_collected: 0,
                         signatures_required: 0,
@@ -887,6 +947,10 @@ impl JacsMcpServer {
                         unsigned: None,
                         timeout: None,
                         error: Some(format!("Failed to parse agreement JSON: {}", e)),
+                        warnings: Some(vec![
+                            "Agreement v1 cannot produce an actionable or complete verdict"
+                                .to_string(),
+                        ]),
                     };
                     return serde_json::to_string_pretty(&result)
                         .unwrap_or_else(|e| format!("Error: {}", e));
@@ -897,8 +961,12 @@ impl JacsMcpServer {
             Some(a) => a,
             None => {
                 let result = CheckAgreementResult {
+                    mathematical_checks_valid: false,
                     success: false,
                     complete: false,
+                    policy_authenticated: false,
+                    policy_accepted: false,
+                    overall_scope: "legacy_v1_present_signature_inspection".to_string(),
                     total_agents: 0,
                     signatures_collected: 0,
                     signatures_required: 0,
@@ -908,6 +976,9 @@ impl JacsMcpServer {
                     unsigned: None,
                     timeout: None,
                     error: Some(format!("No '{}' field found in document", fieldname)),
+                    warnings: Some(vec![
+                        "Agreement v1 cannot produce an actionable or complete verdict".to_string(),
+                    ]),
                 };
                 return serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
@@ -968,20 +1039,29 @@ impl JacsMcpServer {
             .map(|deadline| chrono::Utc::now() > deadline)
             .unwrap_or(false);
 
-        let complete = quorum_met && !expired;
-
         let result = CheckAgreementResult {
-            success: true,
-            complete,
+            mathematical_checks_valid,
+            success: mathematical_checks_valid,
+            complete: false,
+            policy_authenticated: false,
+            policy_accepted: false,
+            overall_scope: "legacy_v1_present_signature_inspection".to_string(),
             total_agents: agent_ids.len(),
             signatures_collected: signed_by.len(),
             signatures_required: quorum,
-            quorum_met,
+            // `quorum` is part of the unsigned v1 sidecar. Keep the claimed
+            // counts above as migration diagnostics, but never promote the
+            // derived comparison to an authenticated quorum decision.
+            quorum_met: false,
             expired,
             signed_by: Some(signed_by),
             unsigned: Some(unsigned),
             timeout: timeout_str,
             error: None,
+            warnings: Some(vec![format!(
+                "Agreement v1 policy is unauthenticated; claimed quorum comparison was {} and cannot authorize an action",
+                quorum_met
+            )]),
         };
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
@@ -1119,10 +1199,10 @@ impl JacsMcpServer {
         }
     }
 
-    /// Verify agreement v2 hash, status, transcript, and signature invariants.
+    /// Inspect exact Agreement v2 bytes and mathematical signature coverage.
     #[tool(
         name = "jacs_verify_agreement_v2",
-        description = "Verify a standalone JACS agreement v2 document."
+        description = "Inspect exact standalone JACS agreement v2 bytes. Returns consent-signature coverage only; v2 cannot authenticate role, quorum, lineage, notary status, or policy acceptance."
     )]
     pub async fn jacs_verify_agreement_v2(
         &self,
@@ -1141,54 +1221,31 @@ impl JacsMcpServer {
                 .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
                 .unwrap_or_else(|| "unknown".to_string());
 
-            let result = match self.agent.verify_agreement_v2_json(&params.agreement) {
-                Ok(report_json) => match jacs::strict_json::parse_strict_json(&report_json) {
-                    Ok(report_value) => {
-                        // Fail closed: a report missing `valid` is treated as invalid.
-                        let valid = report_value
-                            .get("valid")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        if !valid {
-                            let errors = report_value
-                                .get("errors")
-                                .map(|e| e.to_string())
-                                .unwrap_or_default();
-                            tracing::warn!(
-                                event = "agreement_v2_verify_invalid",
-                                agreement_id = %agreement_id,
-                                errors = %errors,
-                                "agreement v2 verification failed"
-                            );
-                        }
-                        VerifyAgreementV2Result {
-                            success: true,
-                            valid,
-                            result: Some(report_value),
-                            error: None,
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            event = "agreement_v2_verify_invalid",
-                            agreement_id = %agreement_id,
-                            error = %e,
-                            "agreement v2 verification report failed to parse"
-                        );
-                        VerifyAgreementV2Result {
-                            success: false,
-                            valid: false,
-                            result: None,
-                            error: Some(format!("Failed to parse agreement v2 report: {}", e)),
-                        }
-                    }
+            let result = match self.with_agent_mut(|agent| {
+                jacs::agreements::v2::inspect_with_agent(agent, &params.agreement)
+            }) {
+                Ok(report) => match serde_json::to_value(report) {
+                    Ok(report_value) => VerifyAgreementV2Result {
+                        success: true,
+                        // Compatibility field is deliberately fail-closed:
+                        // inspect `result.cryptographicResult` for math only.
+                        valid: false,
+                        result: Some(report_value),
+                        error: None,
+                    },
+                    Err(e) => VerifyAgreementV2Result {
+                        success: false,
+                        valid: false,
+                        result: None,
+                        error: Some(format!("Failed to serialize agreement v2 coverage: {e}")),
+                    },
                 },
                 Err(e) => {
                     tracing::warn!(
-                        event = "agreement_v2_verify_invalid",
+                        event = "agreement_v2_inspection_failed",
                         agreement_id = %agreement_id,
                         error = %e,
-                        "agreement v2 verification failed"
+                        "agreement v2 coverage inspection failed"
                     );
                     VerifyAgreementV2Result {
                         success: false,
@@ -1424,7 +1481,7 @@ impl JacsMcpServer {
     /// Verify a signed JACS document given its full JSON string.
     #[tool(
         name = "jacs_verify_document",
-        description = "Verify a signed JACS document's hash and cryptographic signature."
+        description = "Verify exact submitted JACS document bytes with a caller-selected raw public key and algorithm. Integrity only; does not establish identity or authorization."
     )]
     pub async fn jacs_verify_document(
         &self,
@@ -1442,9 +1499,19 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        // Try verify_signature first (works for both self-signed and external docs)
-        match self.agent.verify_signature(&params.document, None) {
-            Ok(valid) => {
+        // Verification-only MCP never loads a signing identity. The caller
+        // selects exact public bytes and the reduced verifier checks those
+        // submitted document bytes directly without storage or key discovery.
+        let verification = jacs::verification::NonSigningVerifier::new().and_then(|verifier| {
+            verifier.verify_with_key(
+                &params.document,
+                &params.public_key,
+                &params.algorithm,
+                None,
+            )
+        });
+        match verification {
+            Ok(report) => {
                 // Try to extract signer ID from the document
                 let signer_id = jacs::strict_json::parse_strict_json(&params.document)
                     .ok()
@@ -1457,14 +1524,14 @@ impl JacsMcpServer {
 
                 let result = VerifyDocumentResult {
                     success: true,
-                    valid,
+                    valid: report.integrity_valid,
                     signer_id,
-                    message: if valid {
+                    message: if report.integrity_valid {
                         "Document verified successfully".to_string()
                     } else {
                         "Document signature verification failed".to_string()
                     },
-                    error: None,
+                    error: (!report.errors.is_empty()).then(|| report.errors.join("; ")),
                 };
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
@@ -3021,8 +3088,7 @@ impl ServerHandler for JacsMcpServer {
         if !tool_allowed {
             return Err(rmcp::model::ErrorData::invalid_params(
                 format!(
-                    "Tool '{}' is not available in the '{}' profile. \
-                     Use --profile full or set JACS_MCP_PROFILE=full to access all tools.",
+                    "Tool '{}' is not available in the '{}' profile. Privileged tools require an independently authorized TP-39 capability broker; a profile name or environment variable cannot enable them.",
                     request.name,
                     self.profile().as_str(),
                 ),
@@ -3247,8 +3313,11 @@ mod tests {
     #[test]
     fn test_tool_list_includes_agreement_tools() {
         // Verify the 3 agreement tools are registered when agreement-tools is enabled
-        let tools = JacsMcpServer::tools();
-        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        let compiled_tools = JacsMcpServer::tools();
+        let names: Vec<&str> = compiled_tools
+            .iter()
+            .map(|tool| tool.name.as_ref())
+            .collect();
         assert!(
             names.contains(&"jacs_create_agreement"),
             "Missing jacs_create_agreement"

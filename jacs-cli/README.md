@@ -139,7 +139,8 @@ use that form when TLS terminates at a reverse proxy.
 jacs mcp
 ```
 
-The MCP server uses stdio transport only. It runs as a subprocess of your MCP client, holds the private key locally, and opens no HTTP port.
+The MCP server uses stdio transport only. Its default verification-only process
+does not load a private key and opens no HTTP port.
 
 Configure in your MCP client:
 
@@ -148,26 +149,20 @@ Configure in your MCP client:
   "mcpServers": {
     "jacs": {
       "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-`JACS_CONFIG` is required. Prefer an owner-readable password file (for
-example, mode `0600`) or the OS keychain instead of embedding
-`JACS_PRIVATE_KEY_PASSWORD` in client configuration.
-
-The default `core` profile exposes document, inline text/media, trust,
-search, key/agent, A2A discovery, and W3C tools. Use `jacs mcp --profile full` for Agreement
-v2, A2A artifact, and attestation tools. When `--profile` is absent,
-`JACS_MCP_PROFILE` is consulted before falling back to `core`; explicit CLI
-selection wins, and unknown values fail startup.
+The default `verify-only` profile exposes only exact-byte document integrity
+verification with a caller-supplied public key and algorithm. It does not read
+agent configuration or load/decrypt a signing key. The closed profile names are `verify-only`,
+`local-sign`, `trust-admin`, and compatibility-only `legacy-core`. When
+`--profile` is absent, `JACS_MCP_PROFILE` is consulted before falling back to
+`verify-only`; explicit CLI selection wins, and unknown values fail startup.
+A privileged name alone is not authority, so this release refuses privileged
+startup until the complete capability/status/approval WAL broker is available.
 
 MCP file-tool arguments must be relative to `JACS_MCP_BASE_DIR` (or the
 launch working directory when it is unset). Absolute paths, traversal, and
@@ -181,7 +176,6 @@ export JACS_CONFIG=/srv/my-project/jacs.config.json
 export JACS_PASSWORD_FILE=/run/secrets/jacs-password
 export JACS_KEYCHAIN_BACKEND=disabled
 export JACS_MCP_BASE_DIR=/srv/my-project
-# Optional: export JACS_MCP_PROFILE=full
 jacs mcp
 ```
 

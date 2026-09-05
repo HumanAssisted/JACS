@@ -50,8 +50,12 @@ type VerificationResult struct {
 	Valid bool `json:"valid"`
 	// Data is the original data that was signed.
 	Data interface{} `json:"data"`
-	// SignerID is the ID of the agent that signed the document.
+	// SignerID is the signed identity claim, not independent identity authority.
 	SignerID string `json:"signer_id"`
+	// IdentityBound is false for compatibility/cached-key integrity verification.
+	IdentityBound bool `json:"identity_bound"`
+	// PolicyAccepted is false unless a separate authenticated policy evaluated it.
+	PolicyAccepted bool `json:"policy_accepted"`
 	// SignerName is the name of the signer (if available in trust store).
 	SignerName string `json:"signer_name,omitempty"`
 	// Timestamp is the ISO 8601 timestamp of when the document was signed.

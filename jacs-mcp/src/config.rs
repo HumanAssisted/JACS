@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use jacs_binding_core::AgentWrapper;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 const MISSING_JACS_CONFIG_MESSAGE: &str = "JACS_CONFIG environment variable is not set. \n\
              \n\
@@ -58,9 +59,46 @@ pub fn load_agent_from_config_path(path: impl AsRef<Path>) -> anyhow::Result<Age
     Ok(agent_wrapper)
 }
 
+/// Load only authenticated public identity and readable document storage.
+/// This path never resolves a private-key password or reads a private key.
+pub fn load_public_agent_from_config_path_with_info(
+    path: impl AsRef<Path>,
+) -> anyhow::Result<(AgentWrapper, serde_json::Value)> {
+    let config_path = path.as_ref();
+    let config_path = if config_path.is_absolute() {
+        config_path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(config_path)
+    };
+    if !config_path.exists() {
+        return Err(anyhow!(
+            "Public-only config file not found at '{}'.",
+            config_path.display()
+        ));
+    }
+    let config = jacs::config::Config::from_file(&config_path)
+        .map_err(|error| anyhow!("Failed to read public-only agent config: {error}"))?;
+    let agent = jacs::agent::Agent::from_config_public_only(config)
+        .map_err(|error| anyhow!("Failed to load public-only agent: {error}"))?;
+    let info = jacs::simple::build_loaded_agent_info(&agent, &config_path)
+        .map_err(|error| anyhow!("Failed to describe public-only agent: {error}"))?;
+    let info = serde_json::to_value(info)
+        .map_err(|error| anyhow!("Failed to serialize public-only agent info: {error}"))?;
+    let wrapper = AgentWrapper::from_inner(Arc::new(Mutex::new(agent)));
+    Ok((wrapper, info))
+}
+
+pub fn load_public_agent_from_config_env_with_info(
+) -> anyhow::Result<(AgentWrapper, serde_json::Value)> {
+    let config_path = std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
+    load_public_agent_from_config_path_with_info(config_path)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::load_agent_from_config_path_with_info;
+    use super::{
+        load_agent_from_config_path_with_info, load_public_agent_from_config_path_with_info,
+    };
     use std::sync::{Mutex, OnceLock};
 
     fn test_lock() -> &'static Mutex<()> {
@@ -118,5 +156,44 @@ mod tests {
         unsafe {
             std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
         }
+    }
+
+    #[test]
+    fn public_only_loader_never_needs_or_materializes_private_key() {
+        let _guard = test_lock().lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let data_dir = root.join("data");
+        let key_dir = root.join("keys");
+        let config_path = root.join("jacs.config.json");
+        let params = jacs::simple::CreateAgentParams::builder()
+            .name("mcp-public-only-test")
+            .password("PublicOnlyCreate!2026")
+            .algorithm("ring-Ed25519")
+            .data_directory(data_dir.to_str().unwrap())
+            .key_directory(key_dir.to_str().unwrap())
+            .config_path(config_path.to_str().unwrap())
+            .build();
+        let (created, _) =
+            jacs::simple::SimpleAgent::create_with_params(params).expect("create agent");
+        drop(created);
+
+        // Absence of the encrypted private file is stronger than merely
+        // withholding its password: any accidental private-key read fails.
+        let private_key = key_dir.join(jacs::simple::core::DEFAULT_PRIVATE_KEY_FILENAME);
+        std::fs::remove_file(private_key).expect("remove temporary private key");
+        unsafe {
+            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+            std::env::remove_var("JACS_PASSWORD_FILE");
+        }
+
+        let (wrapper, info) = load_public_agent_from_config_path_with_info(&config_path)
+            .expect("public-only load succeeds without private material");
+        assert!(info["agent_id"].is_string());
+        let inner = wrapper.inner_arc();
+        let agent = inner.lock().expect("agent lock");
+        assert!(agent.get_public_key().is_ok());
+        assert!(agent.get_private_key().is_err());
+        assert!(agent.password().is_none());
     }
 }

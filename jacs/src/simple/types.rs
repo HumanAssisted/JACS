@@ -96,14 +96,14 @@ impl SignedDocument {
     }
 }
 
-/// Result of verifying a signed document.
+/// Cryptographic integrity result; it does not establish identity authorization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationResult {
     /// Whether the signature is valid.
     pub valid: bool,
-    /// The original data that was signed (extracted from the document).
+    /// The original data on successful integrity verification; null on failure.
     pub data: Value,
-    /// ID of the agent that signed the document.
+    /// Signed agent-ID claim, not an independently authorized identity.
     pub signer_id: String,
     /// Name of the signer (if available in trust store).
     pub signer_name: Option<String>,

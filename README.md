@@ -73,32 +73,25 @@ jacs mcp
   "mcpServers": {
     "jacs": {
       "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-The MCP server opens no HTTP port. It runs as a subprocess of the MCP client so the agent private key stays local to that process.
+The MCP server opens no HTTP port. Its default verification-only process does
+not read `JACS_CONFIG` or load/decrypt a private signing key. Callers provide
+the exact public key and algorithm with the document bytes they inspect.
 
-`JACS_CONFIG` is required. Prefer an owner-readable password file (for example, mode `0600`) or the OS keychain instead of placing the private-key password directly in desktop-client JSON.
-
-**Core profile** (default) includes document, inline text/media, trust, search, key/agent, A2A discovery, and W3C tools.
-
-**Full profile** adds Agreement v2, A2A artifact, and attestation tools:
-
-```bash
-jacs mcp --profile full
-# Equivalent when --profile is absent:
-JACS_MCP_PROFILE=full jacs mcp
-```
-
-An explicit `--profile` overrides `JACS_MCP_PROFILE`; unknown profile values fail startup instead of silently selecting core.
+The default `verify-only` process advertises only explicit-key document
+integrity verification; it does not expose signing, key/trust mutation, disk
+search, ambient trust reads, or public exports. The only accepted profile names are
+`verify-only`, `local-sign`, `trust-admin`, and compatibility-only
+`legacy-core`. An explicit `--profile` overrides `JACS_MCP_PROFILE`, and
+unknown values fail startup. A profile name is not a capability: this release
+refuses privileged startup until the complete capability/status/approval WAL
+broker is configured, rather than restoring authority from an environment
+variable alone.
 
 File-tool paths must be relative to `JACS_MCP_BASE_DIR` (or the launch working directory when unset). Absolute paths, traversal, and symlinks are rejected. Existing output files are not overwritten unless the operator explicitly sets `JACS_MCP_OVERWRITE_OK=1`.
 

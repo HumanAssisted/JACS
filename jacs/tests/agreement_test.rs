@@ -256,12 +256,30 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
         &both_signed_document.getkey(),
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    if let Err(err) = result {
-        panic!("agent_two check_agreement failed: {}", err);
-    }
+    let report: serde_json::Value = serde_json::from_str(
+        &result.unwrap_or_else(|err| panic!("agent_two check_agreement failed: {}", err)),
+    )
+    .expect("legacy v1 inspection report");
+    assert_eq!(report["mathematical_checks_valid"], true);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["policy_authenticated"], false);
+    assert_eq!(report["policy_accepted"], false);
 
     let both_signed_document_string =
         serde_json::to_string_pretty(&both_signed_document.value).expect("pretty print");
+
+    let cli_report_json = jacs::shared::document_check_agreement(
+        &mut agent,
+        &both_signed_document_string,
+        None,
+        Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
+    )
+    .expect("shared CLI agreement inspection");
+    let cli_report: serde_json::Value =
+        serde_json::from_str(&cli_report_json).expect("legacy v1 inspection report");
+    assert_eq!(cli_report["mathematical_checks_valid"], true);
+    assert_eq!(cli_report["complete"], false);
+    assert_eq!(cli_report["policy_accepted"], false);
 
     let agent_one_both_signed_document = agent.load_document(&both_signed_document_string).unwrap();
     let agent_one_both_signed_document_key = agent_one_both_signed_document.getkey();
@@ -269,9 +287,14 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
         &agent_one_both_signed_document_key,
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    if let Err(err) = result {
-        panic!("agent_one check_agreement failed: {}", err);
-    }
+    let report: serde_json::Value = serde_json::from_str(
+        &result.unwrap_or_else(|err| panic!("agent_one check_agreement failed: {}", err)),
+    )
+    .expect("legacy v1 inspection report");
+    assert_eq!(report["mathematical_checks_valid"], true);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["policy_authenticated"], false);
+    assert_eq!(report["policy_accepted"], false);
     let (question, context) = agent
         .agreement_get_question_and_context(
             &agent_one_both_signed_document_key,

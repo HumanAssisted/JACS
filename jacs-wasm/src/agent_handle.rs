@@ -499,6 +499,51 @@ impl CoreAgentHandle {
         })
     }
 
+    /// Sign one closed, purpose-bound Agreement v3 proof.  The payload must
+    /// name exactly one of the five v3 proof profiles; profile, operation,
+    /// purpose, role, key ID, identity anchor, trust-row digest, and optional
+    /// ceremony digest are all covered by the signature.
+    #[wasm_bindgen(js_name = signAgreementV3ProofJson)]
+    pub fn sign_agreement_v3_proof_json(&self, payload_json: &str) -> Result<String, JsError> {
+        let payload: agreements::v3::AgreementProofPayloadV3 =
+            jacs_core::strict_json::deserialize_strict_json(payload_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid Agreement v3 proof payload: {}",
+                    e
+                )))
+            })?;
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let proof = agreements::v3::sign_proof(&agent, payload).map_err(map_core_err)?;
+        agreements::v3::serialize_canonical(&proof).map_err(map_core_err)
+    }
+
+    /// Verify a complete Agreement v3 request with the same I/O-free
+    /// implementation used by native Rust.  The request is closed and must
+    /// include an explicit verification intent and pinned schema bundles.
+    #[wasm_bindgen(js_name = verifyAgreementV3Json)]
+    pub fn verify_agreement_v3_json(&self, input_json: &str) -> Result<String, JsError> {
+        let input: agreements::v3::AgreementV3VerificationInput =
+            jacs_core::strict_json::deserialize_strict_json(input_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid Agreement v3 verification request: {}",
+                    e
+                )))
+            })?;
+        agreements::v3::serialize_canonical(&agreements::v3::verify_input(&input))
+            .map_err(map_core_err)
+    }
+
+    /// Compute the portable, domain-separated digest of a structurally valid
+    /// Agreement v3 core.
+    #[wasm_bindgen(js_name = agreementV3CoreDigestJson)]
+    pub fn agreement_v3_core_digest_json(&self, core_json: &str) -> Result<String, JsError> {
+        let core = agreements::v3::parse_core(core_json.as_bytes()).map_err(map_core_err)?;
+        agreements::v3::core_digest(&core).map_err(map_core_err)
+    }
+
     /// Create a standalone agreement v2 document from a CreateAgreementV2 JSON object.
     #[wasm_bindgen(js_name = createAgreementV2Json)]
     pub fn create_agreement_v2_json(&self, input_json: &str) -> Result<String, JsError> {
@@ -582,21 +627,15 @@ impl CoreAgentHandle {
         })
     }
 
-    /// Verify agreement v2 hash/status/transcript invariants and every
-    /// agreement signature against the supplied signer keys.
+    /// Inspect exact Agreement v2 bytes and report mathematical coverage.
+    /// The result never derives trusted role, quorum, lineage, notary status,
+    /// or policy acceptance from v2 party proofs.
     #[wasm_bindgen(js_name = verifyAgreementV2Json)]
     pub fn verify_agreement_v2_json(
         &self,
         agreement_json: &str,
         signers_json: &str,
     ) -> Result<String, JsError> {
-        let document: Value =
-            jacs_core::strict_json::parse_strict_json(agreement_json).map_err(|e| {
-                map_core_err(CoreError::MalformedDocument(format!(
-                    "invalid agreement v2 JSON: {}",
-                    e
-                )))
-            })?;
         let signer_specs: Vec<SignerSpec> = jacs_core::strict_json::deserialize_strict_json(
             signers_json,
         )
@@ -626,7 +665,8 @@ impl CoreAgentHandle {
             .map(|(id, pk, algo)| (id.as_str(), pk.as_slice(), *algo))
             .collect();
 
-        let report = agreements::v2::verify(&document, &signers_ref).map_err(map_core_err)?;
+        let report = agreements::v2::inspect_bytes(agreement_json.as_bytes(), &signers_ref)
+            .map_err(map_core_err)?;
         serde_json::to_string(&report).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "serialize agreement v2 report: {}",

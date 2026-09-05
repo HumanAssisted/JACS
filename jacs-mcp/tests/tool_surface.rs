@@ -229,6 +229,13 @@ fn server_metadata_identifies_as_jacs_mcp() {
         info.instructions
             .as_deref()
             .unwrap_or_default()
+            .contains("jacs_verify_document")
+    );
+    assert!(
+        !info
+            .instructions
+            .as_deref()
+            .unwrap_or_default()
             .contains("jacs_sign_document")
     );
     assert!(
@@ -244,15 +251,16 @@ fn server_metadata_identifies_as_jacs_mcp() {
 fn active_tools_respects_profile() {
     use jacs_mcp::Profile;
 
-    let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
-    let core_tools = core_server.active_tools();
-    let core_names: Vec<&str> = core_tools.iter().map(|t| t.name.as_ref()).collect();
+    let verify_server =
+        jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::VerifyOnly);
+    let verify_tools = verify_server.active_tools();
+    let verify_names: Vec<&str> = verify_tools.iter().map(|t| t.name.as_ref()).collect();
 
-    assert!(core_names.contains(&"jacs_sign_document"));
-    assert!(core_names.contains(&"jacs_trust_agent"));
-    assert!(core_names.contains(&"jacs_search"));
+    assert!(!verify_names.contains(&"jacs_sign_document"));
+    assert!(!verify_names.contains(&"jacs_trust_agent"));
+    assert_eq!(verify_names, vec!["jacs_verify_document"]);
 
-    for name in &core_names {
+    for name in &verify_names {
         assert!(!name.starts_with("jacs_message_"));
         assert!(!name.starts_with("jacs_memory_"));
         assert!(!name.starts_with("jacs_audit"));
@@ -262,7 +270,7 @@ fn active_tools_respects_profile() {
             !name.starts_with("jacs_create_agreement")
                 && !name.starts_with("jacs_sign_agreement")
                 && !name.starts_with("jacs_check_agreement"),
-            "core profile should not contain agreement tool: {name}"
+            "verify-only profile should not contain agreement tool: {name}"
         );
     }
 }

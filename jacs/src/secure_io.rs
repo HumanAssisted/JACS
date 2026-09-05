@@ -165,7 +165,9 @@ fn read_no_follow_with_policy(
 
     #[cfg(not(unix))]
     {
-        let _ = policy;
+        if policy == ParentSymlinkPolicy::Reject {
+            return Err(unsupported_authority_path_platform());
+        }
         let mut file = open_no_follow(path)?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
@@ -189,13 +191,15 @@ fn read_no_follow_bounded_with_policy(
 
     #[cfg(not(unix))]
     {
-        let _ = policy;
+        if policy == ParentSymlinkPolicy::Reject {
+            return Err(unsupported_authority_path_platform());
+        }
         let file = open_no_follow(path)?;
         read_file_bounded(file, max_bytes, path)
     }
 }
 
-fn read_file_bounded(file: File, max_bytes: usize, path: &Path) -> io::Result<Vec<u8>> {
+fn read_file_bounded(file: impl Read, max_bytes: usize, path: &Path) -> io::Result<Vec<u8>> {
     let limit = u64::try_from(max_bytes)
         .unwrap_or(u64::MAX)
         .saturating_add(1);
@@ -278,6 +282,11 @@ fn write_atomic_replace_no_symlink_with_policy(
 }
 
 fn ensure_parent_exists(path: &Path, policy: ParentSymlinkPolicy) -> io::Result<()> {
+    #[cfg(not(unix))]
+    if policy == ParentSymlinkPolicy::Reject {
+        return Err(unsupported_authority_path_platform());
+    }
+
     let parent = parent_or_current(path);
     if parent.as_os_str().is_empty() || parent == Path::new(".") {
         return Ok(());
@@ -298,11 +307,20 @@ fn ensure_parent_exists(path: &Path, policy: ParentSymlinkPolicy) -> io::Result<
     }
 }
 
+#[cfg(not(unix))]
+fn unsupported_authority_path_platform() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Unsupported,
+        "race-safe owner/ACL validation for authority-bearing paths is unsupported on this platform; place authority in an authenticated deployment control plane",
+    )
+}
+
 #[cfg(unix)]
 struct OpenedParent {
     dir: File,
     file_name: std::ffi::CString,
     display_path: PathBuf,
+    authority_path: bool,
 }
 
 #[cfg(unix)]
@@ -310,7 +328,7 @@ impl OpenedParent {
     fn open(path: &Path, policy: ParentSymlinkPolicy) -> io::Result<Self> {
         let parent_path = parent_or_current(path);
         let dir = match policy {
-            ParentSymlinkPolicy::Reject => open_dir_no_follow(parent_path)?,
+            ParentSymlinkPolicy::Reject => open_authority_dir_no_follow(parent_path)?,
             ParentSymlinkPolicy::AllowResolvedParent => {
                 let resolved_parent = fs::canonicalize(parent_path)?;
                 open_dir_no_follow(&resolved_parent)?
@@ -321,16 +339,29 @@ impl OpenedParent {
             dir,
             file_name: final_component_cstring(path)?,
             display_path: path.to_path_buf(),
+            authority_path: policy == ParentSymlinkPolicy::Reject,
         })
     }
 
     fn create_new(&self, bytes: &[u8], mode: u32) -> io::Result<()> {
+        if self.authority_path {
+            validate_authority_file_mode(mode)?;
+        }
         let fd = openat_new_file(self.dir.as_raw_fd(), &self.file_name, mode)?;
         // SAFETY: fd was returned by openat and is now owned by File.
         let mut file = unsafe { File::from_raw_fd(fd) };
         file.write_all(bytes)?;
         file.sync_all()?;
-        sync_dir(&self.dir);
+        let named = validate_final_entry(
+            self.dir.as_raw_fd(),
+            &self.file_name,
+            &self.display_path,
+            true,
+            self.authority_path,
+        )?
+        .expect("new final entry has metadata");
+        validate_opened_file(&file, Some(&named), &self.display_path, self.authority_path)?;
+        sync_dir(&self.dir)?;
         Ok(())
     }
 
@@ -340,11 +371,15 @@ impl OpenedParent {
         mode: u32,
         require_existing_regular: bool,
     ) -> io::Result<()> {
+        if self.authority_path {
+            validate_authority_file_mode(mode)?;
+        }
         validate_final_entry(
             self.dir.as_raw_fd(),
             &self.file_name,
             &self.display_path,
             require_existing_regular,
+            self.authority_path,
         )?;
 
         let temp_name = std::ffi::CString::new(format!(".jacs-tmp-{}", uuid::Uuid::new_v4()))
@@ -355,9 +390,23 @@ impl OpenedParent {
         let result = (|| -> io::Result<()> {
             tmp.write_all(bytes)?;
             tmp.sync_all()?;
-            drop(tmp);
+            validate_opened_file(&tmp, None, &self.display_path, self.authority_path)?;
             renameat(self.dir.as_raw_fd(), &temp_name, &self.file_name)?;
-            sync_dir(&self.dir);
+            let renamed = validate_final_entry(
+                self.dir.as_raw_fd(),
+                &self.file_name,
+                &self.display_path,
+                true,
+                self.authority_path,
+            )?
+            .expect("renamed final entry has metadata");
+            validate_opened_file(
+                &tmp,
+                Some(&renamed),
+                &self.display_path,
+                self.authority_path,
+            )?;
+            sync_dir(&self.dir)?;
             Ok(())
         })();
         if result.is_err() {
@@ -367,31 +416,60 @@ impl OpenedParent {
     }
 
     fn read_no_follow(&self) -> io::Result<Vec<u8>> {
-        validate_final_entry(
+        let expected = validate_final_entry(
             self.dir.as_raw_fd(),
             &self.file_name,
             &self.display_path,
             true,
-        )?;
+            self.authority_path,
+        )?
+        .expect("required existing final entry has metadata");
         let fd = openat_existing_file(self.dir.as_raw_fd(), &self.file_name)?;
         // SAFETY: fd was returned by openat and is now owned by File.
         let mut file = unsafe { File::from_raw_fd(fd) };
+        validate_opened_file(
+            &file,
+            Some(&expected),
+            &self.display_path,
+            self.authority_path,
+        )?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
+        validate_opened_file(
+            &file,
+            Some(&expected),
+            &self.display_path,
+            self.authority_path,
+        )?;
         Ok(bytes)
     }
 
     fn read_no_follow_bounded(&self, max_bytes: usize) -> io::Result<Vec<u8>> {
-        validate_final_entry(
+        let expected = validate_final_entry(
             self.dir.as_raw_fd(),
             &self.file_name,
             &self.display_path,
             true,
-        )?;
+            self.authority_path,
+        )?
+        .expect("required existing final entry has metadata");
         let fd = openat_existing_file(self.dir.as_raw_fd(), &self.file_name)?;
         // SAFETY: fd was returned by openat and is now owned by File.
         let file = unsafe { File::from_raw_fd(fd) };
-        read_file_bounded(file, max_bytes, &self.display_path)
+        validate_opened_file(
+            &file,
+            Some(&expected),
+            &self.display_path,
+            self.authority_path,
+        )?;
+        let bytes = read_file_bounded(&file, max_bytes, &self.display_path)?;
+        validate_opened_file(
+            &file,
+            Some(&expected),
+            &self.display_path,
+            self.authority_path,
+        )?;
+        Ok(bytes)
     }
 
     fn open_private_lock_file(&self) -> io::Result<File> {
@@ -480,8 +558,14 @@ fn create_dir_all_no_symlink(path: &Path) -> io::Result<()> {
     let mut dir = if path.is_absolute() {
         open_dir_path(Path::new("/"))?
     } else {
-        open_dir_path(Path::new("."))?
+        // A relative authority path inherits the security of the process
+        // working directory.  Resolve that directory to its absolute name and
+        // prove every ancestor before using it as the descriptor-walk root;
+        // checking only `.` would incorrectly claim full-path protection.
+        let current = std::env::current_dir()?;
+        open_authority_dir_no_follow(&current)?
     };
+    validate_authority_directory(&dir, path)?;
 
     for component in path.components() {
         match component {
@@ -511,7 +595,7 @@ fn create_dir_all_no_symlink(path: &Path) -> io::Result<()> {
                         // race winner, then let the anchored O_NOFOLLOW
                         // open below prove that the resulting entry is a
                         // directory rather than a symlink or other object.
-                        match mkdirat(dir.as_raw_fd(), &name, 0o777) {
+                        match mkdirat(dir.as_raw_fd(), &name, 0o700) {
                             Ok(()) => {}
                             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                             Err(error) => return Err(error),
@@ -523,6 +607,7 @@ fn create_dir_all_no_symlink(path: &Path) -> io::Result<()> {
                 let next = openat_dir_no_follow(dir.as_raw_fd(), &name)?;
                 // SAFETY: fd was returned by openat and is now owned by File.
                 dir = unsafe { File::from_raw_fd(next) };
+                validate_authority_directory(&dir, path)?;
             }
             std::path::Component::Prefix(_) => {
                 return Err(io::Error::new(
@@ -538,21 +623,49 @@ fn create_dir_all_no_symlink(path: &Path) -> io::Result<()> {
 
 #[cfg(unix)]
 fn open_dir_no_follow(path: &Path) -> io::Result<File> {
+    open_dir_no_follow_with_authority(path, false)
+}
+
+#[cfg(unix)]
+fn open_authority_dir_no_follow(path: &Path) -> io::Result<File> {
+    open_dir_no_follow_with_authority(path, true)
+}
+
+#[cfg(unix)]
+fn open_dir_no_follow_with_authority(path: &Path, authority_path: bool) -> io::Result<File> {
     let mut dir = if path.is_absolute() {
         open_dir_path(Path::new("/"))?
+    } else if authority_path {
+        // See `create_dir_all_no_symlink`: authority-bearing relative paths
+        // must validate the complete absolute ancestry of the current working
+        // directory before walking their relative suffix.
+        let current = std::env::current_dir()?;
+        open_dir_no_follow_with_authority(&current, true)?
     } else {
         open_dir_path(Path::new("."))?
     };
+    if authority_path {
+        validate_authority_directory(&dir, path)?;
+    }
 
     for component in path.components() {
         match component {
             std::path::Component::RootDir | std::path::Component::CurDir => {}
-            std::path::Component::ParentDir | std::path::Component::Normal(_) => {
+            std::path::Component::ParentDir => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("refusing parent traversal in '{}'", path.display()),
+                ));
+            }
+            std::path::Component::Normal(_) => {
                 let name = std::ffi::CString::new(component.as_os_str().as_bytes())
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                 let next = openat_dir_no_follow(dir.as_raw_fd(), &name)?;
                 // SAFETY: fd was returned by openat and is now owned by File.
                 dir = unsafe { File::from_raw_fd(next) };
+                if authority_path {
+                    validate_authority_directory(&dir, path)?;
+                }
             }
             std::path::Component::Prefix(_) => {
                 return Err(io::Error::new(
@@ -564,6 +677,62 @@ fn open_dir_no_follow(path: &Path) -> io::Result<File> {
     }
 
     Ok(dir)
+}
+
+/// Create (when absent) and validate a dedicated owner-only authority directory.
+///
+/// Unix is currently the only platform where this crate can prove the required
+/// owner/mode invariants without adding an OS account/ACL dependency. Other
+/// platforms fail closed instead of claiming that a pathname is an authority.
+pub(crate) fn ensure_owner_only_directory(path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+
+    #[cfg(unix)]
+    {
+        create_dir_all_no_symlink(path)?;
+        return validate_owner_only_directory(path);
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "owner-authenticated authority directories are unsupported on this platform; use an authenticated deployment control plane",
+        ))
+    }
+}
+
+/// Validate an existing dedicated owner-only authority directory without
+/// creating it. This is used by read/open paths so a failed lookup has no
+/// filesystem side effect.
+pub(crate) fn validate_owner_only_directory(path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+
+    #[cfg(unix)]
+    {
+        let dir = open_authority_dir_no_follow(path)?;
+        let stat = fstat(&dir)?;
+        // SAFETY: geteuid has no preconditions.
+        let effective_uid = unsafe { libc::geteuid() };
+        if stat.st_uid != effective_uid || stat.st_mode & 0o777 != 0o700 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "authority directory '{}' must be owned by effective uid {} with mode 0700",
+                    path.display(),
+                    effective_uid
+                ),
+            ));
+        }
+        return Ok(());
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err(unsupported_authority_path_platform())
+    }
 }
 
 #[cfg(unix)]
@@ -593,7 +762,8 @@ fn validate_final_entry(
     file_name: &std::ffi::CStr,
     path: &Path,
     require_existing_regular: bool,
-) -> io::Result<()> {
+    authority_path: bool,
+) -> io::Result<Option<libc::stat>> {
     match statat_no_follow(dir_fd, file_name) {
         Ok(stat) => {
             let file_type = stat.st_mode & libc::S_IFMT;
@@ -603,17 +773,144 @@ fn validate_final_entry(
                     path.display()
                 )));
             }
-            if require_existing_regular && file_type != libc::S_IFREG {
+            if file_type != libc::S_IFREG {
                 return Err(io::Error::other(format!(
                     "refusing to update '{}': path is not a regular file",
                     path.display()
                 )));
             }
-            Ok(())
+            if authority_path {
+                validate_authority_file_stat(&stat, path)?;
+            }
+            Ok(Some(stat))
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound && !require_existing_regular => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound && !require_existing_regular => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+#[cfg(unix)]
+fn fstat(file: &File) -> io::Result<libc::stat> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `file` owns a live descriptor and `stat` points to writable memory.
+    if unsafe { libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstat returned success, so stat is initialized.
+    Ok(unsafe { stat.assume_init() })
+}
+
+#[cfg(unix)]
+fn validate_authority_directory(file: &File, path: &Path) -> io::Result<()> {
+    let stat = fstat(file)?;
+    if stat.st_mode & libc::S_IFMT != libc::S_IFDIR {
+        return Err(io::Error::other(format!(
+            "authority ancestor '{}' is not a directory",
+            path.display()
+        )));
+    }
+    // SAFETY: geteuid has no preconditions.
+    let effective_uid = unsafe { libc::geteuid() };
+    if stat.st_uid != effective_uid && stat.st_uid != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "authority ancestor '{}' is owned by uid {}, not effective uid {} or root",
+                path.display(),
+                stat.st_uid,
+                effective_uid
+            ),
+        ));
+    }
+    let group_or_other_writable = stat.st_mode & 0o022 != 0;
+    let root_sticky_exception = stat.st_uid == 0 && stat.st_mode & libc::S_ISVTX != 0;
+    if group_or_other_writable && !root_sticky_exception {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "authority ancestor '{}' is writable by group or other",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn validate_authority_file_mode(mode: u32) -> io::Result<()> {
+    if mode & 0o022 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("authority file mode {mode:o} permits group/other writes"),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn validate_authority_file_stat(stat: &libc::stat, path: &Path) -> io::Result<()> {
+    if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(io::Error::other(format!(
+            "authority file '{}' is not regular",
+            path.display()
+        )));
+    }
+    // SAFETY: geteuid has no preconditions.
+    let effective_uid = unsafe { libc::geteuid() };
+    if stat.st_uid != effective_uid && stat.st_uid != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "authority file '{}' is owned by uid {}, not effective uid {} or root",
+                path.display(),
+                stat.st_uid,
+                effective_uid
+            ),
+        ));
+    }
+    if stat.st_mode & 0o022 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "authority file '{}' is writable by group or other",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn validate_opened_file(
+    file: &File,
+    expected: Option<&libc::stat>,
+    path: &Path,
+    authority_path: bool,
+) -> io::Result<()> {
+    let actual = fstat(file)?;
+    if actual.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(io::Error::other(format!(
+            "opened path '{}' is not a regular file",
+            path.display()
+        )));
+    }
+    if let Some(expected) = expected
+        && (actual.st_dev != expected.st_dev
+            || actual.st_ino != expected.st_ino
+            || actual.st_uid != expected.st_uid
+            || actual.st_mode != expected.st_mode
+            || actual.st_nlink != expected.st_nlink
+            || actual.st_size != expected.st_size)
+    {
+        return Err(io::Error::other(format!(
+            "opened path '{}' changed identity or metadata during access",
+            path.display()
+        )));
+    }
+    if authority_path {
+        validate_authority_file_stat(&actual, path)?;
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -823,8 +1120,8 @@ fn unlinkat(dir_fd: libc::c_int, file_name: &std::ffi::CStr) {
 }
 
 #[cfg(unix)]
-fn sync_dir(dir: &File) {
-    let _ = dir.sync_all();
+fn sync_dir(dir: &File) -> io::Result<()> {
+    dir.sync_all()
 }
 
 fn parent_or_current(path: &Path) -> &Path {
@@ -1137,5 +1434,69 @@ mod tests {
             read_no_follow_allow_resolved_parent(&final_link).is_err(),
             "final symlink must be rejected even in compatibility mode"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn authority_walk_rejects_writable_ordinary_ancestor() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = test_lock();
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let writable = tmp.path().join("shared");
+        let private = writable.join("private");
+        fs::create_dir_all(&private).expect("directories");
+        fs::set_permissions(&writable, fs::Permissions::from_mode(0o777))
+            .expect("make ordinary ancestor writable");
+        let file = private.join("authority.json");
+        fs::write(&file, b"authority").expect("authority file");
+
+        let error = read_no_follow(&file).expect_err("writable ancestor must fail closed");
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            read_no_follow_allow_resolved_parent(&file).expect("payload compatibility read"),
+            b"authority"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn authority_walk_rejects_group_writable_final_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = test_lock();
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let file = tmp.path().join("authority.json");
+        fs::write(&file, b"authority").expect("authority file");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o660))
+            .expect("make file group writable");
+
+        let error = read_no_follow(&file).expect_err("writable authority file must fail");
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dedicated_authority_directory_requires_owner_only_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = test_lock();
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let store = tmp.path().join("owner-store");
+        ensure_owner_only_directory(&store).expect("create private authority directory");
+        assert_eq!(
+            fs::metadata(&store)
+                .expect("store metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+
+        fs::set_permissions(&store, fs::Permissions::from_mode(0o750))
+            .expect("weaken store permissions");
+        let error = ensure_owner_only_directory(&store)
+            .expect_err("existing non-private store must not be silently chmodded");
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
     }
 }

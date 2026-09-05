@@ -5,7 +5,7 @@
     "title": "JACS MCP Server",
     "version": "0.11.4",
     "website_url": "https://humanassisted.github.io/JACS/",
-    "instructions": "JACS MCP profile 'full' exposes 42 active tools for local data provenance, signing, and verification. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n- jacs_apply_agreement_v2\n- jacs_assess_a2a_agent\n- jacs_attest_create\n- jacs_attest_export_dsse\n- jacs_attest_lift\n- jacs_attest_verify\n- jacs_check_agreement\n- jacs_create_agent\n- jacs_create_agreement\n- jacs_create_agreement_v2\n- jacs_detect_agreement_v2_branch_conflict\n- jacs_export_agent\n- jacs_export_agent_card\n- jacs_extract_media_signature\n- jacs_generate_well_known\n- jacs_get_trusted_agent\n- jacs_is_trusted\n- jacs_list_trusted_agents\n- jacs_merge_agreement_v2_transcript_branches\n- jacs_reencrypt_key\n- jacs_resolve_agreement_v2_branch_conflict\n- jacs_rotate_keys\n- jacs_search\n- jacs_sign_agreement\n- jacs_sign_agreement_v2\n- jacs_sign_document\n- jacs_sign_image\n- jacs_sign_text\n- jacs_trust_agent\n- jacs_untrust_agent\n- jacs_verify_a2a_artifact\n- jacs_verify_agreement_v2\n- jacs_verify_document\n- jacs_verify_image\n- jacs_verify_text\n- jacs_w3c_export_agent_description\n- jacs_w3c_export_did\n- jacs_w3c_export_did_document\n- jacs_w3c_generate_well_known\n- jacs_w3c_sign_request\n- jacs_w3c_verify_request\n- jacs_wrap_a2a_artifact"
+    "instructions": "JACS MCP compiled contract inventory contains 42 tools. Runtime defaults to verification-only and advertises only its active subset.\n\nCompiled tools:\n- jacs_apply_agreement_v2\n- jacs_assess_a2a_agent\n- jacs_attest_create\n- jacs_attest_export_dsse\n- jacs_attest_lift\n- jacs_attest_verify\n- jacs_check_agreement\n- jacs_create_agent\n- jacs_create_agreement\n- jacs_create_agreement_v2\n- jacs_detect_agreement_v2_branch_conflict\n- jacs_export_agent\n- jacs_export_agent_card\n- jacs_extract_media_signature\n- jacs_generate_well_known\n- jacs_get_trusted_agent\n- jacs_is_trusted\n- jacs_list_trusted_agents\n- jacs_merge_agreement_v2_transcript_branches\n- jacs_reencrypt_key\n- jacs_resolve_agreement_v2_branch_conflict\n- jacs_rotate_keys\n- jacs_search\n- jacs_sign_agreement\n- jacs_sign_agreement_v2\n- jacs_sign_document\n- jacs_sign_image\n- jacs_sign_text\n- jacs_trust_agent\n- jacs_untrust_agent\n- jacs_verify_a2a_artifact\n- jacs_verify_agreement_v2\n- jacs_verify_document\n- jacs_verify_image\n- jacs_verify_text\n- jacs_w3c_export_agent_description\n- jacs_w3c_export_did\n- jacs_w3c_export_did_document\n- jacs_w3c_generate_well_known\n- jacs_w3c_sign_request\n- jacs_w3c_verify_request\n- jacs_wrap_a2a_artifact"
   },
   "tools": [
     {
@@ -144,10 +144,10 @@
     },
     {
       "name": "jacs_check_agreement",
-      "description": "(Legacy v1; prefer jacs_verify_agreement_v2.) Check the status of a jacsAgreement sidecar: how many agents have signed, whether quorum is met, whether it has expired, and which agents still need to sign. Use this to decide whether an agreement is complete and ready to act on.",
+      "description": "Inspect present signatures and claimed status metadata on a legacy Agreement v1 document. V1 policy is unauthenticated, so this tool never reports agreement completion or policy acceptance.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Parameters for checking agreement status.",
+        "description": "Parameters for inspecting legacy Agreement v1 signatures and claimed status metadata.",
         "properties": {
           "agreement_fieldname": {
             "description": "Custom agreement field name (default: 'jacsAgreement')",
@@ -884,18 +884,33 @@
     },
     {
       "name": "jacs_verify_document",
-      "description": "Verify a signed JACS document given its full JSON string. Checks both the content hash and cryptographic signature. Use this when you have a signed document in memory (e.g. from an approval context or signed payload) and need to confirm its integrity and authenticity.",
+      "description": "Verify exact submitted JACS document bytes with an explicit caller-selected raw public key and algorithm. This checks integrity only; it does not establish signer identity, trust, authorization, freshness, or revocation status.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "Parameters for verifying a raw signed JACS document string.",
         "properties": {
+          "algorithm": {
+            "description": "Exact verification algorithm (`ed25519` or `pq2025`).",
+            "type": "string"
+          },
           "document": {
             "description": "The full signed JACS document JSON string to verify",
             "type": "string"
+          },
+          "public_key": {
+            "description": "Exact raw public-key bytes selected by the caller. Supplying a key proves signature integrity only; it does not establish signer trust.",
+            "items": {
+              "format": "uint8",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "document"
+          "document",
+          "public_key",
+          "algorithm"
         ],
         "title": "VerifyDocumentParams",
         "type": "object"

@@ -1445,6 +1445,18 @@ impl SimpleAgent {
         crate::protocol::sign_response(&mut agent, payload)
     }
 
+    /// Sign a response or asynchronous event with the closed TP-34 context.
+    pub fn sign_response_with_context(
+        &self,
+        data: &crate::response_context::ResponseData,
+        operation: crate::response_context::ResponseOperation,
+    ) -> Result<Value, JacsError> {
+        let mut agent = self.agent.lock().map_err(|error| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {error}"),
+        })?;
+        crate::protocol::sign_response_with_context(&mut agent, data, operation)
+    }
+
     /// Build the legacy unbound JACS Authorization credential.
     ///
     /// Retained for compatibility; new integrations should call
@@ -1716,10 +1728,10 @@ impl SimpleAgent {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        // Load the document
-        let jacs_doc =
+        // Validate the submitted bytes without importing them into storage.
+        let value =
             agent
-                .load_document(signed_document)
+                .validate_header(signed_document)
                 .map_err(|e| JacsError::DocumentMalformed {
                     field: "document".to_string(),
                     reason: e.to_string(),
@@ -1729,14 +1741,14 @@ impl SimpleAgent {
         // versions immutable, so looking up by id:version here can return an
         // earlier stored copy instead of the caller-provided bytes.
         let mut errors = Vec::new();
-        if let Err(e) = agent.verify_document_files(&jacs_doc.value) {
+        if let Err(e) = agent.verify_document_files(&value) {
             errors.push(e.to_string());
         }
 
         match agent.get_public_key() {
             Ok(public_key) => {
                 if let Err(e) = agent.signature_verification_procedure(
-                    &jacs_doc.value,
+                    &value,
                     None,
                     DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
                     public_key,
@@ -1751,11 +1763,11 @@ impl SimpleAgent {
         }
 
         // Verify hash
-        if let Err(e) = agent.verify_hash(&jacs_doc.value) {
+        if let Err(e) = agent.verify_hash(&value) {
             errors.push(format!("Hash verification failed: {}", e));
         }
 
-        self.build_verification_result(&jacs_doc.value, errors, "Document verified")
+        self.build_verification_result(&value, errors, "Document verified")
     }
 
     fn verify_inline_text_document(
@@ -1943,11 +1955,11 @@ impl SimpleAgent {
 
         let mut errors = Vec::new();
 
-        // Load the document. In non-strict mode, if load_document fails (e.g.
+        // Validate without storing. In non-strict mode, if validation fails (e.g.
         // hash mismatch on a tampered doc), we still want to report the failure
         // as a verification result rather than a hard error.
-        let jacs_doc = match agent.load_document(signed_document) {
-            Ok(doc) => doc,
+        let value = match agent.validate_header(signed_document) {
+            Ok(value) => value,
             Err(e) if !self.strict => {
                 // Fall back to parsing the JSON directly so we can still
                 // extract signer info and report the error softly.
@@ -1970,12 +1982,12 @@ impl SimpleAgent {
         // Verify the parsed input value directly. Storage keeps document
         // versions immutable, so looking up by id:version here can return an
         // earlier stored copy instead of the caller-provided bytes.
-        if let Err(e) = agent.verify_document_files(&jacs_doc.value) {
+        if let Err(e) = agent.verify_document_files(&value) {
             errors.push(e.to_string());
         }
 
         if let Err(e) = agent.signature_verification_procedure(
-            &jacs_doc.value,
+            &value,
             None,
             DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
             public_key,
@@ -1987,11 +1999,11 @@ impl SimpleAgent {
         }
 
         // Verify hash
-        if let Err(e) = agent.verify_hash(&jacs_doc.value) {
+        if let Err(e) = agent.verify_hash(&value) {
             errors.push(format!("Hash verification failed: {}", e));
         }
 
-        self.build_verification_result(&jacs_doc.value, errors, "Document verified with key")
+        self.build_verification_result(&value, errors, "Document verified with key")
     }
 
     fn verify_bound_response_with_key(
@@ -2088,6 +2100,22 @@ impl SimpleAgent {
         if self.strict && !valid {
             return Err(JacsError::SignatureVerificationFailed {
                 reason: errors.join("; "),
+            });
+        }
+
+        if !valid {
+            warn!(
+                event = "document_verification_failed",
+                "Document integrity verification failed"
+            );
+            return Ok(VerificationResult {
+                valid: false,
+                data: Value::Null,
+                signer_id: String::new(),
+                signer_name: None,
+                timestamp: String::new(),
+                attachments: Vec::new(),
+                errors,
             });
         }
 

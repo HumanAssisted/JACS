@@ -818,6 +818,16 @@ mod tests {
             result.errors
         );
         assert!(!result.signer_id.is_empty());
+        let value: Value = serde_json::from_str(&signed.raw).unwrap();
+        let document_key = format!(
+            "{}:{}",
+            value["jacsId"].as_str().unwrap(),
+            value["jacsVersion"].as_str().unwrap()
+        );
+        assert!(
+            agent_b.verify_by_id(&document_key).is_err(),
+            "verification must not import the document"
+        );
     }
 
     #[test]
@@ -840,6 +850,10 @@ mod tests {
 
         assert!(!result.valid, "verification with wrong key should fail");
         assert!(!result.errors.is_empty(), "should have verification errors");
+        assert!(result.data.is_null());
+        assert!(result.signer_id.is_empty());
+        assert!(result.timestamp.is_empty());
+        assert!(result.attachments.is_empty());
     }
 
     #[test]

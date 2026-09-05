@@ -1400,22 +1400,11 @@ pub fn sign_image(
     // `format` field). When present, it wins over magic-byte detection — that
     // is the documented contract. Unknown values return a clean
     // ValidationError. When absent, we fall back to magic-byte detection.
-    let fmt = match opts.format_hint.as_deref() {
-        Some(hint) => match hint.to_ascii_lowercase().as_str() {
-            "png" => jacs_media::MediaFormat::Png,
-            "jpeg" | "jpg" => jacs_media::MediaFormat::Jpeg,
-            "webp" => jacs_media::MediaFormat::WebP,
-            other => {
-                return Err(JacsError::ValidationError(format!(
-                    "unknown format hint '{}' for image at '{}' (expected png|jpeg|webp)",
-                    other, in_path
-                )));
-            }
-        },
-        None => jacs_media::detect_format(&bytes).map_err(|_| {
-            JacsError::ValidationError(format!("unsupported format for image at '{}'", in_path))
-        })?,
-    };
+    let fmt = crate::media_signing::resolve_media_format(
+        &bytes,
+        opts.format_hint.as_deref(),
+        &format!("image at '{in_path}'"),
+    )?;
     let format_str = match fmt {
         jacs_media::MediaFormat::Png => "png",
         jacs_media::MediaFormat::Jpeg => "jpeg",
@@ -1435,71 +1424,13 @@ pub fn sign_image(
         ));
     }
 
-    // Canonical hash — robust selector per PRD §4.2.3.
-    // Issue 002: pass the resolved format (which honours the user's
-    // `format_hint` override) so canonicalisation stays consistent with the
-    // chosen embed channel.
-    let canonical_hash = if opts.robust {
-        jacs_media::canonical_hash_robust_with_format(fmt, &bytes).map_err(media_to_jacs_err)?
-    } else {
-        jacs_media::canonical_hash_with_format(fmt, &bytes).map_err(media_to_jacs_err)?
-    };
-    let canonicalization = if opts.robust {
-        "jacs-media-v1-robust"
-    } else {
-        "jacs-media-v1"
-    };
-
-    // publicKeyHash field per PRD §4.2.2.
+    // Public-key and content claims use the shared prepared-media constructor,
+    // keeping the existing SDK path byte-identical to approval preflight.
     let signer_pem = agent.get_public_key_pem()?;
-    let normalised_pem = crate::crypt::normalize_public_key_pem(signer_pem.as_bytes());
-    let pkh_raw = sha256_bytes_local(normalised_pem.as_bytes());
-    let public_key_hash = format!("sha256-b64url:{}", base64url_nopad_local(&pkh_raw));
-
-    // Pixel-hash for robust mode.
-    //
-    // REVIEW_005 (1) / PRD §4.2.2: `pixelHash` commits to the **pre-LSB**
-    // decoded pixel buffer so a verifier can detect "metadata strip + pixel
-    // re-encode" tampering. This is divergent from `contentHash`, which
-    // hashes the canonicalised + LSB-zeroed pixels so the value stays
-    // invariant after robust embedding. Both fields coexist in the claim
-    // (under `mediaSignatureVersion: 1`); a v0.10.0 verifier that ignores
-    // `pixelHash` still validates correctly via `contentHash`, and a
-    // pixel-aware verifier (issued by callers who care about anti-recompress
-    // detection) re-derives `pixel_hash_pre_lsb(fmt, bytes_pre_embed)` and
-    // compares to the claim's `pixelHash`. WebP returns `Unsupported` for
-    // robust mode, so `pixelHash` stays None there.
-    let pixel_hash = if opts.robust {
-        let raw = jacs_media::pixel_hash_pre_lsb(fmt, &bytes).map_err(media_to_jacs_err)?;
-        Some(format!("sha256-b64url:{}", base64url_nopad_local(&raw)))
-    } else {
-        None
-    };
-
-    // REVIEW_005 (2) / Issue 015: `embeddingChannels` is **verifier-checked
-    // ground truth**. The signer must declare only the channels that actually
-    // carry the payload after embed; the verifier cross-checks declared
-    // against observed and surfaces `Malformed` on mismatch.
-    //
-    // In v0.10+, robust mode re-encodes the pixel buffer to write the LSB
-    // payload and the iTXt metadata chunk does NOT survive that re-encode
-    // (verified by `sign_image_robust_modifies_pixels`). So robust = lsb-only
-    // on the wire. Non-robust = metadata-only.
-    let claim = json!({
-        "mediaSignatureVersion": 1,
-        "format": format_str,
-        "canonicalization": canonicalization,
-        "hashAlgorithm": "sha256",
-        "contentHash": base64url_nopad_local(&canonical_hash),
-        "publicKeyHash": public_key_hash,
-        "embeddingChannels": if opts.robust {
-            json!(["lsb"])
-        } else {
-            json!(["metadata"])
-        },
-        "robust": opts.robust,
-        "pixelHash": pixel_hash,
-    });
+    let public_key_hash = crate::media_signing::media_public_key_hash(signer_pem.as_bytes());
+    let claim =
+        crate::media_signing::build_media_claim_v1(&bytes, fmt, opts.robust, &public_key_hash)?
+            .to_value()?;
 
     // Sign the claim — sign_message wraps into a SignedDocument and persists.
     let signed_doc = agent.sign_message(&claim)?;
@@ -2038,21 +1969,7 @@ fn file_mode_or(_path: &str, fallback: u32) -> u32 {
 }
 
 fn media_to_jacs_err(e: jacs_media::MediaError) -> JacsError {
-    use jacs_media::MediaError;
-    match e {
-        MediaError::PayloadTooLarge { limit, actual } => JacsError::ValidationError(format!(
-            "image signature payload exceeds format limit: actual {} > pixel capacity / chunk limit {}",
-            actual, limit
-        )),
-        MediaError::Unsupported(msg) => {
-            JacsError::ValidationError(format!("media unsupported: {}", msg))
-        }
-        MediaError::UnsupportedFormat => {
-            JacsError::ValidationError("unsupported media format".to_string())
-        }
-        MediaError::Parse(s) => JacsError::ValidationError(format!("media parse error: {}", s)),
-        MediaError::Encode(s) => JacsError::ValidationError(format!("media encode error: {}", s)),
-    }
+    crate::media_signing::media_to_jacs_error(e)
 }
 
 fn sha256_bytes_local(data: &[u8]) -> Vec<u8> {

@@ -37,6 +37,12 @@
 
 ### Security
 
+- **Numeric hardening preserves existing RFC 8785 decimal behavior.** Raw JSON
+  entry points retain nonintegral binary64 rounding while rejecting duplicate
+  members and unsafe mathematical integers consistently across plain, decimal,
+  and exponent spellings. Exact decimal preservation is separately opt-in as
+  `jacs-json-safe-binary64-v1`; an explicit strict-policy rejection never
+  falls back to the compatibility profile.
 - **HTTP authorization credentials are bound to the actual request.**
   `build_request_auth_header` signs a canonical v2 claim set containing the
   signer/key, method, normalized absolute URL and query, exact body digest,

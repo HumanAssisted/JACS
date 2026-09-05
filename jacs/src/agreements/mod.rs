@@ -14,6 +14,10 @@ use crate::simple::types::*;
 use tracing::{debug, info};
 
 pub mod v2;
+/// Portable, purpose-bound Agreement v3 protocol.  This is a direct
+/// re-export of `jacs-core` so native and browser callers share one wire and
+/// verification implementation.
+pub mod v3;
 
 /// Creates a multi-party agreement requiring signatures from specified agents.
 ///
@@ -181,10 +185,11 @@ pub fn sign(agent: &SimpleAgent, document: &str) -> Result<SignedDocument, JacsE
     SignedDocument::from_jacs_document(signed_doc, "signed agreement")
 }
 
-/// Checks the status of a multi-party agreement.
+/// Inspects the claimed signer list of a legacy v1 agreement.
 ///
-/// Use this to determine which agents have signed and whether the agreement
-/// is complete (all required signatures collected).
+/// V1 does not authenticate its agreement-policy sidecar. The returned
+/// `complete` field is therefore always false; `signers` and `pending` are
+/// migration diagnostics only and cannot authorize an action.
 ///
 /// # Arguments
 ///
@@ -204,11 +209,8 @@ pub fn sign(agent: &SimpleAgent, document: &str) -> Result<SignedDocument, JacsE
 /// let agent = SimpleAgent::load(None, None)?;
 ///
 /// let status = agreements::check(&agent, &agreement_json)?;
-/// if status.complete {
-///     println!("All parties have signed!");
-/// } else {
-///     println!("Waiting for signatures from: {:?}", status.pending);
-/// }
+/// assert!(!status.complete); // v1 never yields an actionable verdict
+/// println!("Claimed pending signers: {:?}", status.pending);
 /// ```
 #[must_use = "agreement status must be checked"]
 pub fn check(agent: &SimpleAgent, document: &str) -> Result<AgreementStatus, JacsError> {
@@ -268,7 +270,10 @@ pub fn check(agent: &SimpleAgent, document: &str) -> Result<AgreementStatus, Jac
     }
 
     Ok(AgreementStatus {
-        complete: unsigned.is_empty(),
+        // Agreement v1's `agentIDs`/policy sidecar is not authenticated. Even
+        // when its current claimed list has no missing entries, JACS must not
+        // translate that observation into a complete/actionable verdict.
+        complete: false,
         signers,
         pending: unsigned,
     })

@@ -175,15 +175,43 @@ fn test_quorum_met_with_partial_signatures() {
         .expect("sign_agreement");
     let signed_key = signed_doc.getkey();
 
-    // Check should pass with quorum=1 even though agent_two hasn't signed
+    // The present signature passes mathematically, but v1's quorum field is
+    // not signed and therefore can never produce completion or acceptance.
     let result = agent.check_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_ok(),
         "check_agreement should pass with quorum=1 and 1 signature: {:?}",
         result.err()
     );
-    let msg = result.unwrap();
-    assert!(msg.contains("Quorum met"), "Should mention quorum: {}", msg);
+    let report: serde_json::Value =
+        serde_json::from_str(&result.unwrap()).expect("legacy v1 inspection report");
+    assert_eq!(report["mathematical_checks_valid"], true);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["policy_authenticated"], false);
+    assert_eq!(report["policy_accepted"], false);
+    assert_eq!(
+        report["overall_scope"],
+        "legacy_v1_present_signature_inspection"
+    );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn test_empty_v1_participant_set_is_never_complete() {
+    let mut agent = load_test_agent_one_ed25519();
+    let agreement_key = setup_agreement_doc(&mut agent, &[], &AgreementOptions::default());
+
+    let report_json = agent
+        .check_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
+        .expect("empty legacy agreement remains inspectable");
+    let report: serde_json::Value =
+        serde_json::from_str(&report_json).expect("legacy v1 inspection report");
+
+    assert_eq!(report["present_signature_count"], 0);
+    assert_eq!(report["mathematical_checks_valid"], true);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["policy_authenticated"], false);
+    assert_eq!(report["policy_accepted"], false);
 }
 
 #[test]

@@ -2878,7 +2878,11 @@ pub fn legacy_update_agent(new_agent_string: String) -> Result<String> {
 #[napi(object)]
 pub struct VerifyStandaloneResult {
     pub valid: bool,
-    /// Signer agent ID; exposed to JS as signerId (camelCase).
+    /// Always false: cached-key integrity is not an identity binding.
+    pub identity_bound: bool,
+    /// Always false: this compatibility API does not evaluate authorization.
+    pub policy_accepted: bool,
+    /// Signed agent-ID claim, not an independently authorized identity.
     pub signer_id: String,
     /// Signing timestamp from jacsSignature.date.
     pub timestamp: String,
@@ -2904,6 +2908,8 @@ pub fn verify_document_standalone(
     .to_napi()?;
     Ok(VerifyStandaloneResult {
         valid: r.valid,
+        identity_bound: r.identity_bound(),
+        policy_accepted: r.policy_accepted(),
         signer_id: r.signer_id,
         timestamp: r.timestamp,
         agent_version: r.agent_version,

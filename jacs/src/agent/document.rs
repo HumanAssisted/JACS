@@ -39,6 +39,15 @@ pub struct JACSDocument {
 
 pub const EDITABLE_JACS_DOCS: &[&str] = &["config", "artifact"];
 
+/// Compute the compatibility document checksum without reading or writing storage.
+pub(crate) fn document_hash(doc: &Value) -> Result<String, JacsError> {
+    let mut document = doc.clone();
+    if let Some(object) = document.as_object_mut() {
+        object.remove(SHA256_FIELDNAME);
+    }
+    Ok(hash_string(&canonicalize_json(&document)?))
+}
+
 fn decode_embedded_gzip_base64(contents_b64: &str) -> Result<Vec<u8>, JacsError> {
     decode_embedded_gzip_base64_with_limit(contents_b64, crate::schema::utils::max_document_size())
 }
@@ -225,6 +234,21 @@ impl fmt::Display for JACSDocument {
 }
 
 pub trait DocumentTraits {
+    /// Verify the supplied value without importing it or looking it up by ID.
+    fn verify_document_signature_value(
+        &mut self,
+        document_value: &Value,
+        signature_key_from: Option<&str>,
+        fields: Option<&[String]>,
+        public_key: Option<Vec<u8>>,
+        public_key_enc_type: Option<String>,
+    ) -> Result<(), JacsError>;
+    /// Resolve a public key and verify this exact value as cryptographic integrity.
+    /// Discovery does not establish that the key is authorized for an identity.
+    fn verify_external_document_signature_value(
+        &mut self,
+        json_value: &Value,
+    ) -> Result<(), JacsError>;
     fn verify_document_signature(
         &mut self,
         document_key: &str,
@@ -552,12 +576,7 @@ impl DocumentTraits for Agent {
     }
 
     fn hash_doc(&self, doc: &Value) -> Result<String, JacsError> {
-        let mut doc_copy = doc.clone();
-        doc_copy
-            .as_object_mut()
-            .map(|obj| obj.remove(SHA256_FIELDNAME));
-        let doc_string = canonicalize_json(&doc_copy)?;
-        Ok(hash_string(&doc_string))
+        document_hash(doc)
     }
 
     fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, JacsError> {
@@ -833,7 +852,17 @@ impl DocumentTraits for Agent {
 
     fn verify_external_document_signature(&mut self, document_key: &str) -> Result<(), JacsError> {
         let document = self.get_document(document_key)?;
-        let json_value = document.getvalue();
+        self.verify_external_document_signature_value(document.getvalue())
+    }
+
+    fn verify_external_document_signature_value(
+        &mut self,
+        json_value: &Value,
+    ) -> Result<(), JacsError> {
+        let document_key = json_value
+            .get("jacsId")
+            .and_then(Value::as_str)
+            .unwrap_or("<submitted>");
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
 
         // Extract signature metadata
@@ -943,15 +972,6 @@ impl DocumentTraits for Agent {
                             public_key = Some(key_info.public_key.clone());
                             public_key_enc_type = Some(key_info.algorithm.clone());
 
-                            // Cache the key locally for future use (non-fatal if this fails)
-                            if let Err(e) = self.fs_save_remote_public_key(
-                                &public_key_hash,
-                                &key_info.public_key,
-                                key_info.algorithm.as_bytes(),
-                            ) {
-                                debug!("Failed to cache HAI key locally (non-fatal): {}", e);
-                            }
-
                             break;
                         }
                         Err(e) => {
@@ -980,8 +1000,8 @@ impl DocumentTraits for Agent {
             }
         };
 
-        self.verify_document_signature(
-            document_key,
+        self.verify_document_signature_value(
+            json_value,
             Some(signature_key_from),
             None,
             Some(final_key),
@@ -1029,9 +1049,24 @@ impl DocumentTraits for Agent {
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
     ) -> Result<(), JacsError> {
-        // check that public key exists
         let document = self.get_document(document_key)?;
-        let document_value = document.getvalue();
+        self.verify_document_signature_value(
+            document.getvalue(),
+            signature_key_from,
+            fields,
+            public_key,
+            public_key_enc_type,
+        )
+    }
+
+    fn verify_document_signature_value(
+        &mut self,
+        document_value: &Value,
+        signature_key_from: Option<&str>,
+        fields: Option<&[String]>,
+        public_key: Option<Vec<u8>>,
+        public_key_enc_type: Option<String>,
+    ) -> Result<(), JacsError> {
         self.verify_document_files(document_value)?;
         // this is innefficient since I generate a whole document
         let used_public_key = match public_key {
@@ -1057,10 +1092,8 @@ impl DocumentTraits for Agent {
         match result {
             Ok(_) => Ok(()),
             Err(err) => {
-                let error_message =
-                    format!("Signatures not verifiable {} {:?}! ", document_key, err);
-                error!("{}", error_message);
-                Err(error_message.into())
+                warn!(event = "document_verification_failed", error = %err, "Supplied document signature verification failed");
+                Err(err)
             }
         }
     }

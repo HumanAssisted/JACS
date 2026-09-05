@@ -15,6 +15,11 @@
     "qs": "^6.15.2"
   },
   "exports": {
+    "./signing-input": {
+      "types": "./browser/signing.d.ts",
+      "import": "./browser/signing.js",
+      "default": "./browser/signing.js"
+    },
     ".": {
       "import": "./index.js",
       "require": "./index.js",
@@ -183,6 +188,9 @@
     "url": "https://github.com/HumanAssisted/JACS"
   },
   "files": [
+    "browser/package.json",
+    "browser/signing.js",
+    "browser/signing.d.ts",
     "LICENSE",
     "THIRD-PARTY-NOTICES",
     "index.js",

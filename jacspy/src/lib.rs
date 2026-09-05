@@ -2222,6 +2222,8 @@ fn verify_document_standalone(
     .to_py()?;
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("valid", r.valid)?;
+    dict.set_item("identity_bound", r.identity_bound())?;
+    dict.set_item("policy_accepted", r.policy_accepted())?;
     dict.set_item("signer_id", r.signer_id)?;
     dict.set_item("timestamp", r.timestamp)?;
     dict.set_item("agent_version", r.agent_version)?;

@@ -5,36 +5,24 @@
 //!
 //! # Tool Profiles
 //!
-//! Tools are organized into families and exposed via runtime profiles:
-//!
-//! **Core profile** (default) -- tool families for everyday signing and verification:
-//! - `document` -- Document signing and verification
-//! - `trust` -- Trust store management (add, remove, list trusted agents)
-//! - `search` -- Document search and discovery
-//! - `key` -- Key management and export
-//!
-//! **Full profile** -- Core + advanced families:
-//! - `agreements` -- Multi-agent agreement signing with quorum
-//! - `a2a` -- Agent-to-Agent protocol tools
-//! - `attestation` -- Evidence-based attestation and DSSE
+//! `verify-only` is the default and exposes no signing, trust mutation, key
+//! mutation, agent creation, or legacy Agreement signing. The only other
+//! recognized process profiles are `local-sign`, `trust-admin`, and bounded
+//! `legacy-core`. A profile name is not authority: privileged startup is
+//! rejected until the complete TP-39 capability/status/approval WAL broker is
+//! available.
 //!
 //! # Profile Resolution
 //!
 //! 1. `--profile <name>` CLI flag (highest priority)
 //! 2. `JACS_MCP_PROFILE` environment variable
-//! 3. Default: `core`
+//! 3. Default: `verify-only`
 //!
 //! # Usage
 //!
 //! ```bash
-//! # Start with core tools (default)
+//! # Start with verification-only tools (default)
 //! jacs mcp
-//!
-//! # Start with all tools
-//! jacs mcp --profile full
-//!
-//! # Via environment variable
-//! JACS_MCP_PROFILE=full jacs mcp
 //! ```
 
 #![allow(ambiguous_glob_imports)]
@@ -57,7 +45,8 @@ pub mod tools;
 
 pub use crate::config::{
     load_agent_from_config_env, load_agent_from_config_env_with_info, load_agent_from_config_path,
-    load_agent_from_config_path_with_info,
+    load_agent_from_config_path_with_info, load_public_agent_from_config_env_with_info,
+    load_public_agent_from_config_path_with_info,
 };
 #[cfg(feature = "mcp")]
 pub use crate::contract::{

@@ -1,8 +1,10 @@
 # JACS MCP Server
 
-MCP server for JACS agent identity, generic document signing and verification, agreements, A2A artifacts, attestations, trust-store operations, and media/text signing.
+MCP server for JACS verification and capability-gated signing integrations.
 
-Uses **stdio transport only** for security. The server holds the agent's private key, so no HTTP endpoints are exposed.
+Uses **stdio transport only**. The default process loads no agent configuration
+or private key; privileged signing profiles remain unavailable until the TP-39
+capability/status/approval broker is implemented.
 
 The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
@@ -10,12 +12,13 @@ Ecosystem compatibility exports (ES256 JWKS, the native-root-signed compatibilit
 
 ## What can it do?
 
-The default `core` profile exposes document, inline text/media, trust, search,
-key/agent, A2A discovery, and W3C tools. The `full` profile adds Agreement v2,
-A2A artifact, and attestation tools. Select it with `jacs mcp --profile full`
-or, when the CLI flag is absent, `JACS_MCP_PROFILE=full`. An explicit flag
-wins over the environment, and values other than `core` or `full` fail
-startup.
+The default `verify-only` profile exposes only explicit-key document integrity
+verification. The only profile names are `verify-only`,
+`local-sign`, `trust-admin`, and compatibility-only `legacy-core`. An explicit
+flag wins over the environment and unknown values fail startup. A privileged
+profile name is only eligibility metadata, not authority; this release refuses
+privileged startup until the complete capability/status/approval WAL broker is
+available.
 
 The server exposes tools in these categories:
 
@@ -24,7 +27,7 @@ The server exposes tools in these categories:
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_document` | Sign arbitrary JSON content to create a signed JACS document |
-| `jacs_verify_document` | Verify a signed JACS document given its full JSON string |
+| `jacs_verify_document` | Verify exact document bytes with a caller-selected raw public key and algorithm (integrity only) |
 
 ### Agent Management
 
@@ -34,7 +37,7 @@ The server exposes tools in these categories:
 | `jacs_reencrypt_key` | Re-encrypt the agent's private key with a new password |
 | `jacs_rotate_keys` | Rotate the active agent key material |
 
-### Agreements (`full` profile)
+### Agreements (compiled compatibility surface; not active without a future broker)
 
 | Tool | Description |
 |------|-------------|
@@ -42,7 +45,7 @@ The server exposes tools in these categories:
 | `jacs_sign_agreement` | Co-sign an existing agreement |
 | `jacs_check_agreement` | Check agreement status, quorum, expiration, and missing signatures |
 
-### A2A Discovery (`core`) and Artifacts (`full`)
+### A2A Discovery and Artifacts
 
 | Tool | Description |
 |------|-------------|
@@ -123,12 +126,7 @@ jacs mcp
   "mcpServers": {
     "jacs": {
       "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
+      "args": ["mcp"]
     }
   }
 }
@@ -136,19 +134,11 @@ jacs mcp
 
 ## Configuration
 
-Required:
-
-- `JACS_CONFIG` - Path to your `jacs.config.json` file
-- One private-key password source. Prefer an owner-readable
-  `JACS_PASSWORD_FILE` (for example, mode `0600`) or the OS keychain.
-  `JACS_PRIVATE_KEY_PASSWORD` is supported but should not be committed in
-  desktop-client JSON.
-
 Optional:
 
 - `RUST_LOG` - Logging level, default `info,rmcp=warn`
-- `JACS_MCP_PROFILE` - `core` (default) or `full`; used only when
-  `--profile` is absent
+- `JACS_MCP_PROFILE` - one exact closed profile name; defaults to
+  `verify-only` and is used only when `--profile` is absent
 - `JACS_MCP_BASE_DIR` - Base directory for all caller-supplied file paths;
   defaults to the launch working directory
 - `JACS_MCP_OVERWRITE_OK=1` - Explicitly allow file tools to overwrite an
@@ -176,11 +166,14 @@ Parameters:
 
 ### `jacs_verify_document`
 
-Verify a signed JACS document in memory.
+Verify exact signed JACS document bytes for integrity. A successful result does
+not establish signer identity, trust, authorization, freshness, or revocation.
 
 Parameters:
 
 - `document` - Full signed JACS document JSON string
+- `public_key` - Exact raw Ed25519 or ML-DSA-87 public-key bytes
+- `algorithm` - `ed25519` or `pq2025`
 
 ## Agreement Tools
 

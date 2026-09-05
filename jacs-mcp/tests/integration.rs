@@ -879,6 +879,31 @@ async fn mcp_check_agreement_rejects_tampered_agreement() -> anyhow::Result<()> 
         .as_str()
         .expect("signed agreement payload");
 
+    let inspected = session
+        .call_tool(
+            "jacs_check_agreement",
+            serde_json::json!({ "signed_agreement": signed_agreement }),
+        )
+        .await?;
+    assert_eq!(
+        inspected["mathematical_checks_valid"], true,
+        "genuine legacy signature should remain inspectable: {}",
+        inspected
+    );
+    assert_eq!(inspected["complete"], false, "legacy v1 is non-actionable");
+    assert_eq!(
+        inspected["policy_authenticated"], false,
+        "legacy v1 sidecar policy is not authenticated"
+    );
+    assert_eq!(
+        inspected["policy_accepted"], false,
+        "legacy v1 can never authorize an action"
+    );
+    assert_eq!(
+        inspected["quorum_met"], false,
+        "claimed v1 quorum must not be promoted to a verified decision"
+    );
+
     let mut tampered: serde_json::Value =
         serde_json::from_str(signed_agreement).expect("parse agreement");
     tampered["jacsAgreement"]["question"] = serde_json::json!("Ship it right now?");

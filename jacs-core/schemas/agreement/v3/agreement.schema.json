@@ -1,0 +1,579 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/agreement/v3/agreement.schema.json",
+  "title": "JACS Agreement v3",
+  "description": "Closed, portable, purpose-bound agreement protocol. This schema checks wire shape; verification also recomputes every digest, signature, intent, quorum, schema bundle, and lineage rule.",
+  "$ref": "#/definitions/agreementVersion",
+  "definitions": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[\\x21-\\x7e]+$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "base64url": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "keyId": {
+      "type": "string",
+      "pattern": "^jacs-key-v1:(ed25519|pq2025|es256):[A-Za-z0-9_-]+$"
+    },
+    "algorithm": {
+      "enum": ["ed25519", "pq2025", "es256"]
+    },
+    "authorityAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "authorityServiceId", "bootstrapProfile", "bootstrapCredentialId", "bootstrapRecordDigest"],
+      "properties": {
+        "type": { "const": "authority" },
+        "authorityServiceId": { "$ref": "#/definitions/token" },
+        "bootstrapProfile": { "enum": ["pinned_signing_credential_v1", "managed_control_plane_v1"] },
+        "bootstrapCredentialId": { "$ref": "#/definitions/keyId" },
+        "bootstrapRecordDigest": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "identityAnchor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "jacsId", "genesisManifestDigest", "genesisRootCanonicalKeyId"],
+          "properties": {
+            "type": { "const": "portable" },
+            "jacsId": { "$ref": "#/definitions/token" },
+            "genesisManifestDigest": { "$ref": "#/definitions/digest" },
+            "genesisRootCanonicalKeyId": { "$ref": "#/definitions/keyId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "authorityAnchor", "authorityEnrollmentHandle", "authenticatedInitialRecordDigest"],
+          "properties": {
+            "type": { "const": "authority_backed" },
+            "authorityAnchor": { "$ref": "#/definitions/authorityAnchor" },
+            "authorityEnrollmentHandle": { "$ref": "#/definitions/token" },
+            "authenticatedInitialRecordDigest": { "$ref": "#/definitions/digest" }
+          }
+        }
+      ]
+    },
+    "terms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "schemaId", "schemaBundleDigest", "value"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-terms-v3" },
+        "schemaId": { "type": "string", "format": "uri" },
+        "schemaBundleDigest": { "$ref": "#/definitions/digest" },
+        "value": {}
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "contextProfileId", "schemaId", "schemaBundleDigest", "audience", "value"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-context-v3" },
+        "contextProfileId": { "$ref": "#/definitions/token" },
+        "schemaId": { "type": "string", "format": "uri" },
+        "schemaBundleDigest": { "$ref": "#/definitions/digest" },
+        "audience": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "value": {}
+      }
+    },
+    "participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["participantId", "role", "weight", "identityAnchor", "trustRecordDigest", "authorizationRequirement"],
+      "properties": {
+        "participantId": { "$ref": "#/definitions/token" },
+        "role": { "enum": ["signer", "witness", "notary"] },
+        "weight": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "identityAnchor": { "$ref": "#/definitions/identityAnchor" },
+        "trustRecordDigest": { "$ref": "#/definitions/digest" },
+        "authorizationRequirement": { "enum": ["agent_signature", "agent_plus_human_seal"] }
+      }
+    },
+    "signerQuorum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "threshold"],
+      "properties": {
+        "mode": { "enum": ["all", "count_at_least", "weight_at_least"] },
+        "threshold": { "type": ["integer", "null"], "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "witnessQuorum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "threshold"],
+      "properties": {
+        "mode": { "enum": ["none", "all", "count_at_least", "weight_at_least"] },
+        "threshold": { "type": ["integer", "null"], "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "quorum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "signer", "witness"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-quorum-v3" },
+        "signer": { "$ref": "#/definitions/signerQuorum" },
+        "witness": { "$ref": "#/definitions/witnessQuorum" }
+      }
+    },
+    "core": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile", "agreementId", "version", "versionKind",
+        "previousAgreementDigest", "previousFinalizationEvidenceDigest",
+        "controllerParticipantId", "controllerIdentityAnchor",
+        "controllerTrustRecordDigest", "controllerAuthorizationRequirement",
+        "termsDigest", "contextDigest", "participants", "quorum",
+        "notaryRequired", "status"
+      ],
+      "properties": {
+        "profile": { "const": "jacs-agreement-core-v3" },
+        "agreementId": { "$ref": "#/definitions/uuid" },
+        "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "versionKind": { "enum": ["proposal", "amendment"] },
+        "previousAgreementDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "previousFinalizationEvidenceDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "controllerParticipantId": { "$ref": "#/definitions/token" },
+        "controllerIdentityAnchor": { "$ref": "#/definitions/identityAnchor" },
+        "controllerTrustRecordDigest": { "$ref": "#/definitions/digest" },
+        "controllerAuthorizationRequirement": { "enum": ["agent_signature", "agent_plus_human_seal"] },
+        "termsDigest": { "$ref": "#/definitions/digest" },
+        "contextDigest": { "$ref": "#/definitions/digest" },
+        "participants": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/participant" }
+        },
+        "quorum": { "$ref": "#/definitions/quorum" },
+        "notaryRequired": { "type": "boolean" },
+        "status": { "const": "open" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "versionKind": { "const": "proposal" } } },
+          "then": {
+            "properties": {
+              "version": { "const": 1 },
+              "previousAgreementDigest": { "type": "null" },
+              "previousFinalizationEvidenceDigest": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "versionKind": { "const": "amendment" } } },
+          "then": {
+            "properties": {
+              "version": { "type": "integer", "minimum": 2, "maximum": 9007199254740991 },
+              "previousAgreementDigest": { "$ref": "#/definitions/digest" },
+              "previousFinalizationEvidenceDigest": { "$ref": "#/definitions/digest" }
+            }
+          }
+        }
+      ]
+    },
+    "ceremonyTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "agreementCoreDigest", "participantId", "role", "operation", "termsDigest", "contextDigest", "ceremonyId", "humanPrincipalId", "agentCanonicalKeyId", "agentVersion", "challenge", "notBefore", "expiresAt"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-ceremony-target-v3" },
+        "agreementCoreDigest": { "$ref": "#/definitions/digest" },
+        "participantId": { "$ref": "#/definitions/token" },
+        "role": { "enum": ["controller", "signer", "witness", "notary"] },
+        "operation": { "enum": ["SignAgreementProposal", "SignAgreementAmendment", "SignAgreementConsent", "SignAgreementWitness", "SignAgreementNotary"] },
+        "termsDigest": { "$ref": "#/definitions/digest" },
+        "contextDigest": { "$ref": "#/definitions/digest" },
+        "ceremonyId": { "$ref": "#/definitions/token" },
+        "humanPrincipalId": { "$ref": "#/definitions/token" },
+        "agentCanonicalKeyId": { "$ref": "#/definitions/keyId" },
+        "agentVersion": { "$ref": "#/definitions/token" },
+        "challenge": { "$ref": "#/definitions/base64url" },
+        "notBefore": { "$ref": "#/definitions/time" },
+        "expiresAt": { "$ref": "#/definitions/time" }
+      }
+    },
+    "ceremonyContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "authorizationTarget", "authorizationTargetDigest"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-ceremony-context-v3" },
+        "authorizationTarget": { "$ref": "#/definitions/ceremonyTarget" },
+        "authorizationTargetDigest": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "proofId", "agreementCoreDigest", "operation", "purpose", "participantId", "role", "signerIdentityAnchor", "signerTrustRecordDigest", "canonicalKeyId", "ceremonyContextDigest", "signature"],
+      "properties": {
+        "profile": { "enum": ["jacs-agreement-proposal-proof-v3", "jacs-agreement-amendment-proof-v3", "jacs-agreement-consent-proof-v3", "jacs-agreement-witness-proof-v3", "jacs-agreement-notary-proof-v3"] },
+        "proofId": { "$ref": "#/definitions/digest" },
+        "agreementCoreDigest": { "$ref": "#/definitions/digest" },
+        "operation": { "enum": ["SignAgreementProposal", "SignAgreementAmendment", "SignAgreementConsent", "SignAgreementWitness", "SignAgreementNotary"] },
+        "purpose": { "enum": ["agreement_proposal", "agreement_amendment", "agreement_consent", "agreement_witness", "agreement_notary"] },
+        "participantId": { "$ref": "#/definitions/token" },
+        "role": { "enum": ["controller", "signer", "witness", "notary"] },
+        "signerIdentityAnchor": { "$ref": "#/definitions/identityAnchor" },
+        "signerTrustRecordDigest": { "$ref": "#/definitions/digest" },
+        "canonicalKeyId": { "$ref": "#/definitions/keyId" },
+        "ceremonyContextDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "signature": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["keyId", "algorithm", "value"],
+          "properties": {
+            "keyId": { "$ref": "#/definitions/keyId" },
+            "algorithm": { "$ref": "#/definitions/algorithm" },
+            "value": { "$ref": "#/definitions/base64url" }
+          }
+        }
+      },
+      "oneOf": [
+        { "properties": { "profile": { "const": "jacs-agreement-proposal-proof-v3" }, "operation": { "const": "SignAgreementProposal" }, "purpose": { "const": "agreement_proposal" }, "role": { "const": "controller" } } },
+        { "properties": { "profile": { "const": "jacs-agreement-amendment-proof-v3" }, "operation": { "const": "SignAgreementAmendment" }, "purpose": { "const": "agreement_amendment" }, "role": { "const": "controller" } } },
+        { "properties": { "profile": { "const": "jacs-agreement-consent-proof-v3" }, "operation": { "const": "SignAgreementConsent" }, "purpose": { "const": "agreement_consent" }, "role": { "const": "signer" } } },
+        { "properties": { "profile": { "const": "jacs-agreement-witness-proof-v3" }, "operation": { "const": "SignAgreementWitness" }, "purpose": { "const": "agreement_witness" }, "role": { "const": "witness" } } },
+        { "properties": { "profile": { "const": "jacs-agreement-notary-proof-v3" }, "operation": { "const": "SignAgreementNotary" }, "purpose": { "const": "agreement_notary" }, "role": { "const": "notary" } } }
+      ]
+    },
+    "humanSealPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "sealId", "humanPrincipalId", "agreementCoreDigest", "termsDigest", "participantId", "role", "agentCanonicalKeyId", "agentVersion", "ceremonyContextDigest", "signedProofEvidenceDigest", "applicationAuthorizationDigest", "signerCompletionReceiptDigest", "approvedAt"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-human-seal-v1" },
+        "sealId": { "$ref": "#/definitions/token" },
+        "humanPrincipalId": { "$ref": "#/definitions/token" },
+        "agreementCoreDigest": { "$ref": "#/definitions/digest" },
+        "termsDigest": { "$ref": "#/definitions/digest" },
+        "participantId": { "$ref": "#/definitions/token" },
+        "role": { "enum": ["controller", "signer", "witness", "notary"] },
+        "agentCanonicalKeyId": { "$ref": "#/definitions/keyId" },
+        "agentVersion": { "$ref": "#/definitions/token" },
+        "ceremonyContextDigest": { "$ref": "#/definitions/digest" },
+        "signedProofEvidenceDigest": { "$ref": "#/definitions/digest" },
+        "applicationAuthorizationDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "signerCompletionReceiptDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "approvedAt": { "$ref": "#/definitions/time" }
+      }
+    },
+    "authorityRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload", "authentication"],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile", "authorityAnchor", "authorityEnrollmentHandle", "recordProfile", "recordId", "sequence", "previousAuthorityRecordDigest", "bodyDigest", "authenticatedCommitTime"],
+          "properties": {
+            "profile": { "const": "jacs-authority-record-v1" },
+            "authorityAnchor": { "$ref": "#/definitions/authorityAnchor" },
+            "authorityEnrollmentHandle": { "$ref": "#/definitions/token" },
+            "recordProfile": { "const": "jacs-agreement-human-seal-v1" },
+            "recordId": { "$ref": "#/definitions/token" },
+            "sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "previousAuthorityRecordDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+            "bodyDigest": { "$ref": "#/definitions/digest" },
+            "authenticatedCommitTime": { "$ref": "#/definitions/time" }
+          }
+        },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "credentialId", "algorithm", "value"],
+          "properties": {
+            "type": { "enum": ["pinned_credential_signature", "managed_row_signature"] },
+            "credentialId": { "$ref": "#/definitions/keyId" },
+            "algorithm": { "$ref": "#/definitions/algorithm" },
+            "value": { "$ref": "#/definitions/base64url" }
+          }
+        }
+      }
+    },
+    "humanSeal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload", "authentication"],
+      "properties": {
+        "payload": { "$ref": "#/definitions/humanSealPayload" },
+        "authentication": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "credentialId", "credentialGeneration", "credentialStatusDigest", "assurance", "algorithm", "value"],
+              "properties": {
+                "type": { "const": "local_os_broker_signature" },
+                "credentialId": { "$ref": "#/definitions/keyId" },
+                "credentialGeneration": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+                "credentialStatusDigest": { "$ref": "#/definitions/digest" },
+                "assurance": { "const": "local_os_user_presence" },
+                "algorithm": { "$ref": "#/definitions/algorithm" },
+                "value": { "$ref": "#/definitions/base64url" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "record"],
+              "properties": {
+                "type": { "const": "hai_authority_record" },
+                "record": { "$ref": "#/definitions/authorityRecord" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "roleEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "proof", "ceremonyContext", "humanSeal"],
+      "properties": {
+        "profile": { "enum": ["jacs-agreement-controller-evidence-v3", "jacs-agreement-consent-v3", "jacs-agreement-witness-v3", "jacs-agreement-notary-v3"] },
+        "proof": { "$ref": "#/definitions/proof" },
+        "ceremonyContext": { "oneOf": [{ "$ref": "#/definitions/ceremonyContext" }, { "type": "null" }] },
+        "humanSeal": { "oneOf": [{ "$ref": "#/definitions/humanSeal" }, { "type": "null" }] }
+      }
+    },
+    "agreementVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "core", "terms", "context", "controllerEvidence"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-v3" },
+        "core": { "$ref": "#/definitions/core" },
+        "terms": { "$ref": "#/definitions/terms" },
+        "context": { "$ref": "#/definitions/context" },
+        "controllerEvidence": { "$ref": "#/definitions/roleEvidence" }
+      }
+    },
+    "finalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "agreementVersion", "consents", "witnesses", "notary", "agreementDigest", "outcome"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-finalization-v3" },
+        "agreementVersion": { "$ref": "#/definitions/agreementVersion" },
+        "consents": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/roleEvidence" } },
+        "witnesses": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/roleEvidence" } },
+        "notary": { "oneOf": [{ "$ref": "#/definitions/roleEvidence" }, { "type": "null" }] },
+        "agreementDigest": { "$ref": "#/definitions/digest" },
+        "outcome": { "const": "accepted" }
+      }
+    },
+    "statusAuthority": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "canonicalStoreId", "ownerId", "bootstrapDigest"],
+          "properties": {
+            "type": { "const": "local_owner_store" },
+            "canonicalStoreId": { "$ref": "#/definitions/token" },
+            "ownerId": { "$ref": "#/definitions/token" },
+            "bootstrapDigest": { "$ref": "#/definitions/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "identityAnchor"],
+          "properties": {
+            "type": { "const": "portable_root_status" },
+            "identityAnchor": { "$ref": "#/definitions/identityAnchor" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "authorityAnchor", "authorityEnrollmentHandle"],
+          "properties": {
+            "type": { "const": "authority_backed_status" },
+            "authorityAnchor": { "$ref": "#/definitions/authorityAnchor" },
+            "authorityEnrollmentHandle": { "$ref": "#/definitions/token" }
+          }
+        }
+      ]
+    },
+    "logTrustRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logAnchor", "initialCheckpointDigest", "trustLedgerRecordDigest"],
+      "properties": {
+        "logAnchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile", "logServiceId", "inclusionProfile", "bootstrapCheckpointSigningKeyId", "identityAnchor", "statusAuthority"],
+          "properties": {
+            "profile": { "const": "jacs-transparency-log-anchor-v1" },
+            "logServiceId": { "$ref": "#/definitions/token" },
+            "inclusionProfile": { "const": "rfc6962-v1-sha256-jcs" },
+            "bootstrapCheckpointSigningKeyId": { "$ref": "#/definitions/keyId" },
+            "identityAnchor": { "$ref": "#/definitions/identityAnchor" },
+            "statusAuthority": { "$ref": "#/definitions/statusAuthority" }
+          }
+        },
+        "initialCheckpointDigest": { "$ref": "#/definitions/digest" },
+        "trustLedgerRecordDigest": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "observationPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "observerIdentityAnchor", "observerTrustRecordDigest", "observerKeyId", "receiptAuthorityTrustRecordDigest"],
+          "properties": {
+            "type": { "const": "registered_signed_observation" },
+            "observerIdentityAnchor": { "$ref": "#/definitions/identityAnchor" },
+            "observerTrustRecordDigest": { "$ref": "#/definitions/digest" },
+            "observerKeyId": { "$ref": "#/definitions/keyId" },
+            "receiptAuthorityTrustRecordDigest": { "$ref": "#/definitions/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "authorityTrustRecordDigest"],
+          "properties": {
+            "type": { "const": "authority_receipt" },
+            "authorityTrustRecordDigest": { "$ref": "#/definitions/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "logTrustRecord"],
+          "properties": {
+            "type": { "const": "transparency_inclusion" },
+            "logTrustRecord": { "$ref": "#/definitions/logTrustRecord" }
+          }
+        }
+      ]
+    },
+    "temporal": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "maxCheckpointAgeSeconds", "maxRevocationCheckpointAgeSeconds"],
+          "properties": {
+            "mode": { "const": "current" },
+            "maxCheckpointAgeSeconds": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "maxRevocationCheckpointAgeSeconds": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "lifecycleCheckpointDigest"],
+          "properties": {
+            "mode": { "const": "as_of" },
+            "lifecycleCheckpointDigest": { "$ref": "#/definitions/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "observationPolicy", "authorizationStatusCheckpointDigest", "maxRevocationCheckpointAgeSeconds"],
+          "properties": {
+            "mode": { "const": "archival" },
+            "observationPolicy": { "$ref": "#/definitions/observationPolicy" },
+            "authorizationStatusCheckpointDigest": { "$ref": "#/definitions/digest" },
+            "maxRevocationCheckpointAgeSeconds": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": { "mode": { "const": "not_applicable" } }
+        }
+      ]
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["participantId", "role", "identityAnchor", "trustRecordDigest", "operation", "signatureProfile", "temporal", "ceremony"],
+      "properties": {
+        "participantId": { "$ref": "#/definitions/token" },
+        "role": { "enum": ["controller", "signer", "witness", "notary"] },
+        "identityAnchor": { "$ref": "#/definitions/identityAnchor" },
+        "trustRecordDigest": { "$ref": "#/definitions/digest" },
+        "operation": { "enum": ["SignAgreementProposal", "SignAgreementAmendment", "SignAgreementConsent", "SignAgreementWitness", "SignAgreementNotary"] },
+        "signatureProfile": { "enum": ["jacs-agreement-proposal-proof-v3", "jacs-agreement-amendment-proof-v3", "jacs-agreement-consent-proof-v3", "jacs-agreement-witness-proof-v3", "jacs-agreement-notary-proof-v3"] },
+        "temporal": { "$ref": "#/definitions/temporal" },
+        "ceremony": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "ceremonyContextDigest", "humanPrincipalId"],
+          "properties": {
+            "mode": { "enum": ["none", "required"] },
+            "ceremonyContextDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+            "humanPrincipalId": { "oneOf": [{ "$ref": "#/definitions/token" }, { "type": "null" }] }
+          }
+        }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "verificationPolicyDigest", "expectedAgreementId", "expectedAgreementCoreDigest", "expectedPreviousAgreementDigest", "expectedPreviousFinalizationEvidenceDigest", "expectedTermsDigest", "expectedContextDigest", "expectedController", "expectedParticipants", "expectedQuorum", "expectedNotary", "expectedAgreementDigest", "expectedFinalization"],
+      "properties": {
+        "profile": { "const": "jacs-agreement-verification-intent-v3" },
+        "verificationPolicyDigest": { "$ref": "#/definitions/digest" },
+        "expectedAgreementId": { "$ref": "#/definitions/uuid" },
+        "expectedAgreementCoreDigest": { "$ref": "#/definitions/digest" },
+        "expectedPreviousAgreementDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "expectedPreviousFinalizationEvidenceDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] },
+        "expectedTermsDigest": { "$ref": "#/definitions/digest" },
+        "expectedContextDigest": { "$ref": "#/definitions/digest" },
+        "expectedController": { "$ref": "#/definitions/expectation" },
+        "expectedParticipants": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/expectation" } },
+        "expectedQuorum": { "$ref": "#/definitions/quorum" },
+        "expectedNotary": { "oneOf": [{ "$ref": "#/definitions/expectation" }, { "type": "null" }] },
+        "expectedAgreementDigest": { "$ref": "#/definitions/digest" },
+        "expectedFinalization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "evidenceDigest"],
+          "properties": {
+            "mode": { "enum": ["exact", "any_valid"] },
+            "evidenceDigest": { "oneOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }] }
+          }
+        }
+      }
+    }
+  }
+}

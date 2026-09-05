@@ -84,7 +84,11 @@ export declare function legacyUpdateAgent(newAgentString: string): string
 /** Result of verify_document_standalone. Exposed to JS as { valid, signerId, timestamp, agentVersion }. */
 export interface VerifyStandaloneResult {
   valid: boolean
-  /** Signer agent ID; exposed to JS as signerId (camelCase). */
+  /** Always false: cached-key integrity is not an identity binding. */
+  identityBound: boolean
+  /** Always false: this API does not evaluate authorization. */
+  policyAccepted: boolean
+  /** Signed agent-ID claim, not an independently authorized identity. */
   signerId: string
   /** Signing timestamp from jacsSignature.date. */
   timestamp: string

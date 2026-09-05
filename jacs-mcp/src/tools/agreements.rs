@@ -39,10 +39,9 @@ pub fn tools() -> Vec<Tool> {
         ),
         Tool::new(
             "jacs_check_agreement",
-            "(Legacy v1; prefer jacs_verify_agreement_v2.) Check the status of a jacsAgreement \
-             sidecar: how many agents have signed, whether quorum is met, whether it has expired, \
-             and which agents still need to sign. Use this to decide whether an agreement is \
-             complete and ready to act on.",
+            "Inspect present signatures and claimed status metadata on a legacy Agreement v1 \
+             document. V1 policy is unauthenticated, so this tool never reports agreement \
+             completion or policy acceptance.",
             schema_map::<CheckAgreementParams>(),
         ),
         Tool::new(
