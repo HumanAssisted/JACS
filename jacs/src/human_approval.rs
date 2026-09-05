@@ -545,6 +545,71 @@ mod tests {
         assert!(verify_human_approved_document_v1(&bytes, &other, &issuer, &provenance).is_err());
     }
 
+    #[test]
+    fn persisted_public_bundle_verifies_repeatedly_without_signing_key_storage() {
+        let (bundle, expected, issuer, provenance) = valid_bundle();
+        // The fixture's private signing keys have already been dropped. Only
+        // public evidence goes to disk; verification is neither enrollment nor
+        // a claim that the archived operation may execute again.
+        let storage = tempfile::tempdir().unwrap();
+        let path = storage.path().join("approved-document.json");
+        let bytes = bundle.canonical_bytes().unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        let expected_digest = bundle.digest().unwrap();
+        drop(bundle);
+
+        for _ in 0..2 {
+            let submitted = std::fs::read_to_string(&path).unwrap();
+            let report =
+                verify_human_approved_document_v1(&submitted, &expected, &issuer, &provenance)
+                    .unwrap();
+            assert!(report.provenance_signature_valid && report.approval.proof_valid);
+            assert_eq!(report.bundle_digest, expected_digest);
+            assert_eq!(report.current, HumanApprovalCurrentStatusV1::NotEvaluated);
+            assert_eq!(
+                report.approval.current,
+                HumanApprovalCurrentStatusV1::NotEvaluated
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+        assert_eq!(std::fs::read_dir(storage.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn ordinary_provenance_is_not_a_compound_human_approval() {
+        let (bundle, expected, issuer, provenance) = valid_bundle();
+        // Prove the service document is genuine before checking the stronger
+        // contract. Neither arm alone is a complete human-approved artifact.
+        verify_pinned_document(&bundle.jacs_document, &provenance).unwrap();
+        let evidence = serde_json::to_string(&bundle.human_approval).unwrap();
+        assert!(
+            verify_human_approval_v1(&evidence, &expected, &issuer)
+                .unwrap()
+                .proof_valid
+        );
+        for incomplete in [
+            serde_json::to_string(&bundle.jacs_document).unwrap(),
+            evidence,
+        ] {
+            assert!(
+                verify_human_approved_document_v1(&incomplete, &expected, &issuer, &provenance)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn caller_selected_pins_are_checked_for_each_approval_and_provenance_role() {
+        let (bundle, expected, issuer, provenance) = valid_bundle();
+        let bytes = String::from_utf8(bundle.canonical_bytes().unwrap()).unwrap();
+        assert_ne!(issuer.public_key_raw, provenance.public_key_raw);
+        verify_human_approved_document_v1(&bytes, &expected, &issuer, &provenance).unwrap();
+        assert!(
+            verify_human_approved_document_v1(&bytes, &expected, &provenance, &provenance).is_err()
+        );
+        assert!(verify_human_approved_document_v1(&bytes, &expected, &issuer, &issuer).is_err());
+    }
+
     fn authority(agent: &jacs_core::CoreAgent, document: &Value) -> PinnedHumanApprovalAuthorityV1 {
         let metadata = &document["jacsSignature"];
         PinnedHumanApprovalAuthorityV1 {
