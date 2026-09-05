@@ -46,6 +46,9 @@ export interface SignedDocument {
 }
 export interface VerificationResult {
     valid: boolean;
+    /** Local enrollment only, not Current/purpose authorization. Missing means unavailable. */
+    identityBindingStatus?: 'unavailable' | 'locally_enrolled';
+    identityBound?: boolean;
     data?: any;
     signerId: string;
     signerName?: string;

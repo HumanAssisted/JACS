@@ -171,6 +171,10 @@ pub struct LogAnchor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "closed public verification expectation intentionally owns its observation policy by value; preserve the Rust construction API"
+)]
 pub enum TemporalExpectation {
     Current {
         #[serde(rename = "maxCheckpointAgeSeconds")]

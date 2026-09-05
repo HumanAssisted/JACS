@@ -136,6 +136,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"], optional = true }
 ring = "0.17.9"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 walkdir = "2.5.0"
@@ -181,6 +182,9 @@ web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
 [features]
 default = ["sqlite"]
+
+# Native-only mapped human approval; portable core evidence remains dependency-free.
+human-approval = ["dep:webauthn-rs"]
 
 # Lightweight sync SQLite backend (rusqlite, no tokio needed) — the default.
 sqlite = ["dep:rusqlite"]

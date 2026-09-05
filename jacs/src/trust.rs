@@ -98,6 +98,131 @@ pub struct TrustedAgent {
     pub verified: bool,
 }
 
+/// Captured identity-to-key evidence, separate from document integrity and from
+/// Current/lifecycle, revocation, purpose, or application authorization.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityBindingStatus {
+    /// No independently enrolled, exact-version native binding was available.
+    #[default]
+    Unavailable,
+    /// The signature matched an explicitly enrolled native identity and key.
+    LocallyEnrolled,
+}
+
+impl std::fmt::Display for IdentityBindingStatus {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Unavailable => "unavailable",
+            Self::LocallyEnrolled => "locally_enrolled",
+        })
+    }
+}
+
+/// Verify a document-v2 signature against independently enrolled local identity
+/// evidence. Cache discovery and A2A bookmarks alone return `Unavailable`.
+/// An enrolled-key conflict or local distrust is an error, never a discovery
+/// fallback. This reads existing enrollment state; it never enrolls or pins.
+///
+/// This checks the signature and its identity binding, not the document hash,
+/// attachments, freshness, lifecycle, or an application authorization policy.
+pub fn verify_document_identity_binding(
+    document: &Value,
+) -> Result<IdentityBindingStatus, JacsError> {
+    let signature = &document[AGENT_SIGNATURE_FIELDNAME];
+    if signature[SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str() != Some(SIGNATURE_CONTENT_VERSION_V2)
+    {
+        return Ok(IdentityBindingStatus::Unavailable);
+    }
+    let identity = signature.get_str_required("agentID")?;
+    let version = signature.get_str_required("agentVersion")?;
+    let lookup = format!("{identity}:{version}");
+    validate_agent_id_for_path(&lookup)?;
+    ensure_not_distrusted(&lookup)?;
+
+    let pin_file = identity_state_dir().join(format!("{identity}.pin"));
+    match fs::symlink_metadata(&pin_file) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // In particular, do not migrate old metadata or establish a first
+            // pin while verifying attacker-supplied input.
+            return Ok(IdentityBindingStatus::Unavailable);
+        }
+        Err(error) => return Err(JacsError::TrustError(error.to_string())),
+        Ok(_) => {}
+    }
+    // Explicit enrollment leaves a persistent identity lock. Require it to
+    // exist before using the shared lock primitive; verification does not set
+    // up trust-store directories or first-use state.
+    let lock_file = identity_state_dir().join(format!(".{identity}.lock"));
+    crate::secure_io::read_no_follow(&lock_file)
+        .map_err(|error| JacsError::TrustError(format!("Enrollment lock unavailable: {error}")))?;
+
+    with_identity_lock(&lookup, || {
+        ensure_not_distrusted(&lookup)?;
+        let pinned = crate::secure_io::read_to_string_no_follow(&pin_file)
+            .map_err(|error| JacsError::TrustError(error.to_string()))?;
+        let claimed_hash = signature.get_str_required("publicKeyHash")?;
+        if pinned.trim() != claimed_hash {
+            warn!(event = "verification_enrolled_key_conflict", agent_id = %identity,
+                "Document key does not match the independently enrolled identity");
+            return Err(JacsError::TrustError(
+                "Document public key conflicts with the enrolled identity key".into(),
+            ));
+        }
+        let Some(metadata) = read_trusted_agent_metadata(&lookup)? else {
+            return Ok(IdentityBindingStatus::Unavailable);
+        };
+        if !metadata.verified {
+            return Ok(IdentityBindingStatus::Unavailable);
+        }
+        let enrolled = jacs_core::strict_json::parse_strict_json(&get_trusted_agent(&lookup)?)?;
+        if enrolled[AGENT_SIGNATURE_FIELDNAME][SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str()
+            != Some(SIGNATURE_CONTENT_VERSION_V2)
+        {
+            return Ok(IdentityBindingStatus::Unavailable);
+        }
+        let public_key = get_trusted_public_key(&lookup)?;
+        // The legacy publicKeyHash normalizes text and is only a lookup hint.
+        // Bind the cached canonical key bytes to the independently retained
+        // enrollment key, not merely to that legacy hash.
+        if normalize_public_key_pem(&public_key) != metadata.public_key_pem {
+            return Err(JacsError::TrustError(
+                "Cached public key bytes differ from the explicitly enrolled public key".into(),
+            ));
+        }
+        let enrolled_algorithm =
+            enrolled[AGENT_SIGNATURE_FIELDNAME].get_str_required("signingAlgorithm")?;
+        let claimed_algorithm = signature.get_str_required("signingAlgorithm")?;
+        let algorithm = crate::verification::matching_algorithm(
+            Some(&claimed_algorithm),
+            Some(&enrolled_algorithm),
+        )?
+        .ok_or_else(|| JacsError::TrustError("Enrollment algorithm unavailable".into()))?;
+        // Canonical key validation, not an unverified metadata flag, precedes
+        // both self-signature and submitted-signature checks.
+        jacs_core::identity::canonical_key_id(&algorithm, &public_key)?;
+        verify_agent_self_signature(&enrolled, &public_key, Some(&algorithm))?;
+        let algorithm = jacs_core::sign::SigningAlgorithm::from_wire_str(&algorithm)
+            .ok_or_else(|| JacsError::TrustError("Unsupported enrollment algorithm".into()))?;
+        let result = jacs_core::verify::verify_document(
+            document,
+            &public_key,
+            algorithm,
+            AGENT_SIGNATURE_FIELDNAME,
+        )?;
+        if !result.valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: "Document signature does not verify with its enrolled identity key".into(),
+            });
+        }
+        Ok(IdentityBindingStatus::LocallyEnrolled)
+    })
+    .inspect_err(|error| {
+        warn!(event = "verification_identity_binding_failed", agent_id = %identity,
+            error = %error, "Local enrolled identity binding verification failed");
+    })
+}
+
 // Compatibility trust state is keyed by stable identity. This deny marker is
 // local administrative distrust, not authoritative key revocation or the new
 // lifecycle ledger. Ordinary import cannot supersede it.
@@ -161,10 +286,10 @@ fn identity_key_hashes(agent_id: &str) -> Result<Vec<String>, JacsError> {
         };
         if key.starts_with(&prefix) {
             validate_agent_id_for_path(key)?;
-            if let Some(metadata) = read_trusted_agent_metadata(key)? {
-                if metadata.verified {
-                    hashes.insert(metadata.public_key_hash);
-                }
+            if let Some(metadata) = read_trusted_agent_metadata(key)?
+                && metadata.verified
+            {
+                hashes.insert(metadata.public_key_hash);
             }
         }
     }
@@ -1456,6 +1581,101 @@ mod tests {
         save_public_key_to_cache(&hash_public_key(&key), &key, Some("ring-Ed25519"))
             .expect("cache candidate");
         assert!(trust_agent(&agent.export_agent().expect("export identity")).is_err());
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn document_verification_captures_explicit_enrollment_and_respects_distrust() {
+        let _temp = setup_test_trust_dir();
+        let (agent, _) = crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let signed = agent
+            .sign_message(&serde_json::json!({"message": "ordinary document"}))
+            .unwrap();
+        let public_key = agent.get_public_key().unwrap();
+        let value = jacs_core::strict_json::parse_strict_json(&signed.raw).unwrap();
+        assert_eq!(
+            verify_document_identity_binding(&value).unwrap(),
+            IdentityBindingStatus::Unavailable
+        );
+        assert!(
+            !identity_state_dir().exists(),
+            "inspection must not create enrollment state"
+        );
+        let unbound = agent.verify(&signed.raw).unwrap();
+        assert!(unbound.valid);
+        assert_eq!(
+            unbound.identity_binding_status,
+            IdentityBindingStatus::Unavailable
+        );
+
+        let enrolled_id = trust_agent_with_key(
+            &agent.export_agent().unwrap(),
+            Some(&agent.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let bound = agent
+            .verify_with_key(&signed.raw, public_key.clone())
+            .unwrap();
+        assert!(bound.valid);
+        assert_eq!(
+            bound.identity_binding_status,
+            IdentityBindingStatus::LocallyEnrolled
+        );
+        let serialized = serde_json::to_value(&bound).unwrap();
+        assert_eq!(serialized["identity_bound"], true);
+        assert_eq!(serialized["policy_accepted"], false);
+
+        untrust_agent(&enrolled_id).unwrap();
+        assert!(verify_document_identity_binding(&value).is_err());
+        assert!(
+            agent
+                .verify_with_key(&signed.raw, public_key.clone())
+                .map(|result| !result.valid)
+                .unwrap_or(true)
+        );
+        // Explicit public-key-only inspection remains available and makes no
+        // local trust or identity claim, even for historical distrusted data.
+        let integrity = crate::verification::NonSigningVerifier::new()
+            .unwrap()
+            .verify_with_key(&signed.raw, &public_key, "ed25519", None)
+            .unwrap();
+        assert!(integrity.integrity_valid);
+        assert!(!integrity.identity_bound);
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn enrolled_binding_rechecks_cached_public_key_bytes() {
+        let _temp = setup_test_trust_dir();
+        let (agent, _) = crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let (other, _) = crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let signed = agent
+            .sign_message(&serde_json::json!({"message": "key cache consistency"}))
+            .unwrap();
+        let value = jacs_core::strict_json::parse_strict_json(&signed.raw).unwrap();
+        trust_agent_with_key(
+            &agent.export_agent().unwrap(),
+            Some(&agent.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let expected_hash = hash_public_key(agent.get_public_key().unwrap());
+        let key_file = trust_store_dir()
+            .join("keys")
+            .join(format!("{expected_hash}.pem"));
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &key_file,
+            &other.get_public_key().unwrap(),
+            0o600,
+            false,
+        )
+        .unwrap();
+        assert!(verify_document_identity_binding(&value).is_err());
+        assert!(
+            agent
+                .verify(&signed.raw)
+                .map(|result| !result.valid)
+                .unwrap_or(true)
+        );
     }
 
     #[test]

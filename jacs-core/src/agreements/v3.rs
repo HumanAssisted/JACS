@@ -404,6 +404,10 @@ pub struct AuthorityRecordV3 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "closed public evidence type intentionally owns its authority record by value; boxing would change the Rust construction API"
+)]
 pub enum AgreementHumanSealAuthenticationV3 {
     LocalOsBrokerSignature {
         #[serde(rename = "credentialId")]

@@ -1799,7 +1799,8 @@ pub extern "C" fn jacs_verify_document_standalone(
             Ok(r) => {
                 let json = serde_json::json!({
                     "valid": r.valid, "signer_id": r.signer_id,
-                    "identity_bound": r.identity_bound(), "policy_accepted": r.policy_accepted()
+                    "identity_bound": r.identity_bound(), "policy_accepted": r.policy_accepted(),
+                    "identity_binding_status": r.identity_binding_status
                 });
                 match CString::new(json.to_string()) {
                     Ok(cs) => cs.into_raw(),

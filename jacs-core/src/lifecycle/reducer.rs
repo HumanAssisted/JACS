@@ -1,387 +1,5 @@
 use super::*;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{DetachedSigner, Ed25519DalekSigner};
-    const ID: &str = "550e8400-e29b-41d4-a716-446655440000";
-    const VERSION: &str = "550e8400-e29b-41d4-a716-446655440001";
-    fn time(second: u8) -> JacsTime {
-        JacsTime::parse(&format!("2026-09-04T00:00:{second:02}Z")).unwrap()
-    }
-    fn key(signer: &dyn DetachedSigner, purpose: KeyPurpose) -> KeyRecord {
-        KeyRecord {
-            key_id: identity::canonical_key_id("ed25519", signer.public_key()).unwrap(),
-            algorithm: "ed25519".into(),
-            public_key: identity::encode_binary(signer.public_key()),
-            purposes: vec![purpose],
-            legacy_bindings: vec![],
-            status: KeyStatus::Active,
-            not_before: time(0),
-            not_after: None,
-            retirement: None,
-            revocation: None,
-        }
-    }
-    fn sign(manifest: &mut IdentityManifest, signers: &[&dyn DetachedSigner]) {
-        manifest.signatures = signers
-            .iter()
-            .map(|signer| LifecycleSignature {
-                key_id: identity::canonical_key_id("ed25519", signer.public_key()).unwrap(),
-                algorithm: "ed25519".into(),
-                value: String::new(),
-            })
-            .collect();
-        manifest
-            .signatures
-            .sort_by(|left, right| left.key_id.cmp(&right.key_id));
-        let bytes = manifest.signature_input().unwrap();
-        for signature in &mut manifest.signatures {
-            let signer = signers
-                .iter()
-                .find(|signer| {
-                    identity::canonical_key_id("ed25519", signer.public_key()).unwrap()
-                        == signature.key_id
-                })
-                .unwrap();
-            signature.value = identity::encode_binary(&signer.sign(&bytes).unwrap());
-        }
-    }
-    fn fixture() -> (
-        IdentityManifest,
-        IdentityAnchor,
-        LifecyclePolicy,
-        Ed25519DalekSigner,
-        Ed25519DalekSigner,
-    ) {
-        let root = crate::ed25519_signer_for_tests();
-        let operational = crate::ed25519_signer_for_tests();
-        let recovery = crate::ed25519_signer_for_tests();
-        let mut document = key(&operational, KeyPurpose::Document);
-        document.legacy_bindings.push(LegacyBinding {
-            jacs_version: VERSION.into(),
-            signer_lookup_id: format!("{ID}:{VERSION}"),
-            legacy_hash_profile: "jacs-core-raw-public-key-hash-v1".into(),
-            legacy_public_key_material: None,
-            public_key_hash: crate::verify::sha256_hex(operational.public_key()),
-        });
-        let mut manifest = IdentityManifest {
-            profile: "jacs-identity-v1".into(),
-            identity: ID.into(),
-            sequence: 0,
-            previous_manifest: None,
-            identity_root: key(&root, KeyPurpose::IdentityRoot),
-            independent_compromise_recovery: true,
-            recovery_authorities: vec![RecoveryAuthority {
-                key_id: identity::canonical_key_id("ed25519", recovery.public_key()).unwrap(),
-                algorithm: "ed25519".into(),
-                public_key: identity::encode_binary(recovery.public_key()),
-                status: KeyStatus::Active,
-                not_before: time(0),
-                not_after: None,
-                threshold_weight: 1,
-                retirement: None,
-                revocation: None,
-            }],
-            recovery_threshold: Some(1),
-            current_bindings: vec![CurrentBinding {
-                operation: SigningOperation::SignDocument,
-                purpose: KeyPurpose::Document,
-                signature_profile: "jacs-document-v2".into(),
-                canonical_key_id: document.key_id.clone(),
-                jacs_version: Some(VERSION.into()),
-                signer_lookup_id: Some(format!("{ID}:{VERSION}")),
-            }],
-            keys: vec![document],
-            issued_at: time(0),
-            event: LifecycleEvent::Genesis {},
-            signatures: vec![],
-        };
-        sign(&mut manifest, &[&root]);
-        let anchor = IdentityAnchor::Portable {
-            jacs_id: ID.into(),
-            genesis_manifest_digest: manifest.digest().unwrap(),
-            genesis_root_canonical_key_id: manifest.identity_root.key_id.clone(),
-        };
-        let policy = LifecyclePolicy {
-            profile_mode: IdentityProfileMode::Separated,
-            require_portable_status: false,
-            allowed_bindings: vec![(
-                SigningOperation::SignDocument,
-                "jacs-document-v2".into(),
-                KeyPurpose::Document,
-            )],
-        };
-        (manifest, anchor, policy, root, recovery)
-    }
-    fn next(state: &StructuralLifecycleState, event: LifecycleEvent) -> IdentityManifest {
-        let mut manifest = state.manifest().clone();
-        manifest.sequence += 1;
-        manifest.previous_manifest = Some(state.digest().into());
-        manifest.event = event;
-        manifest.issued_at = time(1);
-        manifest.signatures.clear();
-        manifest
-    }
-    #[test]
-    fn genesis_binds_independent_anchor_and_exact_operation_key() {
-        let (manifest, anchor, policy, _, _) = fixture();
-        let raw = serde_json::to_string(&manifest).unwrap();
-        let parsed = IdentityManifest::parse(&raw).unwrap();
-        assert_eq!(parsed, manifest);
-        let state = StructuralLifecycleState::genesis(parsed, &anchor, &time(0), &policy).unwrap();
-        let selected = state
-            .resolve_current(
-                &SigningOperation::SignDocument,
-                "jacs-document-v2",
-                &KeyPurpose::Document,
-                &time(1),
-            )
-            .unwrap();
-        assert_eq!(selected.key_id, state.manifest().keys[0].key_id);
-        assert!(
-            state
-                .resolve_current(
-                    &SigningOperation::SignDocument,
-                    "jacs-document-v2",
-                    &KeyPurpose::Response,
-                    &time(1)
-                )
-                .is_err()
-        );
-        assert!(state.recovery_threshold_currently_satisfiable(&time(1)));
-        let wrong = IdentityAnchor::Portable {
-            jacs_id: ID.into(),
-            genesis_manifest_digest: identity::digest_bytes("fixture", b"unrelated"),
-            genesis_root_canonical_key_id: state.manifest().identity_root.key_id.clone(),
-        };
-        assert!(StructuralLifecycleState::genesis(manifest, &wrong, &time(0), &policy).is_err());
-    }
-    #[test]
-    fn ordinary_root_rotation_requires_both_roots_and_retains_genesis_anchor() {
-        let (manifest, anchor, policy, root, _) = fixture();
-        let state =
-            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
-        let new_signer = crate::ed25519_signer_for_tests();
-        let new_root = key(&new_signer, KeyPurpose::IdentityRoot);
-        let old = &state.manifest().identity_root;
-        let mut candidate = next(
-            &state,
-            LifecycleEvent::RotateRoot {
-                old_root_key_id: old.key_id.clone(),
-                old_root_key_record_digest: old.digest().unwrap(),
-                retired_old_root: retired_record(old, &time(1), &ReasonCategory::Superseded, 1)
-                    .unwrap(),
-                new_root: new_root.clone(),
-                retired_at: time(1),
-                reason_category: ReasonCategory::Superseded,
-                binding_replacements: vec![],
-            },
-        );
-        candidate.identity_root = new_root;
-        sign(&mut candidate, &[&root]);
-        assert!(state.advance(candidate.clone(), &time(1), &policy).is_err());
-        sign(&mut candidate, &[&root, &new_signer]);
-        let advanced = state.advance(candidate.clone(), &time(1), &policy).unwrap();
-        assert_eq!(advanced.anchor(), &anchor);
-        assert_eq!(advanced.manifest().sequence, 1);
-        assert_eq!(
-            advanced
-                .advance(candidate, &time(2), &policy)
-                .unwrap()
-                .evaluation_time(advanced.digest()),
-            Some(&time(1))
-        );
-        assert!(
-            advanced
-                .advance(state.manifest().clone(), &time(2), &policy)
-                .is_err()
-        );
-    }
-    #[test]
-    fn revocation_removes_exact_bindings_and_never_restores_live_use() {
-        let (manifest, anchor, policy, root, _) = fixture();
-        let state =
-            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
-        let old = &state.manifest().keys[0];
-        let mut candidate = next(
-            &state,
-            LifecycleEvent::RevokeOperationalKey {
-                key_id: old.key_id.clone(),
-                prior_key_record_digest: old.digest().unwrap(),
-                reason_category: ReasonCategory::ConfirmedCompromise,
-                semantics: RevocationSemantics::DenyAll,
-                removed_current_bindings: state.manifest().current_bindings.clone(),
-                cutoff: None,
-                cutoff_evidence: None,
-            },
-        );
-        candidate.keys[0] = revoked_record(
-            old,
-            &ReasonCategory::ConfirmedCompromise,
-            &RevocationSemantics::DenyAll,
-            &None,
-            &None,
-            1,
-        )
-        .unwrap();
-        candidate.current_bindings.clear();
-        sign(&mut candidate, &[&root]);
-        let revoked = state.advance(candidate, &time(1), &policy).unwrap();
-        assert!(
-            revoked
-                .resolve_current(
-                    &SigningOperation::SignDocument,
-                    "jacs-document-v2",
-                    &KeyPurpose::Document,
-                    &time(2)
-                )
-                .is_err()
-        );
-        let mut reused = next(
-            &revoked,
-            LifecycleEvent::AuthorizeOperationalKey {
-                key: old.clone(),
-                status_bootstrap_mode: StatusBootstrapMode::NotApplicable,
-                new_current_binding: None,
-            },
-        );
-        reused.keys.push(old.clone());
-        reused
-            .keys
-            .sort_by(|left, right| left.key_id.cmp(&right.key_id));
-        sign(&mut reused, &[&root]);
-        assert!(revoked.advance(reused, &time(2), &policy).is_err());
-    }
-    #[test]
-    fn compromise_recovery_requires_prior_threshold_and_new_root() {
-        let (manifest, anchor, policy, _, recovery) = fixture();
-        let state =
-            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
-        let new_signer = crate::ed25519_signer_for_tests();
-        let new_root = key(&new_signer, KeyPurpose::IdentityRoot);
-        let old = &state.manifest().identity_root;
-        let mut candidate = next(
-            &state,
-            LifecycleEvent::CompromiseRecovery {
-                base_manifest_digest: state.digest().into(),
-                revoked_root_key_id: old.key_id.clone(),
-                revoked_root_key_record_digest: old.digest().unwrap(),
-                revoked_old_root: revoked_record(
-                    old,
-                    &ReasonCategory::ConfirmedCompromise,
-                    &RevocationSemantics::DenyAll,
-                    &None,
-                    &None,
-                    1,
-                )
-                .unwrap(),
-                reason_category: ReasonCategory::ConfirmedCompromise,
-                revocation_semantics: RevocationSemantics::DenyAll,
-                new_root: new_root.clone(),
-                new_recovery_authorities: state.manifest().recovery_authorities.clone(),
-                new_recovery_threshold: Some(1),
-                recovery_changes: vec![],
-                binding_replacements: vec![],
-                superseded_child_digests: None,
-            },
-        );
-        candidate.identity_root = new_root;
-        sign(&mut candidate, &[&new_signer]);
-        assert!(state.advance(candidate.clone(), &time(1), &policy).is_err());
-        sign(&mut candidate, &[&recovery, &new_signer]);
-        let advanced = state.advance(candidate, &time(1), &policy).unwrap();
-        assert_eq!(advanced.anchor(), &anchor);
-    }
-    #[test]
-    fn observed_ordinary_forks_fail_independent_of_input_order() {
-        let (manifest, anchor, policy, root, _) = fixture();
-        let state =
-            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
-        let mut children = vec![];
-        for _ in 0..2 {
-            let signer = crate::ed25519_signer_for_tests();
-            let new_key = key(&signer, KeyPurpose::Document);
-            let mut candidate = next(
-                &state,
-                LifecycleEvent::AuthorizeOperationalKey {
-                    key: new_key.clone(),
-                    status_bootstrap_mode: StatusBootstrapMode::NotApplicable,
-                    new_current_binding: None,
-                },
-            );
-            candidate.keys.push(new_key);
-            candidate.keys.sort_by(|a, b| a.key_id.cmp(&b.key_id));
-            sign(&mut candidate, &[&root]);
-            children.push(candidate);
-        }
-        assert!(
-            state
-                .advance_candidates(&children, &time(1), &policy)
-                .is_err()
-        );
-        children.reverse();
-        assert!(
-            state
-                .advance_candidates(&children, &time(1), &policy)
-                .is_err()
-        );
-        state
-            .advance_candidates(&children[..1], &time(1), &policy)
-            .unwrap();
-    }
-    #[test]
-    fn status_checkpoints_bind_current_lifecycle_and_retained_completeness() {
-        let (manifest, anchor, policy, _, _) = fixture();
-        let state =
-            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
-        let authority = crate::identity::StatusAuthority::LocalOwnerStore {
-            canonical_store_id: ID.into(),
-            owner_id: "posix-uid:501".into(),
-            bootstrap_digest: identity::digest_bytes("fixture", b"owner"),
-        };
-        let checkpoint = StatusCheckpointPayload {
-            profile: "jacs-status-checkpoint-v1".into(),
-            operation: SigningOperation::PublishStatusCheckpoint,
-            purpose: KeyPurpose::Status,
-            identity_anchor: anchor,
-            status_authority: authority.clone(),
-            authority_scope: AuthorityScope::Local,
-            status_sequence: 0,
-            checkpoint_time: time(1),
-            complete_through: time(1),
-            lifecycle_sequence: 0,
-            lifecycle_record_digest: state.digest().into(),
-            current_status_key_id: None,
-            revocation_epoch: 0,
-            previous_status_checkpoint_digest: None,
-        };
-        validate_status_checkpoint(&state, None, &checkpoint, &authority, &time(2), 1).unwrap();
-        assert!(
-            validate_status_checkpoint(&state, None, &checkpoint, &authority, &time(3), 1).is_err()
-        );
-        let mut refresh = checkpoint.clone();
-        refresh.status_sequence = 1;
-        refresh.previous_status_checkpoint_digest = Some(checkpoint.digest().unwrap());
-        refresh.checkpoint_time = time(2);
-        refresh.complete_through = time(2);
-        validate_status_checkpoint(&state, Some(&checkpoint), &refresh, &authority, &time(3), 1)
-            .unwrap();
-        refresh.revocation_epoch = 1;
-        assert!(
-            validate_status_checkpoint(
-                &state,
-                Some(&checkpoint),
-                &refresh,
-                &authority,
-                &time(3),
-                1
-            )
-            .is_err()
-        );
-    }
-}
-
 impl StructuralLifecycleState {
     /// Evaluate every observed direct child of an unambiguous base. An ordinary
     /// fork cannot select a winner by input order. Recovery/fork-resolution
@@ -1479,10 +1097,9 @@ fn verify_authorization(
     }
     if let LifecycleEvent::RotateRoot { new_root, .. }
     | LifecycleEvent::CompromiseRecovery { new_root, .. } = &candidate.event
+        && !signers.contains(new_root.key_id.as_str())
     {
-        if !signers.contains(new_root.key_id.as_str()) {
-            return Err(invalid("proposed identity-root authorization required"));
-        }
+        return Err(invalid("proposed identity-root authorization required"));
     }
     if requires_recovery(&candidate.event) {
         let threshold = prior
@@ -1542,4 +1159,386 @@ fn verify_authorization(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DetachedSigner, Ed25519DalekSigner};
+    const ID: &str = "550e8400-e29b-41d4-a716-446655440000";
+    const VERSION: &str = "550e8400-e29b-41d4-a716-446655440001";
+    fn time(second: u8) -> JacsTime {
+        JacsTime::parse(&format!("2026-09-04T00:00:{second:02}Z")).unwrap()
+    }
+    fn key(signer: &dyn DetachedSigner, purpose: KeyPurpose) -> KeyRecord {
+        KeyRecord {
+            key_id: identity::canonical_key_id("ed25519", signer.public_key()).unwrap(),
+            algorithm: "ed25519".into(),
+            public_key: identity::encode_binary(signer.public_key()),
+            purposes: vec![purpose],
+            legacy_bindings: vec![],
+            status: KeyStatus::Active,
+            not_before: time(0),
+            not_after: None,
+            retirement: None,
+            revocation: None,
+        }
+    }
+    fn sign(manifest: &mut IdentityManifest, signers: &[&dyn DetachedSigner]) {
+        manifest.signatures = signers
+            .iter()
+            .map(|signer| LifecycleSignature {
+                key_id: identity::canonical_key_id("ed25519", signer.public_key()).unwrap(),
+                algorithm: "ed25519".into(),
+                value: String::new(),
+            })
+            .collect();
+        manifest
+            .signatures
+            .sort_by(|left, right| left.key_id.cmp(&right.key_id));
+        let bytes = manifest.signature_input().unwrap();
+        for signature in &mut manifest.signatures {
+            let signer = signers
+                .iter()
+                .find(|signer| {
+                    identity::canonical_key_id("ed25519", signer.public_key()).unwrap()
+                        == signature.key_id
+                })
+                .unwrap();
+            signature.value = identity::encode_binary(&signer.sign(&bytes).unwrap());
+        }
+    }
+    fn fixture() -> (
+        IdentityManifest,
+        IdentityAnchor,
+        LifecyclePolicy,
+        Ed25519DalekSigner,
+        Ed25519DalekSigner,
+    ) {
+        let root = crate::ed25519_signer_for_tests();
+        let operational = crate::ed25519_signer_for_tests();
+        let recovery = crate::ed25519_signer_for_tests();
+        let mut document = key(&operational, KeyPurpose::Document);
+        document.legacy_bindings.push(LegacyBinding {
+            jacs_version: VERSION.into(),
+            signer_lookup_id: format!("{ID}:{VERSION}"),
+            legacy_hash_profile: "jacs-core-raw-public-key-hash-v1".into(),
+            legacy_public_key_material: None,
+            public_key_hash: crate::verify::sha256_hex(operational.public_key()),
+        });
+        let mut manifest = IdentityManifest {
+            profile: "jacs-identity-v1".into(),
+            identity: ID.into(),
+            sequence: 0,
+            previous_manifest: None,
+            identity_root: key(&root, KeyPurpose::IdentityRoot),
+            independent_compromise_recovery: true,
+            recovery_authorities: vec![RecoveryAuthority {
+                key_id: identity::canonical_key_id("ed25519", recovery.public_key()).unwrap(),
+                algorithm: "ed25519".into(),
+                public_key: identity::encode_binary(recovery.public_key()),
+                status: KeyStatus::Active,
+                not_before: time(0),
+                not_after: None,
+                threshold_weight: 1,
+                retirement: None,
+                revocation: None,
+            }],
+            recovery_threshold: Some(1),
+            current_bindings: vec![CurrentBinding {
+                operation: SigningOperation::SignDocument,
+                purpose: KeyPurpose::Document,
+                signature_profile: "jacs-document-v2".into(),
+                canonical_key_id: document.key_id.clone(),
+                jacs_version: Some(VERSION.into()),
+                signer_lookup_id: Some(format!("{ID}:{VERSION}")),
+            }],
+            keys: vec![document],
+            issued_at: time(0),
+            event: LifecycleEvent::Genesis {},
+            signatures: vec![],
+        };
+        sign(&mut manifest, &[&root]);
+        let anchor = IdentityAnchor::Portable {
+            jacs_id: ID.into(),
+            genesis_manifest_digest: manifest.digest().unwrap(),
+            genesis_root_canonical_key_id: manifest.identity_root.key_id.clone(),
+        };
+        let policy = LifecyclePolicy {
+            profile_mode: IdentityProfileMode::Separated,
+            require_portable_status: false,
+            allowed_bindings: vec![(
+                SigningOperation::SignDocument,
+                "jacs-document-v2".into(),
+                KeyPurpose::Document,
+            )],
+        };
+        (manifest, anchor, policy, root, recovery)
+    }
+    fn next(state: &StructuralLifecycleState, event: LifecycleEvent) -> IdentityManifest {
+        let mut manifest = state.manifest().clone();
+        manifest.sequence += 1;
+        manifest.previous_manifest = Some(state.digest().into());
+        manifest.event = event;
+        manifest.issued_at = time(1);
+        manifest.signatures.clear();
+        manifest
+    }
+    #[test]
+    fn genesis_binds_independent_anchor_and_exact_operation_key() {
+        let (manifest, anchor, policy, _, _) = fixture();
+        let raw = serde_json::to_string(&manifest).unwrap();
+        let parsed = IdentityManifest::parse(&raw).unwrap();
+        assert_eq!(parsed, manifest);
+        let state = StructuralLifecycleState::genesis(parsed, &anchor, &time(0), &policy).unwrap();
+        let selected = state
+            .resolve_current(
+                &SigningOperation::SignDocument,
+                "jacs-document-v2",
+                &KeyPurpose::Document,
+                &time(1),
+            )
+            .unwrap();
+        assert_eq!(selected.key_id, state.manifest().keys[0].key_id);
+        assert!(
+            state
+                .resolve_current(
+                    &SigningOperation::SignDocument,
+                    "jacs-document-v2",
+                    &KeyPurpose::Response,
+                    &time(1)
+                )
+                .is_err()
+        );
+        assert!(state.recovery_threshold_currently_satisfiable(&time(1)));
+        let wrong = IdentityAnchor::Portable {
+            jacs_id: ID.into(),
+            genesis_manifest_digest: identity::digest_bytes("fixture", b"unrelated"),
+            genesis_root_canonical_key_id: state.manifest().identity_root.key_id.clone(),
+        };
+        assert!(StructuralLifecycleState::genesis(manifest, &wrong, &time(0), &policy).is_err());
+    }
+    #[test]
+    fn ordinary_root_rotation_requires_both_roots_and_retains_genesis_anchor() {
+        let (manifest, anchor, policy, root, _) = fixture();
+        let state =
+            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
+        let new_signer = crate::ed25519_signer_for_tests();
+        let new_root = key(&new_signer, KeyPurpose::IdentityRoot);
+        let old = &state.manifest().identity_root;
+        let mut candidate = next(
+            &state,
+            LifecycleEvent::RotateRoot {
+                old_root_key_id: old.key_id.clone(),
+                old_root_key_record_digest: old.digest().unwrap(),
+                retired_old_root: retired_record(old, &time(1), &ReasonCategory::Superseded, 1)
+                    .unwrap(),
+                new_root: new_root.clone(),
+                retired_at: time(1),
+                reason_category: ReasonCategory::Superseded,
+                binding_replacements: vec![],
+            },
+        );
+        candidate.identity_root = new_root;
+        sign(&mut candidate, &[&root]);
+        assert!(state.advance(candidate.clone(), &time(1), &policy).is_err());
+        sign(&mut candidate, &[&root, &new_signer]);
+        let advanced = state.advance(candidate.clone(), &time(1), &policy).unwrap();
+        assert_eq!(advanced.anchor(), &anchor);
+        assert_eq!(advanced.manifest().sequence, 1);
+        assert_eq!(
+            advanced
+                .advance(candidate, &time(2), &policy)
+                .unwrap()
+                .evaluation_time(advanced.digest()),
+            Some(&time(1))
+        );
+        assert!(
+            advanced
+                .advance(state.manifest().clone(), &time(2), &policy)
+                .is_err()
+        );
+    }
+    #[test]
+    fn revocation_removes_exact_bindings_and_never_restores_live_use() {
+        let (manifest, anchor, policy, root, _) = fixture();
+        let state =
+            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
+        let old = &state.manifest().keys[0];
+        let mut candidate = next(
+            &state,
+            LifecycleEvent::RevokeOperationalKey {
+                key_id: old.key_id.clone(),
+                prior_key_record_digest: old.digest().unwrap(),
+                reason_category: ReasonCategory::ConfirmedCompromise,
+                semantics: RevocationSemantics::DenyAll,
+                removed_current_bindings: state.manifest().current_bindings.clone(),
+                cutoff: None,
+                cutoff_evidence: None,
+            },
+        );
+        candidate.keys[0] = revoked_record(
+            old,
+            &ReasonCategory::ConfirmedCompromise,
+            &RevocationSemantics::DenyAll,
+            &None,
+            &None,
+            1,
+        )
+        .unwrap();
+        candidate.current_bindings.clear();
+        sign(&mut candidate, &[&root]);
+        let revoked = state.advance(candidate, &time(1), &policy).unwrap();
+        assert!(
+            revoked
+                .resolve_current(
+                    &SigningOperation::SignDocument,
+                    "jacs-document-v2",
+                    &KeyPurpose::Document,
+                    &time(2)
+                )
+                .is_err()
+        );
+        let mut reused = next(
+            &revoked,
+            LifecycleEvent::AuthorizeOperationalKey {
+                key: old.clone(),
+                status_bootstrap_mode: StatusBootstrapMode::NotApplicable,
+                new_current_binding: None,
+            },
+        );
+        reused.keys.push(old.clone());
+        reused
+            .keys
+            .sort_by(|left, right| left.key_id.cmp(&right.key_id));
+        sign(&mut reused, &[&root]);
+        assert!(revoked.advance(reused, &time(2), &policy).is_err());
+    }
+    #[test]
+    fn compromise_recovery_requires_prior_threshold_and_new_root() {
+        let (manifest, anchor, policy, _, recovery) = fixture();
+        let state =
+            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
+        let new_signer = crate::ed25519_signer_for_tests();
+        let new_root = key(&new_signer, KeyPurpose::IdentityRoot);
+        let old = &state.manifest().identity_root;
+        let mut candidate = next(
+            &state,
+            LifecycleEvent::CompromiseRecovery {
+                base_manifest_digest: state.digest().into(),
+                revoked_root_key_id: old.key_id.clone(),
+                revoked_root_key_record_digest: old.digest().unwrap(),
+                revoked_old_root: revoked_record(
+                    old,
+                    &ReasonCategory::ConfirmedCompromise,
+                    &RevocationSemantics::DenyAll,
+                    &None,
+                    &None,
+                    1,
+                )
+                .unwrap(),
+                reason_category: ReasonCategory::ConfirmedCompromise,
+                revocation_semantics: RevocationSemantics::DenyAll,
+                new_root: new_root.clone(),
+                new_recovery_authorities: state.manifest().recovery_authorities.clone(),
+                new_recovery_threshold: Some(1),
+                recovery_changes: vec![],
+                binding_replacements: vec![],
+                superseded_child_digests: None,
+            },
+        );
+        candidate.identity_root = new_root;
+        sign(&mut candidate, &[&new_signer]);
+        assert!(state.advance(candidate.clone(), &time(1), &policy).is_err());
+        sign(&mut candidate, &[&recovery, &new_signer]);
+        let advanced = state.advance(candidate, &time(1), &policy).unwrap();
+        assert_eq!(advanced.anchor(), &anchor);
+    }
+    #[test]
+    fn observed_ordinary_forks_fail_independent_of_input_order() {
+        let (manifest, anchor, policy, root, _) = fixture();
+        let state =
+            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
+        let mut children = vec![];
+        for _ in 0..2 {
+            let signer = crate::ed25519_signer_for_tests();
+            let new_key = key(&signer, KeyPurpose::Document);
+            let mut candidate = next(
+                &state,
+                LifecycleEvent::AuthorizeOperationalKey {
+                    key: new_key.clone(),
+                    status_bootstrap_mode: StatusBootstrapMode::NotApplicable,
+                    new_current_binding: None,
+                },
+            );
+            candidate.keys.push(new_key);
+            candidate.keys.sort_by(|a, b| a.key_id.cmp(&b.key_id));
+            sign(&mut candidate, &[&root]);
+            children.push(candidate);
+        }
+        assert!(
+            state
+                .advance_candidates(&children, &time(1), &policy)
+                .is_err()
+        );
+        children.reverse();
+        assert!(
+            state
+                .advance_candidates(&children, &time(1), &policy)
+                .is_err()
+        );
+        state
+            .advance_candidates(&children[..1], &time(1), &policy)
+            .unwrap();
+    }
+    #[test]
+    fn status_checkpoints_bind_current_lifecycle_and_retained_completeness() {
+        let (manifest, anchor, policy, _, _) = fixture();
+        let state =
+            StructuralLifecycleState::genesis(manifest, &anchor, &time(0), &policy).unwrap();
+        let authority = crate::identity::StatusAuthority::LocalOwnerStore {
+            canonical_store_id: ID.into(),
+            owner_id: "posix-uid:501".into(),
+            bootstrap_digest: identity::digest_bytes("fixture", b"owner"),
+        };
+        let checkpoint = StatusCheckpointPayload {
+            profile: "jacs-status-checkpoint-v1".into(),
+            operation: SigningOperation::PublishStatusCheckpoint,
+            purpose: KeyPurpose::Status,
+            identity_anchor: anchor,
+            status_authority: authority.clone(),
+            authority_scope: AuthorityScope::Local,
+            status_sequence: 0,
+            checkpoint_time: time(1),
+            complete_through: time(1),
+            lifecycle_sequence: 0,
+            lifecycle_record_digest: state.digest().into(),
+            current_status_key_id: None,
+            revocation_epoch: 0,
+            previous_status_checkpoint_digest: None,
+        };
+        validate_status_checkpoint(&state, None, &checkpoint, &authority, &time(2), 1).unwrap();
+        assert!(
+            validate_status_checkpoint(&state, None, &checkpoint, &authority, &time(3), 1).is_err()
+        );
+        let mut refresh = checkpoint.clone();
+        refresh.status_sequence = 1;
+        refresh.previous_status_checkpoint_digest = Some(checkpoint.digest().unwrap());
+        refresh.checkpoint_time = time(2);
+        refresh.complete_through = time(2);
+        validate_status_checkpoint(&state, Some(&checkpoint), &refresh, &authority, &time(3), 1)
+            .unwrap();
+        refresh.revocation_epoch = 1;
+        assert!(
+            validate_status_checkpoint(
+                &state,
+                Some(&checkpoint),
+                &refresh,
+                &authority,
+                &time(3),
+                1
+            )
+            .is_err()
+        );
+    }
 }

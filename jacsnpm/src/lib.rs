@@ -2878,8 +2878,10 @@ pub fn legacy_update_agent(new_agent_string: String) -> Result<String> {
 #[napi(object)]
 pub struct VerifyStandaloneResult {
     pub valid: bool,
-    /// Always false: cached-key integrity is not an identity binding.
+    /// True only when independently enrolled local identity evidence matched.
     pub identity_bound: bool,
+    /// Local evidence only: unavailable or locally_enrolled, not Current policy.
+    pub identity_binding_status: String,
     /// Always false: this compatibility API does not evaluate authorization.
     pub policy_accepted: bool,
     /// Signed agent-ID claim, not an independently authorized identity.
@@ -2909,6 +2911,7 @@ pub fn verify_document_standalone(
     Ok(VerifyStandaloneResult {
         valid: r.valid,
         identity_bound: r.identity_bound(),
+        identity_binding_status: r.identity_binding_status.to_string(),
         policy_accepted: r.policy_accepted(),
         signer_id: r.signer_id,
         timestamp: r.timestamp,

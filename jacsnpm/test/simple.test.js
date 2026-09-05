@@ -474,6 +474,51 @@ describe('JACS Simple API', function() {
       }
     });
 
+    (simpleExists && bindings ? it : it.skip)('derives identity binding only from a valid captured status', () => {
+      const originalVerify = bindings.verifyDocumentStandalone;
+      const cases = [
+        {
+          nativeResult: { valid: true, identityBound: true },
+          expectedStatus: 'unavailable',
+          expectedBound: false,
+        },
+        {
+          nativeResult: {
+            valid: true,
+            identityBindingStatus: 'locally_enrolled',
+            identityBound: false,
+          },
+          expectedStatus: 'locally_enrolled',
+          expectedBound: true,
+        },
+        {
+          nativeResult: {
+            valid: false,
+            identityBindingStatus: 'locally_enrolled',
+            identityBound: true,
+          },
+          expectedStatus: 'unavailable',
+          expectedBound: false,
+        },
+      ];
+
+      try {
+        for (const { nativeResult, expectedStatus, expectedBound } of cases) {
+          bindings.verifyDocumentStandalone = () => nativeResult;
+          delete require.cache[require.resolve('../simple.js')];
+          const freshSimple = require('../simple.js');
+          const result = freshSimple.verifyStandalone('{}');
+
+          expect(result.identityBindingStatus).to.equal(expectedStatus);
+          expect(result.identityBound).to.equal(expectedBound);
+        }
+      } finally {
+        bindings.verifyDocumentStandalone = originalVerify;
+        delete require.cache[require.resolve('../simple.js')];
+        simple = require('../simple.js');
+      }
+    });
+
     (simpleExists && fixturesExist ? it : it.skip)('should verify a valid signed document without a loaded agent', () => {
       // Sign with a loaded agent, then verify standalone
       const freshSimple = loadSimpleInFixtures();

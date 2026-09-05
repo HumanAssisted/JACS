@@ -690,7 +690,7 @@ pub(crate) fn ensure_owner_only_directory(path: impl AsRef<Path>) -> io::Result<
     #[cfg(unix)]
     {
         create_dir_all_no_symlink(path)?;
-        return validate_owner_only_directory(path);
+        validate_owner_only_directory(path)
     }
 
     #[cfg(not(unix))]
@@ -725,7 +725,7 @@ pub(crate) fn validate_owner_only_directory(path: impl AsRef<Path>) -> io::Resul
                 ),
             ));
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(unix))]
@@ -1443,7 +1443,10 @@ mod tests {
 
         let _lock = test_lock();
         let tmp = tempfile::tempdir().expect("temp dir");
-        let writable = tmp.path().join("shared");
+        // macOS's system temp path starts with the /var symlink. Resolve only
+        // this freshly created fixture root, not the authority path under test.
+        let root = tmp.path().canonicalize().expect("canonical temp root");
+        let writable = root.join("shared");
         let private = writable.join("private");
         fs::create_dir_all(&private).expect("directories");
         fs::set_permissions(&writable, fs::Permissions::from_mode(0o777))
@@ -1466,7 +1469,8 @@ mod tests {
 
         let _lock = test_lock();
         let tmp = tempfile::tempdir().expect("temp dir");
-        let file = tmp.path().join("authority.json");
+        let root = tmp.path().canonicalize().expect("canonical temp root");
+        let file = root.join("authority.json");
         fs::write(&file, b"authority").expect("authority file");
         fs::set_permissions(&file, fs::Permissions::from_mode(0o660))
             .expect("make file group writable");
@@ -1482,7 +1486,8 @@ mod tests {
 
         let _lock = test_lock();
         let tmp = tempfile::tempdir().expect("temp dir");
-        let store = tmp.path().join("owner-store");
+        let root = tmp.path().canonicalize().expect("canonical temp root");
+        let store = root.join("owner-store");
         ensure_owner_only_directory(&store).expect("create private authority directory");
         assert_eq!(
             fs::metadata(&store)

@@ -58,4 +58,31 @@ describe('native-free frozen document signature input', () => {
     expect(() => signing.buildDocumentSignatureInputV2(unsafe))
       .to.throw('outside the I-JSON safe range');
   });
+
+  it('reconstructs signed inputs while preserving native extension metadata', () => {
+    const signed = structuredClone(fixture.envelope);
+    signed.jacsSignature.signature = Buffer.alloc(64, 7).toString('base64');
+    signed.jacsSignature.nativeExtension = { retained: true };
+    const input = signing.buildSignedDocumentSignatureInputV2(signed);
+    const parsed = JSON.parse(Buffer.from(input).toString('utf8'));
+    expect(parsed.signatureMetadata).to.deep.include({ nativeExtension: { retained: true } });
+    expect(parsed.signatureMetadata).not.to.have.property('signature');
+
+    const approval = signing.buildHumanApprovalDocumentSignatureInputDigestPreimageV1(signed);
+    const expectedApproval = Buffer.concat([
+      Buffer.from(`${signing.HUMAN_APPROVAL_DOCUMENT_SIGNATURE_INPUT_DIGEST_DOMAIN}\0`),
+      Buffer.from(input),
+    ]);
+    expect(Buffer.from(approval)).to.deep.equal(expectedApproval);
+  });
+
+  it('builds checksum bytes without trusting the checksum field itself', () => {
+    const signed = structuredClone(fixture.envelope);
+    signed.jacsSignature.signature = Buffer.alloc(64, 9).toString('base64');
+    signed.jacsSha256 = 'untrusted';
+    const checksumInput = signing.buildDocumentChecksumInputV1(signed);
+    const parsed = JSON.parse(Buffer.from(checksumInput).toString('utf8'));
+    expect(parsed).not.to.have.property('jacsSha256');
+    expect(parsed.jacsSignature.signature).to.equal(signed.jacsSignature.signature);
+  });
 });

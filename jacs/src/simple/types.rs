@@ -97,10 +97,13 @@ impl SignedDocument {
 }
 
 /// Cryptographic integrity result; it does not establish identity authorization.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct VerificationResult {
     /// Whether the signature is valid.
     pub valid: bool,
+    /// Local explicit enrollment evidence, not Current/purpose authorization.
+    #[serde(default)]
+    pub identity_binding_status: crate::trust::IdentityBindingStatus,
     /// The original data on successful integrity verification; null on failure.
     pub data: Value,
     /// Signed agent-ID claim, not an independently authorized identity.
@@ -113,6 +116,29 @@ pub struct VerificationResult {
     pub attachments: Vec<Attachment>,
     /// Error messages if verification failed.
     pub errors: Vec<String>,
+}
+
+impl Serialize for VerificationResult {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut result = serializer.serialize_struct("VerificationResult", 10)?;
+        result.serialize_field("valid", &self.valid)?;
+        result.serialize_field("identity_binding_status", &self.identity_binding_status)?;
+        result.serialize_field(
+            "identity_bound",
+            &(self.valid
+                && self.identity_binding_status
+                    == crate::trust::IdentityBindingStatus::LocallyEnrolled),
+        )?;
+        result.serialize_field("data", &self.data)?;
+        result.serialize_field("signer_id", &self.signer_id)?;
+        result.serialize_field("signer_name", &self.signer_name)?;
+        result.serialize_field("timestamp", &self.timestamp)?;
+        result.serialize_field("attachments", &self.attachments)?;
+        result.serialize_field("errors", &self.errors)?;
+        result.serialize_field("policy_accepted", &false)?;
+        result.end()
+    }
 }
 
 impl VerificationResult {
@@ -131,6 +157,7 @@ impl VerificationResult {
     #[must_use]
     pub fn failure(error: String) -> Self {
         Self {
+            identity_binding_status: Default::default(),
             valid: false,
             data: json!(null),
             signer_id: String::new(),
@@ -155,6 +182,7 @@ impl VerificationResult {
     #[must_use]
     pub fn success(data: Value, signer_id: String, timestamp: String) -> Self {
         Self {
+            identity_binding_status: Default::default(),
             valid: true,
             data,
             signer_id,

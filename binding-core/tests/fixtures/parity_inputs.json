@@ -120,7 +120,7 @@
   "expected_verification_result_fields": {
     "_description": "Every verification result must contain these fields",
     "required": ["valid"],
-    "optional": ["signer_id", "timestamp", "errors", "data", "attachments", "identity_bound", "policy_accepted"]
+    "optional": ["signer_id", "timestamp", "errors", "data", "attachments", "identity_bound", "identity_binding_status", "policy_accepted"]
   },
   "response_v2_generic_verification": {
     "_description": "Generic explicit-key verification must auto-dispatch fully bound response-v2 envelopes. Invalid envelopes never release payload or unauthenticated provenance.",

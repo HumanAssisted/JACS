@@ -812,14 +812,15 @@ impl Agent {
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         };
-        let agent_string = agent.fs_agent_load(&lookup_id).map_err(|error| {
-            JacsError::Internal {
-                message: format!(
-                    "Agent::from_config_public_only failed to load public agent '{}': {}",
-                    lookup_id, error
-                ),
-            }
-        })?;
+        let agent_string =
+            agent
+                .fs_agent_load(&lookup_id)
+                .map_err(|error| JacsError::Internal {
+                    message: format!(
+                        "Agent::from_config_public_only failed to load public agent '{}': {}",
+                        lookup_id, error
+                    ),
+                })?;
         let value = agent.validate_agent(&agent_string)?;
         let id = value.get_str("jacsId").ok_or_else(|| {
             JacsError::AgentError("Public agent document is missing jacsId.".into())
@@ -2709,6 +2710,13 @@ impl Agent {
         );
         validate_signature_temporal_claims(json_value, signature_key_from)?;
 
+        // A discovered hash-addressed key is only an integrity candidate. When
+        // independent enrollment exists, enforce it before any DNS/registry
+        // resolution or candidate-key verification can succeed.
+        if signature_key_from == DOCUMENT_AGENT_SIGNATURE_FIELDNAME && signature.is_none() {
+            crate::trust::verify_document_identity_binding(json_value)?;
+        }
+
         let public_key_hash: String = match original_public_key_hash {
             Some(orig) => orig,
             _ => json_value[signature_key_from]["publicKeyHash"]
@@ -3255,8 +3263,8 @@ impl Agent {
         let versioncreated = time_utils::now_rfc3339();
 
         new_self["jacsPreviousVersion"] = last_version.clone();
-        new_self["jacsVersion"] = json!(format!("{}", new_version));
-        new_self["jacsVersionDate"] = json!(format!("{}", versioncreated));
+        new_self["jacsVersion"] = json!(new_version.to_string());
+        new_self["jacsVersionDate"] = json!(versioncreated.to_string());
 
         // generate new keys?
         // sign new version
@@ -3264,7 +3272,7 @@ impl Agent {
             self.signing_procedure(&new_self, None, AGENT_SIGNATURE_FIELDNAME)?;
         // hash new version
         let document_hash = self.hash_doc(&new_self)?;
-        new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        new_self[SHA256_FIELDNAME] = json!(document_hash.to_string());
         //replace ones self
         self.version = new_self.get_str("jacsVersion");
         self.value = Some(new_self.clone());
@@ -3424,7 +3432,7 @@ impl Agent {
         new_doc[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&new_doc, None, AGENT_SIGNATURE_FIELDNAME)?;
         let document_hash = self.hash_doc(&new_doc)?;
-        new_doc[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        new_doc[SHA256_FIELDNAME] = json!(document_hash.to_string());
 
         // Update in-memory state
         self.version = Some(new_version.clone());
@@ -3716,7 +3724,7 @@ impl Agent {
         // run as agent
         // validate the agent schema now
         let document_hash = self.hash_doc(&instance)?;
-        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        instance[SHA256_FIELDNAME] = json!(document_hash.to_string());
         self.value = Some(instance.clone());
         self.verify_self_signature()?;
         Ok(instance)

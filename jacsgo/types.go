@@ -52,8 +52,10 @@ type VerificationResult struct {
 	Data interface{} `json:"data"`
 	// SignerID is the signed identity claim, not independent identity authority.
 	SignerID string `json:"signer_id"`
-	// IdentityBound is false for compatibility/cached-key integrity verification.
+	// IdentityBound requires independently enrolled local identity evidence.
 	IdentityBound bool `json:"identity_bound"`
+	// IdentityBindingStatus is unavailable or locally_enrolled, not Current policy.
+	IdentityBindingStatus string `json:"identity_binding_status"`
 	// PolicyAccepted is false unless a separate authenticated policy evaluated it.
 	PolicyAccepted bool `json:"policy_accepted"`
 	// SignerName is the name of the signer (if available in trust store).
@@ -64,6 +66,22 @@ type VerificationResult struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 	// Errors contains error messages if verification failed.
 	Errors []string `json:"errors,omitempty"`
+}
+
+// UnmarshalJSON derives binding from its captured status; older results without
+// that status remain unavailable. Decoding a result does not establish trust.
+func (r *VerificationResult) UnmarshalJSON(data []byte) error {
+	type resultFields VerificationResult
+	var decoded resultFields
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if !decoded.Valid || decoded.IdentityBindingStatus != "locally_enrolled" {
+		decoded.IdentityBindingStatus = "unavailable"
+	}
+	decoded.IdentityBound = decoded.Valid && decoded.IdentityBindingStatus == "locally_enrolled"
+	*r = VerificationResult(decoded)
+	return nil
 }
 
 // AgreementV2Role is a named role accepted by

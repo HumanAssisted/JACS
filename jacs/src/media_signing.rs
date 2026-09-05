@@ -195,6 +195,10 @@ impl PreparedMediaV2 {
 }
 
 /// Prepare a purpose-bound media claim from exact hardened bytes.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "public frozen-input adapter keeps each existing authority and media input explicit"
+)]
 pub fn prepare_media_v2(
     scope: &SigningKeyScope,
     public_key: &[u8],
@@ -244,6 +248,10 @@ pub fn prepare_media_v2(
 /// JACS generates the remaining native header values exactly once and returns
 /// them inside the serialized prepared object. Persistence rehydration should
 /// keep using [`prepare_media_v2`] with an explicitly stored header.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "public operation-ID adapter mirrors the explicit frozen-input preparation contract"
+)]
 pub fn prepare_media_v2_with_id(
     scope: &SigningKeyScope,
     public_key: &[u8],

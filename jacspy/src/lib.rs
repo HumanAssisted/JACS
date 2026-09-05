@@ -2223,6 +2223,10 @@ fn verify_document_standalone(
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("valid", r.valid)?;
     dict.set_item("identity_bound", r.identity_bound())?;
+    dict.set_item(
+        "identity_binding_status",
+        r.identity_binding_status.to_string(),
+    )?;
     dict.set_item("policy_accepted", r.policy_accepted())?;
     dict.set_item("signer_id", r.signer_id)?;
     dict.set_item("timestamp", r.timestamp)?;

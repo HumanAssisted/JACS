@@ -568,15 +568,14 @@ fn validate_status(
             ));
         }
     }
-    if let Some(Some(retired)) = retirement {
-        if !matches!(
+    if let Some(Some(retired)) = retirement
+        && (!matches!(
             retired.reason_category,
             ReasonCategory::AdministrativeWithdrawal | ReasonCategory::Superseded
         ) || retired.lifecycle_sequence == 0
-            || retired.lifecycle_sequence > sequence
-        {
-            return Err(invalid("invalid retirement provenance"));
-        }
+            || retired.lifecycle_sequence > sequence)
+    {
+        return Err(invalid("invalid retirement provenance"));
     }
     if let Some(revoked) = revocation {
         if revoked.lifecycle_sequence == 0 || revoked.lifecycle_sequence > sequence {

@@ -838,9 +838,10 @@ impl NativeMessageHeaderV1 {
             CoreError::MalformedDocument("native artifact source must be a JSON object".into())
         })?;
         if document.contains_key("$schema") {
-            return Err(CoreError::MalformedDocument(format!(
+            return Err(CoreError::MalformedDocument(
                 "native artifact source must not supply reserved header field '$schema'"
-            )));
+                    .to_string(),
+            ));
         }
         if let Some(field) = document.keys().find(|field| {
             field.starts_with("jacs")
@@ -1203,8 +1204,8 @@ impl PreparedDocumentV2 {
         scope.validate_public_key(public_key)?;
         scope.validate_profile_entry(&self.profile_entry)?;
 
-        if &self.operation != &self.profile_entry.operation
-            || &self.purpose != &self.profile_entry.purpose
+        if self.operation != self.profile_entry.operation
+            || self.purpose != self.profile_entry.purpose
             || &self.operation != self.signing_request_context.operation()
             || &self.purpose != self.signing_request_context.purpose()
         {

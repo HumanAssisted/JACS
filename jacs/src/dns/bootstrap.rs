@@ -66,16 +66,15 @@ pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, JacsError> {
         if p.is_empty() {
             continue;
         }
-        if let Some((k, v)) = p.split_once('=') {
-            if map
+        if let Some((k, v)) = p.split_once('=')
+            && map
                 .insert(k.trim().to_string(), v.trim().to_string())
                 .is_some()
-            {
-                return Err(JacsError::DnsRecordInvalid {
-                    domain: String::new(),
-                    reason: format!("Duplicate {} field in TXT record", k.trim()),
-                });
-            }
+        {
+            return Err(JacsError::DnsRecordInvalid {
+                domain: String::new(),
+                reason: format!("Duplicate {} field in TXT record", k.trim()),
+            });
         }
     }
     let missing = |field: &str| JacsError::DnsRecordInvalid {

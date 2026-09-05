@@ -14,6 +14,8 @@
 export const DOCUMENT_V2_SIGNATURE_PROFILE = 'jacs-document-v2';
 export const DOCUMENT_V2_PLACEMENT_KEY = 'jacsSignature';
 export const HAI_SIGNATURE_INPUT_DIGEST_DOMAIN = 'JACS-HAI-SIGNATURE-INPUT-V1';
+export const HUMAN_APPROVAL_DOCUMENT_SIGNATURE_INPUT_DIGEST_DOMAIN =
+  'JACS-HUMAN-APPROVAL-DOCUMENT-SIGNATURE-INPUT-V1';
 
 const SIGNATURE_CONTENT_DOMAIN_V2 = 'jacs.signature.v2';
 const SIGNATURE_CONTENT_VERSION_V2 = 'jacs-signature-v2';
@@ -184,19 +186,20 @@ function validateMetadata(metadata) {
   }
 }
 
-/**
- * Reconstruct the exact bytes signed by the JACS document-v2 family.
- *
- * The envelope, not a hash supplied beside it, is authoritative.  This
- * function requires the signature's `fields` array to equal the complete
- * sorted set of non-reserved top-level fields and strips only
- * `jacsSignature.signature`, matching `jacs-core`.
- */
-export function buildDocumentSignatureInputV2(envelope) {
-  if (!isRecord(envelope)) throw new TypeError('JACS envelope must be a plain object');
-  const metadata = envelope[DOCUMENT_V2_PLACEMENT_KEY];
-  validateMetadata(metadata);
+function validateSignedMetadata(metadata) {
+  if (!isRecord(metadata)) throw new TypeError('$.jacsSignature must be a plain object');
+  if (typeof metadata.signature !== 'string' || metadata.signature.length === 0) {
+    throw new TypeError('$.jacsSignature.signature must be nonempty in a signed document');
+  }
+  if (metadata.signatureContentVersion !== SIGNATURE_CONTENT_VERSION_V2) {
+    throw new TypeError('$.jacsSignature.signatureContentVersion must be jacs-signature-v2');
+  }
+  if (!Array.isArray(metadata.fields)) {
+    throw new TypeError('$.jacsSignature.fields must be an array');
+  }
+}
 
+function buildSignatureInput(envelope, metadata) {
   const expectedFields = Object.keys(envelope)
     .filter((key) => key !== DOCUMENT_V2_PLACEMENT_KEY && !IGNORED_DOCUMENT_FIELDS.has(key))
     .sort();
@@ -209,7 +212,9 @@ export function buildDocumentSignatureInputV2(envelope) {
     );
   }
 
-  const signatureMetadata = {};
+  // Native JACS signs every metadata member except `signature`, including
+  // extension metadata unknown to this portable reader. Preserve it exactly.
+  const signatureMetadata = Object.create(null);
   for (const key of Object.keys(metadata)) {
     if (key !== 'signature') signatureMetadata[key] = metadata[key];
   }
@@ -224,6 +229,34 @@ export function buildDocumentSignatureInputV2(envelope) {
 }
 
 /**
+ * Reconstruct the exact bytes signed by the JACS document-v2 family.
+ *
+ * The envelope, not a hash supplied beside it, is authoritative.  This
+ * function requires the signature's `fields` array to equal the complete
+ * sorted set of non-reserved top-level fields and strips only
+ * `jacsSignature.signature`, matching `jacs-core`.
+ */
+export function buildDocumentSignatureInputV2(envelope) {
+  if (!isRecord(envelope)) throw new TypeError('JACS envelope must be a plain object');
+  const metadata = envelope[DOCUMENT_V2_PLACEMENT_KEY];
+  validateMetadata(metadata);
+  return buildSignatureInput(envelope, metadata);
+}
+
+/**
+ * Reconstruct a completed document's exact v2 signature input.
+ *
+ * Unlike the prepared-envelope helper, this accepts a nonempty signature and
+ * preserves all other metadata members exactly, matching the native verifier.
+ */
+export function buildSignedDocumentSignatureInputV2(document) {
+  if (!isRecord(document)) throw new TypeError('JACS document must be a plain object');
+  const metadata = document[DOCUMENT_V2_PLACEMENT_KEY];
+  validateSignedMetadata(metadata);
+  return buildSignatureInput(document, metadata);
+}
+
+/**
  * Bytes a platform SHA-256 must hash for TP-31's
  * `candidateSignatureInputDigest`.
  */
@@ -235,4 +268,28 @@ export function buildHaiSignatureInputDigestPreimageV1(envelope) {
   result[label.length] = 0;
   result.set(signatureInput, label.length + 1);
   return result;
+}
+
+/** Bytes hashed by the human-approval subject's document-input commitment. */
+export function buildHumanApprovalDocumentSignatureInputDigestPreimageV1(document) {
+  if (!isRecord(document)) throw new TypeError('JACS document must be a plain object');
+  const label = encodeUtf8(HUMAN_APPROVAL_DOCUMENT_SIGNATURE_INPUT_DIGEST_DOMAIN);
+  const signatureInput = document[DOCUMENT_V2_PLACEMENT_KEY]?.signature === ''
+    ? buildDocumentSignatureInputV2(document)
+    : buildSignedDocumentSignatureInputV2(document);
+  const result = new Uint8Array(label.length + 1 + signatureInput.length);
+  result.set(label, 0);
+  result[label.length] = 0;
+  result.set(signatureInput, label.length + 1);
+  return result;
+}
+
+/** Exact bytes hashed for the optional native `jacsSha256` checksum. */
+export function buildDocumentChecksumInputV1(document) {
+  if (!isRecord(document)) throw new TypeError('JACS document must be a plain object');
+  const checksumInput = Object.create(null);
+  for (const key of Object.keys(document)) {
+    if (key !== 'jacsSha256') checksumInput[key] = document[key];
+  }
+  return encodeUtf8(canonicalizeJson(checksumInput));
 }

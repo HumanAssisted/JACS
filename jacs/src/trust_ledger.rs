@@ -824,6 +824,10 @@ fn tombstone_projection_digests(
     rename_all = "snake_case",
     deny_unknown_fields
 )]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one closed journal operation is processed at a time; keep the replay representation by value"
+)]
 enum LedgerOperation {
     Trust {
         decision: TrustDecisionEvidence,
@@ -855,6 +859,10 @@ struct LedgerEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one bounded journal snapshot is loaded at a time; boxing adds indirection without changing its storage bound"
+)]
 enum LedgerJournal {
     Clean {
         profile: String,
@@ -1611,7 +1619,7 @@ fn effective_owner_id() -> Result<String, JacsError> {
     #[cfg(unix)]
     {
         // SAFETY: geteuid has no preconditions.
-        return Ok(format!("posix-uid:{}", unsafe { libc::geteuid() }));
+        Ok(format!("posix-uid:{}", unsafe { libc::geteuid() }))
     }
 
     #[cfg(not(unix))]
@@ -1936,7 +1944,6 @@ fn build_owner_proof(
         actor_id: bootstrap.bootstrap.owner_id.clone(),
         authentication_class: "local_os_owner".to_string(),
         action_request_digest: request_digest.to_string(),
-        confirmation_digest: authorization.confirmation_digest.clone(),
         authenticated_at: authorization.authenticated_at.clone(),
         expires_at: authorization.expires_at.clone(),
     };
@@ -1952,53 +1959,57 @@ fn build_owner_proof(
         body_digest,
         authenticated_commit_time: authorization.authenticated_at.clone(),
     };
-    let evidence_digest = digest(
-        "JACS-CONTROL-ACTOR-PROOF-EVIDENCE-V1",
-        &serde_json::json!({"payload": payload, "authentication": {
-            "type": "local_owner_store", "record": record
-        }}),
-    )?;
     Ok(LocalOwnerProofEvidence {
         payload,
-        record,
-        evidence_digest,
+        authentication: LocalOwnerProofAuthentication::LocalOwnerStore { record },
     })
 }
 
 fn validate_owner_proof(state: &LedgerState, entry: &LedgerEntry) -> Result<String, JacsError> {
     let proof = &entry.owner_proof;
+    let record = proof.record();
     if proof.payload.profile != OWNER_PROOF_PROFILE
-        || proof.record.profile != OWNER_PROOF_RECORD_PROFILE
+        || record.profile != OWNER_PROOF_RECORD_PROFILE
         || proof.payload.source_anchor != state.source_anchor
-        || proof.record.source_anchor != state.source_anchor
+        || record.source_anchor != state.source_anchor
         || proof.payload.proof_id != entry.transaction_id
-        || proof.record.record_id != entry.transaction_id
+        || record.record_id != entry.transaction_id
         || proof.payload.actor_class != "owner"
         || proof.payload.actor_id != local_owner_id(&state.source_anchor)?
         || proof.payload.authentication_class != "local_os_owner"
-        || proof.payload.authenticated_at != proof.record.authenticated_commit_time
+        || proof.payload.authenticated_at != record.authenticated_commit_time
         || proof.payload.authenticated_at != entry.committed_at
-        || proof.record.sequence != state.owner_proof_sequence.map_or(0, |value| value + 1)
-        || proof.record.previous_record_digest != state.owner_proof_head
+        || record.sequence != state.owner_proof_sequence.map_or(0, |value| value + 1)
+        || record.previous_record_digest != state.owner_proof_head
     {
         return Err(trust_error("local owner proof/state mismatch"));
     }
     require_digest(
-        &proof.payload.confirmation_digest,
-        "ownerProof.confirmationDigest",
+        &proof.payload.action_request_digest,
+        "ownerProof.actionRequestDigest",
     )?;
     let expected_body = digest("JACS-CONTROL-ACTOR-PROOF-V1", &proof.payload)?;
-    if expected_body != proof.record.body_digest {
+    if expected_body != record.body_digest {
         return Err(trust_error("local owner proof body digest mismatch"));
     }
-    let expected_evidence = digest(
-        "JACS-CONTROL-ACTOR-PROOF-EVIDENCE-V1",
-        &serde_json::json!({"payload": proof.payload, "authentication": {
-            "type": "local_owner_store", "record": proof.record
-        }}),
-    )?;
-    if expected_evidence != proof.evidence_digest {
-        return Err(trust_error("local owner proof evidence digest mismatch"));
+    let expected_evidence = proof.evidence_digest()?;
+    // The expected actor reference is retained in the ledger operation, not
+    // cached beside the proof whose digest is being computed. Status records
+    // bind their proof through the exact request and authenticated entry chain.
+    let retained_evidence = match &entry.operation {
+        LedgerOperation::Trust { decision, .. } => {
+            Some(&decision.actor.actor_proof_evidence_digest)
+        }
+        LedgerOperation::Policy { authorization, .. } => {
+            Some(&authorization.actor.actor_proof_evidence_digest)
+        }
+        LedgerOperation::Status { .. } => None,
+    };
+    if let Some(retained_evidence) = retained_evidence {
+        require_digest(retained_evidence, "actor.actorProofEvidenceDigest")?;
+        if expected_evidence != *retained_evidence {
+            return Err(trust_error("local owner proof evidence digest mismatch"));
+        }
     }
     let authenticated_at = parse_time(&proof.payload.authenticated_at)?;
     let expires_at = parse_time(&proof.payload.expires_at)?;
@@ -2009,7 +2020,7 @@ fn validate_owner_proof(state: &LedgerState, entry: &LedgerEntry) -> Result<Stri
             "local owner proof has an invalid validity interval",
         ));
     }
-    Ok(digest("JACS-LOCAL-CONTROL-ACTOR-RECORD-V1", &proof.record)?)
+    digest("JACS-LOCAL-CONTROL-ACTOR-RECORD-V1", record)
 }
 
 fn apply_entry(
@@ -2056,7 +2067,7 @@ fn apply_entry(
             "owner proof is not bound to the exact ledger request",
         ));
     }
-    state.owner_proof_sequence = Some(entry.owner_proof.record.sequence);
+    state.owner_proof_sequence = Some(entry.owner_proof.record().sequence);
     state.owner_proof_head = Some(proof_record_digest);
     state.consumed_decisions.insert(
         entry.transaction_id.clone(),
@@ -2088,7 +2099,7 @@ fn apply_trust_operation(
         || decision.actor.actor_class != "owner"
         || decision.actor.actor_id != entry.owner_proof.payload.actor_id
         || decision.actor.actor_proof_type != "local_control_actor_proof"
-        || decision.actor.actor_proof_evidence_digest != entry.owner_proof.evidence_digest
+        || decision.actor.actor_proof_evidence_digest != entry.owner_proof.evidence_digest()?
         || decision.action != decision.details.action()
         || decision.identity != record.identity
         || decision.details != record.event
@@ -2506,7 +2517,7 @@ fn apply_policy_operation(
         || authorization.actor.actor_class != "owner"
         || authorization.actor.actor_id != entry.owner_proof.payload.actor_id
         || authorization.actor.actor_proof_type != "local_control_actor_proof"
-        || authorization.actor.actor_proof_evidence_digest != entry.owner_proof.evidence_digest
+        || authorization.actor.actor_proof_evidence_digest != entry.owner_proof.evidence_digest()?
         || authorization.decided_at != entry.committed_at
         || entry.owner_proof.payload.scope != OwnerProofScope::Policy
         || entry.owner_proof.payload.action != "update_policy_bundle"
@@ -2846,18 +2857,17 @@ fn apply_status_operation(
             "status checkpoint or acceptance chain mismatch",
         ));
     }
-    if let Some(previous) = previous {
-        if parse_time(&checkpoint.checkpoint_time)? < parse_time(&previous.checkpoint_time)?
+    if let Some(previous) = previous
+        && (parse_time(&checkpoint.checkpoint_time)? < parse_time(&previous.checkpoint_time)?
             || parse_time(&checkpoint.complete_through)? < parse_time(&previous.complete_through)?
             || checkpoint.lifecycle_sequence < previous.lifecycle_sequence
             || checkpoint.revocation_epoch < previous.revocation_epoch
             || (checkpoint.lifecycle_sequence == previous.lifecycle_sequence
-                && checkpoint.lifecycle_record_digest != previous.lifecycle_record_digest)
-        {
-            return Err(trust_error(
-                "status high-water state cannot decrease or fork",
-            ));
-        }
+                && checkpoint.lifecycle_record_digest != previous.lifecycle_record_digest))
+    {
+        return Err(trust_error(
+            "status high-water state cannot decrease or fork",
+        ));
     }
     let acceptance_digest = digest("JACS-STATUS-CHECKPOINT-ACCEPTANCE-V1", acceptance)?;
     state.status.insert(
@@ -2978,6 +2988,131 @@ mod tests {
             )
             .expect("append genesis policy");
         (receipt, policy_digest)
+    }
+
+    fn assert_owner_proof_invariants(base: &LedgerState, entry: &LedgerEntry) {
+        let serialized = serde_json::to_value(&entry.owner_proof).expect("serialize proof");
+        assert_eq!(serialized.as_object().expect("proof object").len(), 2);
+        assert_eq!(serialized["authentication"]["type"], "local_owner_store");
+        assert!(serialized["payload"].get("confirmationDigest").is_none());
+        let decoded: LocalOwnerProofEvidence =
+            serde_json::from_value(serialized.clone()).expect("closed proof round trip");
+        assert_eq!(decoded, entry.owner_proof);
+        assert_eq!(
+            decoded.record().body_digest,
+            digest("JACS-CONTROL-ACTOR-PROOF-V1", &decoded.payload).expect("body digest")
+        );
+        validate_owner_proof(base, entry).expect("valid authenticated proof");
+
+        let mut obsolete_shape = serialized;
+        obsolete_shape["evidenceDigest"] = Value::String(test_digest("obsolete cached field"));
+        assert!(serde_json::from_value::<LocalOwnerProofEvidence>(obsolete_shape).is_err());
+
+        let mut wrong_body = entry.clone();
+        let LocalOwnerProofAuthentication::LocalOwnerStore { record } =
+            &mut wrong_body.owner_proof.authentication;
+        record.body_digest = test_digest("different retained body");
+        assert!(validate_owner_proof(base, &wrong_body).is_err());
+
+        let mut wrong_expected = entry.clone();
+        let expected_actor_digest = match &mut wrong_expected.operation {
+            LedgerOperation::Trust { decision, .. } => {
+                &mut decision.actor.actor_proof_evidence_digest
+            }
+            LedgerOperation::Policy { authorization, .. } => {
+                &mut authorization.actor.actor_proof_evidence_digest
+            }
+            LedgerOperation::Status { .. } => panic!("trust/policy fixture required"),
+        };
+        *expected_actor_digest = test_digest("different separately retained proof");
+        assert!(validate_owner_proof(base, &wrong_expected).is_err());
+
+        let mut stale_head = entry.clone();
+        let LocalOwnerProofAuthentication::LocalOwnerStore { record } =
+            &mut stale_head.owner_proof.authentication;
+        record.previous_record_digest = Some(test_digest("different retained head"));
+        assert!(validate_owner_proof(base, &stale_head).is_err());
+
+        let mut wrong_sequence = entry.clone();
+        let LocalOwnerProofAuthentication::LocalOwnerStore { record } =
+            &mut wrong_sequence.owner_proof.authentication;
+        record.sequence = record.sequence.checked_add(1).expect("fixture sequence");
+        assert!(validate_owner_proof(base, &wrong_sequence).is_err());
+
+        let mut wrong_time = entry.clone();
+        let LocalOwnerProofAuthentication::LocalOwnerStore { record } =
+            &mut wrong_time.owner_proof.authentication;
+        record.authenticated_commit_time =
+            JacsTime::from_unix_seconds(entry.committed_at.unix_seconds() + 1)
+                .expect("different fixture commit time");
+        assert!(validate_owner_proof(base, &wrong_time).is_err());
+
+        let mut wrong_anchor = entry.clone();
+        match &mut wrong_anchor.owner_proof.payload.source_anchor {
+            TrustStoreAnchor::LocalTrustStore {
+                local_owner_store: StatusAuthority::LocalOwnerStore { owner_id, .. },
+            } => owner_id.push_str("-different-store-owner"),
+            _ => panic!("local owner-store fixture required"),
+        }
+        assert!(validate_owner_proof(base, &wrong_anchor).is_err());
+
+        // Even a consistently encoded proof cannot authorize a different
+        // request than the request reconstructed from the retained operation.
+        let mut wrong_request = entry.clone();
+        wrong_request.owner_proof.payload.action_request_digest =
+            test_digest("different exact request");
+        let body_digest = digest(
+            "JACS-CONTROL-ACTOR-PROOF-V1",
+            &wrong_request.owner_proof.payload,
+        )
+        .expect("updated proof body digest");
+        let LocalOwnerProofAuthentication::LocalOwnerStore { record } =
+            &mut wrong_request.owner_proof.authentication;
+        record.body_digest = body_digest;
+        let changed_proof_digest = wrong_request
+            .owner_proof
+            .evidence_digest()
+            .expect("proof digest");
+        match &mut wrong_request.operation {
+            LedgerOperation::Trust { decision, record } => {
+                decision.actor.actor_proof_evidence_digest = changed_proof_digest;
+                record.actor.decision_evidence_digest =
+                    digest("JACS-TRUST-DECISION-EVIDENCE-V1", decision).expect("decision digest");
+            }
+            LedgerOperation::Policy {
+                authorization,
+                record,
+            } => {
+                authorization.actor.actor_proof_evidence_digest = changed_proof_digest;
+                record.authorization_digest =
+                    digest("JACS-POLICY-UPDATE-AUTHORIZATION-V1", authorization)
+                        .expect("authorization digest");
+            }
+            LedgerOperation::Status { .. } => unreachable!("trust/policy fixture required"),
+        }
+        validate_owner_proof(base, &wrong_request).expect("internally coherent proof envelope");
+        let computed_entry = entry_digest(&wrong_request).expect("entry digest");
+        assert!(apply_entry(&mut base.clone(), &wrong_request, &computed_entry).is_err());
+    }
+
+    #[test]
+    fn policy_owner_proof_uses_canonical_authenticated_record_and_retained_digest() {
+        let (_temp, ledger) = initialized_ledger();
+        let base: LedgerState = ledger.read(&ledger.state_path()).expect("initial state");
+        let (receipt, _) = append_genesis_policy(&ledger);
+        let entry: LedgerEntry = ledger
+            .read(
+                &ledger
+                    .entry_path(receipt.entry_sequence, &receipt.entry_digest)
+                    .expect("entry path"),
+            )
+            .expect("retained policy entry");
+        assert_owner_proof_invariants(&base, &entry);
+        let mut replayed = base;
+        apply_entry(&mut replayed, &entry, &receipt.entry_digest)
+            .expect("accept exact policy entry");
+        let durable: LedgerState = ledger.read(&ledger.state_path()).expect("committed state");
+        assert_eq!(replayed, durable);
     }
 
     #[test]
@@ -3186,6 +3321,9 @@ mod tests {
             lifecycle_sequence: 0,
             lifecycle_record_digest: test_digest("lifecycle-zero"),
         };
+        let enrollment_base: LedgerState = ledger
+            .read(&ledger.state_path())
+            .expect("pre-enrollment state");
         let enrollment_receipt = ledger
             .append_trust(
                 VerifiedTrustMutation {
@@ -3206,6 +3344,18 @@ mod tests {
                 },
             )
             .expect("enroll trust");
+
+        let enrollment_entry: LedgerEntry = ledger
+            .read(
+                &ledger
+                    .entry_path(
+                        enrollment_receipt.entry_sequence,
+                        &enrollment_receipt.entry_digest,
+                    )
+                    .expect("enrollment entry path"),
+            )
+            .expect("retained trust entry");
+        assert_owner_proof_invariants(&enrollment_base, &enrollment_entry);
 
         let status_authorization =
             OwnerAuthorization::fresh("status-zero", test_digest("status-zero"))

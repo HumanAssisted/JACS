@@ -1078,6 +1078,10 @@ def verify_standalone(
         valid = d.get("valid") is True
         return VerificationResult(
             valid=valid,
+            identity_binding_status=(
+                "locally_enrolled" if valid and d.get("identity_binding_status") == "locally_enrolled"
+                else "unavailable"
+            ),
             signer_id=str(d.get("signer_id", "")) if valid else "",
         )
     except Exception as e:

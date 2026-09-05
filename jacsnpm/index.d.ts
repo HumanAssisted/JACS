@@ -84,8 +84,10 @@ export declare function legacyUpdateAgent(newAgentString: string): string
 /** Result of verify_document_standalone. Exposed to JS as { valid, signerId, timestamp, agentVersion }. */
 export interface VerifyStandaloneResult {
   valid: boolean
-  /** Always false: cached-key integrity is not an identity binding. */
+  /** True only when independently enrolled local identity evidence matched. */
   identityBound: boolean
+  /** Local enrollment is not Current/purpose authorization. */
+  identityBindingStatus: 'unavailable' | 'locally_enrolled'
   /** Always false: this API does not evaluate authorization. */
   policyAccepted: boolean
   /** Signed agent-ID claim, not an independently authorized identity. */

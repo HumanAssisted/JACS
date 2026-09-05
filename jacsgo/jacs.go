@@ -1391,15 +1391,19 @@ func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyD
 	defer C.jacs_free_string(result)
 	resultStr := C.GoString(result)
 	var out struct {
-		Valid          bool   `json:"valid"`
-		SignerID       string `json:"signer_id"`
-		IdentityBound  bool   `json:"identity_bound"`
-		PolicyAccepted bool   `json:"policy_accepted"`
+		Valid                 bool   `json:"valid"`
+		SignerID              string `json:"signer_id"`
+		IdentityBound         bool   `json:"identity_bound"`
+		IdentityBindingStatus string `json:"identity_binding_status"`
+		PolicyAccepted        bool   `json:"policy_accepted"`
 	}
 	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
 		return nil, fmt.Errorf("parse standalone result: %w", err)
 	}
-	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID, IdentityBound: out.IdentityBound, PolicyAccepted: out.PolicyAccepted}, nil
+	if !out.Valid || out.IdentityBindingStatus != "locally_enrolled" {
+		out.IdentityBindingStatus = "unavailable"
+	}
+	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID, IdentityBound: out.Valid && out.IdentityBindingStatus == "locally_enrolled", IdentityBindingStatus: out.IdentityBindingStatus, PolicyAccepted: out.PolicyAccepted}, nil
 }
 
 // RunAudit calls the jacs_audit FFI function and returns the JSON result string.

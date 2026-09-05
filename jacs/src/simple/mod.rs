@@ -161,6 +161,7 @@ mod tests {
     #[test]
     fn test_verification_result_serialization() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: true,
             data: json!({"test": "data"}),
             signer_id: "agent-123".to_string(),
@@ -173,6 +174,25 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":true"));
         assert!(json.contains("agent-123"));
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["identity_binding_status"], "unavailable");
+        assert_eq!(parsed["identity_bound"], false);
+        assert_eq!(parsed["policy_accepted"], false);
+        let mut legacy = parsed;
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("identity_binding_status");
+        legacy["identity_bound"] = serde_json::json!(true);
+        let restored: VerificationResult = serde_json::from_value(legacy).unwrap();
+        assert_eq!(
+            restored.identity_binding_status,
+            crate::trust::IdentityBindingStatus::Unavailable
+        );
+        assert_eq!(
+            serde_json::to_value(restored).unwrap()["identity_bound"],
+            false
+        );
     }
 
     #[test]
@@ -245,6 +265,7 @@ mod tests {
     #[test]
     fn test_verification_result_with_errors() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: false,
             data: json!(null),
             signer_id: "".to_string(),

@@ -74,7 +74,8 @@ pub fn canonical_contract_snapshot() -> JacsMcpContractSnapshot {
             website_url: Some("https://humanassisted.github.io/JACS/".into()),
             instructions: Some(format!(
                 "JACS MCP compiled contract inventory contains {} tools. Runtime defaults to verification-only and advertises only its active subset.\n\nCompiled tools:\n{}",
-                tools.len(), tool_names
+                tools.len(),
+                tool_names
             )),
         },
         tools,

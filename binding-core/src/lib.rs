@@ -1286,6 +1286,9 @@ impl AgentWrapper {
         // Prefer the currently loaded agent's public key first. This keeps
         // local self-verification fast and avoids falling through to remote key
         // resolution for documents we just signed in the same workspace.
+        jacs::trust::verify_document_identity_binding(&value).map_err(|e| {
+            BindingCoreError::verification_failed(format!("Identity binding check failed: {e}"))
+        })?;
         if agent
             .verify_document_signature_value(&value, None, None, None, None)
             .is_err()
@@ -2701,6 +2704,8 @@ pub fn diagnostics_standalone() -> String {
 pub struct VerificationResult {
     /// Whether the document's signature and hash are valid.
     pub valid: bool,
+    /// Captured local enrollment evidence; never a Current/purpose decision.
+    pub identity_binding_status: jacs::trust::IdentityBindingStatus,
     /// Signed agent-ID claim, not an independently authorized identity. Empty on failure.
     pub signer_id: String,
     /// The signing timestamp from jacsSignature.date (empty if unparseable).
@@ -2710,9 +2715,10 @@ pub struct VerificationResult {
 }
 
 impl VerificationResult {
-    /// Candidate-key integrity does not authenticate an identity-to-key binding.
+    /// True only for a valid signature matched to explicit local enrollment.
     pub fn identity_bound(&self) -> bool {
-        false
+        self.valid
+            && self.identity_binding_status == jacs::trust::IdentityBindingStatus::LocallyEnrolled
     }
 
     /// This compatibility API never evaluates an authorization policy.
@@ -2759,18 +2765,20 @@ pub fn verify_document_standalone(
     // one value, so it must remain a hard error before any metadata extraction.
     if serde_json::from_str::<serde_json::Value>(signed_document).is_err() {
         return Ok(VerificationResult {
+            identity_binding_status: Default::default(),
             valid: false,
             signer_id: String::new(),
             timestamp: String::new(),
             agent_version: String::new(),
         });
     }
-    jacs_core::strict_json::parse_strict_json(signed_document).map_err(|e| {
-        BindingCoreError::serialization_failed(format!(
-            "Failed to parse signed document JSON: {}",
-            e
-        ))
-    })?;
+    let parsed_document =
+        jacs_core::strict_json::parse_strict_json(signed_document).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse signed document JSON: {}",
+                e
+            ))
+        })?;
 
     fn absolutize_dir(raw: &str) -> String {
         let p = PathBuf::from(raw);
@@ -2924,6 +2932,7 @@ pub fn verify_document_standalone(
     let signer_public_key_hash = sig_field(signed_document, "publicKeyHash");
     if !is_public_key_hash(&signer_public_key_hash) {
         return Ok(VerificationResult {
+            identity_binding_status: Default::default(),
             valid: false,
             signer_id: String::new(),
             timestamp: String::new(),
@@ -3091,6 +3100,10 @@ pub fn verify_document_standalone(
     };
 
     let result: BindingResult<VerificationResult> = (|| {
+        let identity_binding_status =
+            jacs::trust::verify_document_identity_binding(&parsed_document).map_err(|e| {
+                BindingCoreError::verification_failed(format!("Identity binding check failed: {e}"))
+            })?;
         let wrapper = AgentWrapper::new();
         wrapper.load_file_only(config_path.to_string_lossy().to_string())?;
         let _ = wrapper.set_storage_root(PathBuf::from(&effective_storage_root));
@@ -3135,6 +3148,7 @@ pub fn verify_document_standalone(
                 })?;
 
             return Ok(VerificationResult {
+                identity_binding_status,
                 valid: true,
                 signer_id: signer_id.clone(),
                 timestamp: timestamp.clone(),
@@ -3144,6 +3158,7 @@ pub fn verify_document_standalone(
 
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
+            identity_binding_status,
             valid,
             signer_id: signer_id.clone(),
             timestamp: timestamp.clone(),
@@ -3165,6 +3180,7 @@ pub fn verify_document_standalone(
                 || e.kind == ErrorKind::InvalidArgument
             {
                 Ok(VerificationResult {
+                    identity_binding_status: Default::default(),
                     valid: false,
                     signer_id: String::new(),
                     timestamp: String::new(),
@@ -3631,8 +3647,69 @@ mod tests {
     }
 
     #[test]
+    #[serial(home_env)]
+    fn standalone_enrollment_is_explicit_and_distrust_stops_cached_verification() {
+        struct TrustEnvironment(Option<std::ffi::OsString>);
+        impl Drop for TrustEnvironment {
+            fn drop(&mut self) {
+                // Serialized with other environment-mutating trust tests.
+                unsafe {
+                    match &self.0 {
+                        Some(value) => std::env::set_var("JACS_TRUST_STORE_DIR", value),
+                        None => std::env::remove_var("JACS_TRUST_STORE_DIR"),
+                    }
+                }
+            }
+        }
+        let directory = tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let _environment = TrustEnvironment(std::env::var_os("JACS_TRUST_STORE_DIR"));
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", root.join("trusted"));
+        }
+        let (signer, _) = jacs::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let signed = signer
+            .sign_message(&serde_json::json!({"message": "public cached verification"}))
+            .unwrap();
+        let key = signer.get_public_key().unwrap();
+        let hash = jacs::crypt::hash::hash_public_key(&key);
+        let cache = root.join("public_keys");
+        std::fs::create_dir(&cache).unwrap();
+        std::fs::write(cache.join(format!("{hash}.pem")), &key).unwrap();
+        std::fs::write(cache.join(format!("{hash}.enc_type")), "ring-Ed25519").unwrap();
+        let verify = || {
+            verify_document_standalone(&signed.raw, Some("local"), root.to_str(), root.to_str())
+                .unwrap()
+        };
+        let unknown = verify();
+        assert!(unknown.valid);
+        assert!(!unknown.identity_bound());
+        assert_eq!(
+            unknown.identity_binding_status,
+            jacs::trust::IdentityBindingStatus::Unavailable
+        );
+        assert!(!root.join("trusted").exists());
+        let identity = jacs::trust::trust_agent_with_key(
+            &signer.export_agent().unwrap(),
+            Some(&signer.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let enrolled = verify();
+        assert!(enrolled.valid);
+        assert!(enrolled.identity_bound());
+        assert!(!enrolled.policy_accepted());
+        jacs::trust::untrust_agent(&identity).unwrap();
+        let distrusted = verify();
+        assert!(!distrusted.valid);
+        assert!(!distrusted.identity_bound());
+        assert!(distrusted.signer_id.is_empty());
+        assert!(cache.join(format!("{hash}.pem")).exists());
+    }
+
+    #[test]
     fn standalone_success_is_never_an_identity_authorization_report() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: true,
             signer_id: "signed-claim".into(),
             timestamp: String::new(),

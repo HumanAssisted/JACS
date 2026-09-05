@@ -65,6 +65,8 @@ pub mod document;
 pub mod email;
 pub mod error;
 pub mod health;
+#[cfg(all(feature = "human-approval", not(target_arch = "wasm32")))]
+pub mod human_approval;
 pub mod inline;
 pub mod keystore;
 pub mod media_signing;

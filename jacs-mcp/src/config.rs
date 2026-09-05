@@ -76,11 +76,14 @@ pub fn load_public_agent_from_config_path_with_info(
             config_path.display()
         ));
     }
-    let config = jacs::config::Config::from_file(&config_path)
+    let config_path_str = config_path
+        .to_str()
+        .ok_or_else(|| anyhow!("Public-only config path is not valid UTF-8"))?;
+    let config = jacs::config::Config::from_file(config_path_str)
         .map_err(|error| anyhow!("Failed to read public-only agent config: {error}"))?;
     let agent = jacs::agent::Agent::from_config_public_only(config)
         .map_err(|error| anyhow!("Failed to load public-only agent: {error}"))?;
-    let info = jacs::simple::build_loaded_agent_info(&agent, &config_path)
+    let info = jacs::simple::build_loaded_agent_info(&agent, config_path_str)
         .map_err(|error| anyhow!("Failed to describe public-only agent: {error}"))?;
     let info = serde_json::to_value(info)
         .map_err(|error| anyhow!("Failed to serialize public-only agent info: {error}"))?;
@@ -88,9 +91,10 @@ pub fn load_public_agent_from_config_path_with_info(
     Ok((wrapper, info))
 }
 
-pub fn load_public_agent_from_config_env_with_info(
-) -> anyhow::Result<(AgentWrapper, serde_json::Value)> {
-    let config_path = std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
+pub fn load_public_agent_from_config_env_with_info()
+-> anyhow::Result<(AgentWrapper, serde_json::Value)> {
+    let config_path =
+        std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
     load_public_agent_from_config_path_with_info(config_path)
 }
 
@@ -99,6 +103,7 @@ mod tests {
     use super::{
         load_agent_from_config_path_with_info, load_public_agent_from_config_path_with_info,
     };
+    use jacs::agent::boilerplate::BoilerPlate;
     use std::sync::{Mutex, OnceLock};
 
     fn test_lock() -> &'static Mutex<()> {
@@ -174,14 +179,13 @@ mod tests {
             .key_directory(key_dir.to_str().unwrap())
             .config_path(config_path.to_str().unwrap())
             .build();
-        let (created, _) =
+        let (created, created_info) =
             jacs::simple::SimpleAgent::create_with_params(params).expect("create agent");
         drop(created);
 
         // Absence of the encrypted private file is stronger than merely
         // withholding its password: any accidental private-key read fails.
-        let private_key = key_dir.join(jacs::simple::core::DEFAULT_PRIVATE_KEY_FILENAME);
-        std::fs::remove_file(private_key).expect("remove temporary private key");
+        std::fs::remove_file(&created_info.private_key_path).expect("remove temporary private key");
         unsafe {
             std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
             std::env::remove_var("JACS_PASSWORD_FILE");

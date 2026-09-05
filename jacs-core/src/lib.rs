@@ -12,6 +12,7 @@ pub mod agreements;
 pub mod canonical;
 pub mod envelope;
 pub mod errors;
+pub mod human_approval;
 pub mod identity;
 pub mod lifecycle;
 pub mod material;

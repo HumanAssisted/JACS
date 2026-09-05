@@ -494,7 +494,7 @@ impl DocumentTraits for Agent {
             self.signing_procedure(&instance, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
         // hash document
         let document_hash = self.hash_doc(&instance)?;
-        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        instance[SHA256_FIELDNAME] = json!(document_hash.to_string());
         self.store_jacs_document(&instance)
     }
 
@@ -750,15 +750,15 @@ impl DocumentTraits for Agent {
         let versioncreated = time_utils::now_rfc3339();
 
         new_document["jacsPreviousVersion"] = last_version.clone();
-        new_document["jacsVersion"] = json!(format!("{}", new_version));
-        new_document["jacsVersionDate"] = json!(format!("{}", versioncreated));
+        new_document["jacsVersion"] = json!(new_version.to_string());
+        new_document["jacsVersionDate"] = json!(versioncreated.to_string());
         // get all fields but reserved
         new_document[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&new_document, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
 
         // hash new version
         let document_hash = self.hash_doc(&new_document)?;
-        new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        new_document[SHA256_FIELDNAME] = json!(document_hash.to_string());
 
         self.store_jacs_document(&new_document)
     }
@@ -779,14 +779,14 @@ impl DocumentTraits for Agent {
         let versioncreated = time_utils::now_rfc3339();
 
         value["jacsPreviousVersion"] = last_version.clone();
-        value["jacsVersion"] = json!(format!("{}", new_version));
-        value["jacsVersionDate"] = json!(format!("{}", versioncreated));
+        value["jacsVersion"] = json!(new_version.to_string());
+        value["jacsVersionDate"] = json!(versioncreated.to_string());
         // sign new version
         value[DOCUMENT_AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&value, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
         // hash new version
         let document_hash = self.hash_doc(&value)?;
-        value[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        value[SHA256_FIELDNAME] = json!(document_hash.to_string());
         self.store_jacs_document(&value)
     }
 
@@ -859,6 +859,8 @@ impl DocumentTraits for Agent {
         &mut self,
         json_value: &Value,
     ) -> Result<(), JacsError> {
+        // A known enrollment conflict/distrust must not trigger discovery.
+        crate::trust::verify_document_identity_binding(json_value)?;
         let document_key = json_value
             .get("jacsId")
             .and_then(Value::as_str)
@@ -1193,7 +1195,7 @@ impl DocumentTraits for Agent {
 
             // Hash the document
             let document_hash = self.hash_doc(&instance)?;
-            instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+            instance[SHA256_FIELDNAME] = json!(document_hash.to_string());
 
             // Store and collect the result
             let doc = self.store_jacs_document(&instance)?;
