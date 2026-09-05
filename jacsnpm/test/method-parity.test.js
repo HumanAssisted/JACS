@@ -49,6 +49,7 @@ const NODE_NAME_MAP = {
   'verify_self': 'verifySelf',
   'verify_json': 'verify',
   'verify_with_key_json': 'verifyWithKey',
+  'verify_human_approved_document_json': 'verifyHumanApprovedDocument',
   'verify_by_id_json': 'verifyById',
   'sign_message_json': 'signMessage',
   'sign_raw_bytes_base64': 'signRawBytes',
@@ -99,7 +100,9 @@ const NODE_NAME_MAP = {
 };
 
 // Static methods (on the class itself, not on instances)
-const STATIC_METHODS = new Set(['create', 'load', 'ephemeral', 'createWithParams']);
+const STATIC_METHODS = new Set([
+  'create', 'load', 'ephemeral', 'createWithParams', 'verifyHumanApprovedDocument',
+]);
 
 describe('Node.js method enumeration parity', function () {
   let fixture;
@@ -128,16 +131,21 @@ describe('Node.js method enumeration parity', function () {
     }
   });
 
-  function parityMethods() {
+  function parityMethods(builtOnly = false) {
     const methods = [...fixture.all_methods_flat];
-    for (const gated of Object.values(fixture.feature_gated_methods || {})) {
+    for (const [feature, gated] of Object.entries(fixture.feature_gated_methods || {})) {
+      // This backend is opt-in while portable release packaging is pending.
+      // The explicit feature gate must fail if the build loses its method.
+      if (builtOnly && feature === 'human-approval'
+        && process.env.JACS_TEST_HUMAN_APPROVAL !== '1'
+        && typeof JacsSimpleAgent.verifyHumanApprovedDocument !== 'function') continue;
       methods.push(...gated);
     }
     return methods;
   }
 
   it('all non-excluded methods from fixture exist on JacsSimpleAgent', function () {
-    const allMethods = parityMethods();
+    const allMethods = parityMethods(true);
     const missing = [];
 
     for (const rustName of allMethods) {

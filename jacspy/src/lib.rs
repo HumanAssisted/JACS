@@ -900,7 +900,7 @@ fn py_json_arg_to_string(py: Python, value: Py<PyAny>, label: &str) -> PyResult<
     })
 }
 
-#[cfg(feature = "agreements")]
+#[cfg(any(feature = "agreements", feature = "human-approval"))]
 fn wrapper_json_to_py_preserve_kind(
     py: Python,
     result: BindingResult<String>,
@@ -1037,6 +1037,33 @@ impl SimpleAgent {
 
 #[pymethods]
 impl SimpleAgent {
+    /// Verify retained public human-approval evidence and JACS provenance.
+    ///
+    /// No agent, private key, configuration or network lookup is needed. All
+    /// four arguments are JSON strings. Select expected intent and the two
+    /// public-key pins independently of the submitted bundle. The complete
+    /// report is returned as a dict; current execution authority is not
+    /// evaluated and must not be inferred from successful verification.
+    #[cfg(feature = "human-approval")]
+    #[staticmethod]
+    fn verify_human_approved_document(
+        py: Python,
+        bundle_json: &str,
+        expected_json: &str,
+        authority_json: &str,
+        provenance_json: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let result = py.detach(|| {
+            SimpleAgentWrapper::verify_human_approved_document_json(
+                bundle_json,
+                expected_json,
+                authority_json,
+                provenance_json,
+            )
+        });
+        wrapper_json_to_py_preserve_kind(py, result, "human-approved document verification report")
+    }
+
     /// Create a new JACS agent with cryptographic keys.
     ///
     /// Args:

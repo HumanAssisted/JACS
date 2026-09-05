@@ -113,6 +113,10 @@ var goNameMap = map[string]string{
 	"sign_image_json":              "SignImage",
 	"verify_image_json":            "VerifyImage",
 	"extract_media_signature_json": "ExtractMediaSignature",
+	// Stateless retained public-evidence verification (no JacsSimpleAgent handle).
+	// The C ABI keeps an explicit unsupported stub in default native builds;
+	// human_approval-tagged behavioral tests require the real optional feature.
+	"verify_human_approved_document_json": "VerifyHumanApprovedDocument",
 	// ES256 compatibility key + ecosystem exports (P2 Tasks 002-004c).
 	// export_a2a_agent_card_json / export_agreement_v2_as_vc_json are
 	// feature-gated in Rust (a2a / agreements) but included in the default
@@ -134,22 +138,14 @@ var goNameMap = map[string]string{
 	"resolve_agreement_v2_branch_conflict_json":   "ResolveAgreementV2BranchConflict",
 }
 
-// Constructors are package-level functions, not methods on *JacsSimpleAgent.
-var goConstructors = map[string]bool{
-	"NewSimpleAgent":              true,
-	"LoadSimpleAgent":             true,
-	"EphemeralSimpleAgent":        true,
-	"CreateSimpleAgentWithParams": true,
-}
-
-// goConstructorFuncs references actual constructor functions so the compiler
-// catches removals. If any constructor is renamed or deleted, this file fails
-// to compile -- no runtime test needed.
-var goConstructorFuncs = map[string]interface{}{
+// Constructors and the stateless public verifier are package-level functions,
+// not methods on *JacsSimpleAgent. References make removals compile-time errors.
+var goPackageFuncs = map[string]interface{}{
 	"NewSimpleAgent":              NewSimpleAgent,
 	"LoadSimpleAgent":             LoadSimpleAgent,
 	"EphemeralSimpleAgent":        EphemeralSimpleAgent,
 	"CreateSimpleAgentWithParams": CreateSimpleAgentWithParams,
+	"VerifyHumanApprovedDocument": VerifyHumanApprovedDocument,
 }
 
 func (f methodParityFixture) parityMethods() []string {
@@ -184,11 +180,8 @@ func TestMethodParityAgainstFixture(t *testing.T) {
 			continue
 		}
 
-		if goConstructors[goName] {
-			// Constructors are package-level functions, verified at
-			// compile time via goConstructorFuncs (references the actual
-			// functions). If a constructor is removed, this file fails
-			// to compile.
+		if _, packageFunction := goPackageFuncs[goName]; packageFunction {
+			// Package-level functions are verified by the references above.
 			continue
 		}
 

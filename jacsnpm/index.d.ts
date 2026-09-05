@@ -397,6 +397,15 @@ export declare class JacsAgent {
  */
 export declare class JacsSimpleAgent {
   /**
+   * Verify retained public human-approval evidence and JACS provenance.
+   * Available in native builds with the `human-approval` Cargo feature.
+   * No agent, private key, configuration or network lookup is needed.
+   * Select expected intent and both public-key pins independently of the
+   * submitted bundle. Returns the complete JSON report; current execution
+   * authority is not evaluated or implied by successful verification.
+   */
+  static verifyHumanApprovedDocument?: (bundleJson: string, expectedJson: string, authorityJson: string, provenanceJson: string) => string
+  /**
    * Create a new agent with persistent identity.
    * Returns a JSON string with agent info (agent_id, name, public_key_path, config_path).
    */

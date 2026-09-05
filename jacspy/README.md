@@ -59,6 +59,31 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
+## Public human-approved document verification (opt-in native feature)
+
+Source builds can enable Cargo feature `human-approval` (for example,
+`maturin develop --features human-approval`). It uses the existing native
+WebAuthn/OpenSSL backend; portable release packaging is not yet verified, so
+ordinary wheels do not enable this feature. It does not apply to browser WASM.
+
+```python
+from jacs import SimpleAgent
+
+report = SimpleAgent.verify_human_approved_document(
+    bundle_json, expected_json, authority_json, provenance_json
+)
+```
+
+This static method needs no agent, signing key, configuration, or network
+lookup. All four arguments are JSON strings. Read stored public evidence into
+`bundle_json`; select the expected human/action/credential and the two public
+key pins from your application's trusted state, not from the bundle. The
+complete report is a dict. Success confirms retained proof and document
+integrity, **not** permission to execute now: `current` remains
+`not_evaluated`. Live authorization, revocation and one-use checks stay with
+the relying application. Feature-enabled tests require
+`JACS_TEST_HUMAN_APPROVAL=1 pytest tests/test_human_approved_document.py`.
+
 ## Request authentication and signed events
 
 The instance-based `SimpleAgent` exposes the transport protocol helpers. Build

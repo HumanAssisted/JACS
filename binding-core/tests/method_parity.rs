@@ -258,6 +258,18 @@ fn wrapper_exposes_external_replay_preparation() {
         jacs_binding_core::SimpleAgentWrapper::prepare_signed_event_replay_json;
 }
 
+#[cfg(feature = "human-approval")]
+#[test]
+fn wrapper_exposes_stateless_human_approval_verification() {
+    let _: fn(&str, &str, &str, &str) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::verify_human_approved_document_json;
+    let fixture = load_method_parity_fixture();
+    assert_eq!(
+        fixture["feature_gated_methods"]["human-approval"],
+        serde_json::json!(["verify_human_approved_document_json"])
+    );
+}
+
 #[cfg(feature = "agreements")]
 #[test]
 fn test_agreement_v2_feature_gated_methods_match_impl() {

@@ -3183,13 +3183,16 @@ dependencies = [
  "base64 0.22.1",
  "jacs",
  "jacs-core",
+ "p256",
  "rand 0.9.5",
+ "rand_core 0.6.4",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
  "serial_test",
  "tempfile",
  "tracing",
+ "webauthn-rs",
 ]
 
 [[package]]

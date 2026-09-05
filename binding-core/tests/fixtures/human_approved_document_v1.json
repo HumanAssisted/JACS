@@ -1,0 +1,280 @@
+{
+  "_description": "Public-only software-authenticator fixture. Caller-selected expectations/pins are test trust inputs, not discoverable authority. Current status is not evaluated.",
+  "authority": {
+    "agentId": "9d306669-e316-4762-82f4-29334d71a482",
+    "agentVersion": "v1",
+    "publicKeyHash": "d0ea31c1589ceefa6775e1ae444c35a6fb8a86a8e23e50e8d7a64208edbfa8a6",
+    "publicKeyRaw": [
+      224,
+      146,
+      129,
+      219,
+      230,
+      155,
+      151,
+      2,
+      19,
+      209,
+      31,
+      132,
+      45,
+      229,
+      86,
+      144,
+      24,
+      74,
+      22,
+      4,
+      118,
+      239,
+      231,
+      115,
+      202,
+      215,
+      23,
+      161,
+      166,
+      96,
+      254,
+      99
+    ],
+    "signingAlgorithm": "ed25519"
+  },
+  "bundle": {
+    "humanApproval": {
+      "assertion": {
+        "extensions": {},
+        "id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+        "rawId": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+        "response": {
+          "authenticatorData": "myY_vLWJhTE3sz3cr6W8xUA0ZOrU2nZtD4GTSL-NRywFAAAAAQ",
+          "clientDataJSON": "eyJjaGFsbGVuZ2UiOiJlY2JxdGIxVFVRUmk1UXYtOGVsNHhPb19lb1AwUzQtUTBmRHdIRkI2V1gwIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvcmlnaW4iOiJodHRwczovL2FwcC5leGFtcGxlLnRlc3QiLCJ0eXBlIjoid2ViYXV0aG4uZ2V0In0",
+          "signature": "MEUCIQDO6ppGM90uT-SRsMC8VC_MDdvG7CYhA7Bn1-hTbff69wIgeSGijLmMXRgmL2XChTTX2QCZoyQG4xvWIWXTMotDTAM",
+          "userHandle": null
+        },
+        "type": "public-key"
+      },
+      "authenticationState": {
+        "ast": {
+          "allow_backup_eligible_upgrade": true,
+          "appid": null,
+          "challenge": "ecbqtb1TUQRi5Qv-8el4xOo_eoP0S4-Q0fDwHFB6WX0",
+          "credentials": [
+            {
+              "attestation": {
+                "data": "None",
+                "metadata": "None"
+              },
+              "attestation_format": "none",
+              "backup_eligible": false,
+              "backup_state": false,
+              "counter": 0,
+              "cred": {
+                "key": {
+                  "EC_EC2": {
+                    "curve": "SECP256R1",
+                    "x": "TZ7E-MdcMp_Dj0Vg-AEYV5EituqJVGgQ8frhaj-9110",
+                    "y": "mLF89F9aiRdO3OiGGopq29kc9tcsPnrbYFmDFtw5_RQ"
+                  }
+                },
+                "type_": "ES256"
+              },
+              "cred_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+              "extensions": {
+                "appid": "NotRequested",
+                "cred_props": "NotRequested",
+                "cred_protect": "NotRequested",
+                "hmac_create_secret": "NotRequested"
+              },
+              "registration_policy": "required",
+              "transports": null,
+              "user_verified": true
+            }
+          ],
+          "policy": "required"
+        }
+      },
+      "authorityBinding": {
+        "content": {
+          "audience": "https://app.example.test",
+          "authenticationStateDigest": "sha256:6919a79a2ac4530335025ff62c37f49f6726ee86a4c1326892e4770569d3f2db",
+          "challenge": "ecbqtb1TUQRi5Qv-8el4xOo_eoP0S4-Q0fDwHFB6WX0",
+          "credentialBindingDigest": "sha256:f493082afff34920870c7a44c48e01286585f264cf05dd69e9b56e5edebc0c8f",
+          "credentialGeneration": 1,
+          "credentialId": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+          "credentialKeyDigest": "sha256:bebab9e77ae4f4c959cb95c45fa52f6b141310af9e62be51204f44b422499dd6",
+          "expiresAt": "2026-09-04T10:02:00Z",
+          "humanId": "enrolled-human",
+          "issuedAt": "2026-09-04T10:00:00Z",
+          "operationNonce": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+          "preparedIntentDigest": "sha256:9da537656045867017d4bf406790bf002bfe2c2ed5e2ec4882f8a78c2d4a498d",
+          "profile": "jacs-human-approval-binding-v1",
+          "purpose": "document.approve.v1",
+          "rpId": "example.test",
+          "rpOrigin": "https://app.example.test",
+          "stateProfile": "webauthn-rs-passkey-authentication-0.5.5-v1",
+          "subject": {
+            "documentSignatureInputDigest": "sha256:1f4b0be138cdc6cf36c5664a0fd9249e9c7f0068a5abe78aa6029050561e50ad",
+            "humanRole": "approver",
+            "profile": "jacs-human-approved-document-v1",
+            "provenanceKeyId": "jacs-key-v1:ed25519:NUsf_lcIS9ejR_B7PqF3qdri2c7-heCJoUbOfRLOdtg",
+            "provenanceSignerId": "8d7b0d0c-6804-4e58-99cb-ed3ce86ecbe8",
+            "provenanceSignerVersion": "v1",
+            "provenanceSigningAlgorithm": "ed25519"
+          }
+        },
+        "jacsLevel": "raw",
+        "jacsSignature": {
+          "agentID": "9d306669-e316-4762-82f4-29334d71a482",
+          "agentVersion": "v1",
+          "date": "2026-09-05T22:00:44.671753+00:00",
+          "fields": [
+            "content",
+            "jacsLevel",
+            "jacsType"
+          ],
+          "iat": 1788645644,
+          "jti": "01a07396-997f-7720-8b3d-27b60014bbda",
+          "publicKeyHash": "d0ea31c1589ceefa6775e1ae444c35a6fb8a86a8e23e50e8d7a64208edbfa8a6",
+          "signature": "k9MZ/qihI/6PBhIRZ0BIgsYLgasPBWKcKoERjxP1Dda5H+6wTWBrc9YPcW2V7PiI+yN3VCWfBqPy90yOlqWhDA==",
+          "signatureContentVersion": "jacs-signature-v2",
+          "signingAlgorithm": "ed25519"
+        },
+        "jacsType": "message"
+      },
+      "profile": "jacs-human-approval-webauthn-mapped-v1"
+    },
+    "jacsDocument": {
+      "content": {
+        "action": "reviewed exact action"
+      },
+      "jacsLevel": "raw",
+      "jacsSignature": {
+        "agentID": "8d7b0d0c-6804-4e58-99cb-ed3ce86ecbe8",
+        "agentVersion": "v1",
+        "date": "2026-09-05T22:00:44.670997+00:00",
+        "fields": [
+          "content",
+          "jacsLevel",
+          "jacsType"
+        ],
+        "iat": 1788645644,
+        "jti": "01a07396-997f-7720-8b3d-27a0012ca840",
+        "publicKeyHash": "8802fea0807a3c6cda0ae356229917cad10ff5afdc7255fc9739d9e853abfb84",
+        "signature": "7gn/cIFXwso9Pu1xiM2fm+URZgEINNOO1WGk2WAyQNPRd+rDymIY0jOZhHa3MRfxDbhH3t5ftQlbcTSKbHwuAQ==",
+        "signatureContentVersion": "jacs-signature-v2",
+        "signingAlgorithm": "ed25519"
+      },
+      "jacsType": "message"
+    },
+    "profile": "jacs-human-approved-document-v1"
+  },
+  "expected": {
+    "audience": "https://app.example.test",
+    "credentialBindingDigest": "sha256:f493082afff34920870c7a44c48e01286585f264cf05dd69e9b56e5edebc0c8f",
+    "credentialGeneration": 1,
+    "credentialId": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+    "credentialKeyDigest": "sha256:bebab9e77ae4f4c959cb95c45fa52f6b141310af9e62be51204f44b422499dd6",
+    "humanId": "enrolled-human",
+    "operationNonce": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+    "preparedIntentDigest": "sha256:9da537656045867017d4bf406790bf002bfe2c2ed5e2ec4882f8a78c2d4a498d",
+    "purpose": "document.approve.v1",
+    "rpId": "example.test",
+    "rpOrigin": "https://app.example.test",
+    "subject": {
+      "documentSignatureInputDigest": "sha256:1f4b0be138cdc6cf36c5664a0fd9249e9c7f0068a5abe78aa6029050561e50ad",
+      "humanRole": "approver",
+      "profile": "jacs-human-approved-document-v1",
+      "provenanceKeyId": "jacs-key-v1:ed25519:NUsf_lcIS9ejR_B7PqF3qdri2c7-heCJoUbOfRLOdtg",
+      "provenanceSignerId": "8d7b0d0c-6804-4e58-99cb-ed3ce86ecbe8",
+      "provenanceSignerVersion": "v1",
+      "provenanceSigningAlgorithm": "ed25519"
+    }
+  },
+  "provenance": {
+    "agentId": "8d7b0d0c-6804-4e58-99cb-ed3ce86ecbe8",
+    "agentVersion": "v1",
+    "publicKeyHash": "8802fea0807a3c6cda0ae356229917cad10ff5afdc7255fc9739d9e853abfb84",
+    "publicKeyRaw": [
+      243,
+      64,
+      18,
+      154,
+      129,
+      149,
+      130,
+      137,
+      66,
+      95,
+      129,
+      233,
+      57,
+      192,
+      147,
+      113,
+      175,
+      96,
+      74,
+      101,
+      177,
+      54,
+      199,
+      114,
+      47,
+      101,
+      165,
+      227,
+      176,
+      217,
+      95,
+      107
+    ],
+    "signingAlgorithm": "ed25519"
+  },
+  "report": {
+    "approval": {
+      "authorityMappingValid": true,
+      "backupEligible": false,
+      "backupState": false,
+      "binding": {
+        "audience": "https://app.example.test",
+        "authenticationStateDigest": "sha256:6919a79a2ac4530335025ff62c37f49f6726ee86a4c1326892e4770569d3f2db",
+        "challenge": "ecbqtb1TUQRi5Qv-8el4xOo_eoP0S4-Q0fDwHFB6WX0",
+        "credentialBindingDigest": "sha256:f493082afff34920870c7a44c48e01286585f264cf05dd69e9b56e5edebc0c8f",
+        "credentialGeneration": 1,
+        "credentialId": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+        "credentialKeyDigest": "sha256:bebab9e77ae4f4c959cb95c45fa52f6b141310af9e62be51204f44b422499dd6",
+        "expiresAt": "2026-09-04T10:02:00Z",
+        "humanId": "enrolled-human",
+        "issuedAt": "2026-09-04T10:00:00Z",
+        "operationNonce": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+        "preparedIntentDigest": "sha256:9da537656045867017d4bf406790bf002bfe2c2ed5e2ec4882f8a78c2d4a498d",
+        "profile": "jacs-human-approval-binding-v1",
+        "purpose": "document.approve.v1",
+        "rpId": "example.test",
+        "rpOrigin": "https://app.example.test",
+        "stateProfile": "webauthn-rs-passkey-authentication-0.5.5-v1",
+        "subject": {
+          "documentSignatureInputDigest": "sha256:1f4b0be138cdc6cf36c5664a0fd9249e9c7f0068a5abe78aa6029050561e50ad",
+          "humanRole": "approver",
+          "profile": "jacs-human-approved-document-v1",
+          "provenanceKeyId": "jacs-key-v1:ed25519:NUsf_lcIS9ejR_B7PqF3qdri2c7-heCJoUbOfRLOdtg",
+          "provenanceSignerId": "8d7b0d0c-6804-4e58-99cb-ed3ce86ecbe8",
+          "provenanceSignerVersion": "v1",
+          "provenanceSigningAlgorithm": "ed25519"
+        }
+      },
+      "bindingDigest": "sha256:4260c0a3f4cb380e431770c0cca6a0116876ab88c890532a5f58205f6c99337f",
+      "current": "not_evaluated",
+      "profile": "jacs-human-approval-webauthn-mapped-v1",
+      "proofValid": true,
+      "signatureCounter": 1,
+      "updatedCredentialStateDigest": "sha256:5087134c72706221714ac92f74a88bb18b70fd6d0ab4ab0078bb0e31ced2a58f",
+      "userVerified": true
+    },
+    "bundleDigest": "sha256:08c4ea6c35ecb0fff1a52a3b541f1282522b13ae7bf27546595d5cb5238f6578",
+    "current": "not_evaluated",
+    "profile": "jacs-human-approved-document-v1",
+    "provenanceSignatureValid": true
+  }
+}

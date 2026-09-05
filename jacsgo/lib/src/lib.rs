@@ -2739,6 +2739,61 @@ pub extern "C" fn jacs_simple_verify_with_key(
     })
 }
 
+/// Verify retained public human approval and document provenance without an agent.
+/// Expected context and both role-specific pins must be independently supplied.
+/// Returns complete report JSON; caller must free it with jacs_free_string.
+#[cfg(feature = "human-approval")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_verify_human_approved_document(
+    bundle_json: *const c_char,
+    expected_json: *const c_char,
+    authority_json: *const c_char,
+    provenance_json: *const c_char,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        let mut inputs = [""; 4];
+        for (output, input) in
+            inputs
+                .iter_mut()
+                .zip([bundle_json, expected_json, authority_json, provenance_json])
+        {
+            if input.is_null() {
+                return simple_string_result(Err(jacs_binding_core::BindingCoreError::new(
+                    jacs_binding_core::ErrorKind::InvalidArgument,
+                    "human approval requires four non-null JSON arguments",
+                )));
+            }
+            *output = match unsafe { CStr::from_ptr(input) }.to_str() {
+                Ok(value) => value,
+                Err(_) => {
+                    return simple_string_result(Err(jacs_binding_core::BindingCoreError::new(
+                        jacs_binding_core::ErrorKind::InvalidArgument,
+                        "human approval arguments must be UTF-8 JSON",
+                    )));
+                }
+            };
+        }
+        simple_string_result(SimpleAgentWrapper::verify_human_approved_document_json(
+            inputs[0], inputs[1], inputs[2], inputs[3],
+        ))
+    })
+}
+
+/// Retain the handle-free ABI when native human-approval support is disabled.
+#[cfg(not(feature = "human-approval"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_verify_human_approved_document(
+    _bundle_json: *const c_char,
+    _expected_json: *const c_char,
+    _authority_json: *const c_char,
+    _provenance_json: *const c_char,
+) -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        set_last_simple_error("human approval support not compiled".into());
+        ptr::null_mut()
+    })
+}
+
 /// Sign a JSON message. Returns signed document JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_sign_message(
@@ -3620,5 +3675,43 @@ mod ffi_panic_tests {
             jacs_simple_prepare_signed_event_replay(ptr::null(), ptr::null(), ptr::null(), 300,)
                 .is_null()
         );
+    }
+
+    #[cfg(feature = "human-approval")]
+    #[test]
+    fn human_approved_document_export_rejects_null_and_non_utf8_arguments() {
+        let json = CString::new("{}").unwrap();
+        let invalid_utf8 = [0xff_u8, 0];
+        for invalid in [ptr::null(), invalid_utf8.as_ptr().cast()] {
+            for index in 0..4 {
+                let mut inputs = [json.as_ptr(); 4];
+                inputs[index] = invalid;
+                set_last_simple_error("stale error".into());
+                let result =
+                    jacs_verify_human_approved_document(inputs[0], inputs[1], inputs[2], inputs[3]);
+                assert!(result.is_null());
+                let error = jacs_simple_last_error();
+                assert!(!error.is_null());
+                let message = unsafe { CStr::from_ptr(error) }.to_string_lossy();
+                assert!(message.contains("InvalidArgument"), "{message}");
+                jacs_free_string(error);
+            }
+        }
+    }
+
+    #[cfg(not(feature = "human-approval"))]
+    #[test]
+    fn human_approved_document_export_reports_disabled_feature() {
+        assert!(
+            jacs_verify_human_approved_document(
+                ptr::null(), ptr::null(), ptr::null(), ptr::null(),
+            )
+            .is_null()
+        );
+        let error = jacs_simple_last_error();
+        assert!(!error.is_null());
+        let message = unsafe { CStr::from_ptr(error) }.to_string_lossy();
+        assert!(message.contains("human approval support not compiled"));
+        jacs_free_string(error);
     }
 }

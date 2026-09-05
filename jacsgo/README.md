@@ -193,6 +193,42 @@ headers. Source builds place `libjacsgo.dylib` or `libjacsgo.so` in
 
 Agreement v2 is the preferred model for new multi-agent consent workflows. It is shared with Rust, Python, Node.js, CLI, MCP, and WASM through the same JSON workflow. The older sidecar agreement helpers remain for simple countersignature metadata.
 
+### Optional public human-approval verification
+
+`VerifyHumanApprovedDocument(bundleJSON, expectedJSON, authorityJSON, provenanceJSON)`
+returns the complete native report JSON without an agent handle, private key,
+password, or key store. You may read the public bundle from disk. Supply the
+expected operation/credential context and the two role-specific public-key pins
+from your application's independent trust policy, never from the submitted
+bundle. The authority pin authenticates the human/credential mapping; the
+provenance pin authenticates the JACS document signer.
+
+Both `current` report fields remain `"not_evaluated"`: retained proof is not live
+permission to execute an action. The caller still checks current lifecycle and
+session authorization, one-use execution, application/schema policy, external
+media, and trusted time where needed.
+
+This native feature is opt-in and uses the existing WebAuthn/OpenSSL dependency;
+source builds need OpenSSL development headers/libraries and `pkg-config` in
+addition to the prerequisites above. Default native builds of this revision
+return an explicit unsupported error for this function. Older shared libraries
+must be rebuilt to provide the new ABI symbol; no prebuilt optional-feature
+release is promised here. From the repository root:
+
+```bash
+cargo build --release -p jacsgo --features human-approval
+mkdir -p jacsgo/build
+# macOS (on Linux, copy target/release/libjacsgo.so instead):
+cp target/release/libjacsgo.dylib jacsgo/build/
+cd jacsgo
+go build ./...
+go test -tags human_approval -run 'TestHumanApprovedDocument|TestMethodParityAgainstFixture' .
+```
+
+The Go tag enables the optional behavioral tests, not native compilation; the
+Cargo feature and matching rebuilt shared library are both required. Default Go
+tests still check that the package-level function remains available in the ABI.
+
 ## What's new in 0.10.0
 
 *Why this matters:* shared markdown reviewed by multiple Go agents and signed images for AI-era provenance are now first-class — the signature is embedded in the artifact, no sidecar JSON required.

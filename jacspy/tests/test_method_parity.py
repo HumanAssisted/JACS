@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,7 @@ PYTHON_NAME_MAP = {
     "verify_self": "verify_self",
     "verify_json": "verify",
     "verify_with_key_json": "verify_with_key",
+    "verify_human_approved_document_json": "verify_human_approved_document",
     "verify_by_id_json": "verify_by_id",
     "sign_message_json": "sign_message",
     "sign_raw_bytes_base64": "sign_string",
@@ -122,6 +124,10 @@ PYTHON_NAME_MAP = {
 FEATURE_BUILT = {
     "a2a": hasattr(jacs.JacsAgent, "export_agent_card"),
     "agreements": hasattr(SimpleAgent, "create_agreement_v2"),
+    # Dedicated feature-enabled behavioral coverage must fail if this sole
+    # gated method is absent; this inventory also supports minimal builds.
+    "human-approval": os.environ.get("JACS_TEST_HUMAN_APPROVAL") == "1"
+    or hasattr(SimpleAgent, "verify_human_approved_document"),
 }
 
 

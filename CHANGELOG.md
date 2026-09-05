@@ -37,6 +37,15 @@
 
 ### Security
 
+- **Public human-approval verification is available to opt-in native bindings.**
+  One stateless binding-core method delegates to the existing verifier, with
+  thin Python, Node and Go entrypoints preserving the full report and explicit
+  caller-selected expectations and authority/provenance pins. Public evidence
+  may be read from disk without an agent, private key or implicit enrollment.
+  Both current-status facts remain `not_evaluated`; successful archival
+  verification is not permission to execute. The optional `human-approval`
+  feature leaves normal builds unchanged while portable WebAuthn/OpenSSL
+  packaging and browser support remain separate release work.
 - **Numeric hardening preserves existing RFC 8785 decimal behavior.** Raw JSON
   entry points retain nonintegral binary64 rounding while rejecting duplicate
   members and unsafe mathematical integers consistently across plain, decimal,

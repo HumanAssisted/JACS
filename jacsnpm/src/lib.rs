@@ -1562,6 +1562,32 @@ pub struct JacsSimpleAgent {
     inner: SimpleAgentWrapper,
 }
 
+#[cfg(feature = "human-approval")]
+#[napi]
+impl JacsSimpleAgent {
+    /// Verify retained public human-approval evidence and JACS provenance.
+    /// Available in native builds with the `human-approval` Cargo feature.
+    /// No agent, private key, configuration or network lookup is needed.
+    /// Select expected intent and both public-key pins independently of the
+    /// submitted bundle. Returns the complete JSON report; current execution
+    /// authority is not evaluated or implied by successful verification.
+    #[napi(js_name = "verifyHumanApprovedDocument")]
+    pub fn verify_human_approved_document(
+        bundle_json: String,
+        expected_json: String,
+        authority_json: String,
+        provenance_json: String,
+    ) -> Result<String> {
+        SimpleAgentWrapper::verify_human_approved_document_json(
+            &bundle_json,
+            &expected_json,
+            &authority_json,
+            &provenance_json,
+        )
+        .to_napi()
+    }
+}
+
 #[napi]
 impl JacsSimpleAgent {
     /// Create a new agent with persistent identity.

@@ -76,6 +76,34 @@ All operations are async by default. Sync variants are available with a `Sync` s
 | `verifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
 | `audit()` | Run a security audit |
 
+## Public human-approved document verification (opt-in native feature)
+
+Source builds can enable Cargo feature `human-approval` (for example,
+`napi build --platform --features human-approval`). It uses the existing native
+WebAuthn/OpenSSL backend; portable release packaging is not yet verified, so
+ordinary npm builds do not enable this feature. It does not apply to browser WASM.
+
+```javascript
+const { JacsSimpleAgent } = require('@hai.ai/jacs');
+
+if (!JacsSimpleAgent.verifyHumanApprovedDocument) {
+  throw new Error('This native build requires the human-approval feature');
+}
+const report = JSON.parse(JacsSimpleAgent.verifyHumanApprovedDocument(
+  bundleJson, expectedJson, authorityJson, provenanceJson,
+));
+```
+
+This static method needs no agent, signing key, configuration, or network
+lookup. All four arguments are JSON strings. Read stored public evidence into
+`bundleJson`; select the expected human/action/credential and the two public
+key pins from your application's trusted state, not from the bundle. The
+complete report is returned as JSON. Success confirms retained proof and
+document integrity, **not** permission to execute now: `current` remains
+`not_evaluated`. Live authorization, revocation and one-use checks stay with
+the relying application. Feature-enabled tests require
+`JACS_TEST_HUMAN_APPROVAL=1 npx mocha test/human-approved-document.test.js`.
+
 ## Request authentication and signed events
 
 Use the instance-based `JacsSimpleAgent` for the transport protocol helpers.
