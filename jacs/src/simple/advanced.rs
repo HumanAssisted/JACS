@@ -1426,14 +1426,16 @@ pub fn sign_image(
 
     // Public-key and content claims use the shared prepared-media constructor,
     // keeping the existing SDK path byte-identical to approval preflight.
-    let signer_pem = agent.get_public_key_pem()?;
-    let public_key_hash = crate::media_signing::media_public_key_hash(signer_pem.as_bytes());
-    let claim =
-        crate::media_signing::build_media_claim_v1(&bytes, fmt, opts.robust, &public_key_hash)?
-            .to_value()?;
-
-    // Sign the claim — sign_message wraps into a SignedDocument and persists.
-    let signed_doc = agent.sign_message(&claim)?;
+    // Shared providers can rotate their agent. Hold the same agent lock while
+    // selecting the public-key commitment and signing the claim, so a single
+    // image never binds the old key but carries the new key's signature.
+    let signed_doc = agent.sign_message_with_current_key(|public_key| {
+        let public_key_hash = crate::media_signing::media_public_key_hash(public_key);
+        Ok(
+            crate::media_signing::build_media_claim_v1(&bytes, fmt, opts.robust, &public_key_hash)?
+                .to_value()?,
+        )
+    })?;
 
     // Embed via jacs-media. The wire format is base64url-encoded JSON
     // (PRD §4.2.2 C3) so the WebP XMP attribute does not break on JSON
@@ -1505,10 +1507,9 @@ pub fn sign_image(
         reason: e.to_string(),
     })?;
 
-    let signer_id = agent.get_agent_id()?;
     Ok(SignedMedia {
         out_path: out_path.to_string(),
-        signer_id,
+        signer_id: signed_doc.agent_id,
         format: format_str.to_string(),
         robust: opts.robust,
         backup_path,

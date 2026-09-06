@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 pub(crate) const MAX_ARGUMENT_BYTES: usize = 1024 * 1024;
 
 /// One closed inventory: used for advertisement, dispatch and handler checks.
-/// Compile-time tool features still apply. V1 signing, file tools, identity/key
+/// Compile-time tool features still apply. V1 signing, identity/key
 /// administration, raw signing and request authentication are not in this scope.
 pub(crate) fn allows_tool(tool: &str) -> bool {
     matches!(
@@ -34,12 +34,24 @@ pub(crate) fn allows_tool(tool: &str) -> bool {
     )
 }
 
+pub(crate) fn is_file_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        "jacs_sign_text"
+            | "jacs_verify_text"
+            | "jacs_sign_image"
+            | "jacs_verify_image"
+            | "jacs_extract_media_signature"
+    )
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct LocalSigningScope {
     agent_id: String,
     agent_version: String,
     public_key_hash: String,
     storage_root: PathBuf,
+    pub(crate) files: Option<crate::path_policy::LocalFilePolicy>,
 }
 
 impl LocalSigningScope {
@@ -92,6 +104,7 @@ impl LocalSigningScope {
                 .parent()
                 .context("Local signing config has no directory")?
                 .to_path_buf(),
+            files: crate::path_policy::LocalFilePolicy::capture(&config_path, &config)?,
         };
         scope.validate_document_directory()?;
 
@@ -143,14 +156,21 @@ impl LocalSigningScope {
 
     pub(crate) fn authorize(&self, tool: &str, agent: &Agent) -> anyhow::Result<()> {
         ensure!(
-            allows_tool(tool),
-            "Tool is outside the local JSON/Agreement signing scope"
+            self.allows_tool(tool),
+            "Tool is outside the selected local signing scope; file tools require JACS_MCP_BASE_DIR at startup"
         );
         // Embedders must not expand the offline scope by changing ambient
         // network flags after construction. CLI environments are immutable.
         require_offline()?;
+        if let Some(files) = &self.files {
+            files.validate_environment()?;
+        }
         self.validate_agent(agent)?;
         self.validate_document_directory()
+    }
+
+    pub(crate) fn allows_tool(&self, tool: &str) -> bool {
+        allows_tool(tool) || (self.files.is_some() && is_file_tool(tool))
     }
 
     fn validate_agent(&self, agent: &Agent) -> anyhow::Result<()> {

@@ -16,7 +16,7 @@ use crate::schema::utils::{ValueExt, check_document_size};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tracing::{debug, info, warn};
 
 /// Resolve the signing algorithm for a new agent without substitution.
@@ -390,7 +390,7 @@ pub(crate) fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 /// });
 /// ```
 pub struct SimpleAgent {
-    pub(crate) agent: Mutex<Agent>,
+    pub(crate) agent: Arc<Mutex<Agent>>,
     pub(crate) config_path: Option<String>,
     /// When true, verification failures return `Err` instead of `Ok(valid=false)`.
     /// Resolved from explicit param > `JACS_STRICT_MODE` env var > false.
@@ -402,13 +402,33 @@ pub struct SimpleAgent {
 // =============================================================================
 
 impl SimpleAgent {
+    /// Build a view of an agent already loaded by a trusted embedding host.
+    ///
+    /// This does not read configuration, unlock a second key, or grant any new
+    /// authority. The host owns initial loading and authorization. All views
+    /// share the same lock and therefore observe the same current identity.
+    /// `config_path` is metadata for operations that explicitly need it; media
+    /// signing and verification use the shared agent directly.
+    #[doc(hidden)]
+    pub fn from_shared_agent(
+        agent: Arc<Mutex<Agent>>,
+        config_path: Option<String>,
+        strict: bool,
+    ) -> Self {
+        Self {
+            agent,
+            config_path,
+            strict,
+        }
+    }
+
     /// Construct a keyless verifier for internal explicit-key paths.
     ///
     /// This avoids generating an unrelated ephemeral identity merely to verify
     /// attacker-supplied data with a caller-provided public key.
     pub(crate) fn verification_only(strict: bool) -> Self {
         Self {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
             strict,
         }
@@ -934,7 +954,7 @@ impl SimpleAgent {
 
         Ok((
             Self {
-                agent: Mutex::new(agent),
+                agent: Arc::new(Mutex::new(agent)),
                 config_path: Some(params.config_path),
 
                 strict: resolve_strict(None),
@@ -987,7 +1007,7 @@ impl SimpleAgent {
             .transpose()?;
         let agent = Agent::from_config(config, password)?;
         Ok(Self {
-            agent: Mutex::new(agent),
+            agent: Arc::new(Mutex::new(agent)),
             config_path,
             strict: resolve_strict(strict),
         })
@@ -1020,7 +1040,7 @@ impl SimpleAgent {
         );
 
         Ok(Self {
-            agent: Mutex::new(agent),
+            agent: Arc::new(Mutex::new(agent)),
             config_path: Some(resolved_path.to_string_lossy().into_owned()),
             strict: resolve_strict(strict),
         })
@@ -1084,7 +1104,7 @@ impl SimpleAgent {
             "Agent loaded from authoritative config with isolated runtime directories"
         );
         Ok(Self {
-            agent: Mutex::new(agent),
+            agent: Arc::new(Mutex::new(agent)),
             config_path: Some(resolved_path.to_string_lossy().into_owned()),
             strict: resolve_strict(strict),
         })
@@ -1323,7 +1343,7 @@ impl SimpleAgent {
 
         Ok((
             Self {
-                agent: Mutex::new(agent),
+                agent: Arc::new(Mutex::new(agent)),
                 config_path: None,
 
                 strict: resolve_strict(None),
@@ -1433,6 +1453,26 @@ impl SimpleAgent {
     /// ```
     #[must_use = "signed document must be used or stored"]
     pub fn sign_message(&self, data: &Value) -> Result<SignedDocument, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        Self::sign_message_locked(&mut agent, data)
+    }
+
+    /// Build key-bound content and sign it without allowing shared-handle
+    /// rotation to select a different key between those two operations.
+    pub(crate) fn sign_message_with_current_key(
+        &self,
+        build_content: impl FnOnce(&[u8]) -> Result<Value, JacsError>,
+    ) -> Result<SignedDocument, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let content = build_content(&agent.get_public_key()?)?;
+        Self::sign_message_locked(&mut agent, &content)
+    }
+
+    fn sign_message_locked(agent: &mut Agent, data: &Value) -> Result<SignedDocument, JacsError> {
         debug!("sign_message() called");
 
         // Preserve the long-standing sign_message type label for compatibility.
@@ -1445,10 +1485,6 @@ impl SimpleAgent {
         // Check document size before processing
         let doc_string = doc_content.to_string();
         check_document_size(&doc_string)?;
-
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
 
         let jacs_doc = agent
             .create_document_and_load(&doc_string, None, None)

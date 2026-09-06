@@ -50,7 +50,9 @@ impl Session {
             .collect();
         let cmd = tokio::process::Command::new(&bin).configure(|c| {
             c.arg("mcp")
+                .args(["--profile", "local-sign"])
                 .current_dir(&base)
+                .env("JACS_MCP_BASE_DIR", &base)
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
                 .env(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true")
@@ -363,6 +365,17 @@ async fn sign_and_extract_round_trip(
         "format mismatch for {}: {}",
         expected_format, sign_result
     );
+    let verified = s
+        .call(
+            "jacs_verify_image",
+            serde_json::json!({
+                "file_path": fname_out, "strict": true
+            }),
+        )
+        .await?;
+    assert_eq!(verified["success"], true, "{verified}");
+    assert_eq!(verified["status"], "valid", "{verified}");
+    assert_eq!(verified["signer_id"], sign_result["signer_id"]);
 
     let extract_result = s
         .call(
@@ -493,6 +506,7 @@ async fn spawn_with_sandbox_and_outside_file(
     let bin = support::jacs_cli_bin();
     let cmd = tokio::process::Command::new(&bin).configure(|c| {
         c.arg("mcp")
+            .args(["--profile", "local-sign"])
             .current_dir(&base)
             .env("JACS_CONFIG", &config)
             .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
@@ -643,6 +657,7 @@ async fn jacs_sign_image_output_path_honours_base_dir_confinement() -> anyhow::R
     let bin = support::jacs_cli_bin();
     let cmd = tokio::process::Command::new(&bin).configure(|c| {
         c.arg("mcp")
+            .args(["--profile", "local-sign"])
             .current_dir(&base)
             .env("JACS_CONFIG", &config)
             .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)

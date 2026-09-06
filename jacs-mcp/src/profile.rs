@@ -133,7 +133,9 @@ impl Profile {
         match self {
             Self::VerifyOnly => false,
             Self::LocalSign => {
-                crate::local_signing::allows_tool(tool_id) && !is_verify_only_tool(tool_id)
+                (crate::local_signing::allows_tool(tool_id)
+                    || crate::local_signing::is_file_tool(tool_id))
+                    && !is_verify_only_tool(tool_id)
             }
             Self::TrustAdmin => matches!(tool_id, "jacs_trust_agent" | "jacs_untrust_agent"),
             // The old `core` contract is compatibility eligibility only. Its

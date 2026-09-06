@@ -15,6 +15,329 @@ impl Drop for Workspace {
 }
 
 #[tokio::test]
+#[serial_test::serial(mcp_local_signing_env)]
+async fn explicit_content_grant_reuses_loaded_signer_and_captures_file_policy() {
+    let (config, base) = support::prepare_temp_workspace();
+    let _workspace = Workspace(base.clone());
+    let _password = support::ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", support::TEST_PASSWORD);
+    let _root = support::ScopedEnvVar::set("JACS_MCP_BASE_DIR", &base);
+    let _overwrite = support::ScopedEnvVar::set("JACS_MCP_OVERWRITE_OK", "false");
+    let _keys = support::ScopedEnvVar::set("JACS_MCP_ALLOW_KEY_DIR", "false");
+    assert_eq!(JacsMcpServer::verification_only().active_tools().len(), 1);
+    let server = JacsMcpServer::local_signing_from_config(&config).unwrap();
+    let names: Vec<_> = server
+        .active_tools()
+        .into_iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert_eq!(
+        names.len(),
+        if cfg!(feature = "agreement-tools") {
+            14
+        } else {
+            7
+        }
+    );
+    for name in [
+        "jacs_sign_text",
+        "jacs_verify_text",
+        "jacs_sign_image",
+        "jacs_verify_image",
+        "jacs_extract_media_signature",
+    ] {
+        assert!(names.iter().any(|n| n == name), "{name}");
+    }
+    for name in [
+        "jacs_create_agent",
+        "jacs_rotate_keys",
+        "jacs_trust_agent",
+        "jacs_attest_create",
+        "jacs_wrap_a2a_artifact",
+    ] {
+        assert!(!names.iter().any(|n| n == name), "{name}");
+    }
+
+    // Construction, not ambient configuration on each call, selects authority.
+    let other = tempfile::TempDir::new().unwrap();
+    let _changed_root = support::ScopedEnvVar::set("JACS_MCP_BASE_DIR", other.path());
+    let _changed_password =
+        support::ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", "wrong-after-startup");
+    let _changed_config = support::ScopedEnvVar::set("JACS_CONFIG", base.join("missing.json"));
+    let _changed_overwrite = support::ScopedEnvVar::set("JACS_MCP_OVERWRITE_OK", "true");
+    let _changed_keys = support::ScopedEnvVar::set("JACS_MCP_ALLOW_KEY_DIR", "true");
+    let original = b"# Stable local signing\n";
+    std::fs::write(base.join("note.md"), original).unwrap();
+    let signed: Value = serde_json::from_str(
+        &server
+            .jacs_sign_text(Parameters(
+                serde_json::from_value(json!({"file_path":"note.md"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(signed["success"], true, "{signed}");
+    assert_eq!(signed["signers_added"], 1);
+    assert_eq!(std::fs::read(base.join("note.md.bak")).unwrap(), original);
+    assert!(!other.path().join("note.md").exists());
+    let verified: Value = serde_json::from_str(
+        &server
+            .jacs_verify_text(Parameters(
+                serde_json::from_value(json!({"file_path":"note.md","strict":true})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(verified["success"], true, "{verified}");
+    assert_eq!(verified["signatures"][0]["status"], "valid");
+    assert_eq!(verified["signatures"][0]["signer_id"], signed["signer_id"]);
+    let unchanged: Value = serde_json::from_str(
+        &server
+            .jacs_sign_text(Parameters(
+                serde_json::from_value(json!({"file_path":"note.md"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(unchanged["success"], true, "{unchanged}");
+    assert_eq!(unchanged["signers_added"], 0);
+    assert_eq!(std::fs::read(base.join("note.md.bak")).unwrap(), original);
+    let denied: Value = serde_json::from_str(
+        &server
+            .jacs_verify_text(Parameters(
+                serde_json::from_value(json!({"file_path":"note.md","key_dir":"public"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(denied["success"], false, "{denied}");
+    assert!(denied["error"].as_str().unwrap().contains("disabled"));
+
+    let image = image::RgbImage::from_pixel(2, 2, image::Rgb([64, 128, 192]));
+    image.save(base.join("input.png")).unwrap();
+    std::fs::write(base.join("occupied.png"), b"do not replace").unwrap();
+    let blocked: Value = serde_json::from_str(&server.jacs_sign_image(Parameters(
+        serde_json::from_value(json!({"input_path":"input.png","output_path":"occupied.png","refuse_overwrite":false})).unwrap()
+    )).await).unwrap();
+    assert_eq!(blocked["success"], false, "{blocked}");
+    assert_eq!(
+        std::fs::read(base.join("occupied.png")).unwrap(),
+        b"do not replace"
+    );
+    let signed_image: Value = serde_json::from_str(
+        &server
+            .jacs_sign_image(Parameters(
+                serde_json::from_value(
+                    json!({"input_path":"input.png","output_path":"signed.png"}),
+                )
+                .unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(signed_image["success"], true, "{signed_image}");
+    assert_eq!(signed_image["signer_id"], signed["signer_id"]);
+    let verified_image: Value = serde_json::from_str(
+        &server
+            .jacs_verify_image(Parameters(
+                serde_json::from_value(json!({"file_path":"signed.png","strict":true})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(verified_image["status"], "valid", "{verified_image}");
+    let extracted: Value = serde_json::from_str(
+        &server
+            .jacs_extract_media_signature(Parameters(
+                serde_json::from_value(json!({"file_path":"signed.png"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(extracted["present"], true, "{extracted}");
+}
+
+#[tokio::test]
+#[serial_test::serial(mcp_local_signing_env)]
+async fn content_grant_excludes_identity_storage_and_backup_targets() {
+    let (config, base) = support::prepare_temp_workspace();
+    let _workspace = Workspace(base.clone());
+    let _password = support::ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", support::TEST_PASSWORD);
+    let _root = support::ScopedEnvVar::set("JACS_MCP_BASE_DIR", &base);
+    let _trust = support::ScopedEnvVar::set("JACS_TRUST_STORE_DIR", base.join("trusted"));
+    let server = JacsMcpServer::local_signing_from_config(&config).unwrap();
+    for invalid_root in [
+        base.join("jacs_keys"),
+        base.join("jacs_data"),
+        config.clone(),
+        base.join("missing-root"),
+    ] {
+        let _invalid = support::ScopedEnvVar::set("JACS_MCP_BASE_DIR", invalid_root);
+        assert!(JacsMcpServer::local_signing_from_config(&config).is_err());
+    }
+    let config_before = std::fs::read(&config).unwrap();
+    for path in [
+        "jacs.config.json",
+        "jacs_keys/private.pem",
+        "jacs_data/agent.json",
+        "documents/payload.json",
+        "trusted/identity.json",
+        "../outside.md",
+        "/tmp/outside.md",
+    ] {
+        let denied: Value = serde_json::from_str(
+            &server
+                .jacs_sign_text(Parameters(
+                    serde_json::from_value(json!({"file_path":path,"no_backup":true})).unwrap(),
+                ))
+                .await,
+        )
+        .unwrap();
+        assert_eq!(denied["success"], false, "{path}: {denied}");
+        assert!(
+            denied["error"]
+                .as_str()
+                .unwrap()
+                .contains("PATH_POLICY_BLOCKED"),
+            "{path}: {denied}"
+        );
+    }
+    assert_eq!(std::fs::read(&config).unwrap(), config_before);
+    let protected_verify: Value = serde_json::from_str(
+        &server
+            .jacs_verify_text(Parameters(
+                serde_json::from_value(json!({"file_path":"jacs.config.json"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(protected_verify["success"], false);
+    assert!(
+        protected_verify["error"]
+            .as_str()
+            .unwrap()
+            .contains("PATH_POLICY_BLOCKED")
+    );
+    let protected_image: Value = serde_json::from_str(
+        &server
+            .jacs_verify_image(Parameters(
+                serde_json::from_value(json!({"file_path":"jacs.config.json"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(protected_image["success"], false);
+    assert!(
+        protected_image["error"]
+            .as_str()
+            .unwrap()
+            .contains("PATH_POLICY_BLOCKED")
+    );
+    let protected_extract: Value = serde_json::from_str(
+        &server
+            .jacs_extract_media_signature(Parameters(
+                serde_json::from_value(json!({"file_path":"jacs.config.json"})).unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(protected_extract["success"], false);
+    assert!(
+        protected_extract["error"]
+            .as_str()
+            .unwrap()
+            .contains("PATH_POLICY_BLOCKED")
+    );
+    image::RgbImage::from_pixel(2, 2, image::Rgb([1, 2, 3]))
+        .save(base.join("input.png"))
+        .unwrap();
+    let protected_output: Value = serde_json::from_str(
+        &server
+            .jacs_sign_image(Parameters(
+                serde_json::from_value(
+                    json!({"input_path":"input.png","output_path":"documents/new.png"}),
+                )
+                .unwrap(),
+            ))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(protected_output["success"], false);
+    assert!(
+        protected_output["error"]
+            .as_str()
+            .unwrap()
+            .contains("PATH_POLICY_BLOCKED")
+    );
+
+    // Backup validation happens before the existing signer touches the input.
+    std::fs::write(base.join("note.md"), b"original").unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&config, base.join("note.md.bak")).unwrap();
+        let denied: Value = serde_json::from_str(
+            &server
+                .jacs_sign_text(Parameters(
+                    serde_json::from_value(json!({"file_path":"note.md"})).unwrap(),
+                ))
+                .await,
+        )
+        .unwrap();
+        assert_eq!(denied["success"], false, "{denied}");
+        assert!(
+            denied["error"]
+                .as_str()
+                .unwrap()
+                .contains("PATH_POLICY_BLOCKED")
+        );
+        assert_eq!(std::fs::read(base.join("note.md")).unwrap(), b"original");
+        assert_eq!(std::fs::read(&config).unwrap(), config_before);
+    }
+}
+
+#[tokio::test]
+#[serial_test::serial(mcp_local_signing_env)]
+async fn captured_overwrite_permission_keeps_image_backup_and_in_place_workflows() {
+    let (config, base) = support::prepare_temp_workspace();
+    let _workspace = Workspace(base.clone());
+    let _password = support::ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", support::TEST_PASSWORD);
+    let _root = support::ScopedEnvVar::set("JACS_MCP_BASE_DIR", &base);
+    let _overwrite = support::ScopedEnvVar::set("JACS_MCP_OVERWRITE_OK", "true");
+    let server = JacsMcpServer::local_signing_from_config(&config).unwrap();
+    let _changed = support::ScopedEnvVar::set("JACS_MCP_OVERWRITE_OK", "false");
+    image::RgbImage::from_pixel(2, 2, image::Rgb([1, 2, 3]))
+        .save(base.join("input.png"))
+        .unwrap();
+    let original = std::fs::read(base.join("input.png")).unwrap();
+    std::fs::write(base.join("output.png"), b"previous output").unwrap();
+    for output in ["output.png", "input.png"] {
+        let signed: Value = serde_json::from_str(
+            &server
+                .jacs_sign_image(Parameters(
+                    serde_json::from_value(json!({"input_path":"input.png","output_path":output}))
+                        .unwrap(),
+                ))
+                .await,
+        )
+        .unwrap();
+        assert_eq!(signed["success"], true, "{signed}");
+        let verified: Value = serde_json::from_str(
+            &server
+                .jacs_verify_image(Parameters(
+                    serde_json::from_value(json!({"file_path":output,"strict":true})).unwrap(),
+                ))
+                .await,
+        )
+        .unwrap();
+        assert_eq!(verified["status"], "valid", "{verified}");
+    }
+    assert_eq!(
+        std::fs::read(base.join("output.png.bak")).unwrap(),
+        b"previous output"
+    );
+    assert_eq!(std::fs::read(base.join("input.png.bak")).unwrap(), original);
+}
+
+#[tokio::test]
 async fn a_profile_enum_cannot_authorize_a_direct_signing_handler() {
     let server = JacsMcpServer::with_profile(AgentWrapper::new(), Profile::LocalSign);
     let result = server

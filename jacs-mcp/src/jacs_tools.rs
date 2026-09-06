@@ -73,45 +73,6 @@ fn is_key_rotation_allowed() -> bool {
         .unwrap_or(false)
 }
 
-/// Whether a caller-supplied `key_dir` override is allowed for the inline
-/// verify tools.
-///
-/// Disabled by default: an untrusted `key_dir` lets a caller load an arbitrary
-/// public key from a directory of their choosing, which the resolver consults
-/// ahead of the trust store — shadowing a trusted signer and forging
-/// provenance (verify-trust bypass). Requires explicit opt-in, and even then
-/// the directory is confined to the MCP base dir via the path policy.
-fn is_key_dir_override_allowed() -> bool {
-    std::env::var("JACS_MCP_ALLOW_KEY_DIR")
-        .map(|v| v.to_lowercase() == "true" || v == "1")
-        .unwrap_or(false)
-}
-
-/// Resolve a caller-supplied verify `key_dir` argument under the MCP threat
-/// model:
-/// - `None` → `Ok(None)`: use the server's configured key resolution.
-/// - `Some` while disabled (default) → `Err`: reject so an untrusted directory
-///   cannot shadow the trust store.
-/// - `Some` while enabled → confine to the MCP base dir via the path policy,
-///   so even an opted-in override cannot escape to an attacker-planted dir.
-fn resolve_key_dir_override(key_dir: Option<&str>) -> Result<Option<std::path::PathBuf>, String> {
-    match key_dir {
-        None => Ok(None),
-        Some(dir) => {
-            if !is_key_dir_override_allowed() {
-                return Err(
-                    "key_dir override is disabled. An untrusted key directory can shadow the \
-                     trust store and forge provenance. Set JACS_MCP_ALLOW_KEY_DIR=true to opt in."
-                        .to_string(),
-                );
-            }
-            crate::path_policy::resolve_input_path(dir)
-                .map(Some)
-                .map_err(|e| format!("PATH_POLICY_BLOCKED: {}", e))
-        }
-    }
-}
-
 fn validate_optional_relative_path(label: &str, path: Option<&String>) -> Result<(), String> {
     if let Some(path) = path {
         require_relative_path_safe(path)
@@ -204,10 +165,8 @@ pub struct JacsMcpServer {
     agent: Arc<AgentWrapper>,
     /// Unified document service resolved from the loaded agent config.
     document_service: Option<Arc<dyn DocumentService>>,
-    /// Optional `SimpleAgent` used by the inline-text and media tools
-    /// (PRD §4.1, §4.2). Loaded at server construction from `JACS_CONFIG`
-    /// when available; absent for unit-test constructors that only exercise
-    /// tool registration/metadata.
+    /// File helpers share the already-authorized agent, never a second
+    /// configuration load or private-key decryption.
     simple_agent: Option<Arc<jacs::simple::SimpleAgent>>,
     /// Tool router for MCP tool dispatch.
     tool_router: ToolRouter<Self>,
@@ -278,9 +237,7 @@ impl JacsMcpServer {
             }
         };
 
-        // File tooling stays parked until it shares the explicit local identity
-        // and a captured read/write/backup policy. Never load a second signer
-        // from ambient configuration merely because a profile was selected.
+        // An embedding profile name alone never selects a signer or file root.
         let simple_agent = None;
 
         tracing::info!(profile = %profile, "Tool profile active");
@@ -304,36 +261,17 @@ impl JacsMcpServer {
     pub fn local_signing_from_config(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self> {
         let (agent, scope) = crate::local_signing::LocalSigningScope::load(path.as_ref())?;
         let mut server = Self::with_profile(agent, crate::profile::Profile::LocalSign);
+        if scope.files.is_some() {
+            server.simple_agent = Some(Arc::new(jacs::simple::SimpleAgent::from_shared_agent(
+                server.agent.inner_arc(),
+                None,
+                false,
+            )));
+        }
         server.registration_allowed = false;
         server.untrust_allowed = false;
         server.local_signing = Some(scope);
         Ok(server)
-    }
-
-    /// Try to load a `SimpleAgent` from the `JACS_CONFIG` env var.
-    ///
-    /// Returns `Ok(None)` if `JACS_CONFIG` isn't set (tests that exercise
-    /// only tool metadata don't need an agent). Returns `Err(_)` when the
-    /// env var is set but loading fails — propagated to the caller for
-    /// logging.
-    fn load_simple_agent_from_env() -> anyhow::Result<Option<jacs::simple::SimpleAgent>> {
-        let cfg_path = match std::env::var("JACS_CONFIG") {
-            Ok(p) => p,
-            Err(_) => return Ok(None),
-        };
-        let resolved = if std::path::Path::new(&cfg_path).is_absolute() {
-            std::path::PathBuf::from(&cfg_path)
-        } else {
-            std::env::current_dir()?.join(&cfg_path)
-        };
-        if !resolved.exists() {
-            return Ok(None);
-        }
-        let agent = jacs::simple::SimpleAgent::load(Some(&resolved.to_string_lossy()), None)
-            .map_err(|e| {
-                anyhow::anyhow!("SimpleAgent::load({}) failed: {}", resolved.display(), e)
-            })?;
-        Ok(Some(agent))
     }
 
     /// Get the list of all compiled-in tools (ignores runtime profile).
@@ -347,10 +285,10 @@ impl JacsMcpServer {
     ///
     /// This is what should be advertised to MCP clients.
     pub fn active_tools(&self) -> Vec<Tool> {
-        if self.local_signing.is_some() {
+        if let Some(scope) = &self.local_signing {
             crate::tools::all_tools()
                 .into_iter()
-                .filter(|tool| crate::local_signing::allows_tool(tool.name.as_ref()))
+                .filter(|tool| scope.allows_tool(tool.name.as_ref()))
                 .collect()
         } else {
             self.profile.tools()
@@ -389,6 +327,36 @@ impl JacsMcpServer {
         })
     }
 
+    fn file_policy(&self) -> Result<&crate::path_policy::LocalFilePolicy, jacs::JacsError> {
+        self.local_signing
+            .as_ref()
+            .and_then(|scope| scope.files.as_ref())
+            .ok_or_else(|| {
+                jacs::JacsError::ValidationError(
+                    "MCP file tools require an explicit content directory at startup".into(),
+                )
+            })
+    }
+
+    fn resolve_file_path(
+        &self,
+        raw: &str,
+        kind: crate::path_policy::PathKind,
+    ) -> Result<std::path::PathBuf, jacs::JacsError> {
+        self.file_policy()?.resolve(raw, kind)
+    }
+
+    fn check_file_backup(&self, raw: &str) -> Result<(), jacs::JacsError> {
+        self.file_policy()?.check_backup(raw)
+    }
+
+    fn resolve_key_dir_override(
+        &self,
+        raw: Option<&str>,
+    ) -> Result<Option<std::path::PathBuf>, String> {
+        self.file_policy().map_err(|e| e.to_string())?.key_dir(raw)
+    }
+
     /// Get a reference to the active runtime profile.
     pub fn profile(&self) -> &crate::profile::Profile {
         &self.profile
@@ -413,7 +381,7 @@ impl JacsMcpServer {
             .join("\n");
 
         format!(
-            "JACS MCP profile '{}' exposes {} authorized tools. The default is verification-only. Local signing uses the explicitly configured agent and does not prove per-action human approval. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n{}",
+            "JACS MCP profile '{}' exposes {} authorized tools. The default is verification-only. Local signing uses the explicitly configured agent and does not prove per-action human approval. File tools, when listed, accept relative paths only within the operator-selected content directory. In-place signing keeps original plaintext in sibling .bak files by default; these backups may be refreshed. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n{}",
             self.profile.as_str(),
             names.len(),
             tool_list
@@ -2627,23 +2595,26 @@ impl JacsMcpServer {
         if let Some(denied) = self.local_signing_denial("jacs_sign_text", &params) {
             return denied;
         }
-        // PRD §4.2.6: every wave-3 file-path handler MUST run through the
-        // six-layer path policy (base-dir confinement, absolute/traversal
-        // rejection, leaf-symlink rejection, output-overwrite policy, backup
-        // placement). `require_relative_path_safe` alone covers only
-        // structural checks — it lets a bare relative name escape the
-        // configured `JACS_MCP_BASE_DIR` because resolution then falls back
-        // to the server CWD. See R-003.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return inline_text_error_envelope(
-                    &params.file_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return inline_text_error_envelope(
+                        &params.file_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
+        if !params.no_backup.unwrap_or(false)
+            && let Err(error) = self.check_file_backup(&params.file_path)
+        {
+            return inline_text_error_envelope(
+                &params.file_path,
+                "Backup path validation failed",
+                format!("PATH_POLICY_BLOCKED: {error}"),
+            );
+        }
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2727,16 +2698,17 @@ impl JacsMcpServer {
             return denied;
         }
         // PRD §4.2.6 / R-003: full six-layer path policy.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return verify_text_error_envelope(
-                    &params.file_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return verify_text_error_envelope(
+                        &params.file_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2753,7 +2725,7 @@ impl JacsMcpServer {
         // SECURITY (verify-trust bypass): a caller-supplied key_dir is consulted
         // ahead of the trust store and would let an attacker shadow a trusted
         // signer's key. Default-deny; confine to the base dir when opted in.
-        let key_dir = match resolve_key_dir_override(params.key_dir.as_deref()) {
+        let key_dir = match self.resolve_key_dir_override(params.key_dir.as_deref()) {
             Ok(k) => k,
             Err(e) => {
                 return verify_text_error_envelope(
@@ -2843,26 +2815,28 @@ impl JacsMcpServer {
         if let Some(denied) = self.local_signing_denial("jacs_sign_image", &params) {
             return denied;
         }
-        // PRD §4.2.6 / R-003: input must exist inside base_dir; output must
-        // either be inside base_dir and not already exist, OR be allowed via
-        // JACS_MCP_OVERWRITE_OK=1 / refuse_overwrite=false (in-place sign).
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.input_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return sign_image_error_envelope(
-                    &params.output_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        // In-place signing is an explicit write. Distinct existing outputs
+        // additionally require the operator's captured overwrite permission;
+        // the caller's refuse_overwrite flag cannot grant that permission.
+        let resolved_input =
+            match self.resolve_file_path(&params.input_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return sign_image_error_envelope(
+                        &params.output_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
         // For output, use resolve_output_path when it differs from input (a
         // distinct write target is governed by overwrite policy). When equal,
         // the operation is in-place and resolve_input_path applies.
         let resolved_output = if params.input_path == params.output_path {
             resolved_input.clone()
         } else {
-            match crate::path_policy::resolve_output_path(&params.output_path) {
+            match self.resolve_file_path(&params.output_path, crate::path_policy::PathKind::Output)
+            {
                 Ok(p) => p.to_string_lossy().into_owned(),
                 Err(e) => {
                     return sign_image_error_envelope(
@@ -2873,6 +2847,16 @@ impl JacsMcpServer {
                 }
             }
         };
+        if (params.input_path == params.output_path
+            || std::path::Path::new(&resolved_output).exists())
+            && let Err(error) = self.check_file_backup(&params.output_path)
+        {
+            return sign_image_error_envelope(
+                &params.output_path,
+                "Backup path validation failed",
+                format!("PATH_POLICY_BLOCKED: {error}"),
+            );
+        }
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2941,16 +2925,17 @@ impl JacsMcpServer {
             return denied;
         }
         // PRD §4.2.6 / R-003.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return verify_image_error_envelope(
-                    &params.file_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return verify_image_error_envelope(
+                        &params.file_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2966,7 +2951,7 @@ impl JacsMcpServer {
         let strict = params.strict.unwrap_or(false);
         // SECURITY (verify-trust bypass): see jacs_verify_text. Default-deny a
         // caller-supplied key_dir; confine to the base dir when opted in.
-        let key_dir = match resolve_key_dir_override(params.key_dir.as_deref()) {
+        let key_dir = match self.resolve_key_dir_override(params.key_dir.as_deref()) {
             Ok(k) => k,
             Err(e) => {
                 return verify_image_error_envelope(
@@ -3069,15 +3054,16 @@ impl JacsMcpServer {
             return denied;
         }
         // PRD §4.2.6 / R-003.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return extract_media_error_envelope(
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return extract_media_error_envelope(
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
 
         let raw = params.raw_payload.unwrap_or(false);
         // R-011: scan_robust opt-in for the extract verb (parity with verify).
@@ -3408,54 +3394,6 @@ mod tests {
         unsafe {
             std::env::remove_var("JACS_MCP_ALLOW_KEY_ROTATION");
         }
-    }
-
-    // SECURITY (#2): a caller-supplied key_dir is rejected by default (it would
-    // shadow the trust store); None passes through; an opted-in value is still
-    // confined to the base dir by the path policy.
-    #[test]
-    #[serial_test::serial(mcp_env_gates)]
-    fn test_resolve_key_dir_override_none_passes_through() {
-        // SAFETY: serial-guarded env mutation.
-        unsafe {
-            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
-        }
-        assert!(matches!(resolve_key_dir_override(None), Ok(None)));
-    }
-
-    #[test]
-    #[serial_test::serial(mcp_env_gates)]
-    fn test_resolve_key_dir_override_disabled_by_default() {
-        // SAFETY: serial-guarded env mutation.
-        unsafe {
-            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
-        }
-        let err = resolve_key_dir_override(Some("attacker_keys")).unwrap_err();
-        assert!(
-            err.contains("disabled"),
-            "expected disabled message, got: {}",
-            err
-        );
-    }
-
-    #[test]
-    #[serial_test::serial(mcp_env_gates)]
-    fn test_resolve_key_dir_override_rejects_absolute_when_enabled() {
-        // SAFETY: serial-guarded env mutation.
-        unsafe {
-            std::env::set_var("JACS_MCP_ALLOW_KEY_DIR", "true");
-        }
-        // Even when opted in, an absolute path escaping the base dir is blocked
-        // by the path policy (structural absolute-path rejection).
-        let err = resolve_key_dir_override(Some("/tmp/evil_keys")).unwrap_err();
-        unsafe {
-            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
-        }
-        assert!(
-            err.contains("PATH_POLICY_BLOCKED") || err.to_lowercase().contains("rejected"),
-            "expected path-policy rejection, got: {}",
-            err
-        );
     }
 
     #[test]

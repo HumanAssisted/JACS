@@ -52,9 +52,21 @@ directories; this is not a sandbox against another process controlling those
 files. Startup reports `mcp_local_signing_authorized`; rejection logs
 `mcp_local_signing_denied` at WARN without document bodies or secrets.
 
-File text/image signing still needs captured file-root, overwrite and backup
-permissions and identity reuse; it is **not enabled by this slice**. Raw/key
-APIs, registration, trust administration, key rotation, W3C request signing,
+To also work with local text and images, explicitly select an existing content
+directory at startup:
+
+```bash
+JACS_MCP_BASE_DIR=/path/to/content jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+This adds exactly five existing tools: `jacs_sign_text`, `jacs_verify_text`,
+`jacs_sign_image`, `jacs_verify_image`, and `jacs_extract_media_signature`.
+The same loaded agent signs JSON, Agreements, text and images; media calls do
+not reload config or decrypt another key. Without `JACS_MCP_BASE_DIR`, the
+nine-tool JSON/Agreement surface stays unchanged (when Agreement tools are
+compiled). Setting a content root never expands a verification-only process.
+
+Raw/key APIs, registration, trust administration, key rotation, W3C request signing,
 A2A and attestation tools likewise are not enabled by `local-sign`. Their
 ordinary CLI/SDK capabilities are unchanged.
 
@@ -181,21 +193,50 @@ Optional:
   `verify-only` and is used only when `--profile` is absent
 - `JACS_CONFIG` - existing signed config for local signing; `--config` wins
 
-The following legacy file/admin settings do not add tools to the active profile:
+Local file settings are captured when the authorized signer starts; changing
+the environment afterward cannot broaden them:
 
-- `JACS_MCP_BASE_DIR` - Base directory for all caller-supplied file paths;
-  defaults to the launch working directory
+- `JACS_MCP_BASE_DIR` - Explicit existing directory for the five local file
+  tools; absent means no file tools, not a working-directory grant
 - `JACS_MCP_OVERWRITE_OK=1` - Explicitly allow file tools to overwrite an
-  existing output (disabled by default)
+  existing distinct output (disabled by default)
+- `JACS_MCP_ALLOW_KEY_DIR=true` - Allow a caller-selected public-key directory
+  inside the content root for verification (disabled by default). A valid
+  signature using these supplied keys is integrity evidence, not identity or
+  application authorization
+
+These retained admin settings do not add tools or grant authority:
+
 - `JACS_MCP_ALLOW_REGISTRATION` - retained handler setting; does not authorize registration
 - `JACS_MCP_ALLOW_UNTRUST` - retained handler setting; does not authorize trust administration
 
 ### File path policy
 
 File-tool arguments are relative paths beneath `JACS_MCP_BASE_DIR`. Absolute
-paths, `.`/`..` traversal, NULs, and symlinks are rejected. Existing output
-files are refused unless the operator opts in with
-`JACS_MCP_OVERWRITE_OK=1`; callers cannot enable overwrite themselves.
+paths, `.`/`..` traversal, NULs, and symlinks are rejected (including symlinked
+ancestors). Hard-linked content files are refused on Unix. The selected
+config, encrypted-key directory, agent-data directory, document store and
+trust store are excluded even when they sit below the content root.
+Case-equivalent reserved names are also refused before a protected backup or
+document directory exists.
+
+Signing text or choosing the same image input/output path is an explicit
+in-place write. A distinct existing output is refused unless the operator
+opts in with `JACS_MCP_OVERWRITE_OK=1`; the caller's `refuse_overwrite:false`
+cannot grant that permission. Existing atomic file writes and sibling `.bak`
+behavior are retained: text backups are on by default (`no_backup:true` opts
+out); in-place/replaced image outputs keep backups. **Backups contain the
+original plaintext content**, use owner-only permissions by default, and may
+be refreshed on subsequent writes. Backup paths receive the same containment
+and protected-material checks before signing. Protect the content directory
+and backups as you would the original files.
+
+File startup logs `mcp_local_files_authorized` with the selected directory and
+captured options. Rejections are returned as `PATH_POLICY_BLOCKED` in the
+existing tool error envelope; scope denials also emit
+`mcp_local_signing_denied` at WARN. No extra daemon or file-policy service is
+required. These checks constrain MCP requests; they do not isolate a process
+from a malicious local host owner changing filesystem state concurrently.
 
 ## Core Document Tools
 

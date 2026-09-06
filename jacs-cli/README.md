@@ -171,7 +171,10 @@ jacs mcp --profile local-sign --config ./jacs.config.json
 `JACS_CONFIG` can supply the path instead. This grants only offline local-agent
 JSON/Agreement signing, with documents persisted below the config directory.
 It is not per-action human approval. File text/image and administrative tools
-remain unavailable; see the [MCP scope](../jacs-mcp/README.md#explicit-local-signing).
+are not granted by that command. Selecting `JACS_MCP_BASE_DIR` at startup adds
+only the five scoped text/image tools, using the same loaded signer; it does
+not enable administration. File signing can keep plaintext `.bak` copies; see
+the [MCP scope](../jacs-mcp/README.md#explicit-local-signing).
 
 For headless/server environments:
 
