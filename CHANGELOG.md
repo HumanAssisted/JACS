@@ -37,6 +37,15 @@
 
 ### Security
 
+- **2026-09-05: Explicit local MCP JSON/Agreement signing.** `jacs mcp
+  --profile local-sign --config ./jacs.config.json` uses a signed configuration,
+  one matching encrypted key pair and a fixed local document root. Nine scoped
+  JSON/Agreement tools share advertisement and dispatch checks; verification
+  remains the default and does not unlock a key. Agent provenance is not human
+  approval. Sixty-two scoped tests and strict Clippy passed locally, including
+  real stdio signing workflows. Broader file/media and frozen-profile MCP
+  workflows remain separate capability work; the full runtime suite is not
+  claimed green.
 - **Public human-approval verification is available to opt-in native bindings.**
   One stateless binding-core method delegates to the existing verifier, with
   thin Python, Node and Go entrypoints preserving the full report and explicit

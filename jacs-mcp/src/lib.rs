@@ -8,9 +8,10 @@
 //! `verify-only` is the default and exposes no signing, trust mutation, key
 //! mutation, agent creation, or legacy Agreement signing. The only other
 //! recognized process profiles are `local-sign`, `trust-admin`, and bounded
-//! `legacy-core`. A profile name is not authority: privileged startup is
-//! rejected until the complete TP-39 capability/status/approval WAL broker is
-//! available.
+//! `legacy-core`. `local-sign` additionally requires an explicitly selected,
+//! authenticated local config. It authorizes a closed JSON/Agreement tool set
+//! as that agent, not per-action human approval. Administrative profiles remain
+//! unavailable; a profile enum alone never loads or authorizes a signer.
 //!
 //! # Profile Resolution
 //!
@@ -35,6 +36,8 @@ pub mod contract;
 // (PRD §4.2.6) build with `default-features = false` — see jacspy/jacsnpm.
 #[cfg(feature = "mcp")]
 pub mod jacs_tools;
+#[cfg(feature = "mcp")]
+mod local_signing;
 pub mod path_policy;
 #[cfg(feature = "mcp")]
 pub mod profile;

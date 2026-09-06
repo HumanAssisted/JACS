@@ -12,13 +12,18 @@ use super::schema_map;
 
 /// Parameters for signing arbitrary content as a JACS document.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SignDocumentParams {
     /// The JSON content string to sign.
-    #[schemars(description = "The JSON content to sign as a JACS document")]
+    #[schemars(
+        description = "JSON data nested as content inside an ordinary JACS document; supplied jacsType, schema and signature fields remain data"
+    )]
     pub content: String,
 
     /// Optional MIME type of the content (default: "application/json").
-    #[schemars(description = "MIME type of the content (default: 'application/json')")]
+    #[schemars(
+        description = "Descriptive MIME type recorded as contentType (default: 'application/json')"
+    )]
     pub content_type: Option<String>,
 }
 
@@ -152,9 +157,10 @@ pub fn tools() -> Vec<Tool> {
     vec![
         Tool::new(
             "jacs_sign_document",
-            "Sign arbitrary JSON content to create a cryptographically signed JACS document. \
-             Use this for attestation -- when you want to prove that content was signed by \
-             this agent. Returns the signed envelope with hash and document ID.",
+            "Sign JSON data as content inside an ordinary JACS document using the configured \
+             local agent. Caller-supplied protocol fields stay nested data. Requires an explicit \
+             local-sign config; returns and persists the signed envelope with hash and document \
+             ID. This is agent provenance, not per-action human approval. Arguments are limited to 1 MiB.",
             schema_map::<SignDocumentParams>(),
         ),
         Tool::new(

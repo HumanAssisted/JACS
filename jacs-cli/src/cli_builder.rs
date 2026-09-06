@@ -804,12 +804,19 @@ pub fn build_cli() -> Command {
                     Arg::new("profile")
                         .long("profile")
                         .help(
-                            "Security profile: 'verify-only' (default), 'local-sign', 'trust-admin', or \
-                             compatibility-only 'legacy-core'. Privileged profiles require the complete \
-                             independently authorized TP-39 capability/status/approval broker and fail \
-                             startup when it is unavailable. When omitted, JACS_MCP_PROFILE is used before \
-                             falling back to verify-only.",
+                            "Security profile: 'verify-only' (default) or 'local-sign'. Local signing \
+                             requires --config or JACS_CONFIG pointing to an existing signed config; \
+                             it enables only offline JSON/Agreement signing as that local agent, not \
+                             human approval. File tools and key/trust administration remain unavailable. \
+                             When omitted, JACS_MCP_PROFILE is used before falling back to verify-only. \
+                             Reserved 'trust-admin' and 'legacy-core' profiles refuse startup.",
                         ),
+                )
+                .arg(
+                    Arg::new("config")
+                        .long("config")
+                        .value_parser(value_parser!(String))
+                        .help("Existing signed agent config (overrides JACS_CONFIG). Required for local-sign; no implicit config discovery or new key creation."),
                 )
                 .subcommand(
                     Command::new("install")

@@ -163,20 +163,26 @@ async fn mcp_stdio_tools_list_honors_default_env_and_cli_profile_precedence() ->
     let core = RmcpSession::spawn_with_profile(None, &[]).await?;
     let core_tools = tokio::time::timeout(MCP_CALL_TIMEOUT, core.client.list_all_tools()).await??;
     let core_names: Vec<&str> = core_tools.iter().map(|tool| tool.name.as_ref()).collect();
-    assert!(core_names.contains(&"jacs_sign_document"));
-    assert!(!core_names.contains(&"jacs_create_agreement"));
+    assert_eq!(core_names, vec!["jacs_verify_document"]);
     core.client.cancellation_token().cancel();
 
-    let env_full = RmcpSession::spawn_with_profile(None, &[("JACS_MCP_PROFILE", "full")]).await?;
+    let env_full =
+        RmcpSession::spawn_with_profile(None, &[("JACS_MCP_PROFILE", "local-sign")]).await?;
     let full_tools =
         tokio::time::timeout(MCP_CALL_TIMEOUT, env_full.client.list_all_tools()).await??;
     let full_names: Vec<&str> = full_tools.iter().map(|tool| tool.name.as_ref()).collect();
-    assert!(full_names.contains(&"jacs_create_agreement"));
+    assert!(full_names.contains(&"jacs_sign_document"));
+    assert!(full_names.contains(&"jacs_create_agreement_v2"));
+    assert!(!full_names.contains(&"jacs_create_agreement"));
+    assert!(!full_names.contains(&"jacs_rotate_keys"));
+    assert!(!full_names.contains(&"jacs_sign_text"));
+    assert!(!full_names.contains(&"jacs_sign_image"));
     assert!(full_tools.len() > core_tools.len());
     env_full.client.cancellation_token().cancel();
 
     let cli_core =
-        RmcpSession::spawn_with_profile(Some("core"), &[("JACS_MCP_PROFILE", "full")]).await?;
+        RmcpSession::spawn_with_profile(Some("verify-only"), &[("JACS_MCP_PROFILE", "local-sign")])
+            .await?;
     let overridden =
         tokio::time::timeout(MCP_CALL_TIMEOUT, cli_core.client.list_all_tools()).await??;
     let overridden_names: Vec<&str> = overridden.iter().map(|tool| tool.name.as_ref()).collect();
@@ -193,17 +199,21 @@ async fn mcp_stdio_initialization_failure_preserves_bounded_child_stderr() {
     let (_config, base) = prepare_temp_workspace();
     let missing_config = base.join("missing.config.json");
 
-    let error =
-        match RmcpSession::spawn_from_workspace(missing_config, base.clone(), Some("core"), &[])
-            .await
-        {
-            Ok(_) => panic!("missing config must fail MCP initialization"),
-            Err(error) => error,
-        };
+    let error = match RmcpSession::spawn_from_workspace(
+        missing_config,
+        base.clone(),
+        Some("local-sign"),
+        &[],
+    )
+    .await
+    {
+        Ok(_) => panic!("missing config must fail MCP initialization"),
+        Err(error) => error,
+    };
     let message = error.to_string();
     assert!(message.contains("child stderr"), "{message}");
     assert!(
-        message.contains("Config file not found") || message.contains("Failed to load agent"),
+        message.contains("Local signing config not found"),
         "missing-config diagnostic should survive the stdio wrapper: {message}"
     );
 
@@ -306,6 +316,55 @@ fn starts_server_with_agent_env() {
     let (output, base) = run_server_with_fixture(&[]);
     assert_server_reaches_initialized_request(&output, "default log environment");
     let _ = fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
+async fn mcp_local_document_round_trip_and_unlisted_tools_are_denied() -> anyhow::Result<()> {
+    use jacs::agent::boilerplate::BoilerPlate;
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn_with_profile(Some("local-sign"), &[]).await?;
+    let config =
+        jacs::config::Config::from_file(session.base.join("jacs.config.json").to_str().unwrap())?;
+    let public = jacs::agent::Agent::from_config_public_only(config)?;
+    let signed = session
+        .call_tool(
+            "jacs_sign_document",
+            serde_json::json!({
+                "content": "{\"hello\":\"local MCP\"}", "content_type": "application/json"
+            }),
+        )
+        .await?;
+    assert_eq!(signed["success"], true, "{signed}");
+    let document = signed["signed_document"].as_str().expect("signed document");
+    let verified = session
+        .call_tool(
+            "jacs_verify_document",
+            serde_json::json!({
+                "document": document, "public_key": public.get_public_key()?, "algorithm": "ed25519"
+            }),
+        )
+        .await?;
+    assert_eq!(verified["success"], true, "{verified}");
+    assert_eq!(verified["valid"], true, "{verified}");
+    assert_eq!(verified["signer_id"], public.get_id()?);
+    for forbidden in [
+        "jacs_create_agent",
+        "jacs_rotate_keys",
+        "jacs_trust_agent",
+        "jacs_sign_text",
+        "jacs_sign_image",
+    ] {
+        let error = session
+            .call_tool(forbidden, serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("not available"),
+            "{forbidden}: {error}"
+        );
+    }
+    session.client.cancellation_token().cancel();
+    Ok(())
 }
 
 #[tokio::test]
@@ -580,7 +639,7 @@ async fn mcp_w3c_did_discovery_and_request_proof_round_trip() -> anyhow::Result<
 #[tokio::test]
 async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let session = RmcpSession::spawn_with_profile(Some("local-sign"), &[]).await?;
     let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
 
     let created_result = session
@@ -614,21 +673,20 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         )
         .await?;
     assert_eq!(verify_result["success"], true, "{}", verify_result);
-    assert_eq!(
-        verify_result["result"]["valid"],
-        agreement_v2_expected()["verify"]["valid"],
-        "{}",
-        verify_result
-    );
+    for (field, value) in agreement_v2_expected()["coverageReport"]
+        .as_object()
+        .expect("coverage inspection expectations")
+    {
+        assert_eq!(
+            &verify_result["result"][field], value,
+            "coverage report field {field}: {verify_result}"
+        );
+    }
     assert_eq!(
         verify_result["valid"],
-        agreement_v2_expected()["verify"]["valid"],
-        "valid agreement must report top-level valid=true: {}",
+        agreement_v2_expected()["nativeVerify"]["valid"],
+        "successful inspection must not become a top-level policy verdict: {}",
         verify_result
-    );
-    assert_eq!(
-        verify_result["result"]["expectedStatus"],
-        agreement_v2_expected()["verify"]["expectedStatus"]
     );
 
     let left_result = session
@@ -758,7 +816,7 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
 #[tokio::test]
 async fn mcp_verify_agreement_v2_surfaces_invalid_verdict() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let session = RmcpSession::spawn_with_profile(Some("local-sign"), &[]).await?;
     let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
 
     let created_result = session
@@ -785,6 +843,22 @@ async fn mcp_verify_agreement_v2_surfaces_invalid_verdict() -> anyhow::Result<()
         .expect("signed agreement")
         .to_string();
 
+    let genuine = session
+        .call_tool(
+            "jacs_verify_agreement_v2",
+            serde_json::json!({ "agreement": signed }),
+        )
+        .await?;
+    assert_eq!(genuine["success"], true, "{genuine}");
+    assert_eq!(
+        genuine["valid"], false,
+        "inspection is not policy acceptance"
+    );
+    assert_eq!(
+        genuine["result"]["cryptographicResult"], "valid",
+        "{genuine}"
+    );
+
     // Tamper with the signed agreement so the recomputed hash no longer matches.
     let mut tampered: serde_json::Value =
         serde_json::from_str(&signed).expect("parse signed agreement");
@@ -802,35 +876,27 @@ async fn mcp_verify_agreement_v2_surfaces_invalid_verdict() -> anyhow::Result<()
         )
         .await?;
 
-    // The verdict MUST be surfaced UNAMBIGUOUSLY at the top level: a caller can
-    // read `valid` directly and cannot be fooled by a bare `success:true`.
-    // A tampered (post-signing) agreement fails the JACS content-hash check at
-    // load time, so verification reports the failure as success:false AND
-    // valid:false (fail closed) with an explicit error and no nested report.
+    // This is the existing coverage-report contract: success means inspection
+    // completed, while valid remains false even for genuine v2 documents.
+    // Assert the cryptographic distinction explicitly so a generic denial or
+    // the always-false policy field cannot make the negative test vacuous.
     assert_eq!(
         verify_result["valid"], false,
         "tampered agreement must report top-level valid=false: {}",
         verify_result
     );
     assert_eq!(
-        verify_result["success"], false,
-        "tampered agreement that fails the hash check must report success=false: {}",
+        verify_result["success"], true,
+        "coverage inspection should complete with an invalid cryptographic report: {}",
         verify_result
     );
-    assert!(
-        verify_result["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("verify"),
-        "tampered agreement must carry an explicit error message: {}",
-        verify_result
+    assert_eq!(
+        verify_result["result"]["cryptographicResult"], "invalid",
+        "{verify_result}"
     );
-    // The old fail-open shape (success:true with no/ignored verdict) must be impossible.
-    assert_ne!(
-        verify_result["valid"],
-        serde_json::Value::Null,
-        "top-level valid must never be absent/null: {}",
-        verify_result
+    assert_eq!(
+        verify_result["result"]["overallScope"],
+        "consent_signatures_only"
     );
 
     session.client.cancellation_token().cancel();
@@ -1671,7 +1737,7 @@ fn a2a_assess_agent_rejects_invalid_card() {
 #[tokio::test]
 async fn mcp_agreement_v2_notary_role_signs_and_verifies() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let session = RmcpSession::spawn_with_profile(Some("local-sign"), &[]).await?;
     let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
 
     let mut input = agreement_v2_input(&agent_id);
@@ -1722,9 +1788,13 @@ async fn mcp_agreement_v2_notary_role_signs_and_verifies() -> anyhow::Result<()>
         .await?;
     assert_eq!(verify_result["success"], true, "{}", verify_result);
     assert_eq!(
-        verify_result["valid"], true,
-        "notary-signed agreement must verify valid=true: {}",
+        verify_result["valid"], false,
+        "claimed notary role must not become policy acceptance: {}",
         verify_result
+    );
+    assert_eq!(
+        verify_result["result"]["cryptographicResult"], "valid",
+        "the notary-shaped signature still has valid mathematics: {verify_result}"
     );
 
     session.client.cancellation_token().cancel();

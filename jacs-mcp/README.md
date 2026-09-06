@@ -1,10 +1,10 @@
 # JACS MCP Server
 
-MCP server for JACS verification and capability-gated signing integrations.
+MCP server for JACS verification and explicitly configured local agent signing.
 
 Uses **stdio transport only**. The default process loads no agent configuration
-or private key; privileged signing profiles remain unavailable until the TP-39
-capability/status/approval broker is implemented.
+or private key. Local JSON/Agreement signing requires an existing signed agent
+config; it needs no server, extra policy file, or new key format.
 
 The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
@@ -16,11 +16,51 @@ The default `verify-only` profile exposes only explicit-key document integrity
 verification. The only profile names are `verify-only`,
 `local-sign`, `trust-admin`, and compatibility-only `legacy-core`. An explicit
 flag wins over the environment and unknown values fail startup. A privileged
-profile name is only eligibility metadata, not authority; this release refuses
-privileged startup until the complete capability/status/approval WAL broker is
-available.
+profile name alone does not authorize signing. `local-sign` additionally loads
+and verifies the operator-selected config and freezes that identity/key for the
+process. `trust-admin` and `legacy-core` remain unavailable.
 
-The server exposes tools in these categories:
+### Explicit local signing
+
+After `jacs init`, start with your existing config and normal keychain/password
+source (never send a password as tool input):
+
+```bash
+jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+`JACS_CONFIG` can supply the same path instead of `--config`. There is no
+implicit config discovery, new-key fallback, or second grant file. The selected
+config must be signed and use filesystem storage. Ambient identity/path
+overrides are ignored; the password source is resolved at startup.
+
+The closed local inventory is `jacs_sign_document`, `jacs_verify_document`, and
+the compiled Agreement-v2 create/apply/sign/verify/detect-conflict/merge/resolve
+tools. `jacs_sign_document` always puts the caller's JSON inside `content` of an
+ordinary JACS document: even supplied `jacsType`, `$schema`, or signature fields
+stay data. The optional MIME label is recorded as `contentType`. Signing and
+Agreement tool arguments are limited to 1 MiB. Documents are returned and persisted under
+`<config directory>/documents/`; normal encrypted keys and public-key storage
+remain on disk. Agreement inspection may read configured local public keys,
+but network opt-ins must be off for this local process.
+
+This grants the MCP client permission to sign allowed content **as this agent**.
+It does not prove a human reviewed any particular action, nor does Agreement-v2
+signature coverage establish role/quorum/notary authority or policy acceptance.
+The operator trusts the local host and protects the config, key and storage
+directories; this is not a sandbox against another process controlling those
+files. Startup reports `mcp_local_signing_authorized`; rejection logs
+`mcp_local_signing_denied` at WARN without document bodies or secrets.
+
+File text/image signing still needs captured file-root, overwrite and backup
+permissions and identity reuse; it is **not enabled by this slice**. Raw/key
+APIs, registration, trust administration, key rotation, W3C request signing,
+A2A and attestation tools likewise are not enabled by `local-sign`. Their
+ordinary CLI/SDK capabilities are unchanged.
+
+The compiled contract contains the categories below. This inventory is not a
+claim that every tool is available in a runtime profile; `tools/list` is the
+actual process surface.
 
 ### Document Sign / Verify
 
@@ -37,13 +77,13 @@ The server exposes tools in these categories:
 | `jacs_reencrypt_key` | Re-encrypt the agent's private key with a new password |
 | `jacs_rotate_keys` | Rotate the active agent key material |
 
-### Agreements (compiled compatibility surface; not active without a future broker)
+### Legacy Agreements (compiled inventory; unavailable in current profiles)
 
 | Tool | Description |
 |------|-------------|
 | `jacs_create_agreement` | Create a multi-party agreement over arbitrary document content |
 | `jacs_sign_agreement` | Co-sign an existing agreement |
-| `jacs_check_agreement` | Check agreement status, quorum, expiration, and missing signatures |
+| `jacs_check_agreement` | Inspect legacy signatures and claimed status; never policy acceptance |
 
 ### A2A Discovery and Artifacts
 
@@ -77,7 +117,7 @@ The server exposes tools in these categories:
 | `jacs_is_trusted` | Check whether an agent is trusted |
 | `jacs_get_trusted_agent` | Retrieve a trusted agent JSON document |
 
-### Attestation (`full` profile)
+### Attestation (compiled inventory; unavailable in current profiles)
 
 | Tool | Description |
 |------|-------------|
@@ -139,12 +179,16 @@ Optional:
 - `RUST_LOG` - Logging level, default `info,rmcp=warn`
 - `JACS_MCP_PROFILE` - one exact closed profile name; defaults to
   `verify-only` and is used only when `--profile` is absent
+- `JACS_CONFIG` - existing signed config for local signing; `--config` wins
+
+The following legacy file/admin settings do not add tools to the active profile:
+
 - `JACS_MCP_BASE_DIR` - Base directory for all caller-supplied file paths;
   defaults to the launch working directory
 - `JACS_MCP_OVERWRITE_OK=1` - Explicitly allow file tools to overwrite an
   existing output (disabled by default)
-- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `jacs_create_agent`
-- `JACS_MCP_ALLOW_UNTRUST` - Set to `true` to enable `jacs_untrust_agent`
+- `JACS_MCP_ALLOW_REGISTRATION` - retained handler setting; does not authorize registration
+- `JACS_MCP_ALLOW_UNTRUST` - retained handler setting; does not authorize trust administration
 
 ### File path policy
 
@@ -157,7 +201,9 @@ files are refused unless the operator opts in with
 
 ### `jacs_sign_document`
 
-Sign arbitrary JSON content to create a cryptographically signed JACS document.
+Sign JSON as nested content in an ordinary document using the selected local
+agent. This does not issue a caller-selected protocol/identity document or
+prove a person's approval.
 
 Parameters:
 
@@ -198,4 +244,5 @@ Co-sign an existing agreement.
 
 ### `jacs_check_agreement`
 
-Check whether an agreement is complete, expired, or still missing signatures.
+Inspect signature mathematics and claimed legacy status. This tool never
+establishes completion or policy acceptance and is not currently enabled.

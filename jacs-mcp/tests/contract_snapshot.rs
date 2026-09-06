@@ -4,6 +4,49 @@
 use jacs_mcp::JacsMcpContractSnapshot;
 use jacs_mcp::canonical_contract_snapshot;
 
+#[test]
+fn document_signing_contract_is_scoped_content_provenance() {
+    let snapshot = canonical_contract_snapshot();
+    let tool = snapshot
+        .tools
+        .iter()
+        .find(|tool| tool.name == "jacs_sign_document")
+        .expect("document signing inventory");
+    let help = tool.description.as_deref().unwrap();
+    assert!(help.contains("Caller-supplied protocol fields stay nested data"));
+    assert!(help.contains("not per-action human approval"));
+    assert_eq!(tool.input_schema["additionalProperties"], false);
+}
+
+#[cfg(feature = "agreement-tools")]
+#[test]
+fn agreement_mutation_help_uses_the_real_rust_wire_name() {
+    let mutation = jacs::agreements::v2::AgreementV2Mutation::SetSignaturePolicy {
+        signature_policy: serde_json::json!({}),
+    };
+    let encoded = serde_json::to_value(mutation).unwrap();
+    let snapshot = canonical_contract_snapshot();
+    let tool = snapshot
+        .tools
+        .iter()
+        .find(|tool| tool.name == "jacs_apply_agreement_v2")
+        .unwrap();
+    let wire_name = encoded["type"].as_str().unwrap();
+    assert!(tool.description.as_deref().unwrap().contains(wire_name));
+    assert!(
+        tool.input_schema["properties"]["mutation"]["description"]
+            .as_str()
+            .unwrap()
+            .contains(wire_name)
+    );
+    assert!(
+        tool.description
+            .as_deref()
+            .unwrap()
+            .contains("party-consent signature")
+    );
+}
+
 /// The full contract snapshot test requires all current tools to be compiled in.
 /// The checked-in contract artifact contains all tools, so this test only
 /// makes sense with `full-tools`.
@@ -19,6 +62,28 @@ fn canonical_contract_snapshot_matches_checked_in_artifact() {
         actual, expected,
         "canonical Rust MCP contract changed; regenerate jacs-mcp/contract/jacs-mcp-contract.json"
     );
+}
+
+#[cfg(feature = "full-tools")]
+#[test]
+fn agreement_v2_help_distinguishes_coverage_from_authorization() {
+    let snapshot = canonical_contract_snapshot();
+    let tool = snapshot
+        .tools
+        .iter()
+        .find(|tool| tool.name == "jacs_verify_agreement_v2")
+        .expect("agreement v2 inspection tool");
+    let description = tool.description.as_deref().expect("inspection tool help");
+    assert!(description.contains("consent-signature coverage only"));
+    assert!(description.contains(
+        "cannot authenticate role, quorum, lineage, notary status, or policy acceptance"
+    ));
+    let input_help = tool.input_schema["properties"]["agreement"]["description"]
+        .as_str()
+        .expect("agreement input help");
+    assert!(input_help.contains("top-level `valid` remains false"));
+    assert!(input_help.contains("`result.cryptographicResult`"));
+    assert!(input_help.contains("not authorization"));
 }
 
 /// With default features, the contract should contain only core tools.

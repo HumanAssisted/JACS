@@ -133,7 +133,16 @@ fn runtime_unknown_profile_is_rejected() {
 
 #[test]
 fn privileged_profile_name_is_not_authority() {
-    for profile in [Profile::LocalSign, Profile::TrustAdmin, Profile::LegacyCore] {
+    assert_eq!(
+        Profile::resolve(Some("local-sign")).unwrap(),
+        Profile::LocalSign
+    );
+    assert_eq!(
+        Profile::LocalSign.tools(),
+        Profile::VerifyOnly.tools(),
+        "eligible local profile still needs the explicit signed-config constructor"
+    );
+    for profile in [Profile::TrustAdmin, Profile::LegacyCore] {
         let error = Profile::resolve(Some(profile.as_str()))
             .expect_err("privileged startup needs the TP-39 broker");
         assert_eq!(error.value(), profile.as_str());

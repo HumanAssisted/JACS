@@ -1018,24 +1018,39 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     profile = %profile,
                     "Starting JACS MCP server (stdio transport)"
                 );
-                // `Profile::resolve` currently admits only verify-only. An
-                // optional config opens authenticated public identity and
-                // document storage through the public-only loader; it never
-                // resolves a password or reads/decrypts a private key.
-                let server = match std::env::var("JACS_CONFIG") {
-                    Ok(_) => {
-                        let (agent, _info) =
-                            jacs_mcp::load_public_agent_from_config_env_with_info()?;
-                        jacs_mcp::JacsMcpServer::with_profile(agent, profile)
-                    }
-                    Err(std::env::VarError::NotPresent) => {
-                        jacs_mcp::JacsMcpServer::verification_only()
-                    }
-                    Err(std::env::VarError::NotUnicode(_)) => {
-                        return Err(Box::new(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "JACS_CONFIG is not valid Unicode",
-                        )));
+                let config_path = match mcp_matches.get_one::<String>("config") {
+                    Some(path) => Some(path.clone()),
+                    None => match std::env::var("JACS_CONFIG") {
+                        Ok(path) => Some(path),
+                        Err(std::env::VarError::NotPresent) => None,
+                        Err(std::env::VarError::NotUnicode(_)) => {
+                            return Err(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "JACS_CONFIG is not valid Unicode",
+                            )));
+                        }
+                    },
+                };
+                let server = if profile == jacs_mcp::Profile::LocalSign {
+                    let path = config_path.as_deref().ok_or_else(|| {
+                        tracing::warn!(event = "mcp_local_signing_denied", reason = "config_required",
+                            "Local signing requires an explicit existing config");
+                        std::io::Error::new(std::io::ErrorKind::InvalidInput,
+                            "local-sign requires --config <existing signed jacs.config.json> or JACS_CONFIG; run jacs init first")
+                    })?;
+                    jacs_mcp::JacsMcpServer::local_signing_from_config(path).map_err(|error| {
+                        tracing::warn!(event = "mcp_local_signing_denied", reason = %error,
+                            "Local signing startup refused");
+                        error
+                    })?
+                } else {
+                    match config_path {
+                        Some(path) => {
+                            let (agent, _info) =
+                                jacs_mcp::load_public_agent_from_config_path_with_info(path)?;
+                            jacs_mcp::JacsMcpServer::with_profile(agent, profile)
+                        }
+                        None => jacs_mcp::JacsMcpServer::verification_only(),
                     }
                 };
                 let rt = tokio::runtime::Runtime::new()?;

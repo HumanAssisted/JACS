@@ -48,6 +48,37 @@ fn explicit_cli_profile_is_preserved() {
 }
 
 #[test]
+fn explicit_local_signing_config_is_preserved() {
+    let matches = build_cli()
+        .try_get_matches_from([
+            "jacs",
+            "mcp",
+            "--profile",
+            "local-sign",
+            "--config",
+            "./jacs.config.json",
+        ])
+        .expect("explicit local configuration");
+    let (_, mcp) = matches.subcommand().unwrap();
+    assert_eq!(
+        mcp.get_one::<String>("config").map(String::as_str),
+        Some("./jacs.config.json")
+    );
+}
+
+#[test]
+fn local_signing_profile_without_config_cannot_start() {
+    Command::cargo_bin("jacs")
+        .expect("jacs binary")
+        .env_remove("JACS_CONFIG")
+        .args(["mcp", "--profile", "local-sign"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("mcp_local_signing_denied"))
+        .stderr(predicate::str::contains("local-sign requires --config"));
+}
+
+#[test]
 fn invalid_cli_profile_fails_before_agent_loading() {
     Command::cargo_bin("jacs")
         .expect("jacs binary")

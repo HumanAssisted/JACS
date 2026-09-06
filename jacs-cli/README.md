@@ -156,18 +156,22 @@ Configure in your MCP client:
 ```
 
 The default `verify-only` profile exposes only exact-byte document integrity
-verification with a caller-supplied public key and algorithm. It does not read
-agent configuration or load/decrypt a signing key. The closed profile names are `verify-only`,
+verification with a caller-supplied public key and algorithm. An explicitly
+supplied config is public-only and never loads/decrypts a signing key. The closed profile names are `verify-only`,
 `local-sign`, `trust-admin`, and compatibility-only `legacy-core`. When
 `--profile` is absent, `JACS_MCP_PROFILE` is consulted before falling back to
 `verify-only`; explicit CLI selection wins, and unknown values fail startup.
-A privileged name alone is not authority, so this release refuses privileged
-startup until the complete capability/status/approval WAL broker is available.
+A profile name alone does not load a signer. Use the existing signed config
+and normal keychain/password source explicitly:
 
-MCP file-tool arguments must be relative to `JACS_MCP_BASE_DIR` (or the
-launch working directory when it is unset). Absolute paths, traversal, and
-symlinks are rejected. Existing outputs require the operator-controlled
-`JACS_MCP_OVERWRITE_OK=1` opt-in before overwrite.
+```bash
+jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+`JACS_CONFIG` can supply the path instead. This grants only offline local-agent
+JSON/Agreement signing, with documents persisted below the config directory.
+It is not per-action human approval. File text/image and administrative tools
+remain unavailable; see the [MCP scope](../jacs-mcp/README.md#explicit-local-signing).
 
 For headless/server environments:
 
@@ -175,8 +179,7 @@ For headless/server environments:
 export JACS_CONFIG=/srv/my-project/jacs.config.json
 export JACS_PASSWORD_FILE=/run/secrets/jacs-password
 export JACS_KEYCHAIN_BACKEND=disabled
-export JACS_MCP_BASE_DIR=/srv/my-project
-jacs mcp
+jacs mcp --profile local-sign
 ```
 
 ## Links

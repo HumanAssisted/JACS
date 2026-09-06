@@ -2,11 +2,9 @@
 //!
 //! Profiles describe eligible effects; they are not authority. The default
 //! exposes verification/inspection/public-export tools only. A privileged
-//! profile cannot be activated until the TP-39 instance bootstrap, exact tool
-//! effect map, capability/status high-water state, rate/nonce/reservation WAL,
-//! and (where required) human approval broker have all been validated. This
-//! release deliberately rejects privileged startup instead of treating an
-//! environment variable or the profile name itself as a capability.
+//! `local-sign` selection additionally needs the existing signed config loaded
+//! through the explicit local server constructor. Administrative profiles are
+//! parked. An enum or environment variable alone never authorizes key use.
 
 use crate::tools::{ClassifiedTool, all_classified_tools};
 use rmcp::model::Tool;
@@ -85,9 +83,8 @@ impl Profile {
         }
     }
 
-    /// Resolve the process profile. Known privileged names are recognized,
-    /// then denied until an independently authorized TP-39 broker can produce
-    /// an authorized profile; no env-only compatibility bypass exists.
+    /// Resolve eligibility only. The CLI must construct `local-sign` through
+    /// the authenticated local-config constructor; this value is not authority.
     pub fn resolve(cli_profile: Option<&str>) -> Result<Self, ProfileError> {
         let profile = match cli_profile {
             Some(value) => Self::parse(value)?,
@@ -99,7 +96,7 @@ impl Profile {
                 }
             },
         };
-        if profile == Self::VerifyOnly {
+        if matches!(profile, Self::VerifyOnly | Self::LocalSign) {
             Ok(profile)
         } else {
             Err(ProfileError::capability_broker_unavailable(profile))
@@ -130,21 +127,14 @@ impl Profile {
         }
     }
 
-    /// Closed TP-39 eligibility table for a future authorized broker. It is
-    /// intentionally not used to register tools without that broker.
+    /// Eligibility metadata only; local tools also need the validated config
+    /// scope. The other profiles remain parked and cannot be activated.
     pub fn is_privileged_tool_eligible(&self, tool_id: &str) -> bool {
         match self {
             Self::VerifyOnly => false,
-            Self::LocalSign => matches!(
-                tool_id,
-                "jacs_sign_document"
-                    | "jacs_sign_text"
-                    | "jacs_sign_image"
-                    | "jacs_w3c_sign_request"
-                    | "jacs_wrap_a2a_artifact"
-                    | "jacs_attest_create"
-                    | "jacs_attest_lift"
-            ),
+            Self::LocalSign => {
+                crate::local_signing::allows_tool(tool_id) && !is_verify_only_tool(tool_id)
+            }
             Self::TrustAdmin => matches!(tool_id, "jacs_trust_agent" | "jacs_untrust_agent"),
             // The old `core` contract is compatibility eligibility only. Its
             // exact contract digest/cutoff and every effect still require the
@@ -204,7 +194,9 @@ mod tests {
     #[test]
     fn profile_name_alone_never_activates_privileged_tools() {
         for profile in [Profile::LocalSign, Profile::TrustAdmin, Profile::LegacyCore] {
-            assert!(Profile::resolve(Some(profile.as_str())).is_err());
+            if profile != Profile::LocalSign {
+                assert!(Profile::resolve(Some(profile.as_str())).is_err());
+            }
             assert!(
                 profile
                     .tools()
@@ -215,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn v1_v2_agreement_signing_is_ineligible_in_every_profile() {
+    fn legacy_agreement_signing_is_ineligible_and_v2_needs_local_scope() {
         for profile in [
             Profile::VerifyOnly,
             Profile::LocalSign,
@@ -223,7 +215,10 @@ mod tests {
             Profile::LegacyCore,
         ] {
             assert!(!profile.is_privileged_tool_eligible("jacs_sign_agreement"));
-            assert!(!profile.is_privileged_tool_eligible("jacs_sign_agreement_v2"));
+            assert_eq!(
+                profile.is_privileged_tool_eligible("jacs_sign_agreement_v2"),
+                profile == Profile::LocalSign
+            );
         }
     }
 }
