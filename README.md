@@ -79,21 +79,28 @@ jacs mcp
 }
 ```
 
-The MCP server opens no HTTP port. Its default verification-only process does
-not read `JACS_CONFIG` or load/decrypt a private signing key. Callers provide
-the exact public key and algorithm with the document bytes they inspect.
+The MCP server opens no HTTP port. Without an explicit config, its default
+verification-only process loads no identity; a supplied config is public-only
+and never loads/decrypts a private signing key. Callers provide the exact public
+key and algorithm with the document bytes they inspect.
 
 The default `verify-only` process advertises only explicit-key document
 integrity verification; it does not expose signing, key/trust mutation, disk
 search, ambient trust reads, or public exports. The only accepted profile names are
 `verify-only`, `local-sign`, `trust-admin`, and compatibility-only
 `legacy-core`. An explicit `--profile` overrides `JACS_MCP_PROFILE`, and
-unknown values fail startup. A profile name is not a capability: this release
-refuses privileged startup until the complete capability/status/approval WAL
-broker is configured, rather than restoring authority from an environment
-variable alone.
+unknown values fail startup. For local JSON/Agreement signing, explicitly
+select your existing signed config:
 
-File-tool paths must be relative to `JACS_MCP_BASE_DIR` (or the launch working directory when unset). Absolute paths, traversal, and symlinks are rejected. Existing output files are not overwritten unless the operator explicitly sets `JACS_MCP_OVERWRITE_OK=1`.
+```bash
+jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+This uses the existing encrypted key/password source and a closed offline tool
+set; documents persist under `<config directory>/documents`. It signs as the
+local agent, not as evidence of per-action human approval. File text/image
+tools and administrative profiles remain unavailable. See the [MCP local scope
+and remaining limitations](jacs-mcp/README.md#explicit-local-signing).
 
 ## Use cases
 

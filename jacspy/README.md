@@ -59,12 +59,19 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
-## Public human-approved document verification (opt-in native feature)
+## Public human-approved document verification
 
-Source builds can enable Cargo feature `human-approval` (for example,
-`maturin develop --features human-approval`). It uses the existing native
-WebAuthn/OpenSSL backend; portable release packaging is not yet verified, so
-ordinary wheels do not enable this feature. It does not apply to browser WASM.
+The wheel build profile enables `human-approval-vendored`: the existing native
+WebAuthn verifier with OpenSSL compiled into the extension, without a separate
+OpenSSL installation. `maturin develop` uses this same profile. This configures
+new builds; it does not claim that an older published wheel has the method.
+Release gates check the installed artifact and reject external OpenSSL linkage.
+Browser WASM does not provide this verifier.
+
+Rust defaults remain unchanged. A minimal custom extension can omit the feature
+using `cargo build -p jacspy --features extension-module,a2a,agreements,attestation`;
+it does not expose this method. `human-approval` alone remains available for
+custom builds intentionally using a system OpenSSL installation.
 
 ```python
 from jacs import SimpleAgent

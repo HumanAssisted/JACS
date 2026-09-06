@@ -26,6 +26,7 @@ include = [
     "schemas/agreement/v3/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
     "schemas/conflict/v1/conflict.schema.json",
+    "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json",
     "schemas/a2a-verification-result.schema.json",
     "schemas/jacs.config.schema.json",
     "LICENSE-APACHE",

@@ -103,9 +103,14 @@ const (
 func (r AgreementV2Role) String() string { return string(r) }
 
 // AgreementV2VerificationReport is returned by
-// [JacsSimpleAgent.VerifyAgreementV2].
+// [JacsSimpleAgent.VerifyAgreementV2]. Agreement v2 inspection is not an
+// authorization decision: Valid and PolicyAccepted remain false even when
+// MathematicalChecksValid is true.
 type AgreementV2VerificationReport struct {
 	Valid                    bool     `json:"valid"`
+	MathematicalChecksValid  bool     `json:"mathematicalChecksValid"`
+	PolicyAccepted           bool     `json:"policyAccepted"`
+	OverallScope             string   `json:"overallScope"`
 	Status                   string   `json:"status"`
 	ExpectedStatus           string   `json:"expectedStatus"`
 	RecomputedAgreementHash  string   `json:"recomputedAgreementHash"`
@@ -114,6 +119,9 @@ type AgreementV2VerificationReport struct {
 	WitnessCount             int      `json:"witnessCount"`
 	NotaryCount              int      `json:"notaryCount"`
 	Errors                   []string `json:"errors,omitempty"`
+	VerifiedChainDepth       int      `json:"verifiedChainDepth"`
+	ChainFullyVerified       bool     `json:"chainFullyVerified"`
+	Notes                    []string `json:"notes"`
 }
 
 // AgreementV2MergeAnalysis is returned by

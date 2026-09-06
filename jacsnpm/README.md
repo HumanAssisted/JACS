@@ -76,12 +76,18 @@ All operations are async by default. Sync variants are available with a `Sync` s
 | `verifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
 | `audit()` | Run a security audit |
 
-## Public human-approved document verification (opt-in native feature)
+## Public human-approved document verification
 
-Source builds can enable Cargo feature `human-approval` (for example,
-`napi build --platform --features human-approval`). It uses the existing native
-WebAuthn/OpenSSL backend; portable release packaging is not yet verified, so
-ordinary npm builds do not enable this feature. It does not apply to browser WASM.
+`npm run build` and the native release profile enable `human-approval-vendored`:
+the existing WebAuthn verifier with OpenSSL compiled into the native module,
+without a separate OpenSSL installation. This configures new builds; it does
+not claim that an older published package has the method. Release gates check
+the installed artifact and reject external OpenSSL linkage. Browser WASM does
+not provide this verifier.
+
+Rust defaults remain unchanged. `npm run build:slim` (and `build:debug`) retains
+the feature-off custom build. `human-approval` alone remains available for
+custom builds intentionally using a system OpenSSL installation.
 
 ```javascript
 const { JacsSimpleAgent } = require('@hai.ai/jacs');

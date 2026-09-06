@@ -302,7 +302,12 @@ export declare const AgreementV2Role: {
  * the wire format emitted by the Rust verifier.
  */
 export interface AgreementV2VerificationReport {
+    /** Always false: consent-signature inspection is not policy acceptance. */
     valid: boolean;
+    /** Mathematical and structural checks only; not authorization. */
+    mathematicalChecksValid: boolean;
+    policyAccepted: false;
+    overallScope: 'consent_signatures_only';
     status: string;
     expectedStatus: string;
     recomputedAgreementHash: string;

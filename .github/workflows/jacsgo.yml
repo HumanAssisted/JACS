@@ -13,6 +13,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/jacsgo.yml"
+      - ".github/workflows/release-jacsgo.yml"
+      - "scripts/check_native_crypto_linkage.py"
   pull_request:
     branches: ["main"]
     paths:
@@ -24,6 +26,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/jacsgo.yml"
+      - ".github/workflows/release-jacsgo.yml"
+      - "scripts/check_native_crypto_linkage.py"
   workflow_dispatch:
 
 permissions:
@@ -38,8 +42,18 @@ env:
 
 jobs:
   test-jacsgo:
-    name: Test jacsgo
+    name: Test jacsgo (${{ matrix.profile }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: slim
+            cargo_features: ""
+            go_test_tags: ""
+          - profile: public-proof
+            cargo_features: human-approval-vendored
+            go_test_tags: human_approval
 
     steps:
       - name: Checkout code
@@ -65,12 +79,17 @@ jobs:
 
       - name: Run jacsgo tests
         working-directory: jacsgo
-        run: GOCACHE=/tmp/jacs-go-cache make test
+        run: GOCACHE=/tmp/jacs-go-cache make test CARGO_FEATURES="${{ matrix.cargo_features }}" GO_TEST_TAGS="${{ matrix.go_test_tags }}"
+
+      - name: Reject external OpenSSL runtime dependencies
+        if: matrix.profile == 'public-proof'
+        run: python3 scripts/check_native_crypto_linkage.py jacsgo/build/libjacsgo.so
 
       - name: Run provenance test beside a competing Cargo build
+        if: matrix.profile == 'slim'
         working-directory: jacsgo
         run: GOCACHE=/tmp/jacs-go-cache make test-competing-cargo
 
       - name: Build jacsgo examples
         working-directory: jacsgo
-        run: GOCACHE=/tmp/jacs-go-cache make examples
+        run: GOCACHE=/tmp/jacs-go-cache make examples CARGO_FEATURES="${{ matrix.cargo_features }}"

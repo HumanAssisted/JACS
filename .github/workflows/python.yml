@@ -13,6 +13,10 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/python.yml"
+      - ".github/workflows/release-pypi.yml"
+      - "scripts/check_native_crypto_linkage.py"
+      - "scripts/check_cargo_lock_subset.py"
+      - "scripts/smoke/verify_human_approval.py"
   pull_request:
     branches: ["main"]
     paths:
@@ -24,6 +28,10 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/python.yml"
+      - ".github/workflows/release-pypi.yml"
+      - "scripts/check_native_crypto_linkage.py"
+      - "scripts/check_cargo_lock_subset.py"
+      - "scripts/smoke/verify_human_approval.py"
   workflow_dispatch: # Allows manual triggering
 
 permissions:
@@ -77,7 +85,7 @@ jobs:
                 maturin==1.5.0 pytest==9.1.1 pytest-asyncio==1.4.0 \
                 pytest-xdist==3.8.0 fastmcp==3.2.0 mcp==1.26.0 \
                 starlette==1.3.1 && \
-              PYTEST_XDIST_WORKERS=4 make test-python-parallel"
+              JACS_TEST_HUMAN_APPROVAL=1 PYTEST_XDIST_WORKERS=4 make test-python-parallel"
 
       - name: Verify sdist build on PR/push
         working-directory: jacspy
@@ -137,6 +145,9 @@ jobs:
           import jacs.simple
           print("wheel smoke imports ok")
           PY
+          /tmp/jacs-wheel-smoke/bin/python ../scripts/smoke/verify_human_approval.py \
+            ../binding-core/tests/fixtures/human_approved_document_v1.json
+          python ../scripts/check_native_crypto_linkage.py dist/*.whl
 
   # Job to build wheels for CI coverage (PyPI package name is jacs)
   # macOS wheels built by release-pypi.yml on tagged releases only (macOS = 10x minute multiplier).

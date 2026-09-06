@@ -14,6 +14,9 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/../.." && pwd -P)"
+fixture="$repo_root/binding-core/tests/fixtures/human_approved_document_v1.json"
+test -f "$fixture" || { echo "missing shared public-proof fixture: $fixture" >&2; exit 1; }
+export GOWORK=off
 bundle="$(cd "$bundle" && pwd -P)"
 goos="$(go env GOOS)"
 goarch="$(go env GOARCH)"
@@ -54,56 +57,36 @@ if [[ "$actual" != "$expected" ]]; then
   echo "checksum mismatch for $asset_name" >&2
   exit 1
 fi
+bash "$script_dir/check-macos-install-name.sh" "$asset"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 module_copy="$work/jacsgo-candidate"
 consumer="$work/consumer"
-mkdir -p "$module_copy" "$consumer"
+deploy="$work/deploy"
+runtime_cwd="$work/runtime-cwd"
+mkdir -p "$module_copy" "$consumer" "$deploy" "$runtime_cwd"
 cp -R "$repo_root/jacsgo/." "$module_copy/"
-rm -rf "$module_copy/build"
+if [[ -e "$module_copy/build" ]]; then
+  mv "$module_copy/build" "$work/unused-copied-build"
+fi
 mkdir -p "$module_copy/build"
 cp "$asset" "$module_copy/build/$library_name"
+cp "$asset" "$deploy/$library_name"
+cmp "$asset" "$deploy/$library_name"
+cp "$script_dir/consumer-smoke/main.go" "$consumer/main.go"
 
 cd "$consumer"
 go mod init example.invalid/jacsgo-staged-candidate-smoke
 go mod edit -replace "github.com/HumanAssisted/JACS/jacsgo=$module_copy"
 go get github.com/HumanAssisted/JACS/jacsgo@v0.0.0
 
-cat > main.go <<'GO'
-package main
-
-import (
-	"fmt"
-
-	jacs "github.com/HumanAssisted/JACS/jacsgo"
-)
-
-func main() {
-	algorithm := "ed25519"
-	agent, _, err := jacs.EphemeralSimpleAgent(&algorithm)
-	if err != nil {
-		panic(err)
-	}
-	defer agent.Close()
-
-	signed, err := agent.SignMessage(map[string]interface{}{
-		"candidate": true,
-		"action":    "approve",
-	})
-	if err != nil {
-		panic(err)
-	}
-	verified, err := agent.Verify(signed.Raw)
-	if err != nil {
-		panic(err)
-	}
-	if !verified.Valid || verified.SignerID == "" {
-		panic("staged external sign/verify contract did not authenticate a signer")
-	}
-	fmt.Printf("jacsgo staged candidate: valid=%t signer=%s\n", verified.Valid, verified.SignerID)
-}
-GO
-
-go build -o jacsgo-staged-smoke .
-./jacsgo-staged-smoke
+go build -mod=mod -o "$deploy/jacsgo-staged-smoke" .
+cd "$work"
+mv "$module_copy" "$work/unavailable-jacsgo-candidate"
+mv "$consumer" "$work/unavailable-consumer"
+test ! -e "$module_copy"
+test ! -e "$consumer"
+bash "$script_dir/check-runtime-paths.sh" "$deploy/jacsgo-staged-smoke" "$deploy/$library_name"
+cd "$runtime_cwd"
+env -i "$deploy/jacsgo-staged-smoke" "$fixture"

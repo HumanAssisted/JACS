@@ -193,15 +193,18 @@ fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
         .verify_agreement_v2_json(&signed, &signers_json)
         .expect("verify agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
-    assert_eq!(report["valid"], wasm_expected()["verify"]["valid"]);
-    assert_eq!(report["status"], wasm_expected()["verify"]["status"]);
+    for (field, value) in wasm_expected()["coverageReport"]
+        .as_object()
+        .expect("public handle coverage expectations")
+    {
+        assert_eq!(&report[field], value, "coverage report field {field}");
+    }
+    assert!(report.get("valid").is_none());
+    assert_eq!(report["partyProofs"].as_array().unwrap().len(), 1);
+    assert_eq!(report["partyProofs"][0]["partyId"], json!(agent_id));
     assert_eq!(
-        report["signerCount"],
-        wasm_expected()["verify"]["signerCount"]
-    );
-    assert_eq!(
-        report["verificationDepth"],
-        wasm_expected()["verify"]["verificationDepth"]
+        report["partyProofs"][0]["cryptographicResult"],
+        json!("valid")
     );
 }
 
@@ -231,14 +234,19 @@ fn agreement_v2_forged_signature_is_rejected_and_not_counted() {
         .verify_agreement_v2_json(&forged.to_string(), &signers_json)
         .expect("verify forged agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
-    assert_eq!(report["valid"], Value::Bool(false));
-    assert_eq!(report["signerCount"], Value::from(0));
-    assert_eq!(report["signatures"][0]["agentID"], Value::String(agent_id));
+    assert_eq!(report["cryptographicResult"], json!("invalid"));
+    assert_eq!(report["partyProofs"][0]["partyId"], json!(agent_id));
     assert_eq!(
-        report["signatures"][0]["role"],
-        Value::String("signer".to_string())
+        report["partyProofs"][0]["cryptographicResult"],
+        json!("invalid")
     );
-    assert_eq!(report["signatures"][0]["valid"], Value::Bool(false));
+    assert_eq!(
+        report["roleBinding"],
+        json!("not_authenticated_by_v2_party_proof")
+    );
+    assert!(report.get("valid").is_none());
+    assert!(report.get("signerCount").is_none());
+    assert!(report["partyProofs"][0].get("role").is_none());
 }
 
 fn wasm_agent_id(handle: &CoreAgentHandle) -> String {

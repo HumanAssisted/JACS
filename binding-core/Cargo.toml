@@ -17,6 +17,7 @@ a2a = ["jacs/a2a"]
 agreements = ["jacs/agreements"]
 attestation = ["jacs/attestation"]
 human-approval = ["jacs/human-approval"]
+human-approval-vendored = ["human-approval", "jacs/human-approval-vendored"]
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []
 

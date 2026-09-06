@@ -188,15 +188,21 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.use_zig }}" = "true" ]; then
-            npx napi build --platform --release --target "${{ matrix.target }}" --zig --cargo-flags=--locked
+            npx napi build --platform --release --features human-approval-vendored --target "${{ matrix.target }}" --zig --cargo-flags=--locked
           else
-            npx napi build --platform --release --target "${{ matrix.target }}" --cargo-flags=--locked
+            npx napi build --platform --release --features human-approval-vendored --target "${{ matrix.target }}" --cargo-flags=--locked
           fi
 
+      - name: Reject external OpenSSL linkage in native artifacts
+        if: ${{ steps.build_native_module.outcome == 'success' }}
+        run: python3 scripts/check_native_crypto_linkage.py jacsnpm/*.node
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: ${{ steps.build_native_module.conclusion == 'success' }}
+        if: ${{ steps.build_native_module.outcome == 'success' }}
         with:
-          name: bindings-${{ matrix.target }}
+          # Keep cross-build evidence, but only runtime-covered targets may
+          # enter the registry candidate. ARM musl is conditionally gated below.
+          name: ${{ matrix.allow_failure && matrix.target != 'aarch64-unknown-linux-musl' && 'experimental-bindings' || 'bindings' }}-${{ matrix.target }}
           path: jacsnpm/*.node
 
   assemble-package:
@@ -228,6 +234,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
+          pattern: bindings-*
           path: jacsnpm/artifacts
 
       - name: Copy binaries
@@ -268,15 +275,6 @@ jobs:
 
           OPTIONAL_BINARIES=(
             "jacs.linux-arm64-musl.node"
-            "jacs.win32-x64-msvc.node"
-            "jacs.win32-ia32-msvc.node"
-            "jacs.win32-arm64-msvc.node"
-            "jacs.linux-arm-gnueabihf.node"
-            "jacs.linux-arm-musleabihf.node"
-            "jacs.linux-riscv64-gnu.node"
-            "jacs.linux-riscv64-musl.node"
-            "jacs.linux-s390x-gnu.node"
-            "jacs.freebsd-x64.node"
           )
 
           for file in "${REQUIRED_FILES[@]}"; do
@@ -292,6 +290,13 @@ jobs:
               echo "::warning::Optional native binary not present: $file"
             fi
           done
+          for file in ./*.node; do
+            case " ${REQUIRED_BINARIES[*]} ${OPTIONAL_BINARIES[*]} " in
+              *" ${file#./} "*) ;;
+              *) echo "::error::Native binary has no candidate runtime gate: $file"; exit 1 ;;
+            esac
+          done
+          echo "::notice::Other optional cross-builds are retained as experimental-bindings-* artifacts, not published without a matching runtime gate."
         working-directory: jacsnpm
 
       - name: Validate npm pack output
@@ -369,7 +374,19 @@ jobs:
 
   candidate-smoke:
     needs: [verify-version, assemble-package]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            architecture: x64
+          - os: ubuntu-24.04-arm
+            architecture: arm64
+          - os: macos-latest
+            architecture: arm64
+          - os: macos-14
+            architecture: x64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -382,6 +399,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
+          architecture: ${{ matrix.architecture }}
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -392,15 +410,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t tarballs < <(find release -type f -name '*.tgz')
-          mapfile -t checksums < <(find release -type f -name '*.tgz.sha256')
+          tarballs=()
+          checksums=()
+          while IFS= read -r file; do tarballs+=("$file"); done < <(find release -type f -name '*.tgz')
+          while IFS= read -r file; do checksums+=("$file"); done < <(find release -type f -name '*.tgz.sha256')
           if [[ "${#tarballs[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
             echo "::error::expected one npm tarball and one checksum"
             exit 1
           fi
           (
             cd "$(dirname "${checksums[0]}")"
-            sha256sum -c "$(basename "${checksums[0]}")"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum -c "$(basename "${checksums[0]}")"
+            else
+              shasum -a 256 -c "$(basename "${checksums[0]}")"
+            fi
           )
           tarball="$(realpath "${tarballs[0]}")"
           mkdir /tmp/jacs-node-candidate-smoke
@@ -409,11 +433,13 @@ jobs:
           npm install --ignore-scripts "$tarball"
 
       - name: Run exact candidate package postinstall and installed CLI shim
+        if: matrix.os == 'ubuntu-latest' && matrix.architecture == 'x64'
         env:
           VERSION: ${{ needs.verify-version.outputs.version }}
         run: |
           set -euo pipefail
-          mapfile -t tarballs < <(find release -type f -name '*.tgz')
+          tarballs=()
+          while IFS= read -r file; do tarballs+=("$file"); done < <(find release -type f -name '*.tgz')
           if [[ "${#tarballs[@]}" -ne 1 ]]; then
             echo "::error::expected one npm tarball"
             exit 1
@@ -429,6 +455,70 @@ jobs:
       - name: ESM sign and verify exact candidate
         working-directory: /tmp/jacs-node-candidate-smoke
         run: node --input-type=module -e 'import {JacsSimpleAgent} from "@hai.ai/jacs"; const a=JacsSimpleAgent.ephemeral("ed25519"); const signed=a.signMessage(JSON.stringify({release:true})); const result=JSON.parse(a.verify(signed)); if (!result.valid) process.exit(1);'
+
+      - name: Verify public human approval using the installed candidate
+        run: >-
+          node scripts/smoke/verify_human_approval.cjs
+          /tmp/jacs-node-candidate-smoke/node_modules/@hai.ai/jacs
+          binding-core/tests/fixtures/human_approved_document_v1.json
+
+  candidate-musl-smoke:
+    needs: [verify-version, assemble-package]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, architecture: x64, optional: false}
+          - {os: ubuntu-24.04-arm, architecture: arm64, optional: true}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
+          path: release
+      - name: Prepare exact installed package and pinned Node 20 musl runtime
+        id: candidate
+        env:
+          RUNTIME: node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+        run: |
+          set -euo pipefail
+          mapfile -t tarballs < <(find release -type f -name '*.tgz')
+          mapfile -t checksums < <(find release -type f -name '*.tgz.sha256')
+          test "${#tarballs[@]}" -eq 1
+          test "${#checksums[@]}" -eq 1
+          (cd "$(dirname "${checksums[0]}")" && sha256sum -c "$(basename "${checksums[0]}")")
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$PWD/musl-installed" "$(realpath "${tarballs[0]}")"
+          if [ ! -f "musl-installed/node_modules/@hai.ai/jacs/jacs.linux-${{ matrix.architecture }}-musl.node" ]; then
+            if [ '${{ matrix.optional }}' != 'true' ]; then
+              echo "::error::Required musl candidate is missing"; exit 1
+            fi
+            echo "::notice::Optional ARM musl build absent; no artifact will be published and no proof verification was performed."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          docker pull "$RUNTIME"
+      - name: Verify installed musl candidate without network or writable package files
+        if: steps.candidate.outputs.available == 'true'
+        env:
+          RUNTIME: node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+        run: |
+          docker run --rm --pull never --network none --read-only --tmpfs /tmp \
+            -v "$PWD/musl-installed:/installed:ro" \
+            -v "$PWD/scripts/smoke:/probe:ro" \
+            -v "$PWD/binding-core/tests/fixtures:/fixtures:ro" \
+            "$RUNTIME" node /probe/verify_human_approval.cjs \
+            /installed/node_modules/@hai.ai/jacs /fixtures/human_approved_document_v1.json
 
   cli-release-ready:
     needs: verify-version
@@ -454,7 +544,7 @@ jobs:
           "HumanAssisted/JACS/.github/workflows/release-cli.yml"
 
   publish:
-    needs: [security-gate, verify-version, assemble-package, candidate-smoke, cli-release-ready]
+    needs: [security-gate, verify-version, assemble-package, candidate-smoke, candidate-musl-smoke, cli-release-ready]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: npm
@@ -546,6 +636,12 @@ jobs:
       - name: Verify npm registry signatures and provenance
         working-directory: /tmp/jacs-node-release-smoke
         run: npm audit signatures
+
+      - name: Verify public human approval using the installed release
+        run: >-
+          node scripts/smoke/verify_human_approval.cjs
+          /tmp/jacs-node-release-smoke/node_modules/@hai.ai/jacs
+          binding-core/tests/fixtures/human_approved_document_v1.json
 
   durable-release-evidence:
     needs: [verify-version, assemble-package, post-publish-smoke]

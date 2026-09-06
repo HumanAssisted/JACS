@@ -2,8 +2,12 @@ package jacs
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/build
-#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
+#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo
+#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,--enable-new-dtags -Wl,-rpath,$ORIGIN
+
+// Package-wide CGo flags live here. Build-time source paths are never embedded
+// as runtime search paths; deployed executables carry the library beside them.
+// Darwin's native library ID is @loader_path/libjacsgo.dylib, so no RPATH is needed.
 
 #include <stdlib.h>
 #include <stdint.h>

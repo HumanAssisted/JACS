@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 )
@@ -16,16 +17,10 @@ type agreementV2ScenarioFixture struct {
 }
 
 type agreementV2Expected struct {
-	Verify          agreementV2ExpectedVerify `json:"verify"`
+	NativeVerify    map[string]interface{}    `json:"nativeVerify"`
 	TranscriptMerge agreementV2ExpectedMerge  `json:"transcriptMerge"`
 	TermsConflict   agreementV2ExpectedTerms  `json:"termsConflict"`
 	Notary          agreementV2ExpectedNotary `json:"notary"`
-}
-
-type agreementV2ExpectedVerify struct {
-	Valid          bool   `json:"valid"`
-	ExpectedStatus string `json:"expectedStatus"`
-	SignerCount    int    `json:"signerCount"`
 }
 
 type agreementV2ExpectedMerge struct {
@@ -150,14 +145,66 @@ func TestAgreementV2CreateSignVerifyParity(t *testing.T) {
 		t.Fatalf("VerifyAgreementV2 failed: %v", err)
 	}
 
-	if report.Valid != fixture.Expected.Verify.Valid {
-		t.Fatalf("expected valid=%v, got report: %#v", fixture.Expected.Verify.Valid, report)
+	if len(fixture.Expected.NativeVerify) == 0 {
+		t.Fatal("fixture must define the native inspection contract")
 	}
-	if report.ExpectedStatus != fixture.Expected.Verify.ExpectedStatus {
-		t.Fatalf("expected %q status, got %q", fixture.Expected.Verify.ExpectedStatus, report.ExpectedStatus)
+	actual := agreementV2Doc(t, agreementV2JSON(t, report))
+	for key, expected := range fixture.Expected.NativeVerify {
+		if !reflect.DeepEqual(actual[key], expected) {
+			t.Errorf("native report %s: got %#v, want %#v", key, actual[key], expected)
+		}
 	}
-	if report.SignerCount != fixture.Expected.Verify.SignerCount {
-		t.Fatalf("expected %d signer(s), got %d", fixture.Expected.Verify.SignerCount, report.SignerCount)
+}
+
+func TestAgreementV2VerificationReportPreservesNativeEvidence(t *testing.T) {
+	const nativeReport = `{
+		"valid": false,
+		"mathematicalChecksValid": true,
+		"policyAccepted": false,
+		"overallScope": "consent_signatures_only",
+		"status": "final",
+		"expectedStatus": "final",
+		"recomputedAgreementHash": "public-fixture-agreement-hash",
+		"recomputedTranscriptHash": "public-fixture-transcript-hash",
+		"signerCount": 1,
+		"witnessCount": 0,
+		"notaryCount": 0,
+		"errors": [],
+		"verifiedChainDepth": 2,
+		"chainFullyVerified": true,
+		"notes": ["synthetic freshness observation"]
+	}`
+	var report AgreementV2VerificationReport
+	if err := json.Unmarshal([]byte(nativeReport), &report); err != nil {
+		t.Fatalf("decode native report: %v", err)
+	}
+	expected := AgreementV2VerificationReport{
+		Valid:                    false,
+		MathematicalChecksValid:  true,
+		PolicyAccepted:           false,
+		OverallScope:             "consent_signatures_only",
+		Status:                   "final",
+		ExpectedStatus:           "final",
+		RecomputedAgreementHash:  "public-fixture-agreement-hash",
+		RecomputedTranscriptHash: "public-fixture-transcript-hash",
+		SignerCount:              1,
+		Errors:                   []string{},
+		VerifiedChainDepth:       2,
+		ChainFullyVerified:       true,
+		Notes:                    []string{"synthetic freshness observation"},
+	}
+	if !reflect.DeepEqual(report, expected) {
+		t.Fatalf("typed report discarded native evidence: got %#v, want %#v", report, expected)
+	}
+	actual := agreementV2Doc(t, agreementV2JSON(t, report))
+	wire := agreementV2Doc(t, nativeReport)
+	for _, key := range []string{
+		"mathematicalChecksValid", "policyAccepted", "overallScope",
+		"verifiedChainDepth", "chainFullyVerified", "notes",
+	} {
+		if !reflect.DeepEqual(actual[key], wire[key]) {
+			t.Errorf("re-encoded report discarded %s: got %#v, want %#v", key, actual[key], wire[key])
+		}
 	}
 }
 

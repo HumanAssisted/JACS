@@ -53,8 +53,13 @@
   may be read from disk without an agent, private key or implicit enrollment.
   Both current-status facts remain `not_evaluated`; successful archival
   verification is not permission to execute. The optional `human-approval`
-  feature leaves normal builds unchanged while portable WebAuthn/OpenSSL
-  packaging and browser support remain separate release work.
+  feature leaves Rust default builds unchanged. Normal Python/npm/Go release
+  profiles now select the optional vendored backend; slim builds can opt out.
+  Exact installed Python/npm and relocated Go native consumer checks passed on
+  macOS arm64, including public proof and ordinary disk/key signing. Source
+  archives, load paths, lockfile subsets and report parity have regressions.
+  Other distribution platforms and browser proof support remain separate
+  release gates; no artifact was published.
 - **Numeric hardening preserves existing RFC 8785 decimal behavior.** Raw JSON
   entry points retain nonintegral binary64 rounding while rejecting duplicate
   members and unsafe mathematical integers consistently across plain, decimal,

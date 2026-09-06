@@ -101,6 +101,23 @@ fn output_json_owned(dir: &TempDir, args: &[String]) -> Value {
     })
 }
 
+fn verify_agreement_json(dir: &TempDir, path: &Path) -> Value {
+    // The CLI deliberately refuses an overall v2 policy verdict, even when
+    // mathematical inspection succeeds. Preserve that fail-closed exit code.
+    let output = cmd()
+        .current_dir(dir.path())
+        .env_remove("JACS_ALLOW_REMOTE_KEY_FETCH")
+        .env_remove("JACS_ALLOW_NETWORK")
+        .args(["agreement-v2", "verify", "--agreement"])
+        .arg(path)
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    serde_json::from_slice(&output).expect("native agreement verification report")
+}
+
 fn fixture() -> Value {
     serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
@@ -153,16 +170,13 @@ fn agreement_v2_cli_executes_full_public_workflow() {
     );
 
     let signed_path = write_json(&dir, "signed.json", &signed);
-    let report = output_json_with_paths(
-        &dir,
-        &["agreement-v2", "verify", "--agreement"],
-        &[&signed_path],
-    );
-    assert_eq!(report["valid"], expected()["verify"]["valid"]);
-    assert_eq!(
-        report["expectedStatus"],
-        expected()["verify"]["expectedStatus"]
-    );
+    let report = verify_agreement_json(&dir, &signed_path);
+    for (field, value) in expected()["nativeVerify"]
+        .as_object()
+        .expect("native verification expectations")
+    {
+        assert_eq!(&report[field], value, "native report field {field}");
+    }
 
     let left_mutation = write_json(
         &dir,
@@ -320,13 +334,11 @@ fn agreement_v2_cli_verify_exits_nonzero_on_tampered() {
     );
     let signed_path = write_json(&dir, "signed.json", &signed);
 
-    // VALID agreement -> exit 0.
-    cmd()
-        .current_dir(dir.path())
-        .args(["agreement-v2", "verify", "--agreement"])
-        .arg(&signed_path)
-        .assert()
-        .success();
+    // Genuine mathematics pass, but the overall v2 policy verdict stays closed.
+    let baseline = verify_agreement_json(&dir, &signed_path);
+    assert_eq!(baseline["mathematicalChecksValid"], json!(true));
+    assert_eq!(baseline["valid"], json!(false));
+    assert_eq!(baseline["policyAccepted"], json!(false));
 
     // TAMPERED agreement (breaks the JACS content hash) -> non-zero exit.
     let mut tampered = signed.clone();
@@ -342,14 +354,13 @@ fn agreement_v2_cli_verify_exits_nonzero_on_tampered() {
         .args(["agreement-v2", "verify", "--agreement"])
         .arg(&tampered_path)
         .assert()
-        .failure();
+        .code(1)
+        .stdout(predicates::str::is_empty())
+        .stderr(predicates::str::contains("Hashes don't match"));
 }
 
-/// The fail-open regression: an agreement signed by ANOTHER agent whose key the
-/// verifier cannot resolve verifies to `Ok(report { valid: false })` (not Err).
-/// Before the fix the CLI printed the invalid report and exited 0; the handler
-/// must now inspect `report.valid` and exit non-zero so `verify ... && next`
-/// idioms cannot proceed on an unverifiable agreement.
+/// An unavailable signer key must fail mathematical verification, not merely
+/// share the policy-rejection exit code used for mathematically sound v2 input.
 #[test]
 fn agreement_v2_cli_verify_exits_nonzero_on_unverifiable_signer() {
     // Signer agent A produces a fully signed agreement.
@@ -369,29 +380,27 @@ fn agreement_v2_cli_verify_exits_nonzero_on_unverifiable_signer() {
         &["agreement-v2", "sign", "--agreement"],
         &[&created_path],
     );
-    // Sanity: signer's own verification is valid (Ok report, valid=true, exit 0).
+    // Sanity: signer's mathematics pass without granting policy acceptance.
     let signed_path = write_json(&signer_dir, "signed.json", &signed);
-    cmd()
-        .current_dir(signer_dir.path())
-        .args(["agreement-v2", "verify", "--agreement"])
-        .arg(&signed_path)
-        .assert()
-        .success();
+    let baseline = verify_agreement_json(&signer_dir, &signed_path);
+    assert_eq!(baseline["mathematicalChecksValid"], json!(true));
+    assert_eq!(baseline["valid"], json!(false));
+    assert_eq!(baseline["policyAccepted"], json!(false));
 
-    // Fresh verifier agent B cannot resolve A's key -> Ok(report{ valid:false }).
+    // Fresh verifier agent B cannot resolve A's key. The helper also removes
+    // network opt-ins, preserving the original fixture's offline boundary.
     let verifier_dir = TempDir::new().expect("verifier tmpdir");
     bootstrap_agent(&verifier_dir);
     let verifier_signed_path = write_json(&verifier_dir, "signed.json", &signed);
-    cmd()
-        .current_dir(verifier_dir.path())
-        // Keep remote key fetch disabled (the default) so the signer key is
-        // unresolvable and the report is valid:false rather than Err.
-        .env_remove("JACS_ALLOW_REMOTE_KEY_FETCH")
-        .env_remove("JACS_ALLOW_NETWORK")
-        .args(["agreement-v2", "verify", "--agreement"])
-        .arg(&verifier_signed_path)
-        .assert()
-        .failure();
+    let report = verify_agreement_json(&verifier_dir, &verifier_signed_path);
+    assert_eq!(report["mathematicalChecksValid"], json!(false));
+    assert_eq!(report["policyAccepted"], json!(false));
+    assert!(
+        !report["errors"]
+            .as_array()
+            .expect("verification errors")
+            .is_empty()
+    );
 }
 
 /// Discoverability + back-compat: bare `agreement-v2` must print help and exit
@@ -576,12 +585,15 @@ fn agreement_v2_cli_notary_role_signs_and_verifies() {
     );
 
     let signed_path = write_json(&signer_dir, "signed.json", &signed);
-    let report = output_json_with_paths(
-        &signer_dir,
-        &["agreement-v2", "verify", "--agreement"],
-        &[&signed_path],
-    );
-    assert_eq!(report["valid"], expected()["verify"]["valid"]);
+    let report = verify_agreement_json(&signer_dir, &signed_path);
+    let mut native_expected = expected()["nativeVerify"].clone();
+    native_expected["notaryCount"] = json!(1);
+    for (field, value) in native_expected
+        .as_object()
+        .expect("native verification expectations")
+    {
+        assert_eq!(&report[field], value, "native notary report field {field}");
+    }
 }
 
 /// P2 Task 004c: `jacs agreement-v2 export-vc` emits the agreement as a

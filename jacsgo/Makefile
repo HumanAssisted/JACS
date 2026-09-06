@@ -1,5 +1,19 @@
 .PHONY: all build clean test test-competing-cargo install dev build-rust build-go build-cli examples
 
+# Keep the existing slim source build by default. The release verifier feature
+# profile uses CARGO_FEATURES=human-approval-vendored; Go tags select proof tests.
+CARGO_FEATURES ?=
+GO_TEST_TAGS ?=
+CARGO_FEATURE_FLAGS = $(if $(strip $(CARGO_FEATURES)),--features $(CARGO_FEATURES),)
+GO_TEST_TAG_FLAGS = $(if $(strip $(GO_TEST_TAGS)),-tags $(GO_TEST_TAGS),)
+# The native library, test suite and prebuilt CLI share this absolute artifact
+# directory, including when a caller isolates the build with CARGO_TARGET_DIR.
+RUST_TARGET_DIR := $(abspath $(if $(strip $(CARGO_TARGET_DIR)),$(CARGO_TARGET_DIR),../target))
+# Source-development tests run from Go's temporary executable directories.
+# This command-scoped override never becomes a deployed binary's runtime path.
+GO_RUNTIME_ENV = DYLD_LIBRARY_PATH="$(abspath build)$(if $(strip $(DYLD_LIBRARY_PATH)),:$(DYLD_LIBRARY_PATH),)" LD_LIBRARY_PATH="$(abspath build)$(if $(strip $(LD_LIBRARY_PATH)),:$(LD_LIBRARY_PATH),)"
+NATIVE_LIBRARY := $(if $(filter Darwin,$(shell uname -s)),libjacsgo.dylib,libjacsgo.so)
+
 # Default target
 all: build
 
@@ -10,9 +24,19 @@ build: build-rust build-go
 # Build the Rust library
 build-rust:
 	@echo "Building Rust library..."
-	cd lib && cargo build --release
+	cargo build --manifest-path lib/Cargo.toml --release --target-dir "$(RUST_TARGET_DIR)" $(CARGO_FEATURE_FLAGS)
 	@mkdir -p build
-	@cp ../target/release/libjacsgo.* build/ 2>/dev/null || true
+	@set -e; case "$$(uname -s)" in \
+		Darwin) library=libjacsgo.dylib ;; \
+		Linux) library=libjacsgo.so ;; \
+		*) echo "build-rust supports native macOS and Linux hosts only" >&2; exit 1 ;; \
+	esac; \
+	cp "$(RUST_TARGET_DIR)/release/$$library" "build/$$library"; \
+	if [ "$$library" = libjacsgo.dylib ]; then \
+		install_name_tool -id '@loader_path/libjacsgo.dylib' "build/$$library"; \
+		codesign --force --sign - "build/$$library"; \
+		bash scripts/check-macos-install-name.sh "build/$$library"; \
+	fi
 	@echo "Rust library built successfully"
 
 # Build Go module (mainly for verification)
@@ -24,7 +48,7 @@ build-go: build-rust
 # Build the CLI once for Go->Rust provenance verification. Tests execute this
 # binary directly through JACS_CLI_BIN; they never start a nested Cargo build.
 build-cli:
-	cd .. && cargo build -p jacs-cli --bin jacs
+	cd .. && cargo build -p jacs-cli --bin jacs --target-dir "$(RUST_TARGET_DIR)"
 
 # Clean build artifacts
 clean:
@@ -37,9 +61,9 @@ clean:
 # Run tests
 test: build build-cli
 	@echo "Running Rust tests..."
-	cd lib && cargo test
+	cd lib && cargo test --target-dir "$(RUST_TARGET_DIR)" $(CARGO_FEATURE_FLAGS)
 	@echo "Running Go tests with the race detector..."
-	JACS_CLI_BIN="$(abspath ../target/debug/jacs)" go test -race -v ./...
+	$(GO_RUNTIME_ENV) JACS_CLI_BIN="$(RUST_TARGET_DIR)/debug/jacs" go test $(GO_TEST_TAG_FLAGS) -race -v ./...
 	@echo "Tests completed successfully"
 
 # Regression for JACS_REVIEW_ISSUE_014: the Go->Rust provenance test executes
@@ -47,7 +71,7 @@ test: build build-cli
 # active. The script applies both the Go package timeout and the CLI's own
 # CommandContext deadline, and preserves the competing build log on failure.
 test-competing-cargo: build build-cli
-	JACS_CLI_BIN="$(abspath ../target/debug/jacs)" ./scripts/test-competing-cargo.sh
+	$(GO_RUNTIME_ENV) JACS_CLI_BIN="$(RUST_TARGET_DIR)/debug/jacs" ./scripts/test-competing-cargo.sh
 
 # Install dependencies
 install:
@@ -61,7 +85,7 @@ install:
 dev:
 	@echo "Development build..."
 	cd lib && cargo build --verbose
-	go build -v ./...
+	$(GO_RUNTIME_ENV) go build -v ./...
 	@echo "Development build completed"
 
 # Build examples
@@ -70,6 +94,9 @@ examples: build
 	cd examples/basic && go build -v
 	cd examples/http && go build -tags server -o server && go build -tags client -o client
 	cd examples/mcp && go build -v || echo "MCP example skipped (may require additional dependencies)"
+	cp "build/$(NATIVE_LIBRARY)" examples/basic/
+	cp "build/$(NATIVE_LIBRARY)" examples/http/
+	cp "build/$(NATIVE_LIBRARY)" examples/mcp/
 	@echo "Examples built successfully"
 
 # Run benchmarks
@@ -77,7 +104,7 @@ bench: build
 	@echo "Running Rust benchmarks..."
 	cd lib && cargo bench
 	@echo "Running Go benchmarks..."
-	go test -bench=. -benchmem ./...
+	$(GO_RUNTIME_ENV) go test -bench=. -benchmem ./...
 
 # Build for Linux using Docker
 build-linux:

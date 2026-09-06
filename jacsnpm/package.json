@@ -91,7 +91,8 @@
   },
   "scripts": {
     "postinstall": "node scripts/install-cli.js",
-    "build": "napi build --platform --release --cargo-flags=--locked && npm run build:ts",
+    "build": "napi build --platform --release --features human-approval-vendored --cargo-flags=--locked && npm run build:ts",
+    "build:slim": "napi build --platform --release --cargo-flags=--locked && npm run build:ts",
     "build:debug": "napi build --platform --cargo-flags=--locked && npm run build:ts",
     "build:ts": "tsc",
     "test": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/**/*.test.js'",
