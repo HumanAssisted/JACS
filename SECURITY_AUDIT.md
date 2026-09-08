@@ -34,6 +34,51 @@ blocking; no review deadline is extended and no additional advisory is ignored.
 Resolving that dependency requires a separate upstream or adapter decision;
 this remediation does not remove the adapter or change its behavior.
 
+## 2026-09-08 Dependabot reconciliation
+
+The authenticated Dependabot API returned 142 open alerts against the default
+branch dependency graph. Comparing every reported vulnerable range with the
+locks merged through [PR #132](https://github.com/HumanAssisted/JACS/pull/132)
+into `v0.11.4` found 138 patched alert instances, one removed direct dependency
+(`opentelemetry_sdk` in the observability example, with patched `0.32.1` still
+present transitively), and three still affected ChromaDB instances. Thus 139
+of the 142 open alerts are already addressed or absent in this development
+branch; this is not a claim that GitHub has closed default-branch alerts.
+
+The remaining open alerts are [#280](https://github.com/HumanAssisted/JACS/security/dependabot/280),
+[#281](https://github.com/HumanAssisted/JACS/security/dependabot/281), and
+[#282](https://github.com/HumanAssisted/JACS/security/dependabot/282).
+The fourth ChromaDB finding reported by `pip-audit`, PYSEC-2026-311, is additional
+to this open-alert inventory. Rechecking
+[latest stable CrewAI 1.15.20](https://pypi.org/pypi/crewai/1.15.20/json) confirms
+the same `chromadb ~=1.1.0` requirement. None of the four advisories lists a
+patched release; even ChromaDB's latest `1.5.9` is affected and is outside that
+compatible requirement. Supported CrewAI behavior and the expired deadline
+remain unchanged.
+
+All 18 open Dependabot pull requests target `main`. The current locks already
+meet or exceed the requested versions in Node PRs #124, #126, #129, #130, #131;
+Python PRs #110, #112, #114, #116, #117, #119, #122, #127, #128; and Rust PRs
+#115, #118, #125. The `uuid` dependency requested by PR #85 is no longer present.
+These pull requests were neither merged separately nor used to dismiss alerts.
+
+This follow-up also tightens compatible minimum requirements without changing
+locked distribution versions: SurrealDB `3.2.1` excludes the versions covered
+by [GHSA-66r2-5gwj-gxm2](https://github.com/advisories/GHSA-66r2-5gwj-gxm2) and
+[GHSA-848m-r628-vrxw](https://github.com/advisories/GHSA-848m-r628-vrxw);
+published Python extras require LangChain `1.3.9`, Starlette `1.3.1`, and Pillow
+`12.3.0`; development/CI-only uv constraints require LangSmith `0.8.18` and
+python-multipart `0.0.31`. The supported Python range and optional integrations
+are preserved. Those uv constraints do not become published transitive pins.
+
+The last security workflow on the PR head, [run 34257901360](https://github.com/HumanAssisted/JACS/actions/runs/34257901360),
+passed Node and Go but failed the expired ChromaDB exception policy and the
+CrewAI Python audit. Later steps in those failing jobs were skipped. The merge
+was development consolidation only; it did not make those checks green or
+authorize a release.
+
+## Secret-history allowlist
+
 The exact secret-history allowlist is in `.gitleaksignore`; broader path or rule
 allowlists are prohibited.
 
