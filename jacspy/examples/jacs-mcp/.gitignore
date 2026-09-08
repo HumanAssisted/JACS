@@ -1,1 +1,1 @@
-uv.lock
+# Keep uv.lock tracked: the security workflow audits this example with --locked.

@@ -8,11 +8,11 @@
     "body-parser": "^2.2.1",
     "diff": "^8.0.3",
     "express-rate-limit": "^8.2.2",
-    "fast-uri": "^3.1.2",
-    "hono": "^4.12.18",
-    "ip-address": "^10.1.1",
+    "fast-uri": "^3.1.6",
+    "hono": "^4.12.34",
+    "ip-address": "^10.3.1",
     "serialize-javascript": "^7.0.5",
-    "qs": "^6.15.2"
+    "qs": "^6.16.0"
   },
   "exports": {
     "./signing-input": {
@@ -163,7 +163,7 @@
     "@types/node": "^22.15",
     "ajv": "^8.17.1",
     "chai": "4.5.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.1",
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
     "typescript": "^5.7.0"

@@ -24,7 +24,7 @@ Source graphs: locked all-feature workspace plus excluded publishable crates.
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 913
+Third-party packages: 903
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -172,7 +172,7 @@ Used by 60 package(s):
   - ed25519 2.2.3 (https://github.com/RustCrypto/signatures/tree/master/ed25519)
   - elliptic-curve 0.13.8 (https://github.com/RustCrypto/traits/tree/master/elliptic-curve)
   - equivalent 1.0.2 (https://github.com/indexmap-rs/equivalent)
-  - event-listener 5.4.1 (https://github.com/smol-rs/event-listener)
+  - event-listener 5.4.2 (https://github.com/smol-rs/event-listener)
   - event-listener-strategy 0.5.4 (https://github.com/smol-rs/event-listener-strategy)
   - fastrand 2.4.1 (https://github.com/smol-rs/fastrand)
   - ghash 0.5.1 (https://github.com/RustCrypto/universal-hashes)
@@ -332,7 +332,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 189 package(s):
+Used by 181 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -344,8 +344,6 @@ Used by 189 package(s):
   - bincode_derive 2.0.1 (https://github.com/bincode-org/bincode)
   - bitvec 1.1.1 (https://github.com/bitvecto-rs/bitvec)
   - boxcar 0.2.14 (https://github.com/ibraheemdev/boxcar)
-  - bytecheck 0.6.12 (https://github.com/djkoloski/bytecheck)
-  - bytecheck_derive 0.6.12 (https://github.com/djkoloski/bytecheck)
   - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
   - castaway 0.2.4 (https://github.com/sagebind/castaway)
   - cfg_aliases 0.2.1 (https://github.com/katharostech/cfg_aliases)
@@ -385,7 +383,7 @@ Used by 189 package(s):
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
   - geographiclib-rs 0.2.7 (https://github.com/georust/geographiclib-rs)
   - getset 0.1.7 (https://github.com/jbaublitz/getset)
-  - h2 0.4.15 (https://github.com/hyperium/h2)
+  - h2 0.4.19 (https://github.com/hyperium/h2)
   - handlebars 6.4.3 (https://github.com/sunng87/handlebars-rust)
   - headers 0.4.1 (https://github.com/hyperium/headers)
   - headers-core 0.3.0 (https://github.com/hyperium/headers)
@@ -443,8 +441,6 @@ Used by 189 package(s):
   - plotters-backend 0.3.7 (https://github.com/plotters-rs/plotters)
   - plotters-svg 0.3.7 (https://github.com/plotters-rs/plotters.git)
   - precomputed-hash 0.1.1 (https://github.com/emilio/precomputed-hash)
-  - ptr_meta 0.1.4 (https://github.com/djkoloski/ptr_meta)
-  - ptr_meta_derive 0.1.4 (https://github.com/djkoloski/ptr_meta)
   - pulldown-cmark 0.10.3 (https://github.com/raphlinus/pulldown-cmark)
   - pulldown-cmark-escape 0.10.1 (https://github.com/raphlinus/pulldown-cmark)
   - quick-xml 0.41.0 (https://github.com/tafia/quick-xml)
@@ -456,19 +452,15 @@ Used by 189 package(s):
   - redox_users 0.4.6 (https://gitlab.redox-os.org/redox-os/users)
   - referencing 0.29.1 (https://github.com/Stranger6667/jsonschema)
   - referencing 0.33.0 (https://github.com/Stranger6667/jsonschema)
-  - rend 0.4.2 (https://github.com/djkoloski/rend)
   - rgb 0.8.53 (https://github.com/kornelski/rust-rgb)
-  - rkyv 0.7.46 (https://github.com/rkyv/rkyv)
-  - rkyv_derive 0.7.46 (https://github.com/rkyv/rkyv)
   - rmp 0.8.15 (https://github.com/3Hren/msgpack-rust)
   - rmp-serde 1.3.1 (https://github.com/3Hren/msgpack-rust)
   - rusqlite 0.32.1 (https://github.com/rusqlite/rusqlite)
-  - rust_decimal 1.42.1 (https://github.com/paupino/rust-decimal)
+  - rust_decimal 1.43.0 (https://github.com/paupino/rust-decimal)
   - schannel 0.1.29 (https://github.com/steffengy/schannel-rs)
   - schemars 0.9.0 (https://github.com/GREsau/schemars)
   - schemars 1.2.1 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.1 (https://github.com/GREsau/schemars)
-  - seahash 4.1.0 (https://gitlab.redox-os.org/redox-os/seahash)
   - seize 0.5.1 (https://github.com/ibraheemdev/seize)
   - serde-wasm-bindgen 0.6.5 (https://github.com/RReverser/serde-wasm-bindgen)
   - serde_json_canonicalizer 0.3.2 (https://github.com/evik42/serde-json-canonicalizer)
@@ -538,14 +530,13 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 426 package(s):
+Used by 424 package(s):
 
   - aead 0.5.2 (https://github.com/RustCrypto/traits)
   - aes 0.8.4 (https://github.com/RustCrypto/block-ciphers)
-  - ahash 0.7.8 (https://github.com/tkaitchuck/ahash)
   - ahash 0.8.12 (https://github.com/tkaitchuck/ahash)
   - allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
-  - ammonia 4.1.3 (https://github.com/rust-ammonia/ammonia)
+  - ammonia 4.1.4 (https://github.com/rust-ammonia/ammonia)
   - anes 0.1.6 (https://github.com/zrzka/anes-rs)
   - anstream 1.0.0 (https://github.com/rust-cli/anstyle.git)
   - anstyle 1.0.14 (https://github.com/rust-cli/anstyle.git)
@@ -580,7 +571,7 @@ Used by 426 package(s):
   - cast 0.3.0 (https://github.com/japaric/cast.rs)
   - cc 1.2.67 (https://github.com/rust-lang/cc-rs)
   - cfg-if 1.0.4 (https://github.com/rust-lang/cfg-if)
-  - chacha20 0.10.1 (https://github.com/RustCrypto/stream-ciphers)
+  - chacha20 0.10.2 (https://github.com/RustCrypto/stream-ciphers)
   - chrono 0.4.45 (https://github.com/chronotope/chrono)
   - chunked_transfer 1.5.0 (https://github.com/frewsxcv/rust-chunked-transfer)
   - cipher 0.4.4 (https://github.com/RustCrypto/traits)
@@ -858,7 +849,6 @@ Used by 426 package(s):
   - string_cache_codegen 0.6.1 (https://github.com/servo/string-cache)
   - structmeta 0.3.0 (https://github.com/frozenlib/structmeta)
   - structmeta-derive 0.3.0 (https://github.com/frozenlib/structmeta)
-  - syn 1.0.109 (https://github.com/dtolnay/syn)
   - syn 2.0.119 (https://github.com/dtolnay/syn)
   - system-configuration 0.7.0 (https://github.com/mullvad/system-configuration-rs)
   - system-configuration-sys 0.6.0 (https://github.com/mullvad/system-configuration-rs)
