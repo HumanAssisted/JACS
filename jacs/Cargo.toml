@@ -13,9 +13,13 @@ include = [
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/agreement/v2/agreement.schema.json",
+    "schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json",
     "schemas/components/component/v1/component.schema.json",
     "jacs.config.schema.json",
     "examples/*.json",
+    "examples/a2a_agent_example.rs",
+    "examples/a2a_complete_example.rs",
+    "examples/a2a_simple_example.rs",
     "Cargo.toml",
     "README.md",
     "LICENSE",
@@ -25,6 +29,8 @@ include = [
     "CHANGELOG.md",
     "basic-schemas.png",
     "benches/sign_and_check_sig.rs",
+    "benches/agreement_benchmarks.rs",
+    "benches/attestation_benchmarks.rs",
     "schemas/attestation/v1/attestation.schema.json",
 ]
 description = "JACS JSON AI Communication Standard"
@@ -136,6 +142,10 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"], optional = true }
+# Feature-unify the existing WebAuthn backend for self-contained SDK artifacts.
+# This is not a second cryptographic backend or a core default dependency.
+openssl = { version = "0.10.81", default-features = false, optional = true }
 ring = "0.17.9"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 walkdir = "2.5.0"
@@ -181,6 +191,11 @@ web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
 [features]
 default = ["sqlite"]
+
+# Native-only mapped human approval; portable core evidence remains dependency-free.
+human-approval = ["dep:webauthn-rs"]
+# Native distribution profile: compile the same locked OpenSSL into the artifact.
+human-approval-vendored = ["human-approval", "dep:openssl", "openssl/vendored"]
 
 # Lightweight sync SQLite backend (rusqlite, no tokio needed) — the default.
 sqlite = ["dep:rusqlite"]

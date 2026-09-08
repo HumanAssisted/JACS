@@ -1,10 +1,6 @@
 package jacs
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/build
-#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-
 #include <stdlib.h>
 #include <stdint.h>
 #include "jacs_cgo.h"

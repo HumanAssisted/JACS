@@ -1,10 +1,6 @@
 package jacs
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/build
-#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-
 #include <stdlib.h>
 #include "jacs_cgo.h"
 */
@@ -85,7 +81,9 @@ func (a *JacsSimpleAgent) SignAgreementV2(documentJSON, role string) (string, er
 	)
 }
 
-// VerifyAgreementV2 verifies agreement v2 hash, role, status, transcript, and signature invariants.
+// VerifyAgreementV2 inspects legacy v2 mathematical and structural checks.
+// MathematicalChecksValid is not authorization: Valid and PolicyAccepted remain
+// false, and v2 party proofs do not authenticate role, quorum, or notary authority.
 func (a *JacsSimpleAgent) VerifyAgreementV2(documentJSON string) (*AgreementV2VerificationReport, error) {
 	if a.handle == nil {
 		return nil, errSimpleAgentClosed

@@ -1,8 +1,10 @@
 # JACS MCP Server
 
-MCP server for JACS agent identity, generic document signing and verification, agreements, A2A artifacts, attestations, trust-store operations, and media/text signing.
+MCP server for JACS verification and explicitly configured local agent signing.
 
-Uses **stdio transport only** for security. The server holds the agent's private key, so no HTTP endpoints are exposed.
+Uses **stdio transport only**. The default process loads no agent configuration
+or private key. Local JSON/Agreement signing requires an existing signed agent
+config; it needs no server, extra policy file, or new key format.
 
 The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
@@ -10,21 +12,74 @@ Ecosystem compatibility exports (ES256 JWKS, the native-root-signed compatibilit
 
 ## What can it do?
 
-The default `core` profile exposes document, inline text/media, trust, search,
-key/agent, A2A discovery, and W3C tools. The `full` profile adds Agreement v2,
-A2A artifact, and attestation tools. Select it with `jacs mcp --profile full`
-or, when the CLI flag is absent, `JACS_MCP_PROFILE=full`. An explicit flag
-wins over the environment, and values other than `core` or `full` fail
-startup.
+The default `verify-only` profile exposes only explicit-key document integrity
+verification. The only profile names are `verify-only`,
+`local-sign`, `trust-admin`, and compatibility-only `legacy-core`. An explicit
+flag wins over the environment and unknown values fail startup. A privileged
+profile name alone does not authorize signing. `local-sign` additionally loads
+and verifies the operator-selected config and freezes that identity/key for the
+process. `trust-admin` and `legacy-core` remain unavailable.
 
-The server exposes tools in these categories:
+### Explicit local signing
+
+After `jacs init`, start with your existing config and normal keychain/password
+source (never send a password as tool input):
+
+```bash
+jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+`JACS_CONFIG` can supply the same path instead of `--config`. There is no
+implicit config discovery, new-key fallback, or second grant file. The selected
+config must be signed and use filesystem storage. Ambient identity/path
+overrides are ignored; the password source is resolved at startup.
+
+The closed local inventory is `jacs_sign_document`, `jacs_verify_document`, and
+the compiled Agreement-v2 create/apply/sign/verify/detect-conflict/merge/resolve
+tools. `jacs_sign_document` always puts the caller's JSON inside `content` of an
+ordinary JACS document: even supplied `jacsType`, `$schema`, or signature fields
+stay data. The optional MIME label is recorded as `contentType`. Signing and
+Agreement tool arguments are limited to 1 MiB. Documents are returned and persisted under
+`<config directory>/documents/`; normal encrypted keys and public-key storage
+remain on disk. Agreement inspection may read configured local public keys,
+but network opt-ins must be off for this local process.
+
+This grants the MCP client permission to sign allowed content **as this agent**.
+It does not prove a human reviewed any particular action, nor does Agreement-v2
+signature coverage establish role/quorum/notary authority or policy acceptance.
+The operator trusts the local host and protects the config, key and storage
+directories; this is not a sandbox against another process controlling those
+files. Startup reports `mcp_local_signing_authorized`; rejection logs
+`mcp_local_signing_denied` at WARN without document bodies or secrets.
+
+To also work with local text and images, explicitly select an existing content
+directory at startup:
+
+```bash
+JACS_MCP_BASE_DIR=/path/to/content jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+This adds exactly five existing tools: `jacs_sign_text`, `jacs_verify_text`,
+`jacs_sign_image`, `jacs_verify_image`, and `jacs_extract_media_signature`.
+The same loaded agent signs JSON, Agreements, text and images; media calls do
+not reload config or decrypt another key. Without `JACS_MCP_BASE_DIR`, the
+nine-tool JSON/Agreement surface stays unchanged (when Agreement tools are
+compiled). Setting a content root never expands a verification-only process.
+
+Raw/key APIs, registration, trust administration, key rotation, W3C request signing,
+A2A and attestation tools likewise are not enabled by `local-sign`. Their
+ordinary CLI/SDK capabilities are unchanged.
+
+The compiled contract contains the categories below. This inventory is not a
+claim that every tool is available in a runtime profile; `tools/list` is the
+actual process surface.
 
 ### Document Sign / Verify
 
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_document` | Sign arbitrary JSON content to create a signed JACS document |
-| `jacs_verify_document` | Verify a signed JACS document given its full JSON string |
+| `jacs_verify_document` | Verify exact document bytes with a caller-selected raw public key and algorithm (integrity only) |
 
 ### Agent Management
 
@@ -34,15 +89,15 @@ The server exposes tools in these categories:
 | `jacs_reencrypt_key` | Re-encrypt the agent's private key with a new password |
 | `jacs_rotate_keys` | Rotate the active agent key material |
 
-### Agreements (`full` profile)
+### Legacy Agreements (compiled inventory; unavailable in current profiles)
 
 | Tool | Description |
 |------|-------------|
 | `jacs_create_agreement` | Create a multi-party agreement over arbitrary document content |
 | `jacs_sign_agreement` | Co-sign an existing agreement |
-| `jacs_check_agreement` | Check agreement status, quorum, expiration, and missing signatures |
+| `jacs_check_agreement` | Inspect legacy signatures and claimed status; never policy acceptance |
 
-### A2A Discovery (`core`) and Artifacts (`full`)
+### A2A Discovery and Artifacts
 
 | Tool | Description |
 |------|-------------|
@@ -74,7 +129,7 @@ The server exposes tools in these categories:
 | `jacs_is_trusted` | Check whether an agent is trusted |
 | `jacs_get_trusted_agent` | Retrieve a trusted agent JSON document |
 
-### Attestation (`full` profile)
+### Attestation (compiled inventory; unavailable in current profiles)
 
 | Tool | Description |
 |------|-------------|
@@ -123,12 +178,7 @@ jacs mcp
   "mcpServers": {
     "jacs": {
       "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
+      "args": ["mcp"]
     }
   }
 }
@@ -136,38 +186,65 @@ jacs mcp
 
 ## Configuration
 
-Required:
-
-- `JACS_CONFIG` - Path to your `jacs.config.json` file
-- One private-key password source. Prefer an owner-readable
-  `JACS_PASSWORD_FILE` (for example, mode `0600`) or the OS keychain.
-  `JACS_PRIVATE_KEY_PASSWORD` is supported but should not be committed in
-  desktop-client JSON.
-
 Optional:
 
 - `RUST_LOG` - Logging level, default `info,rmcp=warn`
-- `JACS_MCP_PROFILE` - `core` (default) or `full`; used only when
-  `--profile` is absent
-- `JACS_MCP_BASE_DIR` - Base directory for all caller-supplied file paths;
-  defaults to the launch working directory
+- `JACS_MCP_PROFILE` - one exact closed profile name; defaults to
+  `verify-only` and is used only when `--profile` is absent
+- `JACS_CONFIG` - existing signed config for local signing; `--config` wins
+
+Local file settings are captured when the authorized signer starts; changing
+the environment afterward cannot broaden them:
+
+- `JACS_MCP_BASE_DIR` - Explicit existing directory for the five local file
+  tools; absent means no file tools, not a working-directory grant
 - `JACS_MCP_OVERWRITE_OK=1` - Explicitly allow file tools to overwrite an
-  existing output (disabled by default)
-- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `jacs_create_agent`
-- `JACS_MCP_ALLOW_UNTRUST` - Set to `true` to enable `jacs_untrust_agent`
+  existing distinct output (disabled by default)
+- `JACS_MCP_ALLOW_KEY_DIR=true` - Allow a caller-selected public-key directory
+  inside the content root for verification (disabled by default). A valid
+  signature using these supplied keys is integrity evidence, not identity or
+  application authorization
+
+These retained admin settings do not add tools or grant authority:
+
+- `JACS_MCP_ALLOW_REGISTRATION` - retained handler setting; does not authorize registration
+- `JACS_MCP_ALLOW_UNTRUST` - retained handler setting; does not authorize trust administration
 
 ### File path policy
 
 File-tool arguments are relative paths beneath `JACS_MCP_BASE_DIR`. Absolute
-paths, `.`/`..` traversal, NULs, and symlinks are rejected. Existing output
-files are refused unless the operator opts in with
-`JACS_MCP_OVERWRITE_OK=1`; callers cannot enable overwrite themselves.
+paths, `.`/`..` traversal, NULs, and symlinks are rejected (including symlinked
+ancestors). Hard-linked content files are refused on Unix. The selected
+config, encrypted-key directory, agent-data directory, document store and
+trust store are excluded even when they sit below the content root.
+Case-equivalent reserved names are also refused before a protected backup or
+document directory exists.
+
+Signing text or choosing the same image input/output path is an explicit
+in-place write. A distinct existing output is refused unless the operator
+opts in with `JACS_MCP_OVERWRITE_OK=1`; the caller's `refuse_overwrite:false`
+cannot grant that permission. Existing atomic file writes and sibling `.bak`
+behavior are retained: text backups are on by default (`no_backup:true` opts
+out); in-place/replaced image outputs keep backups. **Backups contain the
+original plaintext content**, use owner-only permissions by default, and may
+be refreshed on subsequent writes. Backup paths receive the same containment
+and protected-material checks before signing. Protect the content directory
+and backups as you would the original files.
+
+File startup logs `mcp_local_files_authorized` with the selected directory and
+captured options. Rejections are returned as `PATH_POLICY_BLOCKED` in the
+existing tool error envelope; scope denials also emit
+`mcp_local_signing_denied` at WARN. No extra daemon or file-policy service is
+required. These checks constrain MCP requests; they do not isolate a process
+from a malicious local host owner changing filesystem state concurrently.
 
 ## Core Document Tools
 
 ### `jacs_sign_document`
 
-Sign arbitrary JSON content to create a cryptographically signed JACS document.
+Sign JSON as nested content in an ordinary document using the selected local
+agent. This does not issue a caller-selected protocol/identity document or
+prove a person's approval.
 
 Parameters:
 
@@ -176,11 +253,14 @@ Parameters:
 
 ### `jacs_verify_document`
 
-Verify a signed JACS document in memory.
+Verify exact signed JACS document bytes for integrity. A successful result does
+not establish signer identity, trust, authorization, freshness, or revocation.
 
 Parameters:
 
 - `document` - Full signed JACS document JSON string
+- `public_key` - Exact raw Ed25519 or ML-DSA-87 public-key bytes
+- `algorithm` - `ed25519` or `pq2025`
 
 ## Agreement Tools
 
@@ -205,4 +285,5 @@ Co-sign an existing agreement.
 
 ### `jacs_check_agreement`
 
-Check whether an agreement is complete, expired, or still missing signatures.
+Inspect signature mathematics and claimed legacy status. This tool never
+establishes completion or policy acceptance and is not currently enabled.

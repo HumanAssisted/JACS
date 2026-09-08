@@ -245,6 +245,22 @@ class TestVerifyStandalone:
         assert result.content_hash_valid is False
         assert result.signature_valid is False
 
+    def test_legacy_result_does_not_infer_identity_binding_from_boolean(self):
+        result = VerificationResult.from_dict({"valid": True, "identity_bound": True})
+        assert result.identity_binding_status == "unavailable"
+        assert result.identity_bound is False
+
+    def test_identity_binding_is_derived_from_valid_captured_status(self):
+        result = VerificationResult.from_dict(
+            {"valid": True, "identity_binding_status": "locally_enrolled"}
+        )
+        assert result.identity_bound is True
+        invalid = VerificationResult.from_dict(
+            {"valid": False, "identity_binding_status": "locally_enrolled"}
+        )
+        assert invalid.identity_binding_status == "unavailable"
+        assert invalid.identity_bound is False
+
     def test_verify_standalone_tampered_suppresses_unauthenticated_signer_id(self):
         """Malformed input must not promote its attacker-controlled signer ID."""
         import importlib

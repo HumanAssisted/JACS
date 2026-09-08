@@ -39,10 +39,9 @@ pub fn tools() -> Vec<Tool> {
         ),
         Tool::new(
             "jacs_check_agreement",
-            "(Legacy v1; prefer jacs_verify_agreement_v2.) Check the status of a jacsAgreement \
-             sidecar: how many agents have signed, whether quorum is met, whether it has expired, \
-             and which agents still need to sign. Use this to decide whether an agreement is \
-             complete and ready to act on.",
+            "Inspect present signatures and claimed status metadata on a legacy Agreement v1 \
+             document. V1 policy is unauthenticated, so this tool never reports agreement \
+             completion or policy acceptance.",
             schema_map::<CheckAgreementParams>(),
         ),
         Tool::new(
@@ -50,9 +49,8 @@ pub fn tools() -> Vec<Tool> {
             "Create a standalone JACS agreement v2 document -- a self-contained, cryptographically \
              signed `jacsType: \"agreement\"` artifact (terms, parties, signature policy, optional \
              transcript, links, controllers, owners) with its own content hash and version chain. \
-             This is the recommended intent/consent workflow (preferred over the legacy \
-             jacs_create_agreement sidecar). Workflow: create -> each party signs \
-             (jacs_sign_agreement_v2) -> verify (jacs_verify_agreement_v2) before acting. Provide \
+             V2 party proofs do not authenticate role, quorum, lineage, or notary authority. \
+             Use jacs_verify_agreement_v2 for mathematical coverage only, not authorization. Provide \
              a CreateAgreementV2 input object with camelCase keys (title, description, terms, \
              parties[{agentId, agentType, role}], signaturePolicy). Returns the signed artifact.",
             schema_map::<CreateAgreementV2Params>(),
@@ -62,26 +60,24 @@ pub fn tools() -> Vec<Tool> {
             "Apply a typed agreement v2 mutation to an existing agreement and emit a successor \
              version (the agreement keeps a version chain). The mutation is a camelCase object \
              whose `type` selects the operation: appendTranscript, updateTerms, setStatus, \
-             setParties, setPolicy, addLink, or setOwners. Use this to evolve an agreement instead \
-             of editing its JSON by hand. Does not add a signature -- use jacs_sign_agreement_v2 \
-             for that.",
+             setParties, setSignaturePolicy, addLink, or setOwners. Use this to evolve an agreement \
+             instead of editing its JSON by hand. Signs successor provenance but does not add a \
+             party-consent signature -- use jacs_sign_agreement_v2 for that.",
             schema_map::<ApplyAgreementV2Params>(),
         ),
         Tool::new(
             "jacs_sign_agreement_v2",
-            "Add this agent's cryptographic signature to a standalone agreement v2 document. The \
-             `role` is one of \"signer\" (a consenting party), \"witness\" (attests it observed \
-             the signing), or \"notary\" (an authority certifying the agreement); it defaults to \
-             \"signer\". Call this once per party until the signature policy's quorum and required \
-             roles are met, then verify with jacs_verify_agreement_v2.",
+            "Add this agent's cryptographic signature to a standalone agreement v2 document. \
+             Claimed `role` metadata is \"signer\", \"witness\", or \"notary\" and defaults to \
+             \"signer\". V2 party proofs do not authenticate that role, quorum, lineage, or \
+             notary authority. Inspect mathematical coverage with jacs_verify_agreement_v2; \
+             neither signing nor inspection grants policy acceptance.",
             schema_map::<SignAgreementV2Params>(),
         ),
         Tool::new(
             "jacs_verify_agreement_v2",
-            "Verify a standalone agreement v2 document: recompute the agreement and transcript \
-             hashes, re-check quorum, required roles, witness/notary requirements, status, and \
-             every agreement signature. ALWAYS read the result's top-level `valid` field (not \
-             `success`, which only means the verify ran) to decide whether to trust the agreement.",
+            "Inspect exact standalone JACS agreement v2 bytes. Returns consent-signature coverage \
+             only; v2 cannot authenticate role, quorum, lineage, notary status, or policy acceptance.",
             schema_map::<VerifyAgreementV2Params>(),
         ),
         Tool::new(

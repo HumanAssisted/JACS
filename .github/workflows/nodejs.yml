@@ -11,6 +11,10 @@ on:
       - 'jacs-media/**'
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
+      - '.github/workflows/release-npm.yml'
+      - 'Cargo.lock'
+      - 'scripts/check_native_crypto_linkage.py'
+      - 'scripts/smoke/verify_human_approval.cjs'
   pull_request:
     branches: ["main"]
     paths:
@@ -20,6 +24,10 @@ on:
       - 'jacs-media/**'
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
+      - '.github/workflows/release-npm.yml'
+      - 'Cargo.lock'
+      - 'scripts/check_native_crypto_linkage.py'
+      - 'scripts/smoke/verify_human_approval.cjs'
   workflow_dispatch: # Allows manual triggering
 
 permissions:
@@ -92,6 +100,8 @@ jobs:
 
       - name: Run tests (parallel, excluding cross-language already covered above)
         working-directory: jacsnpm
+        env:
+          JACS_TEST_HUMAN_APPROVAL: "1"
         run: npm run test:ci
 
       - name: Run parity tests (binding contract conformance)
@@ -121,3 +131,8 @@ jobs:
           test ! -e node_modules/@hai.ai/jacs/bin/jacs-cli
           test ! -e node_modules/@hai.ai/jacs/bin/jacs-cli.exe
           ls node_modules/@hai.ai/jacs/package.json && echo "smoke install ok"
+          node "${GITHUB_WORKSPACE}/scripts/smoke/verify_human_approval.cjs" \
+            /tmp/jacs-npm-smoke/node_modules/@hai.ai/jacs \
+            "${GITHUB_WORKSPACE}/binding-core/tests/fixtures/human_approved_document_v1.json"
+          python3 "${GITHUB_WORKSPACE}/scripts/check_native_crypto_linkage.py" \
+            /tmp/jacs-npm-smoke/node_modules/@hai.ai/jacs/*.node

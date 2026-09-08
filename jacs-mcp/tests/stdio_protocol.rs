@@ -27,16 +27,30 @@ struct RawStdioSession {
     stdout: Lines<BufReader<ChildStdout>>,
     stderr_capture: Arc<Mutex<Vec<u8>>>,
     base: PathBuf,
+    verify_arguments: Value,
+    signer_id: String,
 }
 
 impl RawStdioSession {
     async fn spawn() -> anyhow::Result<Self> {
         let (config, base) = prepare_temp_workspace_ed25519();
+        let fixture_agent = jacs::simple::SimpleAgent::from_config(
+            jacs::config::Config::from_file(config.to_str().expect("UTF-8 config"))?,
+            Some(TEST_PASSWORD),
+            Some(false),
+        )?;
+        let fixture = fixture_agent.sign_message(&json!({"message":"rmcp-3-spike"}))?;
+        let verify_arguments = json!({
+            "document": fixture.raw,
+            "public_key": fixture_agent.get_public_key()?,
+            "algorithm": "ed25519",
+        });
+        let signer_id = fixture_agent.get_agent_id()?;
         let mut command = tokio::process::Command::new(support::jacs_cli_bin());
         command
             .arg("mcp")
             .arg("--profile")
-            .arg("core")
+            .arg("verify-only")
             .current_dir(&base)
             .env("JACS_CONFIG", &config)
             .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
@@ -93,6 +107,8 @@ impl RawStdioSession {
             stdout: BufReader::new(stdout).lines(),
             stderr_capture,
             base,
+            verify_arguments,
+            signer_id,
         })
     }
 
@@ -243,13 +259,13 @@ async fn legacy_initialize_and_tools_list_remain_compatible() -> anyhow::Result<
     );
 
     let names = tool_names(&listed);
-    let expected_tools = jacs_mcp::Profile::Core.tools();
+    let expected_tools = jacs_mcp::Profile::VerifyOnly.tools();
     let expected_names: Vec<&str> = expected_tools
         .iter()
         .map(|tool| tool.name.as_ref())
         .collect();
     assert_eq!(names, expected_names);
-    assert!(names.contains(&"jacs_sign_document"));
+    assert!(!names.contains(&"jacs_sign_document"));
     assert!(!names.contains(&"jacs_create_agreement"));
 
     session.shutdown().await;
@@ -298,13 +314,13 @@ async fn modern_discover_lists_cached_tools_and_calls_a_tool() -> anyhow::Result
     assert_eq!(listed["result"]["ttlMs"], EXPECTED_TOOLS_TTL_MS);
     assert_eq!(listed["result"]["cacheScope"], "public");
     let names = tool_names(&listed);
-    let expected_tools = jacs_mcp::Profile::Core.tools();
+    let expected_tools = jacs_mcp::Profile::VerifyOnly.tools();
     let expected_names: Vec<&str> = expected_tools
         .iter()
         .map(|tool| tool.name.as_ref())
         .collect();
     assert_eq!(names, expected_names);
-    assert!(names.contains(&"jacs_sign_document"));
+    assert!(!names.contains(&"jacs_sign_document"));
     assert!(!names.contains(&"jacs_create_agreement"));
 
     let listed_again = session
@@ -323,10 +339,8 @@ async fn modern_discover_lists_cached_tools_and_calls_a_tool() -> anyhow::Result
             "id": 4,
             "method": "tools/call",
             "params": {
-                "name": "jacs_sign_document",
-                "arguments": {
-                    "content": "{\"message\":\"rmcp-3-spike\"}"
-                },
+                "name": "jacs_verify_document",
+                "arguments": session.verify_arguments.clone(),
                 "_meta": meta
             }
         }))
@@ -337,24 +351,11 @@ async fn modern_discover_lists_cached_tools_and_calls_a_tool() -> anyhow::Result
         .as_array()
         .and_then(|content| content.iter().find(|item| item["type"] == "text"))
         .and_then(|item| item["text"].as_str())
-        .expect("jacs_sign_document must return text content");
-    let signed: Value = serde_json::from_str(tool_text)?;
-    assert_eq!(signed["success"], true);
-    assert!(
-        signed["signed_document"]
-            .as_str()
-            .is_some_and(|document| !document.is_empty())
-    );
-    assert!(
-        signed["content_hash"]
-            .as_str()
-            .is_some_and(|hash| !hash.is_empty())
-    );
-    assert!(
-        signed["jacs_document_id"]
-            .as_str()
-            .is_some_and(|id| !id.is_empty())
-    );
+        .expect("jacs_verify_document must return text content");
+    let verified: Value = serde_json::from_str(tool_text)?;
+    assert_eq!(verified["success"], true, "{verified}");
+    assert_eq!(verified["valid"], true, "{verified}");
+    assert_eq!(verified["signer_id"], session.signer_id);
 
     session.shutdown().await;
     Ok(())

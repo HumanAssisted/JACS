@@ -1,51 +1,51 @@
-//! Runtime tool profiles for jacs-mcp.
+//! Fail-closed MCP process profiles.
 //!
-//! When jacs-mcp is compiled with `full-tools` (as pre-built binaries are),
-//! the runtime profile controls which tools are *registered* with the MCP
-//! client. This complements the compile-time feature gating: features control
-//! what code is compiled, profiles control what is exposed at runtime.
-//!
-//! ## Resolution order
-//!
-//! 1. `--profile <name>` CLI flag (highest priority)
-//! 2. `JACS_MCP_PROFILE` environment variable
-//! 3. Default: `core`
-//!
-//! Only `core` and `full` are valid. Unknown explicit values are rejected;
-//! they never silently fall back to a different capability set.
+//! Profiles describe eligible effects; they are not authority. The default
+//! exposes verification/inspection/public-export tools only. A privileged
+//! `local-sign` selection additionally needs the existing signed config loaded
+//! through the explicit local server constructor. Administrative profiles are
+//! parked. An enum or environment variable alone never authorizes key use.
 
-use crate::tools::{ClassifiedTool, ToolFamily, all_classified_tools};
+use crate::tools::{ClassifiedTool, all_classified_tools};
 use rmcp::model::Tool;
 
-/// Runtime tool profile for filtering which tools are registered.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// The four and only four TP-39 process-profile names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Profile {
-    /// Core tools only (default). Includes the standard families:
-    /// document, trust, search, key, and W3C.
     #[default]
-    Core,
-
-    /// All compiled-in tools. Includes core + advanced families:
-    /// agreements, a2a, attestation.
-    Full,
+    VerifyOnly,
+    LocalSign,
+    TrustAdmin,
+    LegacyCore,
 }
 
-/// Error returned when a runtime profile selector is not one of the supported
-/// values. Invalid selectors are never coerced to `core`, because doing so can
-/// silently expose a different capability set than the operator requested.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileError {
     value: String,
+    reason: ProfileErrorReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProfileErrorReason {
+    Unknown,
+    CapabilityBrokerUnavailable,
 }
 
 impl ProfileError {
-    fn new(value: impl Into<String>) -> Self {
+    fn unknown(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
+            reason: ProfileErrorReason::Unknown,
         }
     }
 
-    /// The normalized invalid value supplied by the caller.
+    fn capability_broker_unavailable(profile: Profile) -> Self {
+        Self {
+            value: profile.as_str().to_string(),
+            reason: ProfileErrorReason::CapabilityBrokerUnavailable,
+        }
+    }
+
     pub fn value(&self) -> &str {
         &self.value
     }
@@ -53,76 +53,105 @@ impl ProfileError {
 
 impl std::fmt::Display for ProfileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "invalid MCP profile '{}'; expected 'core' or 'full'",
-            self.value
-        )
+        match self.reason {
+            ProfileErrorReason::Unknown => write!(
+                f,
+                "invalid MCP profile '{}'; expected exactly 'verify-only', 'local-sign', 'trust-admin', or 'legacy-core'",
+                self.value
+            ),
+            ProfileErrorReason::CapabilityBrokerUnavailable => write!(
+                f,
+                "MCP profile '{}' requires the complete TP-39 capability/status/approval WAL broker, which is not available; refusing privileged startup",
+                self.value
+            ),
+        }
     }
 }
 
 impl std::error::Error for ProfileError {}
 
 impl Profile {
-    /// Parse a profile from a string.
-    ///
-    /// Values are case-insensitive and surrounding whitespace is ignored.
-    /// Unknown or empty values are rejected rather than silently becoming
-    /// `Core`.
-    pub fn parse(s: &str) -> Result<Self, ProfileError> {
-        match s.trim().to_lowercase().as_str() {
-            "core" => Ok(Profile::Core),
-            "full" => Ok(Profile::Full),
-            _ => Err(ProfileError::new(s.trim())),
+    /// Parse an exact, case-sensitive wire value. Whitespace is not
+    /// normalized because configuration authority must not be ambiguous.
+    pub fn parse(value: &str) -> Result<Self, ProfileError> {
+        match value {
+            "verify-only" => Ok(Self::VerifyOnly),
+            "local-sign" => Ok(Self::LocalSign),
+            "trust-admin" => Ok(Self::TrustAdmin),
+            "legacy-core" => Ok(Self::LegacyCore),
+            _ => Err(ProfileError::unknown(value)),
         }
     }
 
-    /// Resolve the active profile from CLI args and environment.
-    ///
-    /// Checks (in order):
-    /// 1. `cli_profile` argument (from `--profile` flag)
-    /// 2. `JACS_MCP_PROFILE` environment variable
-    /// 3. Defaults to `Core`
-    ///
-    /// An empty environment value is treated as absent. Any other unknown
-    /// value returns [`ProfileError`].
+    /// Resolve eligibility only. The CLI must construct `local-sign` through
+    /// the authenticated local-config constructor; this value is not authority.
     pub fn resolve(cli_profile: Option<&str>) -> Result<Self, ProfileError> {
-        if let Some(p) = cli_profile {
-            return Self::parse(p);
-        }
-
-        match std::env::var("JACS_MCP_PROFILE") {
-            Ok(env_val) if !env_val.trim().is_empty() => Self::parse(&env_val),
-            Ok(_) | Err(std::env::VarError::NotPresent) => Ok(Profile::Core),
-            Err(std::env::VarError::NotUnicode(_)) => Err(ProfileError::new("<non-unicode>")),
+        let profile = match cli_profile {
+            Some(value) => Self::parse(value)?,
+            None => match std::env::var("JACS_MCP_PROFILE") {
+                Ok(value) => Self::parse(&value)?,
+                Err(std::env::VarError::NotPresent) => Self::VerifyOnly,
+                Err(std::env::VarError::NotUnicode(_)) => {
+                    return Err(ProfileError::unknown("<non-unicode>"));
+                }
+            },
+        };
+        if matches!(profile, Self::VerifyOnly | Self::LocalSign) {
+            Ok(profile)
+        } else {
+            Err(ProfileError::capability_broker_unavailable(profile))
         }
     }
 
-    /// Filter compiled-in tools based on this profile.
-    ///
-    /// - `Core`: only tools from core families
-    /// - `Full`: all compiled-in tools
+    /// Return the safe advertised surface. Even a programmatically
+    /// constructed privileged profile receives only verification tools; the
+    /// profile enum is eligibility metadata, never capability evidence.
     pub fn filter_tools(&self, classified: Vec<ClassifiedTool>) -> Vec<Tool> {
         classified
             .into_iter()
-            .filter(|ct| match self {
-                Profile::Full => true,
-                Profile::Core => ct.family.is_core(),
-            })
-            .map(|ct| ct.tool)
+            .filter(|classified| is_verify_only_tool(classified.tool.name.as_ref()))
+            .map(|classified| classified.tool)
             .collect()
     }
 
-    /// Convenience: get all tools for this profile from the compiled-in set.
     pub fn tools(&self) -> Vec<Tool> {
         self.filter_tools(all_classified_tools())
     }
 
-    /// Return the profile name as a string.
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Profile::Core => "core",
-            Profile::Full => "full",
+            Self::VerifyOnly => "verify-only",
+            Self::LocalSign => "local-sign",
+            Self::TrustAdmin => "trust-admin",
+            Self::LegacyCore => "legacy-core",
+        }
+    }
+
+    /// Eligibility metadata only; local tools also need the validated config
+    /// scope. The other profiles remain parked and cannot be activated.
+    pub fn is_privileged_tool_eligible(&self, tool_id: &str) -> bool {
+        match self {
+            Self::VerifyOnly => false,
+            Self::LocalSign => {
+                (crate::local_signing::allows_tool(tool_id)
+                    || crate::local_signing::is_file_tool(tool_id))
+                    && !is_verify_only_tool(tool_id)
+            }
+            Self::TrustAdmin => matches!(tool_id, "jacs_trust_agent" | "jacs_untrust_agent"),
+            // The old `core` contract is compatibility eligibility only. Its
+            // exact contract digest/cutoff and every effect still require the
+            // missing broker, so nothing is registered from this table today.
+            Self::LegacyCore => matches!(
+                tool_id,
+                "jacs_sign_document"
+                    | "jacs_sign_text"
+                    | "jacs_sign_image"
+                    | "jacs_w3c_sign_request"
+                    | "jacs_trust_agent"
+                    | "jacs_untrust_agent"
+                    | "jacs_create_agent"
+                    | "jacs_rotate_keys"
+            ),
         }
     }
 }
@@ -133,102 +162,65 @@ impl std::fmt::Display for Profile {
     }
 }
 
-/// Names of all core tool families for documentation/logging.
-pub const CORE_FAMILIES: &[ToolFamily] = &[
-    ToolFamily::Document,
-    ToolFamily::Trust,
-    ToolFamily::Search,
-    ToolFamily::Key,
-    ToolFamily::W3c,
-];
-
-/// Names of all advanced tool families for documentation/logging.
-pub const ADVANCED_FAMILIES: &[ToolFamily] = &[
-    ToolFamily::Agreement,
-    ToolFamily::A2a,
-    ToolFamily::Attestation,
-];
+fn is_verify_only_tool(tool_id: &str) -> bool {
+    // The default process has no loaded Agent or SimpleAgent. Expand this
+    // list only when a handler is proven to use explicit caller-selected
+    // public evidence and no ambient config, key store, trust store, or disk.
+    tool_id == "jacs_verify_document"
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_core() {
-        assert_eq!(Profile::parse("core").unwrap(), Profile::Core);
-        assert_eq!(Profile::parse("Core").unwrap(), Profile::Core);
-        assert_eq!(Profile::parse("CORE").unwrap(), Profile::Core);
-    }
-
-    #[test]
-    fn parse_full() {
-        assert_eq!(Profile::parse("full").unwrap(), Profile::Full);
-        assert_eq!(Profile::parse("Full").unwrap(), Profile::Full);
-        assert_eq!(Profile::parse("FULL").unwrap(), Profile::Full);
-    }
-
-    #[test]
-    fn parse_rejects_unknown_and_empty_values() {
-        for value in ["unknown", "", "  "] {
-            let error = Profile::parse(value).expect_err("invalid profile must be rejected");
-            assert!(error.to_string().contains("core"));
-            assert!(error.to_string().contains("full"));
+    fn only_exact_closed_profile_names_parse() {
+        assert_eq!(Profile::parse("verify-only").unwrap(), Profile::VerifyOnly);
+        assert_eq!(Profile::parse("local-sign").unwrap(), Profile::LocalSign);
+        assert_eq!(Profile::parse("trust-admin").unwrap(), Profile::TrustAdmin);
+        assert_eq!(Profile::parse("legacy-core").unwrap(), Profile::LegacyCore);
+        for invalid in ["", "core", "full", "Verify-Only", " verify-only"] {
+            assert!(Profile::parse(invalid).is_err(), "{invalid:?}");
         }
     }
 
     #[test]
-    fn resolve_cli_core_overrides_anything() {
-        // CLI flag always wins regardless of env state.
-        let profile = Profile::resolve(Some("core")).unwrap();
-        assert_eq!(profile, Profile::Core);
+    fn default_is_verification_only() {
+        assert_eq!(Profile::default(), Profile::VerifyOnly);
+        assert_eq!(
+            Profile::resolve(Some("verify-only")).unwrap(),
+            Profile::VerifyOnly
+        );
     }
 
     #[test]
-    fn resolve_cli_full() {
-        let profile = Profile::resolve(Some("full")).unwrap();
-        assert_eq!(profile, Profile::Full);
-    }
-
-    // NOTE: Env-var-dependent resolve tests are in the integration test
-    // `tests/profiles.rs` where they can run serially without racing
-    // with parallel unit tests that share the process environment.
-
-    #[test]
-    fn default_is_core() {
-        assert_eq!(Profile::default(), Profile::Core);
-    }
-
-    #[test]
-    fn display_trait() {
-        assert_eq!(format!("{}", Profile::Core), "core");
-        assert_eq!(format!("{}", Profile::Full), "full");
+    fn profile_name_alone_never_activates_privileged_tools() {
+        for profile in [Profile::LocalSign, Profile::TrustAdmin, Profile::LegacyCore] {
+            if profile != Profile::LocalSign {
+                assert!(Profile::resolve(Some(profile.as_str())).is_err());
+            }
+            assert!(
+                profile
+                    .tools()
+                    .iter()
+                    .all(|tool| !profile.is_privileged_tool_eligible(tool.name.as_ref()))
+            );
+        }
     }
 
     #[test]
-    fn core_profile_filters_advanced_tools() {
-        use crate::tools::{ClassifiedTool, ToolFamily};
-        use rmcp::model::Tool;
-
-        let tools = vec![
-            ClassifiedTool {
-                tool: Tool::new("document_tool", "A document tool", serde_json::Map::new()),
-                family: ToolFamily::Document,
-            },
-            ClassifiedTool {
-                tool: Tool::new(
-                    "agreement_tool",
-                    "An agreement tool",
-                    serde_json::Map::new(),
-                ),
-                family: ToolFamily::Agreement,
-            },
-        ];
-
-        let core = Profile::Core.filter_tools(tools.clone());
-        assert_eq!(core.len(), 1);
-        assert_eq!(core[0].name.as_ref(), "document_tool");
-
-        let full = Profile::Full.filter_tools(tools);
-        assert_eq!(full.len(), 2);
+    fn legacy_agreement_signing_is_ineligible_and_v2_needs_local_scope() {
+        for profile in [
+            Profile::VerifyOnly,
+            Profile::LocalSign,
+            Profile::TrustAdmin,
+            Profile::LegacyCore,
+        ] {
+            assert!(!profile.is_privileged_tool_eligible("jacs_sign_agreement"));
+            assert_eq!(
+                profile.is_privileged_tool_eligible("jacs_sign_agreement_v2"),
+                profile == Profile::LocalSign
+            );
+        }
     }
 }

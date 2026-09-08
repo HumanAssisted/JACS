@@ -177,6 +177,12 @@ class VerificationResult:
     timestamp: str = ""
     errors: List[str] = field(default_factory=list)
     attachments: List[Attachment] = field(default_factory=list)
+    identity_binding_status: str = "unavailable"
+
+    @property
+    def identity_bound(self) -> bool:
+        """Local explicit enrollment matched; not Current/purpose authorization."""
+        return self.valid is True and self.identity_binding_status == "locally_enrolled"
 
     @property
     def error(self) -> Optional[str]:
@@ -196,6 +202,10 @@ class VerificationResult:
         ]
         return cls(
             valid=valid,
+            identity_binding_status=(
+                "locally_enrolled" if valid and data.get("identity_binding_status") == "locally_enrolled"
+                else "unavailable"
+            ),
             signer_id=data.get("signer_id", "") if valid else "",
             signer_public_key_hash=(
                 data.get("signer_public_key_hash", "") if valid else ""

@@ -21,11 +21,11 @@
     "overrides": {
         "ajv": "^8.18.0",
         "express-rate-limit": "^8.2.2",
-        "fast-uri": "^3.1.2",
-        "hono": "^4.12.18",
-        "ip-address": "^10.1.1",
+        "fast-uri": "^3.1.6",
+        "hono": "^4.12.34",
+        "ip-address": "^10.3.1",
         "path-to-regexp": "^8.4.0",
-        "qs": "^6.15.2"
+        "qs": "^6.16.0"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.26.0",

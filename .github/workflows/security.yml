@@ -152,8 +152,7 @@ jobs:
             if [ "$extra" = crewai ] || [ "$extra" = all ]; then
               pip-audit --requirement "$requirements" \
                 --ignore-vuln PYSEC-2026-311 \
-                --ignore-vuln GHSA-f4j7-r4q5-qw2c \
-                --ignore-vuln GHSA-xf7x-x43h-rpqh
+                --ignore-vuln GHSA-f4j7-r4q5-qw2c
             else
               pip-audit --requirement "$requirements"
             fi

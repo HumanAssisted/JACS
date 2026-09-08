@@ -58,9 +58,8 @@ def test_agreement_v2_create_sign_verify_round_trip():
     signed = agent.sign_agreement_v2(created, "signer")
     report = agent.verify_agreement_v2(signed)
 
-    assert report["valid"] == _expected()["verify"]["valid"]
-    assert report["expectedStatus"] == _expected()["verify"]["expectedStatus"]
-    assert report["signerCount"] == _expected()["verify"]["signerCount"]
+    for field, expected in _expected()["nativeVerify"].items():
+        assert report[field] == expected, field
 
 
 def test_agreement_v2_notary_role_round_trip():

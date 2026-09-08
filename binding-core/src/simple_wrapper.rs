@@ -1,7 +1,7 @@
 //! `SimpleAgentWrapper` — thin FFI adapter over the narrow `SimpleAgent` contract.
 //!
-//! This module contains zero business logic. Every method delegates to
-//! `jacs::simple::SimpleAgent` and marshals the result to FFI-safe types
+//! This module contains zero business logic. Methods delegate to
+//! `jacs::simple::SimpleAgent` or a stateless native verifier and marshal FFI-safe types
 //! (String in/out, base64 for bytes, JSON for structured data).
 
 use crate::{BindingCoreError, BindingResult, ErrorKind};
@@ -333,6 +333,53 @@ impl SimpleAgentWrapper {
                 ))
             })?;
         serialize_json(&result, "VerificationResult")
+    }
+
+    /// Verify a complete authority-mapped human approval without an agent,
+    /// private key, storage lookup, network access or enrollment side effect.
+    ///
+    /// The caller supplies the exact expected intent/enrolled credential and
+    /// separately selected public pins for enrollment authority and provenance.
+    /// Never derive these trust inputs from the submitted bundle. The complete
+    /// native report is retained; success leaves both current-status fields
+    /// `not_evaluated` and does not authorize live execution or claim trusted
+    /// approval time, schema/media policy, current revocation or global non-reuse.
+    #[cfg(feature = "human-approval")]
+    pub fn verify_human_approved_document_json(
+        bundle_json: &str,
+        expected_json: &str,
+        authority_json: &str,
+        provenance_json: &str,
+    ) -> BindingResult<String> {
+        use jacs::human_approval::{
+            HumanApprovalExpectationV1, PinnedHumanApprovalAuthorityV1, PinnedJacsProvenanceV1,
+        };
+
+        fn policy<T: serde::de::DeserializeOwned>(json: &str, label: &str) -> BindingResult<T> {
+            crate::check_binding_json_size(json, label)?;
+            jacs_core::strict_json::deserialize_strict_json(json).map_err(|error| {
+                BindingCoreError::invalid_argument(format!("Invalid {label}: {error}"))
+            })
+        }
+
+        crate::check_binding_json_size(bundle_json, "human-approved document JSON")?;
+        let expected: HumanApprovalExpectationV1 =
+            policy(expected_json, "human approval expectation")?;
+        let authority: PinnedHumanApprovalAuthorityV1 =
+            policy(authority_json, "human approval authority pin")?;
+        let provenance: PinnedJacsProvenanceV1 = policy(provenance_json, "JACS provenance pin")?;
+        let report = jacs::human_approval::verify_human_approved_document_v1(
+            bundle_json,
+            &expected,
+            &authority,
+            &provenance,
+        )
+        .map_err(|error| {
+            BindingCoreError::verification_failed(format!(
+                "Human-approved document verification failed: {error}"
+            ))
+        })?;
+        serialize_json(&report, "HumanApprovedDocumentVerificationV1")
     }
 
     /// Verify a stored document by its ID (e.g., "uuid:version").

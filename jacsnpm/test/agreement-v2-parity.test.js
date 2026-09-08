@@ -8,6 +8,21 @@ const FIXTURE = JSON.parse(fs.readFileSync(
 ));
 const EXPECTED = FIXTURE.expected;
 
+describe('Node.js agreement v2 public report types', function () {
+  for (const filename of ['simple.ts', 'simple.d.ts']) {
+    it(`exposes required, non-authorizing evidence fields in ${filename}`, function () {
+      const source = fs.readFileSync(path.resolve(__dirname, '..', filename), 'utf8');
+      const report = source.match(/export interface AgreementV2VerificationReport\s*\{([^}]*)\}/);
+
+      expect(report, 'AgreementV2VerificationReport interface').not.to.equal(null);
+      expect(report[1]).to.match(/\bvalid:\s*boolean;/);
+      expect(report[1]).to.match(/\bmathematicalChecksValid:\s*boolean;/);
+      expect(report[1]).to.match(/\bpolicyAccepted:\s*false;/);
+      expect(report[1]).to.match(/\boverallScope:\s*['"]consent_signatures_only['"];/);
+    });
+  }
+});
+
 describe('Node.js agreement v2 behavioral parity', function () {
   let JacsSimpleAgent;
 
@@ -51,9 +66,7 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const signed = await agent.signAgreementV2(created, 'signer');
     const report = await agent.verifyAgreementV2(signed);
 
-    expect(report.valid).to.equal(EXPECTED.verify.valid);
-    expect(report.expectedStatus).to.equal(EXPECTED.verify.expectedStatus);
-    expect(report.signerCount).to.equal(EXPECTED.verify.signerCount);
+    expect(report).to.deep.include(EXPECTED.nativeVerify);
   });
 
   it('supports notary signatures as a distinct agreement role', function () {

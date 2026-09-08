@@ -1,0 +1,38 @@
+{
+  "schemaId": "https://hai.ai/schemas/agreement/v3/agreement.schema.json",
+  "agreementProfile": "jacs-agreement-v3",
+  "finalizationProfile": "jacs-agreement-finalization-v3",
+  "proofSignatureDomain": "JACS-AGREEMENT-PROOF-V3",
+  "proofs": [
+    {
+      "profile": "jacs-agreement-proposal-proof-v3",
+      "operation": "SignAgreementProposal",
+      "purpose": "agreement_proposal",
+      "role": "controller"
+    },
+    {
+      "profile": "jacs-agreement-amendment-proof-v3",
+      "operation": "SignAgreementAmendment",
+      "purpose": "agreement_amendment",
+      "role": "controller"
+    },
+    {
+      "profile": "jacs-agreement-consent-proof-v3",
+      "operation": "SignAgreementConsent",
+      "purpose": "agreement_consent",
+      "role": "signer"
+    },
+    {
+      "profile": "jacs-agreement-witness-proof-v3",
+      "operation": "SignAgreementWitness",
+      "purpose": "agreement_witness",
+      "role": "witness"
+    },
+    {
+      "profile": "jacs-agreement-notary-proof-v3",
+      "operation": "SignAgreementNotary",
+      "purpose": "agreement_notary",
+      "role": "notary"
+    }
+  ]
+}

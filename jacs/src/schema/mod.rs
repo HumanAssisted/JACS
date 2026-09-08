@@ -685,11 +685,11 @@ impl Schema {
         let original_version = version.clone();
         let versioncreated = time_utils::now_rfc3339();
 
-        instance["jacsId"] = json!(format!("{}", id));
-        instance["jacsVersion"] = json!(format!("{}", version));
-        instance["jacsVersionDate"] = json!(format!("{}", versioncreated));
-        instance["jacsOriginalVersion"] = json!(format!("{}", original_version));
-        instance["jacsOriginalDate"] = json!(format!("{}", versioncreated));
+        instance["jacsId"] = json!(id.to_string());
+        instance["jacsVersion"] = json!(version.to_string());
+        instance["jacsVersionDate"] = json!(versioncreated.to_string());
+        instance["jacsOriginalVersion"] = json!(original_version.to_string());
+        instance["jacsOriginalDate"] = json!(versioncreated.to_string());
         instance["jacsLevel"] = json!(
             instance
                 .get_str("jacsLevel")
@@ -697,7 +697,7 @@ impl Schema {
         );
         // if no schema is present insert standard header version
         if instance.get_str("$schema").is_none() {
-            instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
+            instance["$schema"] = json!(self.get_header_schema_url().to_string());
         }
 
         // if no type is present look for $schema and extract the name

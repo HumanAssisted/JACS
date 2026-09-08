@@ -89,6 +89,9 @@ export interface SignedDocument {
 
 export interface VerificationResult {
   valid: boolean;
+  /** Local enrollment only, not Current/purpose authorization. Missing means unavailable. */
+  identityBindingStatus?: 'unavailable' | 'locally_enrolled';
+  identityBound?: boolean;
   data?: any;
   signerId: string;
   signerName?: string;
@@ -1388,7 +1391,12 @@ export const AgreementV2Role = {
  * the wire format emitted by the Rust verifier.
  */
 export interface AgreementV2VerificationReport {
+  /** Always false: consent-signature inspection is not policy acceptance. */
   valid: boolean;
+  /** Mathematical and structural checks only; not authorization. */
+  mathematicalChecksValid: boolean;
+  policyAccepted: false;
+  overallScope: 'consent_signatures_only';
   status: string;
   expectedStatus: string;
   recomputedAgreementHash: string;
@@ -1794,6 +1802,8 @@ export function verifyStandalone(
   const valid = r?.valid === true;
   return {
     valid,
+    identityBindingStatus: valid && r.identityBindingStatus === 'locally_enrolled' ? 'locally_enrolled' : 'unavailable',
+    identityBound: valid && r.identityBindingStatus === 'locally_enrolled',
     signerId: valid && typeof r.signerId === 'string' ? r.signerId : '',
     timestamp: valid && typeof r.timestamp === 'string' ? r.timestamp : '',
     attachments: [],

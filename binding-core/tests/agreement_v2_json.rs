@@ -86,12 +86,12 @@ fn simple_wrapper_round_trips_create_sign_verify() {
     let report: Value = serde_json::from_str(&report_json).expect("report json");
     let expected = expected();
 
-    assert_eq!(report["valid"], expected["verify"]["valid"]);
-    assert_eq!(
-        report["expectedStatus"],
-        expected["verify"]["expectedStatus"]
-    );
-    assert_eq!(report["signerCount"], expected["verify"]["signerCount"]);
+    for (field, value) in expected["nativeVerify"]
+        .as_object()
+        .expect("native verification expectations")
+    {
+        assert_eq!(&report[field], value, "native report field {field}");
+    }
 }
 
 #[test]

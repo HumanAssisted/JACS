@@ -8,13 +8,18 @@
     "body-parser": "^2.2.1",
     "diff": "^8.0.3",
     "express-rate-limit": "^8.2.2",
-    "fast-uri": "^3.1.2",
-    "hono": "^4.12.18",
-    "ip-address": "^10.1.1",
+    "fast-uri": "^3.1.6",
+    "hono": "^4.12.34",
+    "ip-address": "^10.3.1",
     "serialize-javascript": "^7.0.5",
-    "qs": "^6.15.2"
+    "qs": "^6.16.0"
   },
   "exports": {
+    "./signing-input": {
+      "types": "./browser/signing.d.ts",
+      "import": "./browser/signing.js",
+      "default": "./browser/signing.js"
+    },
     ".": {
       "import": "./index.js",
       "require": "./index.js",
@@ -86,7 +91,8 @@
   },
   "scripts": {
     "postinstall": "node scripts/install-cli.js",
-    "build": "napi build --platform --release --cargo-flags=--locked && npm run build:ts",
+    "build": "napi build --platform --release --features human-approval-vendored --cargo-flags=--locked && npm run build:ts",
+    "build:slim": "napi build --platform --release --cargo-flags=--locked && npm run build:ts",
     "build:debug": "napi build --platform --cargo-flags=--locked && npm run build:ts",
     "build:ts": "tsc",
     "test": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/**/*.test.js'",
@@ -157,7 +163,7 @@
     "@types/node": "^22.15",
     "ajv": "^8.17.1",
     "chai": "4.5.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.1",
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
     "typescript": "^5.7.0"
@@ -183,6 +189,9 @@
     "url": "https://github.com/HumanAssisted/JACS"
   },
   "files": [
+    "browser/package.json",
+    "browser/signing.js",
+    "browser/signing.d.ts",
     "LICENSE",
     "THIRD-PARTY-NOTICES",
     "index.js",

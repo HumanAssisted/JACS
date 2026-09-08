@@ -161,6 +161,7 @@ mod tests {
     #[test]
     fn test_verification_result_serialization() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: true,
             data: json!({"test": "data"}),
             signer_id: "agent-123".to_string(),
@@ -173,6 +174,25 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":true"));
         assert!(json.contains("agent-123"));
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["identity_binding_status"], "unavailable");
+        assert_eq!(parsed["identity_bound"], false);
+        assert_eq!(parsed["policy_accepted"], false);
+        let mut legacy = parsed;
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("identity_binding_status");
+        legacy["identity_bound"] = serde_json::json!(true);
+        let restored: VerificationResult = serde_json::from_value(legacy).unwrap();
+        assert_eq!(
+            restored.identity_binding_status,
+            crate::trust::IdentityBindingStatus::Unavailable
+        );
+        assert_eq!(
+            serde_json::to_value(restored).unwrap()["identity_bound"],
+            false
+        );
     }
 
     #[test]
@@ -245,6 +265,7 @@ mod tests {
     #[test]
     fn test_verification_result_with_errors() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: false,
             data: json!(null),
             signer_id: "".to_string(),
@@ -310,7 +331,7 @@ mod tests {
             "pq2025",
         );
         let simple = SimpleAgent {
-            agent: Mutex::new(agent),
+            agent: std::sync::Arc::new(Mutex::new(agent)),
             config_path: None,
             strict: false,
         };
@@ -320,6 +341,117 @@ mod tests {
             .expect("raw public key bytes should export as PEM");
         assert!(pem.starts_with("-----BEGIN PUBLIC KEY-----\n"));
         assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
+    }
+
+    #[test]
+    fn shared_agent_view_uses_the_same_identity_and_lock_without_loading_config() {
+        let (agent, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let view = SimpleAgent::from_shared_agent(
+            std::sync::Arc::clone(&agent.agent),
+            Some("/missing/never-loaded.config.json".into()),
+            true,
+        );
+        assert!(std::sync::Arc::ptr_eq(&agent.agent, &view.agent));
+        assert_eq!(agent.get_agent_id().unwrap(), view.get_agent_id().unwrap());
+        assert_eq!(
+            agent.get_public_key().unwrap(),
+            view.get_public_key().unwrap()
+        );
+        assert!(view.is_strict());
+        let signed = view
+            .sign_message(&serde_json::json!({"shared":true}))
+            .unwrap();
+        assert!(agent.verify(&signed.raw).unwrap().valid);
+    }
+
+    #[test]
+    fn shared_media_key_claim_and_signature_remain_atomic_during_rotation() {
+        let (agent, info) = fresh_ephemeral();
+        let view = SimpleAgent::from_shared_agent(std::sync::Arc::clone(&agent.agent), None, false);
+        let old_key = agent.get_public_key().unwrap();
+        let mut image_bytes = Vec::new();
+        image::RgbImage::from_pixel(2, 2, image::Rgb([5, 10, 15]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut image_bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let (claim_ready, wait_for_claim) = std::sync::mpsc::channel();
+        let (rotation_checked, wait_for_rotation) = std::sync::mpsc::channel();
+        let rotation = std::thread::spawn(move || {
+            wait_for_claim
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            // Real rotation and provider replacement acquire this same mutex.
+            // Neither may change the key between claim selection and signing.
+            let blocked = matches!(
+                view.agent.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            );
+            rotation_checked.send(blocked).unwrap();
+            advanced::rotate(&view, None).unwrap()
+        });
+        let signed = agent
+            .sign_message_with_current_key(|key| {
+                let claim = crate::media_signing::build_media_claim_v1(
+                    &image_bytes,
+                    jacs_media::MediaFormat::Png,
+                    false,
+                    &crate::media_signing::media_public_key_hash(key),
+                )?
+                .to_value()?;
+                claim_ready.send(()).unwrap();
+                assert!(
+                    wait_for_rotation
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .unwrap()
+                );
+                Ok(claim)
+            })
+            .unwrap();
+        let rotated = rotation.join().unwrap();
+        let document: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
+        assert_eq!(
+            document["content"]["publicKeyHash"],
+            crate::media_signing::media_public_key_hash(&old_key)
+        );
+        assert_eq!(document["jacsSignature"]["agentVersion"], info.version);
+        assert_ne!(
+            document["jacsSignature"]["agentVersion"],
+            rotated.new_version
+        );
+        assert!(
+            agent
+                .verify_with_key(&signed.raw, old_key.clone())
+                .unwrap()
+                .valid
+        );
+        assert_ne!(agent.get_public_key().unwrap(), old_key);
+
+        // The ordinary file handler then uses the rotated key and returns
+        // the signer in its signed envelope, not a later identity lookup.
+        let root = tempfile::tempdir().unwrap();
+        let input = root.path().join("input.png");
+        let output = root.path().join("signed.png");
+        std::fs::write(&input, image_bytes).unwrap();
+        let result = advanced::sign_image(
+            &agent,
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            SignImageOptions::default(),
+        )
+        .unwrap();
+        let verified = advanced::verify_image(
+            &agent,
+            output.to_str().unwrap(),
+            VerifyImageOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(verified.status, MediaVerifyStatus::Valid);
+        assert_eq!(
+            verified.signer_id.as_deref(),
+            Some(result.signer_id.as_str())
+        );
     }
 
     #[cfg(feature = "pq-tests")]
@@ -409,7 +541,7 @@ mod tests {
         // Create a dummy SimpleAgent for testing verify() pre-check
         // The pre-check happens before agent lock, so we need a valid agent struct
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -430,7 +562,7 @@ mod tests {
     #[test]
     fn test_verify_uuid_like_input_returns_helpful_error() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -451,7 +583,7 @@ mod tests {
     #[test]
     fn test_verify_empty_string_returns_error() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -483,7 +615,7 @@ mod tests {
     #[test]
     fn test_get_setup_instructions_requires_loaded_agent() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -538,7 +670,7 @@ mod tests {
     #[test]
     fn test_simple_agent_is_strict_accessor() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: true,
@@ -546,7 +678,7 @@ mod tests {
         assert!(agent.is_strict());
 
         let agent2 = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -559,7 +691,7 @@ mod tests {
         // Strict mode shouldn't change behavior for malformed input — it should
         // still return Err(DocumentMalformed), not SignatureVerificationFailed
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: true,
@@ -818,6 +950,16 @@ mod tests {
             result.errors
         );
         assert!(!result.signer_id.is_empty());
+        let value: Value = serde_json::from_str(&signed.raw).unwrap();
+        let document_key = format!(
+            "{}:{}",
+            value["jacsId"].as_str().unwrap(),
+            value["jacsVersion"].as_str().unwrap()
+        );
+        assert!(
+            agent_b.verify_by_id(&document_key).is_err(),
+            "verification must not import the document"
+        );
     }
 
     #[test]
@@ -840,6 +982,10 @@ mod tests {
 
         assert!(!result.valid, "verification with wrong key should fail");
         assert!(!result.errors.is_empty(), "should have verification errors");
+        assert!(result.data.is_null());
+        assert!(result.signer_id.is_empty());
+        assert!(result.timestamp.is_empty());
+        assert!(result.attachments.is_empty());
     }
 
     #[test]

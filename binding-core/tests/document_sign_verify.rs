@@ -15,6 +15,24 @@ fn create_ephemeral_wrapper() -> AgentWrapper {
 }
 
 #[test]
+fn supplied_bytes_verification_does_not_import_documents() {
+    let wrapper = create_ephemeral_wrapper();
+    let signed = wrapper.create_document(
+        &json!({"jacsType": "document", "jacsLevel": "raw", "content": {"message": "independent storage"}}).to_string(),
+        None, None, true, None, None,
+    ).unwrap();
+    wrapper
+        .inner_arc()
+        .lock()
+        .unwrap()
+        .set_storage(jacs::storage::MultiStorage::new("memory".to_string()).unwrap());
+    assert!(wrapper.list_document_keys().unwrap().is_empty());
+    assert!(wrapper.verify_document(&signed).unwrap());
+    assert!(wrapper.verify_signature(&signed, None).unwrap());
+    assert!(wrapper.list_document_keys().unwrap().is_empty());
+}
+
+#[test]
 fn test_sign_document_and_verify_valid() {
     let wrapper = create_ephemeral_wrapper();
 

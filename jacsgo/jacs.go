@@ -2,8 +2,12 @@ package jacs
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/build
-#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
+#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo
+#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,--enable-new-dtags -Wl,-rpath,$ORIGIN
+
+// Package-wide CGo flags live here. Build-time source paths are never embedded
+// as runtime search paths; deployed executables carry the library beside them.
+// Darwin's native library ID is @loader_path/libjacsgo.dylib, so no RPATH is needed.
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -1391,13 +1395,19 @@ func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyD
 	defer C.jacs_free_string(result)
 	resultStr := C.GoString(result)
 	var out struct {
-		Valid    bool   `json:"valid"`
-		SignerID string `json:"signer_id"`
+		Valid                 bool   `json:"valid"`
+		SignerID              string `json:"signer_id"`
+		IdentityBound         bool   `json:"identity_bound"`
+		IdentityBindingStatus string `json:"identity_binding_status"`
+		PolicyAccepted        bool   `json:"policy_accepted"`
 	}
 	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
 		return nil, fmt.Errorf("parse standalone result: %w", err)
 	}
-	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID}, nil
+	if !out.Valid || out.IdentityBindingStatus != "locally_enrolled" {
+		out.IdentityBindingStatus = "unavailable"
+	}
+	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID, IdentityBound: out.Valid && out.IdentityBindingStatus == "locally_enrolled", IdentityBindingStatus: out.IdentityBindingStatus, PolicyAccepted: out.PolicyAccepted}, nil
 }
 
 // RunAudit calls the jacs_audit FFI function and returns the JSON result string.

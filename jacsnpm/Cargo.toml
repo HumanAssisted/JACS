@@ -31,6 +31,8 @@ default = ["a2a", "attestation", "agreements"]
 a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 agreements = ["jacs-binding-core/agreements"]
+human-approval = ["jacs-binding-core/human-approval"]
+human-approval-vendored = ["human-approval", "jacs-binding-core/human-approval-vendored"]
 
 [build-dependencies]
 napi-build = "2.1.6"

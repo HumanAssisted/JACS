@@ -76,6 +76,40 @@ All operations are async by default. Sync variants are available with a `Sync` s
 | `verifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
 | `audit()` | Run a security audit |
 
+## Public human-approved document verification
+
+`npm run build` and the native release profile enable `human-approval-vendored`:
+the existing WebAuthn verifier with OpenSSL compiled into the native module,
+without a separate OpenSSL installation. This configures new builds; it does
+not claim that an older published package has the method. Release gates check
+the installed artifact and reject external OpenSSL linkage. Browser WASM does
+not provide this verifier.
+
+Rust defaults remain unchanged. `npm run build:slim` (and `build:debug`) retains
+the feature-off custom build. `human-approval` alone remains available for
+custom builds intentionally using a system OpenSSL installation.
+
+```javascript
+const { JacsSimpleAgent } = require('@hai.ai/jacs');
+
+if (!JacsSimpleAgent.verifyHumanApprovedDocument) {
+  throw new Error('This native build requires the human-approval feature');
+}
+const report = JSON.parse(JacsSimpleAgent.verifyHumanApprovedDocument(
+  bundleJson, expectedJson, authorityJson, provenanceJson,
+));
+```
+
+This static method needs no agent, signing key, configuration, or network
+lookup. All four arguments are JSON strings. Read stored public evidence into
+`bundleJson`; select the expected human/action/credential and the two public
+key pins from your application's trusted state, not from the bundle. The
+complete report is returned as JSON. Success confirms retained proof and
+document integrity, **not** permission to execute now: `current` remains
+`not_evaluated`. Live authorization, revocation and one-use checks stay with
+the relying application. Feature-enabled tests require
+`JACS_TEST_HUMAN_APPROVAL=1 npx mocha test/human-approved-document.test.js`.
+
 ## Request authentication and signed events
 
 Use the instance-based `JacsSimpleAgent` for the transport protocol helpers.

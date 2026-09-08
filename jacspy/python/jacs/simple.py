@@ -864,10 +864,11 @@ def sign_agreement_v2(document: Union[str, dict, SignedDocument], role: str = Ag
 
 
 def verify_agreement_v2(document: Union[str, dict, SignedDocument]) -> dict:
-    """Verify Agreement v2 hash, policy, transcript, roles, status, and signatures.
+    """Inspect legacy Agreement v2 mathematics without authorizing its policy.
 
-    Returns the verification report as a dict (keys include ``valid``,
-    ``expectedStatus``, ``signerCount``, ``notaryCount``).
+    Returns a dict whose ``mathematicalChecksValid`` reports mathematical and
+    structural checks only. ``valid`` and ``policyAccepted`` remain false:
+    v2 party proofs do not authenticate role, quorum, lineage, or notary authority.
     """
     agent = _get_simple_agent()
     try:
@@ -1078,6 +1079,10 @@ def verify_standalone(
         valid = d.get("valid") is True
         return VerificationResult(
             valid=valid,
+            identity_binding_status=(
+                "locally_enrolled" if valid and d.get("identity_binding_status") == "locally_enrolled"
+                else "unavailable"
+            ),
             signer_id=str(d.get("signer_id", "")) if valid else "",
         )
     except Exception as e:

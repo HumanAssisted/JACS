@@ -720,6 +720,148 @@ impl Agent {
         Ok(agent)
     }
 
+    /// Load an existing agent's authenticated public identity and document
+    /// storage without reading a password or private-key file.
+    ///
+    /// This is the read-side constructor for verification-only processes. It
+    /// deliberately refuses pending key-rotation recovery because recovery can
+    /// re-sign configuration and therefore belongs to an authorized signing
+    /// process. The resulting `Agent` has no private key and all existing
+    /// signing methods continue to fail through their normal locked/key-missing
+    /// checks.
+    pub fn from_config_public_only(mut config: Config) -> Result<Self, JacsError> {
+        let config_raw_json = config.raw_json.clone();
+        let config_source_path = config
+            .source_path()
+            .map(|path| path.to_string_lossy().into_owned())
+            .ok_or_else(|| {
+                JacsError::ConfigError(
+                    "Public-only loading requires an authenticated config file path.".into(),
+                )
+            })?;
+        let lookup_id = config
+            .jacs_agent_id_and_version()
+            .as_deref()
+            .filter(|lookup| !lookup.trim().is_empty())
+            .ok_or_else(|| {
+                JacsError::ConfigError(
+                    "Public-only loading requires jacs_agent_id_and_version.".into(),
+                )
+            })?
+            .to_string();
+        let schema = Schema::new("v1", "v1", "v1")?;
+        let config_preflight = Self::verify_config_before_use(
+            &schema,
+            &config,
+            Some(&config_source_path),
+            ConfigUse::ExistingAgent,
+        )?;
+        match &config_preflight {
+            ConfigPreflight::Unsigned | ConfigPreflight::SignedCurrent(None) => {}
+            ConfigPreflight::SignedCurrent(Some(_)) | ConfigPreflight::SignedHistorical(_) => {
+                return Err(JacsError::ConfigError(
+                    "Public-only loading refuses pending key-rotation recovery; complete recovery in an authorized local signing process first."
+                        .into(),
+                ));
+            }
+        }
+
+        // Read only the configured public key through the same bounded,
+        // no-follow path used by signed-config preflight. No password or
+        // private-key locator is consulted.
+        let public_key = Self::read_config_public_key(&config)?;
+        let key_algorithm = config.get_key_algorithm()?;
+        let storage_type = config
+            .jacs_default_storage()
+            .as_deref()
+            .unwrap_or("fs")
+            .to_string();
+        let (storage_root, normalized_config) =
+            Self::calculate_storage_root_and_normalize(config, "Agent::from_config_public_only")?;
+        config = normalized_config;
+        let file_storage_type =
+            Self::local_agent_storage_type(&storage_type, "Agent::from_config_public_only");
+        let storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|error| {
+            JacsError::Internal {
+                message: format!(
+                    "Agent::from_config_public_only failed to initialize storage type '{}': {}",
+                    storage_type, error
+                ),
+            }
+        })?;
+        let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
+        let mut agent = Self {
+            schema,
+            value: None,
+            config: Some(config),
+            storage,
+            document_schemas: document_schemas_map,
+            id: None,
+            version: None,
+            key_algorithm: Some(key_algorithm),
+            public_key: Some(public_key),
+            private_key: None,
+            key_store: None,
+            ephemeral: false,
+            dns_strict: false,
+            dns_validate_enabled: None,
+            dns_required: None,
+            key_paths: None,
+            password: None,
+            legacy_ed25519_keygen_for_fixtures: false,
+            #[cfg(feature = "attestation")]
+            adapters: crate::attestation::adapters::default_adapters(),
+        };
+        let agent_string =
+            agent
+                .fs_agent_load(&lookup_id)
+                .map_err(|error| JacsError::Internal {
+                    message: format!(
+                        "Agent::from_config_public_only failed to load public agent '{}': {}",
+                        lookup_id, error
+                    ),
+                })?;
+        let value = agent.validate_agent(&agent_string)?;
+        let id = value.get_str("jacsId").ok_or_else(|| {
+            JacsError::AgentError("Public agent document is missing jacsId.".into())
+        })?;
+        let version = value.get_str("jacsVersion").ok_or_else(|| {
+            JacsError::AgentError("Public agent document is missing jacsVersion.".into())
+        })?;
+        if lookup_id != format!("{id}:{version}") || !are_valid_uuid_parts(&id, &version) {
+            return Err(JacsError::AgentError(
+                "Public agent identity/version does not match the authenticated config lookup."
+                    .into(),
+            ));
+        }
+        agent.id = Some(id);
+        agent.version = Some(version);
+        agent.value = Some(value);
+        agent.verify_self_signature()?;
+
+        match config_preflight {
+            ConfigPreflight::Unsigned => {}
+            ConfigPreflight::SignedCurrent(None) => {
+                let json = config_raw_json.as_ref().ok_or_else(|| {
+                    JacsError::ConfigError(
+                        "Authenticated config provenance was lost during public-only loading."
+                            .into(),
+                    )
+                })?;
+                agent.verify_config(json)?;
+            }
+            ConfigPreflight::SignedCurrent(Some(_)) | ConfigPreflight::SignedHistorical(_) => {
+                unreachable!("pending rotation was rejected before storage initialization")
+            }
+        }
+        if agent.private_key.is_some() || agent.password.is_some() || agent.key_store.is_some() {
+            return Err(JacsError::Internal {
+                message: "Public-only loader materialized signing state.".into(),
+            });
+        }
+        Ok(agent)
+    }
+
     /// Calculate storage root from config and normalize directory paths.
     ///
     /// Returns `(storage_root, normalized_config)`. The config is modified
@@ -2568,6 +2710,13 @@ impl Agent {
         );
         validate_signature_temporal_claims(json_value, signature_key_from)?;
 
+        // A discovered hash-addressed key is only an integrity candidate. When
+        // independent enrollment exists, enforce it before any DNS/registry
+        // resolution or candidate-key verification can succeed.
+        if signature_key_from == DOCUMENT_AGENT_SIGNATURE_FIELDNAME && signature.is_none() {
+            crate::trust::verify_document_identity_binding(json_value)?;
+        }
+
         let public_key_hash: String = match original_public_key_hash {
             Some(orig) => orig,
             _ => json_value[signature_key_from]["publicKeyHash"]
@@ -2577,13 +2726,21 @@ impl Agent {
                 .to_string(),
         };
 
-        // Prefer explicit signingAlgorithm from function argument, then from the
-        // document signature. Only fall back to key-format heuristics when absent.
-        let resolved_public_key_enc_type = public_key_enc_type.or_else(|| {
-            json_value[signature_key_from]["signingAlgorithm"]
-                .as_str()
-                .map(std::string::ToString::to_string)
-        });
+        // An explicit resolver/key algorithm must agree with the signed claim.
+        // Never silently verify using a different algorithm than the envelope.
+        let claimed_algorithm = json_value[signature_key_from]["signingAlgorithm"].as_str();
+        if claimed_algorithm.is_none()
+            && json_value[signature_key_from][SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str()
+                == Some(SIGNATURE_CONTENT_VERSION_V2)
+        {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: "Document signature v2 requires an explicit signed algorithm".to_string(),
+            });
+        }
+        let resolved_public_key_enc_type = crate::verification::matching_algorithm(
+            claimed_algorithm,
+            public_key_enc_type.as_deref(),
+        )?;
 
         // DNS policy resolution
         let maybe_domain = self
@@ -3106,8 +3263,8 @@ impl Agent {
         let versioncreated = time_utils::now_rfc3339();
 
         new_self["jacsPreviousVersion"] = last_version.clone();
-        new_self["jacsVersion"] = json!(format!("{}", new_version));
-        new_self["jacsVersionDate"] = json!(format!("{}", versioncreated));
+        new_self["jacsVersion"] = json!(new_version.to_string());
+        new_self["jacsVersionDate"] = json!(versioncreated.to_string());
 
         // generate new keys?
         // sign new version
@@ -3115,7 +3272,7 @@ impl Agent {
             self.signing_procedure(&new_self, None, AGENT_SIGNATURE_FIELDNAME)?;
         // hash new version
         let document_hash = self.hash_doc(&new_self)?;
-        new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        new_self[SHA256_FIELDNAME] = json!(document_hash.to_string());
         //replace ones self
         self.version = new_self.get_str("jacsVersion");
         self.value = Some(new_self.clone());
@@ -3275,7 +3432,7 @@ impl Agent {
         new_doc[AGENT_SIGNATURE_FIELDNAME] =
             self.signing_procedure(&new_doc, None, AGENT_SIGNATURE_FIELDNAME)?;
         let document_hash = self.hash_doc(&new_doc)?;
-        new_doc[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        new_doc[SHA256_FIELDNAME] = json!(document_hash.to_string());
 
         // Update in-memory state
         self.version = Some(new_version.clone());
@@ -3567,7 +3724,7 @@ impl Agent {
         // run as agent
         // validate the agent schema now
         let document_hash = self.hash_doc(&instance)?;
-        instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+        instance[SHA256_FIELDNAME] = json!(document_hash.to_string());
         self.value = Some(instance.clone());
         self.verify_self_signature()?;
         Ok(instance)

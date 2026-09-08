@@ -99,7 +99,18 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build native library
-        run: cargo build --locked --release -p jacsgo --target ${{ matrix.target }}
+        run: cargo build --locked --release -p jacsgo --target ${{ matrix.target }} --features human-approval-vendored
+
+      - name: Set portable macOS library install name before checksumming
+        if: runner.os == 'macOS'
+        run: |
+          library="target/${{ matrix.target }}/release/libjacsgo.dylib"
+          install_name_tool -id '@loader_path/libjacsgo.dylib' "$library"
+          codesign --force --sign - "$library"
+          bash jacsgo/scripts/check-macos-install-name.sh "$library"
+
+      - name: Reject external OpenSSL runtime dependencies
+        run: python3 scripts/check_native_crypto_linkage.py "target/${{ matrix.target }}/release/libjacsgo.${{ matrix.extension }}"
 
       - name: Stage native library and checksum
         shell: bash

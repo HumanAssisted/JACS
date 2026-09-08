@@ -16,8 +16,10 @@ browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
   agreements produced by `jacs_core::CoreAgent::sign_message` round-trip
   through native `jacs::Agent::verify_string` and back.
 - The strict raw-JSON decoder (`strict_json`) used before cryptographic
-  processing. It enforces RFC 8785's I-JSON input requirement by rejecting
-  duplicate decoded object names recursively; repeated array values are valid.
+  processing. It rejects duplicate decoded object names recursively and
+  mathematical integers outside ±(2^53−1), including exponent spellings;
+  repeated array values are valid. Existing parsing keeps RFC 8785 binary64
+  rounding for nonintegral decimals.
 - The home of `Ed25519DalekSigner`, `Pq2025Signer`, the `DetachedSigner`
   trait, `CoreAgent`, the AES-256-GCM + Argon2id encrypted-key envelope,
   the embedded JSON schema set (Draft 7), and the multi-party agreement
@@ -78,6 +80,29 @@ let signers: Vec<(&str, &[u8], SigningAlgorithm)> = vec![
 let outcome = agreements::verify(&doc, &signers)?;
 assert!(outcome.all_valid);
 ```
+
+## Numeric compatibility profiles
+
+`parse_strict_json` and its byte/typed counterparts use
+`jacs-json-rfc8785-binary64-v1`. Historical nonintegral decimals remain readable:
+for example, `333333333.33333329` canonicalizes to `333333333.3333333`, as in
+RFC 8785. Mathematical unsafe integers remain rejected whether written as
+plain integers, `.0`, or exponent notation. This integer rule is narrower than
+RFC 8785 itself; represent larger exact quantities as strings.
+
+New protocols may explicitly select `NumericProfile::ExactDecimalV1`
+(`jacs-json-safe-binary64-v1`) with
+`parse_strict_json_with_numeric_profile` or its byte/typed counterparts. This
+profile additionally requires exact decimal preservation after binary64/JCS
+conversion and limits number tokens to 128 bytes, coefficients to 100 digits,
+and exponent magnitude to 10,000. A strict-profile rejection is final for that
+decision; callers must not retry it with the compatibility profile.
+
+Choose the profile from the protocol or independently selected verification
+policy before parsing raw input. An already-decoded `serde_json::Value` cannot
+prove the original decimal spelling was preserved. `canonicalize_json_try`
+continues to validate safe integral values and serialize finite decimals using
+RFC 8785; it does not recover discarded input precision.
 
 ## Encrypted private-key envelopes
 

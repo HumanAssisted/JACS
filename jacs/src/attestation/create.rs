@@ -98,7 +98,7 @@ pub fn create_attestation_impl(
 
     // 5. Hash the document
     let document_hash = agent.hash_doc(&instance)?;
-    instance[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+    instance[SHA256_FIELDNAME] = json!(document_hash.to_string());
 
     // 6. Store and return
     let doc = agent.store_jacs_document(&instance)?;

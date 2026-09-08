@@ -185,7 +185,16 @@ pub enum AgreementV2Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgreementV2VerificationReport {
+    /// Always false: Agreement v2 cannot authenticate role/quorum/lineage or
+    /// produce a portable policy verdict. Kept only as a fail-closed wire
+    /// migration field.
     pub valid: bool,
+    /// Whether the legacy native mathematical and structural checks passed.
+    /// This is not authorization.
+    pub mathematical_checks_valid: bool,
+    /// Always false for portable v2 inspection.
+    pub policy_accepted: bool,
+    pub overall_scope: String,
     pub status: String,
     pub expected_status: String,
     pub recomputed_agreement_hash: String,
@@ -323,6 +332,60 @@ pub fn verify(
         message: format!("Failed to acquire agent lock: {}", e),
     })?;
     verify_with_agent(&mut inner, document)
+}
+
+/// Produce the common, exact-byte TP-35 coverage report used by native and
+/// browser bindings. Key discovery here is legacy compatibility plumbing; the
+/// resulting report remains consent-signature inspection only.
+pub fn inspect(
+    agent: &SimpleAgent,
+    document: &str,
+) -> Result<jacs_core::agreements::v2::AgreementV2CoverageReport, JacsError> {
+    let mut inner = agent.agent.lock().map_err(|error| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {error}"),
+    })?;
+    inspect_with_agent(&mut inner, document)
+}
+
+pub fn inspect_with_agent(
+    agent: &mut Agent,
+    document: &str,
+) -> Result<jacs_core::agreements::v2::AgreementV2CoverageReport, JacsError> {
+    let value = parse_agreement_value(document)?;
+    let mut selected = Vec::<(String, Vec<u8>, jacs_core::SigningAlgorithm)>::new();
+    let signatures = std::iter::once(
+        value
+            .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+            .ok_or_else(|| malformed(DOCUMENT_AGENT_SIGNATURE_FIELDNAME, "missing"))?,
+    )
+    .chain(signature_entries(&value).filter_map(|entry| entry.get("signature")));
+    for signature in signatures {
+        let signer_id = signature
+            .get("agentID")
+            .and_then(Value::as_str)
+            .ok_or_else(|| malformed("signature.agentID", "missing string"))?;
+        let (public_key, algorithm, _) = resolve_signature_public_key(agent, signature)?;
+        let algorithm =
+            jacs_core::SigningAlgorithm::from_wire_str(&algorithm).ok_or_else(|| {
+                JacsError::CryptoError(format!(
+                    "unsupported agreement v2 signature algorithm '{algorithm}'"
+                ))
+            })?;
+        if !selected
+            .iter()
+            .any(|(_, selected_key, selected_algorithm)| {
+                selected_key == &public_key && *selected_algorithm == algorithm
+            })
+        {
+            selected.push((signer_id.to_string(), public_key, algorithm));
+        }
+    }
+    let borrowed = selected
+        .iter()
+        .map(|(identity, key, algorithm)| (identity.as_str(), key.as_slice(), *algorithm))
+        .collect::<Vec<_>>();
+    jacs_core::agreements::v2::inspect_bytes(document.as_bytes(), &borrowed)
+        .map_err(JacsError::from)
 }
 
 /// Auto-merge two transcript-only branches and emit a successor version.
@@ -650,13 +713,14 @@ fn build_verification_report(
         .get("jacsId")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
-    let valid = errors.is_empty();
-    if valid {
+    let mathematical_checks_valid = errors.is_empty();
+    if mathematical_checks_valid {
         info!(
             event = "agreement_v2_verified",
             document_id = %agreement_id,
             status = %status,
-            valid = true,
+            mathematical_checks_valid = true,
+            policy_accepted = false,
             signer_count = signed_counts.signers.len(),
             witness_count = signed_counts.witnesses.len(),
             notary_count = signed_counts.notaries.len(),
@@ -666,7 +730,8 @@ fn build_verification_report(
         warn!(
             event = "agreement_v2_verified",
             document_id = %agreement_id,
-            valid = false,
+            mathematical_checks_valid = false,
+            policy_accepted = false,
             error_count = errors.len(),
             errors = ?errors,
             "Agreement v2 verification failed"
@@ -674,7 +739,10 @@ fn build_verification_report(
     }
 
     Ok(AgreementV2VerificationReport {
-        valid,
+        valid: false,
+        mathematical_checks_valid,
+        policy_accepted: false,
+        overall_scope: "consent_signatures_only".into(),
         status,
         expected_status,
         recomputed_agreement_hash,
@@ -715,14 +783,14 @@ pub fn merge_transcript_branches_with_agent(
     assert_controller(agent, &left.value)?;
 
     let left_report = build_verification_report(agent, &left.value)?;
-    if !left_report.valid {
+    if !left_report.mathematical_checks_valid {
         return Err(JacsError::DocumentError(format!(
             "left branch failed verification; refusing to merge unverified agreement: {:?}",
             left_report.errors
         )));
     }
     let right_report = build_verification_report(agent, &right.value)?;
-    if !right_report.valid {
+    if !right_report.mathematical_checks_valid {
         return Err(JacsError::DocumentError(format!(
             "right branch failed verification; refusing to merge unverified agreement: {:?}",
             right_report.errors
@@ -798,14 +866,14 @@ pub fn resolve_branch_conflict_with_agent(
     assert_controller(agent, &previous.value)?;
 
     let previous_report = build_verification_report(agent, &previous.value)?;
-    if !previous_report.valid {
+    if !previous_report.mathematical_checks_valid {
         return Err(JacsError::DocumentError(format!(
             "previous branch failed verification; refusing to resolve unverified agreement: {:?}",
             previous_report.errors
         )));
     }
     let side_branch_report = build_verification_report(agent, &side_branch.value)?;
-    if !side_branch_report.valid {
+    if !side_branch_report.mathematical_checks_valid {
         return Err(JacsError::DocumentError(format!(
             "side branch failed verification; refusing to resolve unverified agreement: {:?}",
             side_branch_report.errors

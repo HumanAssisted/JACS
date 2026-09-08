@@ -78,6 +78,13 @@ char* jacs_simple_verify_by_id(SimpleAgentHandle handle, const char* document_id
 
 char* jacs_simple_verify_with_key(SimpleAgentHandle handle, const char* signed_document, const char* public_key_base64);
 
+// Stateless human-approved public evidence verification; no agent handle.
+// Expected context and both role-specific public-key pins are caller-selected.
+// Returns the complete report JSON; free with jacs_free_string. A null result
+// exposes an error via jacs_simple_last_error on the same thread. Native builds
+// without human-approval retain this symbol and return an unsupported error.
+char* jacs_verify_human_approved_document(const char* bundle_json, const char* expected_json, const char* authority_json, const char* provenance_json);
+
 // Signing
 char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);
 char* jacs_simple_sign_raw_bytes(SimpleAgentHandle handle, const uint8_t* data, size_t data_len);

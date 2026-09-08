@@ -13,14 +13,13 @@
 //! themselves before / after `sign`; jacs-core does not enforce them in
 //! this module (PRD §4.2: "no I/O, no policy").
 //!
-//! ## Verification model
+//! ## Legacy v1 inspection model
 //!
-//! `verify(doc, signers)` returns a `QuorumOutcome` listing the
-//! per-signer result for every entry in `jacsAgreement.signatures[]`. A
-//! signature is `Valid` iff the cryptographic verification succeeds
-//! using the matching `(agent_id, public_key, algorithm)` triple from
-//! `signers`. `SignerKeyMissing` flags a signer whose entry the caller
-//! did not provide a key for; the signature is not crypto-checked.
+//! `verify(doc, signers)` returns a `QuorumOutcome` listing only the
+//! mathematical result for each *present* signature. Agreement v1 leaves its
+//! policy sidecar unauthenticated, so the outcome always reports
+//! `policy_authenticated=false` and `policy_accepted=false`; signer count,
+//! role, quorum, question, and context cannot be treated as authoritative.
 //!
 //! See PRD §4.2, §4.4.
 
@@ -30,6 +29,10 @@ use crate::sign::SigningAlgorithm;
 use crate::verify::{build_signature_content_v2, verify_detached};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+/// Actionable portable agreements. V1 and v2 remain compatibility inspection
+/// formats; all new portable consent is represented by this closed v3 module.
+pub mod v3;
 
 /// Wire field name for the agreement object. Mirrors
 /// `jacs::agent::AGENT_AGREEMENT_FIELDNAME`.
@@ -42,8 +45,9 @@ pub const JACS_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
 /// Outcome of a multi-party agreement verification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuorumOutcome {
-    /// `true` iff every entry in `per_signer` is `SignerStatus::Valid`. A
-    /// missing key or tampered payload flips this to `false`.
+    /// `true` iff every *present v1 mathematical signature* is valid.  This
+    /// is not agreement acceptance: v1 does not authenticate the policy
+    /// sidecar that names participants, quorum, role, question, or context.
     pub all_valid: bool,
     /// Number of `Valid` entries in `per_signer`.
     pub verified_signers: usize,
@@ -52,6 +56,14 @@ pub struct QuorumOutcome {
     /// Per-signer detail. Iteration order matches the order of
     /// `jacsAgreement.signatures[]`.
     pub per_signer: Vec<SignerResult>,
+    /// Fixed compatibility scope.  V1 is never actionable.
+    pub overall_scope: String,
+    /// Always false for v1 because its agreement policy is not authenticated.
+    pub policy_authenticated: bool,
+    /// Always false.  Callers must not translate `all_valid` into acceptance.
+    pub policy_accepted: bool,
+    /// Explicit diagnostics intended for user interfaces and migration logs.
+    pub warnings: Vec<String>,
 }
 
 /// Result for one signer entry inside the agreement.
@@ -341,6 +353,13 @@ pub fn verify(
         verified_signers: verified,
         expected_signers: per_signer.len(),
         per_signer,
+        overall_scope: "legacy_v1_present_signature_inspection".to_string(),
+        policy_authenticated: false,
+        policy_accepted: false,
+        warnings: vec![
+            "Agreement v1 does not authenticate participant, role, quorum, question, or context policy; it cannot produce an actionable or complete verdict"
+                .to_string(),
+        ],
     })
 }
 
@@ -354,6 +373,7 @@ pub mod v2 {
     use crate::canonical::canonicalize_json_try;
     use crate::sign::SigningAlgorithm;
     use crate::verify::{sha256_hex, verify_document};
+    use serde::{Deserialize, Serialize};
     use serde_json::{Map, Value, json};
     use std::collections::HashSet;
 
@@ -370,6 +390,378 @@ pub mod v2 {
     const AUTO_MERGE_GUARD_FIELDS: &[&str] =
         &["status", "agreementSignatures", "links", "controllers"];
     const MINIMUM_STRENGTHS: &[&str] = &["classical", "post-quantum"];
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum CoverageCryptographicResult {
+        Valid,
+        Invalid,
+    }
+
+    /// Exact mathematical coverage of one legacy v2 party proof.  Role is
+    /// intentionally absent: the serialized role sits outside the signature.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    pub struct AgreementV2PartyProofCoverage {
+        pub proof_id: String,
+        pub party_id: String,
+        pub actual_signed_field_pointers: Vec<String>,
+        pub unsigned_field_pointers: Vec<String>,
+        pub verification_report_digest: String,
+        pub cryptographic_result: CoverageCryptographicResult,
+    }
+
+    /// TP-35 compatibility report.  It reports exact bytes and mathematical
+    /// coverage only; no field can be interpreted as role, quorum, lineage,
+    /// notary, or application authorization.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    pub struct AgreementV2CoverageReport {
+        pub profile: String,
+        pub full_artifact_digest: String,
+        pub outer_document_signature_report_digest: String,
+        pub party_proofs: Vec<AgreementV2PartyProofCoverage>,
+        pub role_binding: String,
+        pub quorum_binding: String,
+        pub lineage_binding: String,
+        pub notary_binding: String,
+        pub portable_verifier_version: String,
+        pub overall_scope: String,
+        pub cryptographic_result: CoverageCryptographicResult,
+    }
+
+    fn pointer_escape(segment: &str) -> String {
+        segment.replace('~', "~0").replace('/', "~1")
+    }
+
+    /// Frozen native v2 compatibility hash. New portable artifacts hash raw
+    /// canonical key bytes; historical native artifacts decoded arbitrary key
+    /// bytes as UTF-8 with replacement, trimmed them, and removed CR bytes.
+    /// The outer signature authenticates the selected hash value, so accepting
+    /// either exact convention during v2 inspection does not authorize a key
+    /// substitution and keeps old local/HAI artifacts readable.
+    fn legacy_public_key_hash(bytes: &[u8]) -> String {
+        let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
+        let decoded = String::from_utf8_lossy(bytes);
+        let normalized = decoded.trim().replace('\r', "");
+        sha256_hex(normalized.as_bytes())
+    }
+
+    fn select_signed_key<'a>(
+        signature: &Value,
+        signers: &[(&str, &'a [u8], SigningAlgorithm)],
+    ) -> Option<(&'a [u8], SigningAlgorithm)> {
+        let claimed_id = signature.get("agentID").and_then(Value::as_str)?;
+        let signed_hash = signature.get("publicKeyHash").and_then(Value::as_str)?;
+        let signed_algorithm = signature
+            .get("signingAlgorithm")
+            .and_then(Value::as_str)
+            .and_then(SigningAlgorithm::from_wire_str)?;
+        signers
+            .iter()
+            .copied()
+            .find(|(id, key, algorithm)| {
+                normalize_agent_id(id) == normalize_agent_id(claimed_id)
+                    && *algorithm == signed_algorithm
+                    && (sha256_hex(key) == signed_hash
+                        || legacy_public_key_hash(key) == signed_hash)
+            })
+            .map(|(_, key, algorithm)| (key, algorithm))
+    }
+
+    fn party_proof_pointers(
+        document: &Value,
+        entry: &Value,
+        index: usize,
+    ) -> (Vec<String>, Vec<String>) {
+        let signature = entry.get("signature").unwrap_or(&Value::Null);
+        let signed_names = signature
+            .get("fields")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect::<HashSet<_>>();
+        let mut actual = Vec::new();
+        for name in &signed_names {
+            match *name {
+                "signedTranscriptHash" => {
+                    actual.push(format!("/agreementSignatures/{index}/signedTranscriptHash"))
+                }
+                other => actual.push(format!("/{}", pointer_escape(other))),
+            }
+        }
+        if let Some(metadata) = signature.as_object() {
+            for name in metadata.keys().filter(|name| name.as_str() != "signature") {
+                actual.push(format!(
+                    "/agreementSignatures/{index}/signature/{}",
+                    pointer_escape(name)
+                ));
+            }
+        }
+        actual.sort();
+        actual.dedup();
+
+        let mut unsigned = document
+            .as_object()
+            .into_iter()
+            .flat_map(|object| object.keys())
+            .map(|name| format!("/{}", pointer_escape(name)))
+            .filter(|pointer| !actual.contains(pointer))
+            .collect::<Vec<_>>();
+        unsigned.push(format!("/agreementSignatures/{index}/role"));
+        if entry.get("signedTranscriptHash").is_some()
+            && !signed_names.contains("signedTranscriptHash")
+        {
+            unsigned.push(format!("/agreementSignatures/{index}/signedTranscriptHash"));
+        }
+        unsigned.sort();
+        unsigned.dedup();
+        (actual, unsigned)
+    }
+
+    /// Inspect the exact submitted v2 bytes with the portable verifier.
+    ///
+    /// The outer generic document signature is represented by an exact
+    /// TP-26 report digest produced in-process.  Every inner proof gets a
+    /// closed mathematical report.  This function never emits trusted roles,
+    /// quorum, lineage, notary status, or `policy_accepted=true`.
+    pub fn inspect_bytes(
+        artifact_bytes: &[u8],
+        signers: &[(&str, &[u8], SigningAlgorithm)],
+    ) -> Result<AgreementV2CoverageReport, CoreError> {
+        use crate::identity::{digest_bytes, digest_json};
+        use crate::signing::SigningOperation;
+        use crate::verification::{
+            DetachedProofInput, DocumentIntegrityChecks, ExactExpectation, FieldStatus,
+            ReportField, VerificationIntent, VerificationPolicy, VersionExpectation,
+            detached_proof_integrity_report, document_integrity_report,
+            missing_proof_integrity_report,
+        };
+
+        let raw = std::str::from_utf8(artifact_bytes).map_err(|_| {
+            CoreError::MalformedDocument("agreement v2 artifact must be UTF-8 JSON".into())
+        })?;
+        let document = crate::strict_json::parse_strict_json(raw)?;
+        assert_agreement(&document)?;
+
+        let recomputed_content_hash = content_hash(&document)?;
+        let content_hash_matches = document.get("jacsSha256").and_then(Value::as_str)
+            == Some(recomputed_content_hash.as_str());
+        let recomputed_agreement_hash = compute_agreement_hash(&document)?;
+        let agreement_hash_matches = document.get("jacsAgreementHash").and_then(Value::as_str)
+            == Some(recomputed_agreement_hash.as_str());
+
+        let outer_signature = document.get("jacsSignature").ok_or_else(|| {
+            CoreError::MalformedDocument("agreement v2 outer jacsSignature missing".into())
+        })?;
+        let outer_agent_id = outer_signature
+            .get("agentID")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                CoreError::MalformedDocument(
+                    "agreement v2 outer jacsSignature.agentID missing".into(),
+                )
+            })?;
+        let (outer_key, outer_algorithm) =
+            select_signed_key(outer_signature, signers).ok_or_else(|| {
+                CoreError::AgreementFailed(format!(
+                    "no caller-selected key matching the authenticated ID, algorithm, and key hash for agreement v2 outer signer '{outer_agent_id}'"
+                ))
+            })?;
+        let recomputed_public_key_hash = sha256_hex(outer_key);
+        let legacy_recomputed_public_key_hash = legacy_public_key_hash(outer_key);
+        let signed_public_key_hash = outer_signature.get("publicKeyHash").and_then(Value::as_str);
+        let public_key_hash_matches = signed_public_key_hash
+            == Some(recomputed_public_key_hash.as_str())
+            || signed_public_key_hash == Some(legacy_recomputed_public_key_hash.as_str());
+        let registry_digest = digest_json(
+            "JACS-SECURITY-PROFILE-REGISTRY-V1",
+            &json!({"profiles":["jacs-document-v2"]}),
+        )?;
+        let policy = VerificationPolicy::integrity_only(
+            "jacs-agreement-v2-coverage".into(),
+            registry_digest,
+        )?;
+        let intent = VerificationIntent::document_integrity();
+        let outer_report = document_integrity_report(
+            raw,
+            outer_key,
+            outer_algorithm.as_str(),
+            &intent,
+            &policy,
+            DocumentIntegrityChecks {
+                header_valid: true,
+                content_hash_valid: content_hash_matches,
+                public_key_hash_valid: public_key_hash_matches,
+                referenced_content_valid: None,
+            },
+        )?;
+        let expected_submitted_digest =
+            digest_bytes("JACS-VERIFICATION-ARTIFACT-V1", artifact_bytes);
+        if outer_report
+            .field(ReportField::SubmittedArtifactDigest)
+            .value
+            != json!(expected_submitted_digest)
+        {
+            return Err(CoreError::AgreementFailed(
+                "outer verification report does not cover the exact submitted v2 bytes".into(),
+            ));
+        }
+        let outer_signature_valid = {
+            let field = outer_report.field(ReportField::SignatureValid);
+            field.status == FieldStatus::Valid && field.value == Value::Bool(true)
+        };
+
+        let transcript_hash = compute_transcript_hash(&document)?;
+        let transcript_non_empty = document
+            .get("transcript")
+            .and_then(Value::as_array)
+            .is_some_and(|items| !items.is_empty());
+        let mut party_proofs = Vec::new();
+        for (index, entry) in signatures(&document).into_iter().enumerate() {
+            let signature = entry.get("signature").unwrap_or(&Value::Null);
+            let party_id = signature
+                .get("agentID")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let proof_id = digest_json(
+                "JACS-AGREEMENT-V2-PARTY-PROOF-ID-V1",
+                &json!({"partyId":party_id,"proofIndex":index,"signature":signature}),
+            )?;
+            let fields = signature
+                .get("fields")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let required_fields_covered = fields.iter().any(|field| field == "jacsId")
+                && fields.iter().any(|field| field == "jacsAgreementHash")
+                && (!transcript_non_empty
+                    || fields.iter().any(|field| field == "signedTranscriptHash"));
+            let transcript_hash_matches = !transcript_non_empty
+                || entry.get("signedTranscriptHash").and_then(Value::as_str)
+                    == Some(transcript_hash.as_str());
+            let mut errors = Vec::new();
+            let mut signature_valid = false;
+            let mut proof_intent = VerificationIntent::document_integrity();
+            proof_intent.expected_identity = if party_id.is_empty() {
+                ExactExpectation::not_applicable()
+            } else {
+                ExactExpectation::exact(party_id.clone())
+            };
+            proof_intent.expected_jacs_version = signature
+                .get("agentVersion")
+                .and_then(Value::as_str)
+                .map(VersionExpectation::exact)
+                .unwrap_or_else(VersionExpectation::not_applicable);
+            proof_intent.operation = SigningOperation::SignAgreementConsent;
+            proof_intent.signature_profile = "jacs-signature-v2".into();
+            let mut selected_proof_report = None;
+            if party_id.is_empty() {
+                errors.push("party proof signature agentID is missing".to_string());
+            } else if let Some((public_key, algorithm)) = select_signed_key(signature, signers) {
+                let mut context = json!({
+                    "jacsId": document.get("jacsId").cloned().unwrap_or(Value::Null),
+                    "jacsAgreementHash": document
+                        .get("jacsAgreementHash")
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                    "agreementSignature": signature.clone(),
+                });
+                if let Some(signed_transcript_hash) = entry.get("signedTranscriptHash") {
+                    context["signedTranscriptHash"] = signed_transcript_hash.clone();
+                }
+                match detached_proof_integrity_report(
+                    raw,
+                    public_key,
+                    algorithm.as_str(),
+                    &proof_intent,
+                    &policy,
+                    DetachedProofInput::AgreementV2 { context: &context },
+                ) {
+                    Ok(proof_report) => {
+                        let field = proof_report.field(ReportField::SignatureValid);
+                        signature_valid =
+                            field.status == FieldStatus::Valid && field.value == Value::Bool(true);
+                        selected_proof_report = Some(proof_report);
+                    }
+                    Err(error) => errors.push(error.to_string()),
+                }
+            } else {
+                errors.push(format!(
+                    "no caller-selected key for party proof '{party_id}'"
+                ));
+            }
+            if !agreement_hash_matches {
+                errors.push("jacsAgreementHash does not match the complete consent scope".into());
+            }
+            if !transcript_hash_matches {
+                errors.push("signedTranscriptHash mismatch".into());
+            }
+            if !required_fields_covered {
+                errors.push("party proof omits a required v2 consent/transcript field".into());
+            }
+            let mathematical_valid = signature_valid
+                && agreement_hash_matches
+                && transcript_hash_matches
+                && required_fields_covered
+                && errors.is_empty();
+            let proof_report = match selected_proof_report {
+                Some(report) => report,
+                None => missing_proof_integrity_report(raw, &proof_intent, &policy)?,
+            };
+            let verification_report_digest = proof_report.digest()?;
+            let (actual_signed_field_pointers, unsigned_field_pointers) =
+                party_proof_pointers(&document, entry, index);
+            party_proofs.push(AgreementV2PartyProofCoverage {
+                proof_id,
+                party_id,
+                actual_signed_field_pointers,
+                unsigned_field_pointers,
+                verification_report_digest,
+                cryptographic_result: if mathematical_valid {
+                    CoverageCryptographicResult::Valid
+                } else {
+                    CoverageCryptographicResult::Invalid
+                },
+            });
+        }
+        party_proofs.sort_by(|left, right| {
+            (&left.party_id, &left.proof_id).cmp(&(&right.party_id, &right.proof_id))
+        });
+        let all_party_proofs_valid = party_proofs
+            .iter()
+            .all(|proof| proof.cryptographic_result == CoverageCryptographicResult::Valid);
+        Ok(AgreementV2CoverageReport {
+            profile: "jacs-agreement-v2-coverage-report-v1".into(),
+            full_artifact_digest: digest_bytes(
+                "JACS-AGREEMENT-V2-FULL-ARTIFACT-V1",
+                artifact_bytes,
+            ),
+            outer_document_signature_report_digest: outer_report.digest()?,
+            party_proofs,
+            role_binding: "not_authenticated_by_v2_party_proof".into(),
+            quorum_binding: "not_authenticated_by_v2_party_proof".into(),
+            lineage_binding: "not_authenticated_by_v2_party_proof".into(),
+            notary_binding: "not_authenticated_by_v2_party_proof".into(),
+            portable_verifier_version: "jacs-core-0.11.4-agreement-v2-coverage-v1".into(),
+            overall_scope: "consent_signatures_only".into(),
+            cryptographic_result: if outer_signature_valid
+                && content_hash_matches
+                && public_key_hash_matches
+                && agreement_hash_matches
+                && all_party_proofs_valid
+            {
+                CoverageCryptographicResult::Valid
+            } else {
+                CoverageCryptographicResult::Invalid
+            },
+        })
+    }
 
     pub fn create(agent: &mut CoreAgent, input: &Value) -> Result<Value, CoreError> {
         let agent_id = agent_id(agent);

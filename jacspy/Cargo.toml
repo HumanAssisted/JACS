@@ -19,6 +19,8 @@ auto-initialize = ["pyo3/auto-initialize"]
 a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 agreements = ["jacs-binding-core/agreements"]
+human-approval = ["jacs-binding-core/human-approval"]
+human-approval-vendored = ["human-approval", "jacs-binding-core/human-approval-vendored"]
 
 [dependencies]
 lazy_static = "1.5.0"

@@ -691,6 +691,33 @@ fn test_get_agent_id_consistent_with_ephemeral_info() {
     );
 }
 
+#[test]
+fn legacy_v1_binding_check_never_reconstructs_completion() {
+    let wrapper = create_ephemeral_wrapper();
+    let agent_id = wrapper.get_agent_id().expect("ephemeral agent id");
+    let agreement = wrapper
+        .create_agreement(
+            r#"{"proposal":"ordinary review"}"#,
+            vec![agent_id],
+            Some("Approve this proposal?".to_string()),
+            Some("Binding contract test".to_string()),
+            None,
+        )
+        .expect("create legacy agreement");
+    let signed = wrapper
+        .sign_agreement(&agreement, None)
+        .expect("sign legacy agreement");
+    let report_json = wrapper
+        .check_agreement(&signed, None)
+        .expect("inspect legacy agreement");
+    let report: Value = serde_json::from_str(&report_json).expect("closed inspection report");
+
+    assert_eq!(report["mathematical_checks_valid"], true);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["policy_authenticated"], false);
+    assert_eq!(report["policy_accepted"], false);
+}
+
 // =============================================================================
 // 7. Diagnostics via AgentWrapper (maps to: diagnostics)
 // =============================================================================

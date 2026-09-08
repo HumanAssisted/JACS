@@ -65,8 +65,11 @@ pub mod document;
 pub mod email;
 pub mod error;
 pub mod health;
+#[cfg(all(feature = "human-approval", not(target_arch = "wasm32")))]
+pub mod human_approval;
 pub mod inline;
 pub mod keystore;
+pub mod media_signing;
 pub mod mime;
 pub mod observability;
 pub mod paths;
@@ -81,14 +84,18 @@ pub(crate) mod secure_fetch;
 pub(crate) mod secure_io;
 pub mod shared;
 pub mod shutdown;
+pub mod signer;
 pub mod simple;
 pub mod storage;
 pub mod testing;
 pub mod time_utils;
 pub mod trust;
+pub mod trust_ledger;
 pub mod validation;
+pub mod verification;
 pub mod w3c;
 
+pub use jacs_core::response_context;
 /// Strict raw-JSON decoding for signing and verification trust boundaries.
 pub use jacs_core::strict_json;
 

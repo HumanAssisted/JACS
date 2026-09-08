@@ -37,6 +37,35 @@
 
 ### Security
 
+- **2026-09-05: Explicit local MCP JSON/Agreement signing.** `jacs mcp
+  --profile local-sign --config ./jacs.config.json` uses a signed configuration,
+  one matching encrypted key pair and a fixed local document root. Nine scoped
+  JSON/Agreement tools share advertisement and dispatch checks; verification
+  remains the default and does not unlock a key. Agent provenance is not human
+  approval. Sixty-two scoped tests and strict Clippy passed locally, including
+  real stdio signing workflows. Broader file/media and frozen-profile MCP
+  workflows remain separate capability work; the full runtime suite is not
+  claimed green.
+- **Public human-approval verification is available to opt-in native bindings.**
+  One stateless binding-core method delegates to the existing verifier, with
+  thin Python, Node and Go entrypoints preserving the full report and explicit
+  caller-selected expectations and authority/provenance pins. Public evidence
+  may be read from disk without an agent, private key or implicit enrollment.
+  Both current-status facts remain `not_evaluated`; successful archival
+  verification is not permission to execute. The optional `human-approval`
+  feature leaves Rust default builds unchanged. Normal Python/npm/Go release
+  profiles now select the optional vendored backend; slim builds can opt out.
+  Exact installed Python/npm and relocated Go native consumer checks passed on
+  macOS arm64, including public proof and ordinary disk/key signing. Source
+  archives, load paths, lockfile subsets and report parity have regressions.
+  Other distribution platforms and browser proof support remain separate
+  release gates; no artifact was published.
+- **Numeric hardening preserves existing RFC 8785 decimal behavior.** Raw JSON
+  entry points retain nonintegral binary64 rounding while rejecting duplicate
+  members and unsafe mathematical integers consistently across plain, decimal,
+  and exponent spellings. Exact decimal preservation is separately opt-in as
+  `jacs-json-safe-binary64-v1`; an explicit strict-policy rejection never
+  falls back to the compatibility profile.
 - **HTTP authorization credentials are bound to the actual request.**
   `build_request_auth_header` signs a canonical v2 claim set containing the
   signer/key, method, normalized absolute URL and query, exact body digest,

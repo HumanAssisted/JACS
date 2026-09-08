@@ -60,10 +60,25 @@ mod tests {
         }"##;
         let expected = r##"{"literals":[null,true,false],"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27],"string":"€$\u000f\nA'B\"\\\\\"/"}"##;
 
-        let value = parse_strict_json(input).expect("official RFC input must parse");
+        // JCS itself permits large integers. The trust-boundary integer rule
+        // rejects 1E30, but retains the sample's historical fractional rounding.
+        let value: serde_json::Value =
+            serde_json::from_str(input).expect("official RFC input must parse");
+        assert_eq!(super::canonicalize_json(&value), expected);
+        assert!(parse_strict_json(input).is_err());
+        let safe_integer_input = input.replace("1E30", "1E12");
+        let compatible = parse_strict_json(&safe_integer_input)
+            .expect("historical RFC 8785 nonintegral decimals remain readable");
         assert_eq!(
-            canonicalize_json_try(&value).expect("official RFC input must canonicalize"),
-            expected
+            canonicalize_json_try(&compatible).unwrap(),
+            expected.replace("1e+30", "1000000000000")
+        );
+        assert!(
+            crate::strict_json::parse_strict_json_with_numeric_profile(
+                &safe_integer_input,
+                crate::strict_json::NumericProfile::ExactDecimalV1
+            )
+            .is_err()
         );
     }
 

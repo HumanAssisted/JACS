@@ -1253,53 +1253,27 @@ mod tests {
     fn make_signed_card_with_test_jwks() -> AgentCard {
         let agent_id = "550e8400-e29b-41d4-a716-446655440030";
         let version = "550e8400-e29b-41d4-a716-446655440031";
-        let mut card = make_card("signed-jacs-agent", true, Some(agent_id), Some(version));
         let (private_key, public_key) =
             crate::crypt::ringwrapper::generate_keys().expect("generate ed25519 keys");
-        let jwk = export_as_jwk(&public_key, "ring-Ed25519", agent_id).expect("export jwk");
+        make_signed_card_with_keys(agent_id, version, &private_key, &public_key)
+    }
+
+    fn make_signed_card_with_keys(
+        agent_id: &str,
+        version: &str,
+        private_key: &[u8],
+        public_key: &[u8],
+    ) -> AgentCard {
+        let mut card = make_card("signed-jacs-agent", true, Some(agent_id), Some(version));
+        let jwk = export_as_jwk(public_key, "ring-Ed25519", agent_id).expect("export jwk");
         let jwks = create_jwk_set(vec![jwk]).to_string();
         unsafe {
             std::env::set_var("JACS_TEST_JWKS_JSON", &jwks);
         }
         card.supported_interfaces[0].url = format!("https://local-jwks.invalid/agent/{}", agent_id);
         let jws =
-            sign_agent_card_jws(&card, &private_key, "ring-Ed25519", agent_id).expect("sign card");
+            sign_agent_card_jws(&card, private_key, "ring-Ed25519", agent_id).expect("sign card");
         embed_signature_in_agent_card(&card, &jws, Some(agent_id))
-    }
-
-    fn write_explicit_trust_record(
-        trust_store_dir: &std::path::Path,
-        key: &str,
-        public_key: &[u8],
-    ) {
-        let public_key_hash = crate::crypt::hash::hash_public_key(public_key);
-        let trusted_document = json!({
-            "jacsSignature": {
-                "publicKeyHash": public_key_hash,
-            }
-        });
-        std::fs::write(
-            trust_store_dir.join(format!("{key}.json")),
-            serde_json::to_vec(&trusted_document).expect("serialize trusted document"),
-        )
-        .expect("write trusted document");
-        let metadata = crate::trust::TrustedAgent {
-            agent_id: key.to_string(),
-            name: None,
-            public_key_pem: crate::crypt::normalize_public_key_pem(public_key),
-            public_key_hash: public_key_hash.clone(),
-            trusted_at: crate::time_utils::now_rfc3339(),
-            verified: true,
-        };
-        std::fs::write(
-            trust_store_dir.join(format!("{key}.meta.json")),
-            serde_json::to_vec(&metadata).expect("serialize trust metadata"),
-        )
-        .expect("write trust metadata");
-        let keys_dir = trust_store_dir.join("keys");
-        std::fs::create_dir_all(&keys_dir).expect("create trusted key cache");
-        std::fs::write(keys_dir.join(format!("{public_key_hash}.pem")), public_key)
-            .expect("write trusted key cache");
     }
 
     #[test]
@@ -1431,22 +1405,50 @@ mod tests {
     #[test]
     #[serial_test::serial(jacs_env, home_env)]
     fn strict_policy_requires_card_signature_to_match_explicit_trust_key() {
+        use secrecy::ExposeSecret;
+
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
         unsafe {
             std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
         }
 
-        let card = make_signed_card_with_test_jwks();
-        let key = build_trust_store_key(&card).expect("card trust key");
-        let verifying_key = verify_agent_card_signature(&card)
-            .expect("signed card should verify")
-            .public_key;
-        write_explicit_trust_record(&trust_store_dir, &key, &verifying_key);
+        let (remote, info) = crate::simple::SimpleAgent::ephemeral(Some("ed25519"))
+            .expect("create native Ed25519 identity");
+        let public_key = remote.get_public_key().expect("native public key");
+        let card = {
+            let agent = remote.agent.lock().expect("lock native identity");
+            make_signed_card_with_keys(
+                &info.agent_id,
+                &info.version,
+                agent
+                    .get_private_key()
+                    .expect("native private key")
+                    .expose_secret(),
+                &public_key,
+            )
+        };
+        let key = crate::trust::trust_agent_with_key(
+            &remote.export_agent().expect("export native identity"),
+            Some(&remote.get_public_key_pem().expect("native public key PEM")),
+        )
+        .expect("explicitly enroll the signed native identity");
+        assert_eq!(build_trust_store_key(&card).as_deref(), Some(key.as_str()));
 
         let accepted = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
-        write_explicit_trust_record(&trust_store_dir, &key, b"different-trusted-key");
-        let mismatch = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        // Keep the enrolled root intact: a valid card signed by a different
+        // key for that same identity must not inherit its explicit trust.
+        let (other_private_key, other_public_key) =
+            crate::crypt::ringwrapper::generate_keys().expect("generate different card key");
+        let other_card = make_signed_card_with_keys(
+            &info.agent_id,
+            &info.version,
+            &other_private_key,
+            &other_public_key,
+        );
+        let mismatch = assess_a2a_agent(&test_agent(), &other_card, A2ATrustPolicy::Strict);
+        let retained_key =
+            crate::trust::get_trusted_public_key(&key).expect("enrolled native root remains valid");
         unsafe {
             std::env::remove_var("JACS_TEST_JWKS_JSON");
             std::env::remove_var("JACS_TRUST_STORE_DIR");
@@ -1463,6 +1465,7 @@ mod tests {
         );
         assert_eq!(mismatch.trust_level, TrustLevel::Untrusted);
         assert!(mismatch.reason.contains("substitution"));
+        assert_eq!(retained_key, public_key);
     }
 
     #[test]

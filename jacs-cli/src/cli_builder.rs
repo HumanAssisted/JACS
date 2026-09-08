@@ -388,7 +388,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("check-agreement")
-                        .about("List the agents that should sign a document's agreement (legacy v1; prefer `jacs agreement-v2`)")
+                        .about("Inspect legacy v1 signatures and claimed signer metadata; never reports completion or policy acceptance (use Agreement v3 for actionable decisions)")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -804,10 +804,19 @@ pub fn build_cli() -> Command {
                     Arg::new("profile")
                         .long("profile")
                         .help(
-                            "Tool profile: 'core' (default; document, trust, search, key, and W3C tools) or \
-                             'full' (adds agreement, A2A, and attestation tools). When omitted, \
-                             JACS_MCP_PROFILE is used before falling back to core.",
+                            "Security profile: 'verify-only' (default) or 'local-sign'. Local signing \
+                             requires --config or JACS_CONFIG pointing to an existing signed config; \
+                             it enables only offline JSON/Agreement signing as that local agent, not \
+                             human approval. File tools and key/trust administration remain unavailable. \
+                             When omitted, JACS_MCP_PROFILE is used before falling back to verify-only. \
+                             Reserved 'trust-admin' and 'legacy-core' profiles refuse startup.",
                         ),
+                )
+                .arg(
+                    Arg::new("config")
+                        .long("config")
+                        .value_parser(value_parser!(String))
+                        .help("Existing signed agent config (overrides JACS_CONFIG). Required for local-sign; no implicit config discovery or new key creation."),
                 )
                 .subcommand(
                     Command::new("install")

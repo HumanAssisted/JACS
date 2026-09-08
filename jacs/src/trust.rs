@@ -36,6 +36,11 @@ use tracing::{info, warn};
 fn validate_agent_id_for_path(agent_id: &str) -> Result<(), JacsError> {
     // Primary defense: validate UUID:UUID format (rejects all special characters)
     validate_agent_id(agent_id)?;
+    let (identity, version) = agent_id.split_once(':').ok_or_else(|| {
+        JacsError::ValidationError("Trust lookup requires identity:version".into())
+    })?;
+    jacs_core::identity::validate_legacy_lookup(identity, version, agent_id)
+        .map_err(|error| JacsError::ValidationError(error.to_string()))?;
 
     // Secondary defense: explicitly reject path traversal patterns
     if agent_id.contains("..")
@@ -93,6 +98,234 @@ pub struct TrustedAgent {
     pub verified: bool,
 }
 
+/// Captured identity-to-key evidence, separate from document integrity and from
+/// Current/lifecycle, revocation, purpose, or application authorization.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityBindingStatus {
+    /// No independently enrolled, exact-version native binding was available.
+    #[default]
+    Unavailable,
+    /// The signature matched an explicitly enrolled native identity and key.
+    LocallyEnrolled,
+}
+
+impl std::fmt::Display for IdentityBindingStatus {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Unavailable => "unavailable",
+            Self::LocallyEnrolled => "locally_enrolled",
+        })
+    }
+}
+
+/// Verify a document-v2 signature against independently enrolled local identity
+/// evidence. Cache discovery and A2A bookmarks alone return `Unavailable`.
+/// An enrolled-key conflict or local distrust is an error, never a discovery
+/// fallback. This reads existing enrollment state; it never enrolls or pins.
+///
+/// This checks the signature and its identity binding, not the document hash,
+/// attachments, freshness, lifecycle, or an application authorization policy.
+pub fn verify_document_identity_binding(
+    document: &Value,
+) -> Result<IdentityBindingStatus, JacsError> {
+    let signature = &document[AGENT_SIGNATURE_FIELDNAME];
+    if signature[SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str() != Some(SIGNATURE_CONTENT_VERSION_V2)
+    {
+        return Ok(IdentityBindingStatus::Unavailable);
+    }
+    let identity = signature.get_str_required("agentID")?;
+    let version = signature.get_str_required("agentVersion")?;
+    let lookup = format!("{identity}:{version}");
+    validate_agent_id_for_path(&lookup)?;
+    ensure_not_distrusted(&lookup)?;
+
+    let pin_file = identity_state_dir().join(format!("{identity}.pin"));
+    match fs::symlink_metadata(&pin_file) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // In particular, do not migrate old metadata or establish a first
+            // pin while verifying attacker-supplied input.
+            return Ok(IdentityBindingStatus::Unavailable);
+        }
+        Err(error) => return Err(JacsError::TrustError(error.to_string())),
+        Ok(_) => {}
+    }
+    // Explicit enrollment leaves a persistent identity lock. Require it to
+    // exist before using the shared lock primitive; verification does not set
+    // up trust-store directories or first-use state.
+    let lock_file = identity_state_dir().join(format!(".{identity}.lock"));
+    crate::secure_io::read_no_follow(&lock_file)
+        .map_err(|error| JacsError::TrustError(format!("Enrollment lock unavailable: {error}")))?;
+
+    with_identity_lock(&lookup, || {
+        ensure_not_distrusted(&lookup)?;
+        let pinned = crate::secure_io::read_to_string_no_follow(&pin_file)
+            .map_err(|error| JacsError::TrustError(error.to_string()))?;
+        let claimed_hash = signature.get_str_required("publicKeyHash")?;
+        if pinned.trim() != claimed_hash {
+            warn!(event = "verification_enrolled_key_conflict", agent_id = %identity,
+                "Document key does not match the independently enrolled identity");
+            return Err(JacsError::TrustError(
+                "Document public key conflicts with the enrolled identity key".into(),
+            ));
+        }
+        let Some(metadata) = read_trusted_agent_metadata(&lookup)? else {
+            return Ok(IdentityBindingStatus::Unavailable);
+        };
+        if !metadata.verified {
+            return Ok(IdentityBindingStatus::Unavailable);
+        }
+        let enrolled = jacs_core::strict_json::parse_strict_json(&get_trusted_agent(&lookup)?)?;
+        if enrolled[AGENT_SIGNATURE_FIELDNAME][SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str()
+            != Some(SIGNATURE_CONTENT_VERSION_V2)
+        {
+            return Ok(IdentityBindingStatus::Unavailable);
+        }
+        let public_key = get_trusted_public_key(&lookup)?;
+        // The legacy publicKeyHash normalizes text and is only a lookup hint.
+        // Bind the cached canonical key bytes to the independently retained
+        // enrollment key, not merely to that legacy hash.
+        if normalize_public_key_pem(&public_key) != metadata.public_key_pem {
+            return Err(JacsError::TrustError(
+                "Cached public key bytes differ from the explicitly enrolled public key".into(),
+            ));
+        }
+        let enrolled_algorithm =
+            enrolled[AGENT_SIGNATURE_FIELDNAME].get_str_required("signingAlgorithm")?;
+        let claimed_algorithm = signature.get_str_required("signingAlgorithm")?;
+        let algorithm = crate::verification::matching_algorithm(
+            Some(&claimed_algorithm),
+            Some(&enrolled_algorithm),
+        )?
+        .ok_or_else(|| JacsError::TrustError("Enrollment algorithm unavailable".into()))?;
+        // Canonical key validation, not an unverified metadata flag, precedes
+        // both self-signature and submitted-signature checks.
+        jacs_core::identity::canonical_key_id(&algorithm, &public_key)?;
+        verify_agent_self_signature(&enrolled, &public_key, Some(&algorithm))?;
+        let algorithm = jacs_core::sign::SigningAlgorithm::from_wire_str(&algorithm)
+            .ok_or_else(|| JacsError::TrustError("Unsupported enrollment algorithm".into()))?;
+        let result = jacs_core::verify::verify_document(
+            document,
+            &public_key,
+            algorithm,
+            AGENT_SIGNATURE_FIELDNAME,
+        )?;
+        if !result.valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: "Document signature does not verify with its enrolled identity key".into(),
+            });
+        }
+        Ok(IdentityBindingStatus::LocallyEnrolled)
+    })
+    .inspect_err(|error| {
+        warn!(event = "verification_identity_binding_failed", agent_id = %identity,
+            error = %error, "Local enrolled identity binding verification failed");
+    })
+}
+
+// Compatibility trust state is keyed by stable identity. This deny marker is
+// local administrative distrust, not authoritative key revocation or the new
+// lifecycle ledger. Ordinary import cannot supersede it.
+#[derive(Serialize)]
+struct LocalDistrustRecord {
+    identity: String,
+    denied_public_key_hashes: Vec<String>,
+    distrusted_at: String,
+}
+
+fn stable_identity(agent_id: &str) -> &str {
+    agent_id.split(':').next().unwrap_or(agent_id)
+}
+
+fn identity_state_dir() -> std::path::PathBuf {
+    trust_store_dir().join("identity_state")
+}
+
+fn ensure_not_distrusted(agent_id: &str) -> Result<(), JacsError> {
+    let marker =
+        identity_state_dir().join(format!("{}.distrusted.json", stable_identity(agent_id)));
+    match fs::symlink_metadata(&marker) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(JacsError::FileReadFailed {
+            path: marker.to_string_lossy().into_owned(),
+            reason: error.to_string(),
+        }),
+        Ok(_) => {
+            warn!(
+                event = "trust_identity_distrusted",
+                agent_id, "identity is locally distrusted"
+            );
+            Err(JacsError::TrustError(format!(
+                "Identity '{}' is locally distrusted; ordinary trust enrollment cannot supersede this decision",
+                stable_identity(agent_id)
+            )))
+        }
+    }
+}
+
+fn with_identity_lock<T>(
+    agent_id: &str,
+    operation: impl FnOnce() -> Result<T, JacsError>,
+) -> Result<T, JacsError> {
+    with_a2a_pin_lock(&identity_state_dir(), stable_identity(agent_id), operation)
+}
+
+fn identity_key_hashes(agent_id: &str) -> Result<Vec<String>, JacsError> {
+    let prefix = format!("{}:", stable_identity(agent_id));
+    let mut hashes = std::collections::BTreeSet::new();
+    let entries = fs::read_dir(trust_store_dir())
+        .map_err(|error| JacsError::TrustError(error.to_string()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| JacsError::TrustError(error.to_string()))?;
+        let filename = entry.file_name();
+        let Some(filename) = filename.to_str() else {
+            continue;
+        };
+        let Some(key) = filename.strip_suffix(".meta.json") else {
+            continue;
+        };
+        if key.starts_with(&prefix) {
+            validate_agent_id_for_path(key)?;
+            if let Some(metadata) = read_trusted_agent_metadata(key)?
+                && metadata.verified
+            {
+                hashes.insert(metadata.public_key_hash);
+            }
+        }
+    }
+    Ok(hashes.into_iter().collect())
+}
+
+fn pin_identity_key(agent_id: &str, public_key_hash: &str) -> Result<(), JacsError> {
+    // Check pre-existing version-scoped trust before creating a stable pin, so
+    // upgrading a store cannot silently discard its earlier identity binding.
+    if identity_key_hashes(agent_id)?
+        .iter()
+        .any(|hash| hash != public_key_hash)
+    {
+        return Err(JacsError::TrustError(format!(
+            "Trust key pin mismatch for identity '{}'",
+            stable_identity(agent_id)
+        )));
+    }
+    let pin_file = identity_state_dir().join(format!("{}.pin", stable_identity(agent_id)));
+    if let A2aPinOutcome::Mismatch { pinned } = check_or_create_key_pin(&pin_file, public_key_hash)?
+    {
+        warn!(
+            event = "trust_identity_pin_mismatch",
+            agent_id,
+            pinned,
+            presented = public_key_hash,
+            "rejected trust enrollment that changes the pinned identity key"
+        );
+        return Err(JacsError::TrustError(format!(
+            "Trust key pin mismatch for identity '{}'",
+            stable_identity(agent_id)
+        )));
+    }
+    Ok(())
+}
+
 /// Adds an agent to the local trust store.
 ///
 /// The agent JSON must be a valid, self-signed JACS agent document.
@@ -120,12 +353,12 @@ pub struct TrustedAgent {
 /// # Security
 ///
 /// This function requires the public key to be provided separately via
-/// `trust_agent_with_key` for proper signature verification. This version
-/// attempts to load the public key from the trust store's key cache.
+/// `trust_agent_with_key` for first enrollment. This version can refresh an
+/// existing verified enrollment using its cached key; cached material alone
+/// cannot establish first trust.
 #[must_use = "trust operation result must be checked for errors"]
 pub fn trust_agent(agent_json: &str) -> Result<String, JacsError> {
-    // For backward compatibility, try to trust without a provided public key
-    // This will fail if the public key isn't already in our key cache
+    // Refresh an existing enrollment using its verified cached public key.
     trust_agent_with_key(agent_json, None)
 }
 
@@ -138,7 +371,7 @@ pub fn trust_agent(agent_json: &str) -> Result<String, JacsError> {
 ///
 /// * `agent_json` - The full agent JSON string
 /// * `public_key_pem` - Optional PEM-encoded public key. If not provided,
-///   attempts to load from local key cache using the publicKeyHash.
+///   refreshes an existing verified enrollment using its cached public key.
 ///
 /// # Returns
 ///
@@ -146,8 +379,10 @@ pub fn trust_agent(agent_json: &str) -> Result<String, JacsError> {
 ///
 /// # Security
 ///
-/// The self-signature is cryptographically verified before the agent is trusted.
-/// If verification fails, the agent is NOT added to the trust store.
+/// The caller explicitly accepts first use of the supplied identity and key.
+/// A self-signature proves internal consistency, not independent identity.
+/// A different key cannot replace an existing stable-identity pin through this
+/// API, and local distrust always takes precedence over import or cached keys.
 #[must_use = "trust operation result must be checked for errors"]
 pub fn trust_agent_with_key(
     agent_json: &str,
@@ -174,6 +409,7 @@ pub fn trust_agent_with_key(
 
     // Validate agent ID is safe for filesystem paths (prevents path traversal)
     validate_agent_id_for_path(&agent_id)?;
+    ensure_not_distrusted(&agent_id)?;
 
     let name = agent_value.get_str("name");
 
@@ -184,6 +420,14 @@ pub fn trust_agent_with_key(
     // Note: signingAlgorithm is now required in the schema, but we handle legacy documents
     // that may not have it by falling back to algorithm detection with a warning
     let signing_algorithm = agent_value.get_path_str(&["jacsSignature", "signingAlgorithm"]);
+
+    if public_key_pem.is_none()
+        && !read_trusted_agent_metadata(&agent_id)?.is_some_and(|metadata| metadata.verified)
+    {
+        return Err(JacsError::TrustError(
+            "First enrollment requires an explicitly supplied public key via trust_agent_with_key; cached discovery material alone cannot establish trust".into(),
+        ));
+    }
 
     if signing_algorithm.is_none() {
         warn!(
@@ -249,60 +493,65 @@ pub fn trust_agent_with_key(
         signing_algorithm.as_deref(),
     )?;
 
-    // Create trust store directory if it doesn't exist
-    let trust_dir = trust_store_dir();
-    fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-        path: trust_dir.to_string_lossy().to_string(),
-        reason: e.to_string(),
-    })?;
+    with_identity_lock(&agent_id, || {
+        ensure_not_distrusted(&agent_id)?;
+        pin_identity_key(&agent_id, &public_key_hash)?;
 
-    // Save the agent file
-    let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    crate::secure_io::write_atomic_replace_no_symlink(
-        &agent_file,
-        agent_json.as_bytes(),
-        0o644,
-        false,
-    )
-    .map_err(|e| JacsError::FileWriteFailed {
-        path: agent_file.to_string_lossy().to_string(),
-        reason: e.to_string(),
-    })?;
-
-    // Save the public key to the key cache for future verifications
-    save_public_key_to_cache(
-        &public_key_hash,
-        &public_key_bytes,
-        signing_algorithm.as_deref(),
-    )?;
-
-    // Also save a metadata file for quick lookups
-    let trusted_agent = TrustedAgent {
-        agent_id: agent_id.clone(),
-        name,
-        public_key_pem: normalize_public_key_pem(&public_key_bytes),
-        public_key_hash,
-        trusted_at: time_utils::now_rfc3339(),
-        verified: true,
-    };
-
-    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
-    let metadata_json =
-        serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize metadata: {}", e),
+        // Create trust store directory if it doesn't exist
+        let trust_dir = trust_store_dir();
+        fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: trust_dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
         })?;
-    crate::secure_io::write_atomic_replace_no_symlink(
-        &metadata_file,
-        metadata_json.as_bytes(),
-        0o644,
-        false,
-    )
-    .map_err(|e| JacsError::Internal {
-        message: format!("Failed to write metadata file: {}", e),
-    })?;
 
-    info!("Trusted agent {} added to trust store", agent_id);
-    Ok(agent_id)
+        // Save the agent file
+        let agent_file = trust_dir.join(format!("{}.json", agent_id));
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &agent_file,
+            agent_json.as_bytes(),
+            0o644,
+            false,
+        )
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: agent_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+
+        // Save the public key to the key cache for future verifications
+        save_public_key_to_cache(
+            &public_key_hash,
+            &public_key_bytes,
+            signing_algorithm.as_deref(),
+        )?;
+
+        // Also save a metadata file for quick lookups
+        let trusted_agent = TrustedAgent {
+            agent_id: agent_id.clone(),
+            name,
+            public_key_pem: normalize_public_key_pem(&public_key_bytes),
+            public_key_hash,
+            trusted_at: time_utils::now_rfc3339(),
+            verified: true,
+        };
+
+        let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+        let metadata_json =
+            serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize metadata: {}", e),
+            })?;
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &metadata_file,
+            metadata_json.as_bytes(),
+            0o644,
+            false,
+        )
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to write metadata file: {}", e),
+        })?;
+
+        info!("Trusted agent {} added to trust store", agent_id);
+        Ok(agent_id.clone())
+    })
 }
 
 /// Lists all trusted agent IDs.
@@ -356,7 +605,9 @@ pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
     Ok(agents)
 }
 
-/// Removes an agent from the trust store.
+/// Persistently distrusts every version of an identity in the local trust store.
+/// Existing documents and keys remain available as historical evidence; a
+/// stable-identity deny marker prevents cached material from restoring trust.
 ///
 /// # Arguments
 ///
@@ -374,34 +625,43 @@ pub fn untrust_agent(agent_id: &str) -> Result<(), JacsError> {
     // Validate agent ID is safe for filesystem paths (prevents path traversal)
     validate_agent_id_for_path(agent_id)?;
 
-    let trust_dir = trust_store_dir();
+    with_identity_lock(agent_id, || {
+        ensure_not_distrusted(agent_id)?;
+        let trust_dir = trust_store_dir();
 
-    let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+        let agent_file = trust_dir.join(format!("{}.json", agent_id));
 
-    validate_path_within_trust_dir(&agent_file, &trust_dir)?;
+        validate_path_within_trust_dir(&agent_file, &trust_dir)?;
 
-    if !agent_file.exists() {
-        return Err(JacsError::AgentNotTrusted {
-            agent_id: agent_id.to_string(),
-        });
-    }
+        if !agent_file.exists() {
+            return Err(JacsError::AgentNotTrusted {
+                agent_id: agent_id.to_string(),
+            });
+        }
 
-    // Remove both files
-    if agent_file.exists() {
-        fs::remove_file(&agent_file).map_err(|e| JacsError::Internal {
-            message: format!("Failed to remove agent file: {}", e),
+        let record = LocalDistrustRecord {
+            identity: stable_identity(agent_id).to_string(),
+            denied_public_key_hashes: identity_key_hashes(agent_id)?,
+            distrusted_at: time_utils::now_rfc3339(),
+        };
+        let marker =
+            identity_state_dir().join(format!("{}.distrusted.json", stable_identity(agent_id)));
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &marker,
+            &serde_json::to_vec_pretty(&record)?,
+            0o600,
+            false,
+        )
+        .map_err(|error| JacsError::FileWriteFailed {
+            path: marker.to_string_lossy().into_owned(),
+            reason: error.to_string(),
         })?;
-    }
-
-    if metadata_file.exists() {
-        fs::remove_file(&metadata_file).map_err(|e| JacsError::Internal {
-            message: format!("Failed to remove metadata file: {}", e),
-        })?;
-    }
-
-    info!("Agent {} removed from trust store", agent_id);
-    Ok(())
+        info!(
+            event = "trust_identity_distrusted",
+            agent_id, "recorded persistent local identity distrust"
+        );
+        Ok(())
+    })
 }
 
 /// Retrieves a trusted agent's information.
@@ -433,8 +693,8 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
         )));
     }
 
-    match read_trusted_agent_metadata(agent_id)? {
-        Some(metadata) if metadata.verified => {}
+    let metadata = match read_trusted_agent_metadata(agent_id)? {
+        Some(metadata) if metadata.verified => metadata,
         Some(_) => {
             return Err(JacsError::TrustError(format!(
                 "Agent '{}' is stored only as an unverified A2A bookmark, not a trusted agent. \
@@ -448,12 +708,29 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
                 agent_id
             )));
         }
-    }
+    };
 
-    crate::secure_io::read_to_string_no_follow(&agent_file).map_err(|e| JacsError::FileReadFailed {
-        path: agent_file.to_string_lossy().to_string(),
-        reason: e.to_string(),
-    })
+    let agent_json = crate::secure_io::read_to_string_no_follow(&agent_file).map_err(|e| {
+        JacsError::FileReadFailed {
+            path: agent_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+    crate::schema::utils::check_document_size(&agent_json)?;
+    let document = jacs_core::strict_json::parse_strict_json(&agent_json)
+        .map_err(|error| JacsError::TrustError(error.to_string()))?;
+    validate_agent_signature_identity(&document)?;
+    let document_id = document.get_str_required("jacsId")?;
+    let document_version = document.get_str_required("jacsVersion")?;
+    if format!("{}:{}", stable_identity(&document_id), document_version) != agent_id
+        || document.get_path_str_required(&["jacsSignature", "publicKeyHash"])?
+            != metadata.public_key_hash
+    {
+        return Err(JacsError::TrustError(
+            "Trust document does not match its pinned metadata".into(),
+        ));
+    }
+    Ok(agent_json)
 }
 
 /// Retrieves the public key for a trusted agent.
@@ -595,38 +872,49 @@ fn with_a2a_pin_lock<T>(
 /// false-positive mismatch.
 pub fn pin_a2a_key(agent_key: &str, public_key_hash: &str) -> Result<A2aPinOutcome, JacsError> {
     validate_agent_id_for_path(agent_key)?;
-
-    let dir = a2a_pin_dir();
-    let pin_file = dir.join(format!("{}.pin", agent_key));
-    with_a2a_pin_lock(&dir, agent_key, || {
-        if pin_file.exists() {
-            let existing = crate::secure_io::read_to_string_no_follow(&pin_file).map_err(|e| {
-                JacsError::Internal {
-                    message: format!("Failed to read A2A key pin '{}': {}", pin_file.display(), e),
-                }
-            })?;
-            let existing = existing.trim();
-            if existing == public_key_hash {
-                Ok(A2aPinOutcome::Match)
-            } else {
-                Ok(A2aPinOutcome::Mismatch {
-                    pinned: existing.to_string(),
-                })
-            }
-        } else {
-            crate::secure_io::write_atomic_replace_no_symlink(
-                &pin_file,
-                public_key_hash.as_bytes(),
-                0o600,
-                false,
-            )
-            .map_err(|e| JacsError::FileWriteFailed {
-                path: pin_file.to_string_lossy().to_string(),
-                reason: e.to_string(),
-            })?;
-            Ok(A2aPinOutcome::FirstUse)
-        }
+    with_identity_lock(agent_key, || {
+        ensure_not_distrusted(agent_key)?;
+        let dir = a2a_pin_dir();
+        let pin_file = dir.join(format!("{}.pin", agent_key));
+        with_a2a_pin_lock(&dir, agent_key, || {
+            check_or_create_key_pin(&pin_file, public_key_hash)
+        })
     })
+}
+
+// Shared non-overwriting pin primitive. The caller holds the appropriate
+// persistent identity/pin lock for the entire read/compare/write operation.
+fn check_or_create_key_pin(
+    pin_file: &Path,
+    public_key_hash: &str,
+) -> Result<A2aPinOutcome, JacsError> {
+    if pin_file.exists() {
+        let existing = crate::secure_io::read_to_string_no_follow(pin_file).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to read A2A key pin '{}': {}", pin_file.display(), e),
+            }
+        })?;
+        let existing = existing.trim();
+        if existing == public_key_hash {
+            Ok(A2aPinOutcome::Match)
+        } else {
+            Ok(A2aPinOutcome::Mismatch {
+                pinned: existing.to_string(),
+            })
+        }
+    } else {
+        crate::secure_io::write_atomic_replace_no_symlink(
+            pin_file,
+            public_key_hash.as_bytes(),
+            0o600,
+            false,
+        )
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: pin_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+        Ok(A2aPinOutcome::FirstUse)
+    }
 }
 
 /// Result of checking a Strict-mode A2A compatibility-binding lifecycle pin.
@@ -670,6 +958,7 @@ pub(crate) fn enforce_a2a_binding_lifecycle(
     issued_at: &str,
 ) -> Result<A2aBindingLifecycleOutcome, JacsError> {
     validate_agent_id_for_path(agent_key)?;
+    ensure_not_distrusted(agent_key)?;
     let presented_at = chrono::DateTime::parse_from_rfc3339(issued_at).map_err(|error| {
         JacsError::TrustError(format!(
             "A2A compatibility binding issuedAt '{issued_at}' is invalid: {error}"
@@ -799,65 +1088,73 @@ pub(crate) fn enforce_a2a_binding_lifecycle(
 /// The agent ID if successfully trusted.
 pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsError> {
     validate_agent_id_for_path(agent_id)?;
+    with_identity_lock(agent_id, || {
+        ensure_not_distrusted(agent_id)?;
+        if read_trusted_agent_metadata(agent_id)?.is_some_and(|metadata| metadata.verified) {
+            return Err(JacsError::TrustError(
+                "An unverified A2A bookmark cannot replace a verified trust entry".into(),
+            ));
+        }
 
-    // SECURITY WARNING: A2A Agent Cards are NOT cryptographically verified
-    // by this function. Unlike trust_agent() / trust_agent_with_key(), which
-    // verify the agent's self-signature before trusting, this function stores
-    // the card as-is. Callers MUST NOT treat trust_a2a_card entries as
-    // identity-verified — they are unverified bookmarks only.
-    warn!(
-        agent_id = %agent_id,
-        "SECURITY: Trusting A2A card WITHOUT cryptographic verification. \
-        This card has not been signature-checked. Do not treat this entry \
-        as identity-verified. Use trust_agent_with_key() for verified trust."
-    );
+        // SECURITY WARNING: A2A Agent Cards are NOT cryptographically verified
+        // by this function. Unlike trust_agent() / trust_agent_with_key(), which
+        // verify the agent's self-signature before trusting, this function stores
+        // the card as-is. Callers MUST NOT treat trust_a2a_card entries as
+        // identity-verified — they are unverified bookmarks only.
+        warn!(
+            agent_id = %agent_id,
+            "SECURITY: Trusting A2A card WITHOUT cryptographic verification. \
+            This card has not been signature-checked. Do not treat this entry \
+            as identity-verified. Use trust_agent_with_key() for verified trust."
+        );
 
-    let trust_dir = trust_store_dir();
-    fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-        path: trust_dir.to_string_lossy().to_string(),
-        reason: e.to_string(),
-    })?;
-
-    // Save the agent card file
-    let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    crate::secure_io::write_atomic_replace_no_symlink(
-        &agent_file,
-        card_json.as_bytes(),
-        0o644,
-        false,
-    )
-    .map_err(|e| JacsError::FileWriteFailed {
-        path: agent_file.to_string_lossy().to_string(),
-        reason: e.to_string(),
-    })?;
-
-    // Save metadata for quick lookups
-    let trusted_agent = TrustedAgent {
-        agent_id: agent_id.to_string(),
-        name: None,
-        public_key_pem: String::new(),
-        public_key_hash: String::new(),
-        trusted_at: time_utils::now_rfc3339(),
-        verified: false,
-    };
-
-    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
-    let metadata_json =
-        serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize metadata: {}", e),
+        let trust_dir = trust_store_dir();
+        fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: trust_dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
         })?;
-    crate::secure_io::write_atomic_replace_no_symlink(
-        &metadata_file,
-        metadata_json.as_bytes(),
-        0o644,
-        false,
-    )
-    .map_err(|e| JacsError::Internal {
-        message: format!("Failed to write metadata file: {}", e),
-    })?;
 
-    info!("Trusted A2A agent {} added to trust store", agent_id);
-    Ok(agent_id.to_string())
+        // Save the agent card file
+        let agent_file = trust_dir.join(format!("{}.json", agent_id));
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &agent_file,
+            card_json.as_bytes(),
+            0o644,
+            false,
+        )
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: agent_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+
+        // Save metadata for quick lookups
+        let trusted_agent = TrustedAgent {
+            agent_id: agent_id.to_string(),
+            name: None,
+            public_key_pem: String::new(),
+            public_key_hash: String::new(),
+            trusted_at: time_utils::now_rfc3339(),
+            verified: false,
+        };
+
+        let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+        let metadata_json =
+            serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize metadata: {}", e),
+            })?;
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &metadata_file,
+            metadata_json.as_bytes(),
+            0o644,
+            false,
+        )
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to write metadata file: {}", e),
+        })?;
+
+        info!("Trusted A2A agent {} added to trust store", agent_id);
+        Ok(agent_id.to_string())
+    })
 }
 
 /// * `agent_id` - The ID of the agent to check
@@ -866,20 +1163,7 @@ pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsErr
 ///
 /// `true` if the agent is trusted, `false` otherwise.
 pub fn is_trusted(agent_id: &str) -> bool {
-    // Validate agent ID is safe for filesystem paths; return false for invalid IDs
-    if validate_agent_id_for_path(agent_id).is_err() {
-        return false;
-    }
-    let trust_dir = trust_store_dir();
-    let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    if !agent_file.exists() {
-        return false;
-    }
-    read_trusted_agent_metadata(agent_id)
-        .ok()
-        .flatten()
-        .map(|metadata| metadata.verified)
-        .unwrap_or(false)
+    get_trusted_agent(agent_id).is_ok()
 }
 
 /// Checks whether an agent has a verified trust entry.
@@ -888,6 +1172,7 @@ pub fn is_verified_trusted(agent_id: &str) -> bool {
 }
 
 fn read_trusted_agent_metadata(agent_id: &str) -> Result<Option<TrustedAgent>, JacsError> {
+    ensure_not_distrusted(agent_id)?;
     let trust_dir = trust_store_dir();
     let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
 
@@ -916,6 +1201,21 @@ fn read_trusted_agent_metadata(agent_id: &str) -> Result<Option<TrustedAgent>, J
             ),
         })?;
 
+    if metadata.agent_id != agent_id {
+        return Err(JacsError::TrustError(
+            "Trust metadata identity does not match its lookup identity".into(),
+        ));
+    }
+    let pin_file = identity_state_dir().join(format!("{}.pin", stable_identity(agent_id)));
+    if metadata.verified && pin_file.exists() {
+        let pinned = crate::secure_io::read_to_string_no_follow(&pin_file)
+            .map_err(|error| JacsError::TrustError(error.to_string()))?;
+        if pinned.trim() != metadata.public_key_hash {
+            return Err(JacsError::TrustError(
+                "Trust metadata key does not match its stable identity pin".into(),
+            ));
+        }
+    }
     Ok(Some(metadata))
 }
 
@@ -1006,6 +1306,7 @@ fn verify_agent_self_signature(
     public_key_bytes: &[u8],
     algorithm: Option<&str>,
 ) -> Result<(), JacsError> {
+    validate_agent_signature_identity(agent_value)?;
     // Extract and validate signature timestamp
     let signature_date = agent_value.get_path_str_required(&["jacsSignature", "date"])?;
     validate_signature_timestamp(&signature_date)?;
@@ -1155,6 +1456,32 @@ fn verify_agent_self_signature(
     Ok(())
 }
 
+fn validate_agent_signature_identity(agent_value: &Value) -> Result<(), JacsError> {
+    let document_id = agent_value.get_str_required("jacsId")?;
+    let document_version = agent_value.get_str_required("jacsVersion")?;
+    let identity = stable_identity(&document_id);
+    let signature_id = agent_value.get_path_str_required(&["jacsSignature", "agentID"])?;
+    let signature_version =
+        agent_value.get_path_str_required(&["jacsSignature", "agentVersion"])?;
+    if signature_id != identity
+        || signature_version != document_version
+        || document_id
+            .split_once(':')
+            .is_some_and(|(_, version)| version != document_version)
+    {
+        warn!(
+            event = "trust_self_signature_identity_mismatch",
+            agent_id = identity,
+            "agent self-signature identity or version differs from its document"
+        );
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "Agent self-signature identity and version must match jacsId and jacsVersion"
+                .into(),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1170,6 +1497,186 @@ mod tests {
         "public_key_hash":"hash",
         "trusted_at":"2026-07-10T00:00:00Z"
     }"#;
+
+    #[test]
+    fn self_signature_identity_fields_must_match_the_document() {
+        let mut document = serde_json::json!({
+            "jacsId": "550e8400-e29b-41d4-a716-446655440000",
+            "jacsVersion": "550e8400-e29b-41d4-a716-446655440001",
+            "jacsSignature": {
+                "agentID": "550e8400-e29b-41d4-a716-446655440000",
+                "agentVersion": "550e8400-e29b-41d4-a716-446655440001"
+            }
+        });
+        validate_agent_signature_identity(&document).expect("matching identity and version");
+        document["jacsSignature"]["agentVersion"] =
+            serde_json::json!("550e8400-e29b-41d4-a716-446655440002");
+        assert!(validate_agent_signature_identity(&document).is_err());
+        document["jacsSignature"]["agentVersion"] = document["jacsVersion"].clone();
+        document["jacsSignature"]["agentID"] =
+            serde_json::json!("550e8400-e29b-41d4-a716-446655440002");
+        assert!(validate_agent_signature_identity(&document).is_err());
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn explicit_enrollment_is_idempotent_and_distrust_blocks_cached_refresh() {
+        let _temp = setup_test_trust_dir();
+        let (agent, _) =
+            crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).expect("create identity");
+        let document = agent.export_agent().expect("export identity");
+        let pem = agent.get_public_key_pem().expect("export public key");
+        let agent_id = trust_agent_with_key(&document, Some(&pem)).expect("explicit enrollment");
+        assert_eq!(
+            trust_agent(&document).expect("refresh same identity"),
+            agent_id
+        );
+        assert!(is_trusted(&agent_id));
+        get_trusted_public_key(&agent_id).expect("trusted key is available");
+        assert!(
+            trust_a2a_card(&agent_id, "{}").is_err(),
+            "bookmark cannot overwrite verified enrollment"
+        );
+
+        untrust_agent(&agent_id).expect("persist local distrust");
+        assert!(!is_trusted(&agent_id));
+        assert!(list_trusted_agents().expect("list trust").is_empty());
+        assert!(get_trusted_agent(&agent_id).is_err());
+        assert!(trust_agent(&document).is_err());
+        assert!(trust_agent_with_key(&document, Some(&pem)).is_err());
+        let next_version = format!(
+            "{}:550e8400-e29b-41d4-a716-446655440099",
+            stable_identity(&agent_id)
+        );
+        assert!(pin_a2a_key(&next_version, "candidate-key").is_err());
+        assert!(trust_a2a_card(&next_version, "{}").is_err());
+        assert!(
+            trust_store_dir().join(format!("{agent_id}.json")).exists(),
+            "historical evidence is retained"
+        );
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn stable_identity_pin_rejects_key_changes_across_versions() {
+        let _temp = setup_test_trust_dir();
+        let first = "550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440001";
+        let second = "550e8400-e29b-41d4-a716-446655440000:550e8400-e29b-41d4-a716-446655440002";
+        with_identity_lock(first, || pin_identity_key(first, "first-key"))
+            .expect("first stable pin");
+        with_identity_lock(second, || pin_identity_key(second, "first-key"))
+            .expect("same key in next version");
+        assert!(with_identity_lock(second, || pin_identity_key(second, "different-key")).is_err());
+        with_identity_lock(first, || pin_identity_key(first, "first-key"))
+            .expect("original pin retained");
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn cached_key_alone_does_not_establish_first_enrollment() {
+        let _temp = setup_test_trust_dir();
+        let (agent, _) =
+            crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).expect("create identity");
+        let key = agent.get_public_key().expect("public key");
+        save_public_key_to_cache(&hash_public_key(&key), &key, Some("ring-Ed25519"))
+            .expect("cache candidate");
+        assert!(trust_agent(&agent.export_agent().expect("export identity")).is_err());
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn document_verification_captures_explicit_enrollment_and_respects_distrust() {
+        let _temp = setup_test_trust_dir();
+        let (agent, _) = crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let signed = agent
+            .sign_message(&serde_json::json!({"message": "ordinary document"}))
+            .unwrap();
+        let public_key = agent.get_public_key().unwrap();
+        let value = jacs_core::strict_json::parse_strict_json(&signed.raw).unwrap();
+        assert_eq!(
+            verify_document_identity_binding(&value).unwrap(),
+            IdentityBindingStatus::Unavailable
+        );
+        assert!(
+            !identity_state_dir().exists(),
+            "inspection must not create enrollment state"
+        );
+        let unbound = agent.verify(&signed.raw).unwrap();
+        assert!(unbound.valid);
+        assert_eq!(
+            unbound.identity_binding_status,
+            IdentityBindingStatus::Unavailable
+        );
+
+        let enrolled_id = trust_agent_with_key(
+            &agent.export_agent().unwrap(),
+            Some(&agent.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let bound = agent
+            .verify_with_key(&signed.raw, public_key.clone())
+            .unwrap();
+        assert!(bound.valid);
+        assert_eq!(
+            bound.identity_binding_status,
+            IdentityBindingStatus::LocallyEnrolled
+        );
+        let serialized = serde_json::to_value(&bound).unwrap();
+        assert_eq!(serialized["identity_bound"], true);
+        assert_eq!(serialized["policy_accepted"], false);
+
+        untrust_agent(&enrolled_id).unwrap();
+        assert!(verify_document_identity_binding(&value).is_err());
+        assert!(
+            agent
+                .verify_with_key(&signed.raw, public_key.clone())
+                .map(|result| !result.valid)
+                .unwrap_or(true)
+        );
+        // Explicit public-key-only inspection remains available and makes no
+        // local trust or identity claim, even for historical distrusted data.
+        let integrity = crate::verification::NonSigningVerifier::new()
+            .unwrap()
+            .verify_with_key(&signed.raw, &public_key, "ed25519", None)
+            .unwrap();
+        assert!(integrity.integrity_valid);
+        assert!(!integrity.identity_bound);
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn enrolled_binding_rechecks_cached_public_key_bytes() {
+        let _temp = setup_test_trust_dir();
+        let (agent, _) = crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let (other, _) = crate::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let signed = agent
+            .sign_message(&serde_json::json!({"message": "key cache consistency"}))
+            .unwrap();
+        let value = jacs_core::strict_json::parse_strict_json(&signed.raw).unwrap();
+        trust_agent_with_key(
+            &agent.export_agent().unwrap(),
+            Some(&agent.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let expected_hash = hash_public_key(agent.get_public_key().unwrap());
+        let key_file = trust_store_dir()
+            .join("keys")
+            .join(format!("{expected_hash}.pem"));
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &key_file,
+            &other.get_public_key().unwrap(),
+            0o600,
+            false,
+        )
+        .unwrap();
+        assert!(verify_document_identity_binding(&value).is_err());
+        assert!(
+            agent
+                .verify(&signed.raw)
+                .map(|result| !result.valid)
+                .unwrap_or(true)
+        );
+    }
 
     #[test]
     fn missing_trust_verification_marker_fails_closed() {

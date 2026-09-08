@@ -1213,6 +1213,8 @@ function verifyStandalone(signedDocument, options) {
     const valid = r?.valid === true;
     return {
         valid,
+        identityBindingStatus: valid && r.identityBindingStatus === 'locally_enrolled' ? 'locally_enrolled' : 'unavailable',
+        identityBound: valid && r.identityBindingStatus === 'locally_enrolled',
         signerId: valid && typeof r.signerId === 'string' ? r.signerId : '',
         timestamp: valid && typeof r.timestamp === 'string' ? r.timestamp : '',
         attachments: [],

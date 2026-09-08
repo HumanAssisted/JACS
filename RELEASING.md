@@ -191,6 +191,47 @@ settings and revoke the old automation token.
 
 ### 4. Verify and record shipped state
 
+Native Python wheels, npm modules and Go release libraries select the
+`human-approval-vendored` packaging feature. It enables the existing public
+human-proof verifier and statically links its locked OpenSSL backend; it does
+not change verification policy, Rust default features, stored key behavior or
+ordinary signature semantics. Source builds need the normal C toolchain, make
+and Perl to compile OpenSSL. No new runtime libssl/libcrypto installation is
+allowed: `scripts/check_native_crypto_linkage.py` inspects direct dependencies
+and rejects non-system absolute paths, working-directory-relative paths, and
+loader-token traversal in each successful native build
+(including wheels) before upload. This is not a transitive loader scan; static
+provenance comes from the vendored feature and locked source graph. A system-backend build
+remains available through `human-approval`, and slim Rust/default builds remain
+available without either feature.
+
+Candidate and exact-version post-publish consumers verify the canonical public
+fixture using the installed SDK, compare the complete report, and reject a
+wrong independently selected expectation. Missing verifier support fails these
+checks; opt-out test skips are not release evidence. `current: not_evaluated`
+still means archival proof, not live permission or a current revocation check.
+The existing platform matrices and allowed-failure targets are unchanged;
+local validation does not substitute for target-specific release results.
+Required native candidate checks cover Linux glibc x86_64/arm64 and macOS
+x86_64/arm64 on the existing build runners. The required x86_64-musl candidates
+run the same installed-artifact proof probe in digest-pinned official Node 20
+and Python 3.11 Alpine runtimes, with network disabled and package/fixture mounts
+read-only. The same probe gates an optional ARM64-musl candidate on the existing
+native ARM runner whenever that artifact exists. An absent optional build is
+reported as absent, never as a verification pass. Image preparation is separate
+from verification. Other optional cross targets retain their source support,
+allowed-failure builds and `experimental-bindings-*` CI artifacts, but cannot
+enter registry tarballs until they have a matching runtime gate. The five
+recorded shipped Python/Node native platforms remain release requirements.
+The exact Python source distribution is also rebuilt independently, installed
+into a clean environment and proof-verified before publication. These workflow
+checks allow Cargo to prune the parent-workspace lock in the extracted source
+copy, but reject any added/changed package identity or checksum before the
+locked build. The original archive and ordinary install contract are unchanged.
+These gates have not been run remotely merely because local macOS checks pass.
+Browser/WASM human-proof verification remains unsupported because the existing
+WebAuthn backend is native-only. No second verifier is introduced.
+
 Check each registry:
 - https://crates.io/crates/jacs-media
 - https://crates.io/crates/jacs

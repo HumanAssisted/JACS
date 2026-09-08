@@ -8,6 +8,9 @@
 //! escape-equivalent spellings such as `"agentID"` and `"agent\u0049D"`.
 //! They also enforce the I-JSON interoperable integer range so canonicalization
 //! cannot collapse two distinct integral inputs onto the same IEEE-754 value.
+//! Existing entry points retain RFC 8785 binary64 rounding for nonintegral
+//! decimals. Exact decimal preservation is a separately selected profile, not
+//! an implicit change to readable legacy documents.
 
 use crate::CoreError;
 use serde::de::DeserializeOwned;
@@ -26,9 +29,195 @@ fn unsafe_integer_message(value: impl fmt::Display) -> String {
     )
 }
 
-fn validate_integer_tokens(input: &[u8]) -> Result<(), CoreError> {
-    const MAX_SAFE_DIGITS: &[u8] = b"9007199254740991";
+/// Default profile: RFC 8785 decimal conversion plus exact safe-integer checks.
+pub const NUMERIC_PROFILE: &str = "jacs-json-rfc8785-binary64-v1";
+/// Opt-in profile requiring the input decimal value to survive canonicalization.
+pub const EXACT_DECIMAL_NUMERIC_PROFILE: &str = "jacs-json-safe-binary64-v1";
 
+/// Closed numeric policy selected before decoding any signed input.
+///
+/// Both profiles reject duplicate members and unsafe mathematical integers,
+/// including decimal/exponent spellings. A denial in `ExactDecimalV1` must not
+/// be retried under the compatibility profile for that verification decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum NumericProfile {
+    #[default]
+    #[serde(rename = "jacs-json-rfc8785-binary64-v1")]
+    Rfc8785CompatibleV1,
+    #[serde(rename = "jacs-json-safe-binary64-v1")]
+    ExactDecimalV1,
+}
+
+impl NumericProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rfc8785CompatibleV1 => NUMERIC_PROFILE,
+            Self::ExactDecimalV1 => EXACT_DECIMAL_NUMERIC_PROFILE,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ExactDecimal {
+    negative: bool,
+    digits: Vec<u8>,
+    exponent: i64,
+}
+
+impl ExactDecimal {
+    fn parse(token: &[u8], profile: NumericProfile) -> Result<Self, CoreError> {
+        let profile_name = profile.as_str();
+        let invalid = || CoreError::MalformedDocument(format!("invalid number for {profile_name}"));
+        if token.is_empty() {
+            return Err(invalid());
+        }
+        if profile == NumericProfile::ExactDecimalV1 && token.len() > 128 {
+            return Err(CoreError::MalformedDocument(format!(
+                "{profile_name} limits number tokens to 128 bytes"
+            )));
+        }
+        let negative = token[0] == b'-';
+        let mut index = usize::from(negative);
+        let mut digits = Vec::new();
+        match token.get(index) {
+            Some(b'0') => {
+                digits.push(b'0');
+                index += 1;
+            }
+            Some(b'1'..=b'9') => {
+                while token.get(index).is_some_and(u8::is_ascii_digit) {
+                    digits.push(token[index]);
+                    index += 1;
+                }
+            }
+            _ => return Err(invalid()),
+        }
+        let mut fraction_digits = 0_i64;
+        if token.get(index) == Some(&b'.') {
+            index += 1;
+            while token.get(index).is_some_and(u8::is_ascii_digit) {
+                digits.push(token[index]);
+                fraction_digits += 1;
+                index += 1;
+            }
+            if fraction_digits == 0 {
+                return Err(invalid());
+            }
+        }
+        if profile == NumericProfile::ExactDecimalV1 && digits.len() > 100 {
+            return Err(CoreError::MalformedDocument(format!(
+                "{profile_name} limits coefficients to 100 digits"
+            )));
+        }
+        let mut exponent = 0_i64;
+        // Compatibility retains historical token lengths without integer
+        // overflow or exponent-sized allocation. An exponent larger than the
+        // entire coefficient plus 17 already settles the safe-integer test;
+        // saturating there preserves that classification in either direction.
+        let exponent_limit = i64::try_from(token.len())
+            .unwrap_or(i64::MAX - 17)
+            .saturating_add(17);
+        if matches!(token.get(index), Some(b'e' | b'E')) {
+            index += 1;
+            let exponent_negative = token.get(index) == Some(&b'-');
+            if matches!(token.get(index), Some(b'+' | b'-')) {
+                index += 1;
+            }
+            let start = index;
+            while token.get(index).is_some_and(u8::is_ascii_digit) {
+                exponent = exponent
+                    .saturating_mul(10)
+                    .saturating_add(i64::from(token[index] - b'0'));
+                if profile == NumericProfile::ExactDecimalV1 && exponent > 10_000 {
+                    return Err(CoreError::MalformedDocument(format!(
+                        "{profile_name} limits exponent magnitude to 10000"
+                    )));
+                }
+                if profile == NumericProfile::Rfc8785CompatibleV1 {
+                    exponent = exponent.min(exponent_limit);
+                }
+                index += 1;
+            }
+            if start == index {
+                return Err(invalid());
+            }
+            if exponent_negative {
+                exponent = -exponent;
+            }
+        }
+        if index != token.len() {
+            return Err(invalid());
+        }
+        exponent -= fraction_digits;
+        let Some(first_nonzero) = digits.iter().position(|digit| *digit != b'0') else {
+            return Ok(Self {
+                negative: false,
+                digits: vec![b'0'],
+                exponent: 0,
+            });
+        };
+        digits.drain(..first_nonzero);
+        while digits.last() == Some(&b'0') {
+            digits.pop();
+            exponent += 1;
+        }
+        Ok(Self {
+            negative,
+            digits,
+            exponent,
+        })
+    }
+
+    fn is_unsafe_integer(&self) -> bool {
+        const MAX_SAFE_DIGITS: &[u8] = b"9007199254740991";
+        if self.exponent < 0 {
+            return false;
+        }
+        let length = self.digits.len().saturating_add(self.exponent as usize);
+        length > MAX_SAFE_DIGITS.len()
+            || (length == MAX_SAFE_DIGITS.len()
+                && self
+                    .digits
+                    .iter()
+                    .copied()
+                    .chain(std::iter::repeat(b'0'))
+                    .take(length)
+                    .cmp(MAX_SAFE_DIGITS.iter().copied())
+                    .is_gt())
+    }
+}
+
+fn validate_number_token(token: &[u8], profile: NumericProfile) -> Result<(), CoreError> {
+    let decimal = ExactDecimal::parse(token, profile)?;
+    if decimal.is_unsafe_integer() {
+        return Err(CoreError::MalformedDocument(unsafe_integer_message(
+            String::from_utf8_lossy(token),
+        )));
+    }
+    let text = std::str::from_utf8(token)
+        .map_err(|error| CoreError::MalformedDocument(error.to_string()))?;
+    let binary: f64 = text.parse().map_err(|error: std::num::ParseFloatError| {
+        CoreError::MalformedDocument(error.to_string())
+    })?;
+    if !binary.is_finite() {
+        return Err(CoreError::MalformedDocument(
+            "non-finite number is not valid JSON".into(),
+        ));
+    }
+    if profile == NumericProfile::ExactDecimalV1 {
+        let canonical = serde_json_canonicalizer::to_string(&binary)
+            .map_err(|error| CoreError::MalformedDocument(error.to_string()))?;
+        if decimal != ExactDecimal::parse(canonical.as_bytes(), profile)? {
+            return Err(CoreError::MalformedDocument(format!(
+                "number changes decimal value under {}; use a string for exact quantities",
+                profile.as_str()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_number_tokens(input: &[u8], profile: NumericProfile) -> Result<(), CoreError> {
     let mut index = 0;
     let mut in_string = false;
     while index < input.len() {
@@ -51,29 +240,7 @@ fn validate_integer_tokens(input: &[u8]) -> Result<(), CoreError> {
                 {
                     index += 1;
                 }
-                let token = &input[start..index];
-                if token.iter().any(|byte| matches!(byte, b'.' | b'e' | b'E')) {
-                    continue;
-                }
-                let digits = token.strip_prefix(b"-").unwrap_or(token);
-                if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
-                    continue;
-                }
-                let significant = digits
-                    .iter()
-                    .position(|byte| *byte != b'0')
-                    .map(|offset| &digits[offset..])
-                    .unwrap_or(b"0");
-                let outside_safe_range = significant.len() > MAX_SAFE_DIGITS.len()
-                    || (significant.len() == MAX_SAFE_DIGITS.len()
-                        && significant > MAX_SAFE_DIGITS);
-                if outside_safe_range {
-                    let shown = String::from_utf8_lossy(&token[..token.len().min(64)]);
-                    let suffix = if token.len() > 64 { "…" } else { "" };
-                    return Err(CoreError::MalformedDocument(unsafe_integer_message(
-                        format_args!("{shown}{suffix}"),
-                    )));
-                }
+                validate_number_token(&input[start..index], profile)?;
             }
             _ => index += 1,
         }
@@ -104,6 +271,11 @@ pub fn validate_i_json_numbers(value: &Value) -> Result<(), CoreError> {
                 return Err(CoreError::MalformedDocument(unsafe_integer_message(
                     integer,
                 )));
+            } else if number.is_f64() {
+                validate_number_token(
+                    number.to_string().as_bytes(),
+                    NumericProfile::Rfc8785CompatibleV1,
+                )?;
             }
         }
         Value::Array(values) => {
@@ -232,22 +404,35 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
 
 /// Decode a UTF-8 JSON string while rejecting duplicate object keys and
 /// integral values outside the I-JSON safe range at every nesting level.
+/// Nonintegral decimals retain RFC 8785 binary64 rounding. Use
+/// [`parse_strict_json_with_numeric_profile`] to opt into exact decimals.
 pub fn parse_strict_json(input: &str) -> Result<Value, CoreError> {
-    validate_integer_tokens(input.as_bytes())?;
-    let mut deserializer = serde_json::Deserializer::from_str(input);
-    let value = StrictValue::deserialize(&mut deserializer)
-        .map_err(|error| CoreError::MalformedDocument(error.to_string()))?;
-    deserializer
-        .end()
-        .map_err(|error| CoreError::MalformedDocument(error.to_string()))?;
-    Ok(value.0)
+    parse_strict_json_with_numeric_profile(input, NumericProfile::Rfc8785CompatibleV1)
+}
+
+/// Decode under an explicit numeric profile, without fallback after denial.
+/// Profile selection belongs to the protocol/verification policy; it is not
+/// inferred from a failure or an unverified field inside the input.
+pub fn parse_strict_json_with_numeric_profile(
+    input: &str,
+    profile: NumericProfile,
+) -> Result<Value, CoreError> {
+    parse_strict_json_slice_with_numeric_profile(input.as_bytes(), profile)
 }
 
 /// Decode JSON bytes while rejecting duplicate object keys and integral values
 /// outside the I-JSON safe range at every nesting level. Invalid UTF-8 is
 /// reported as a malformed document.
 pub fn parse_strict_json_slice(input: &[u8]) -> Result<Value, CoreError> {
-    validate_integer_tokens(input)?;
+    parse_strict_json_slice_with_numeric_profile(input, NumericProfile::Rfc8785CompatibleV1)
+}
+
+/// Byte counterpart of [`parse_strict_json_with_numeric_profile`].
+pub fn parse_strict_json_slice_with_numeric_profile(
+    input: &[u8],
+    profile: NumericProfile,
+) -> Result<Value, CoreError> {
+    validate_number_tokens(input, profile)?;
     let mut deserializer = serde_json::Deserializer::from_slice(input);
     let value = StrictValue::deserialize(&mut deserializer)
         .map_err(|error| CoreError::MalformedDocument(error.to_string()))?;
@@ -260,20 +445,40 @@ pub fn parse_strict_json_slice(input: &[u8]) -> Result<Value, CoreError> {
 /// Decode a UTF-8 JSON string into a typed value after enforcing the same
 /// duplicate-key policy as [`parse_strict_json`].
 pub fn deserialize_strict_json<T: DeserializeOwned>(input: &str) -> Result<T, CoreError> {
-    let value = parse_strict_json(input)?;
+    deserialize_strict_json_with_numeric_profile(input, NumericProfile::Rfc8785CompatibleV1)
+}
+
+/// Typed decoding with an explicitly selected numeric profile.
+pub fn deserialize_strict_json_with_numeric_profile<T: DeserializeOwned>(
+    input: &str,
+    profile: NumericProfile,
+) -> Result<T, CoreError> {
+    let value = parse_strict_json_with_numeric_profile(input, profile)?;
     serde_json::from_value(value).map_err(|error| CoreError::MalformedDocument(error.to_string()))
 }
 
 /// Decode JSON bytes into a typed value after enforcing the same duplicate-key
 /// policy as [`parse_strict_json_slice`].
 pub fn deserialize_strict_json_slice<T: DeserializeOwned>(input: &[u8]) -> Result<T, CoreError> {
-    let value = parse_strict_json_slice(input)?;
+    deserialize_strict_json_slice_with_numeric_profile(input, NumericProfile::Rfc8785CompatibleV1)
+}
+
+/// Typed byte decoding with an explicitly selected numeric profile.
+pub fn deserialize_strict_json_slice_with_numeric_profile<T: DeserializeOwned>(
+    input: &[u8],
+    profile: NumericProfile,
+) -> Result<T, CoreError> {
+    let value = parse_strict_json_slice_with_numeric_profile(input, profile)?;
     serde_json::from_value(value).map_err(|error| CoreError::MalformedDocument(error.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_strict_json, parse_strict_json_slice, validate_i_json_numbers};
+    use super::{
+        NumericProfile, parse_strict_json, parse_strict_json_slice,
+        parse_strict_json_slice_with_numeric_profile, parse_strict_json_with_numeric_profile,
+        validate_i_json_numbers,
+    };
     use serde_json::json;
 
     const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -365,10 +570,19 @@ mod tests {
     }
 
     #[test]
-    fn accepts_normal_floats_and_rfc8785_number_forms() {
-        let input = r#"[1.5,-0.125,333333333.33333329,1E30,4.50,2e-3,1e-27]"#;
+    fn compatibility_preserves_historical_rfc8785_decimal_forms() {
+        let input =
+            r#"[333333333.33333329,1.0000000000000001,1.5,-0.125,0.1,1e-30,4.50,2e-3,1e-27]"#;
         let actual = parse_strict_json(input).expect("RFC 8785 number forms must parse");
-        assert_eq!(actual.as_array().map(Vec::len), Some(7));
+        assert_eq!(actual, parse_strict_json_slice(input.as_bytes()).unwrap());
+        assert_eq!(
+            crate::canonical::canonicalize_json_try(&actual).unwrap(),
+            "[333333333.3333333,1,1.5,-0.125,0.1,1e-30,4.5,0.002,1e-27]"
+        );
+        assert_eq!(
+            NumericProfile::default(),
+            NumericProfile::Rfc8785CompatibleV1
+        );
     }
 
     #[test]
@@ -403,9 +617,107 @@ mod tests {
     fn value_validator_accepts_safe_boundaries_and_finite_floats() {
         let value = json!({
             "bounds": [MAX_SAFE_INTEGER, -MAX_SAFE_INTEGER],
-            "floats": [1.5, 1e30, 1e-27],
+            "floats": [1.5, 1e-30, 1e-27],
             "numeric_string": "9007199254740993"
         });
         validate_i_json_numbers(&value).expect("interoperable numbers must be accepted");
+    }
+
+    #[test]
+    fn numeric_profile_checks_exact_integral_decimal_and_exponent_forms() {
+        for suffix in ["", ".0", "e0", ".00E+0"] {
+            for sign in ["", "-"] {
+                let boundary = format!("{sign}{MAX_SAFE_INTEGER}{suffix}");
+                let outside = format!("{sign}{}{suffix}", MAX_SAFE_INTEGER + 1);
+                for profile in [
+                    NumericProfile::Rfc8785CompatibleV1,
+                    NumericProfile::ExactDecimalV1,
+                ] {
+                    parse_strict_json_with_numeric_profile(&boundary, profile)
+                        .expect("safe mathematical boundary is accepted");
+                    assert!(
+                        parse_strict_json_with_numeric_profile(&outside, profile)
+                            .unwrap_err()
+                            .to_string()
+                            .contains("safe integer range")
+                    );
+                    assert!(
+                        parse_strict_json_slice_with_numeric_profile(outside.as_bytes(), profile)
+                            .is_err()
+                    );
+                }
+            }
+        }
+        for number in ["1e16", "100000000000000000e-1"] {
+            assert!(
+                parse_strict_json(number).is_err(),
+                "unsafe integer: {number}"
+            );
+        }
+        assert!(validate_i_json_numbers(&json!(1e30)).is_err());
+    }
+
+    #[test]
+    fn exact_decimal_profile_enforces_bounded_tokens_and_normalizes_exact_decimals() {
+        for number in ["0", "-0.0", "0e10000", "0e-10000", "1.2300e-2", "10e-31"] {
+            parse_strict_json_with_numeric_profile(number, NumericProfile::ExactDecimalV1)
+                .expect("exact decimal normalization is accepted");
+        }
+        for number in [
+            "0e10001".to_string(),
+            format!("0.{}", "0".repeat(100)),
+            format!("0e{}", "0".repeat(127)),
+        ] {
+            assert!(
+                parse_strict_json_with_numeric_profile(&number, NumericProfile::ExactDecimalV1)
+                    .is_err(),
+                "over-limit token must fail"
+            );
+        }
+    }
+
+    #[test]
+    fn exact_decimal_profile_is_explicit_and_never_falls_back() {
+        for input in ["333333333.33333329", "1.0000000000000001", "1e-999"] {
+            parse_strict_json(input).expect("historical binary64 conversion remains available");
+            let error =
+                parse_strict_json_with_numeric_profile(input, NumericProfile::ExactDecimalV1)
+                    .expect_err("exact decimal profile must retain its refusal");
+            assert!(error.to_string().contains("number changes decimal value"));
+            assert!(
+                parse_strict_json_slice_with_numeric_profile(
+                    input.as_bytes(),
+                    NumericProfile::ExactDecimalV1
+                )
+                .is_err()
+            );
+        }
+        let long_fraction = format!("0.1{}", "0".repeat(160));
+        parse_strict_json(&long_fraction)
+            .expect("legacy decimal spelling is not given new token limits");
+        assert!(
+            parse_strict_json_with_numeric_profile(&long_fraction, NumericProfile::ExactDecimalV1)
+                .is_err()
+        );
+        for profile in [
+            NumericProfile::Rfc8785CompatibleV1,
+            NumericProfile::ExactDecimalV1,
+        ] {
+            assert!(
+                parse_strict_json_with_numeric_profile(r#"{"amount":1,"amount":2}"#, profile)
+                    .is_err()
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(NumericProfile::Rfc8785CompatibleV1).unwrap(),
+            "jacs-json-rfc8785-binary64-v1"
+        );
+        assert_eq!(
+            serde_json::to_value(NumericProfile::ExactDecimalV1).unwrap(),
+            "jacs-json-safe-binary64-v1"
+        );
+        assert!(
+            serde_json::from_value::<NumericProfile>(json!("unknown-numeric-profile")).is_err()
+        );
     }
 }

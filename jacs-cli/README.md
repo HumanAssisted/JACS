@@ -139,7 +139,8 @@ use that form when TLS terminates at a reverse proxy.
 jacs mcp
 ```
 
-The MCP server uses stdio transport only. It runs as a subprocess of your MCP client, holds the private key locally, and opens no HTTP port.
+The MCP server uses stdio transport only. Its default verification-only process
+does not load a private key and opens no HTTP port.
 
 Configure in your MCP client:
 
@@ -148,31 +149,32 @@ Configure in your MCP client:
   "mcpServers": {
     "jacs": {
       "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-`JACS_CONFIG` is required. Prefer an owner-readable password file (for
-example, mode `0600`) or the OS keychain instead of embedding
-`JACS_PRIVATE_KEY_PASSWORD` in client configuration.
+The default `verify-only` profile exposes only exact-byte document integrity
+verification with a caller-supplied public key and algorithm. An explicitly
+supplied config is public-only and never loads/decrypts a signing key. The closed profile names are `verify-only`,
+`local-sign`, `trust-admin`, and compatibility-only `legacy-core`. When
+`--profile` is absent, `JACS_MCP_PROFILE` is consulted before falling back to
+`verify-only`; explicit CLI selection wins, and unknown values fail startup.
+A profile name alone does not load a signer. Use the existing signed config
+and normal keychain/password source explicitly:
 
-The default `core` profile exposes document, inline text/media, trust,
-search, key/agent, A2A discovery, and W3C tools. Use `jacs mcp --profile full` for Agreement
-v2, A2A artifact, and attestation tools. When `--profile` is absent,
-`JACS_MCP_PROFILE` is consulted before falling back to `core`; explicit CLI
-selection wins, and unknown values fail startup.
+```bash
+jacs mcp --profile local-sign --config ./jacs.config.json
+```
 
-MCP file-tool arguments must be relative to `JACS_MCP_BASE_DIR` (or the
-launch working directory when it is unset). Absolute paths, traversal, and
-symlinks are rejected. Existing outputs require the operator-controlled
-`JACS_MCP_OVERWRITE_OK=1` opt-in before overwrite.
+`JACS_CONFIG` can supply the path instead. This grants only offline local-agent
+JSON/Agreement signing, with documents persisted below the config directory.
+It is not per-action human approval. File text/image and administrative tools
+are not granted by that command. Selecting `JACS_MCP_BASE_DIR` at startup adds
+only the five scoped text/image tools, using the same loaded signer; it does
+not enable administration. File signing can keep plaintext `.bak` copies; see
+the [MCP scope](../jacs-mcp/README.md#explicit-local-signing).
 
 For headless/server environments:
 
@@ -180,9 +182,7 @@ For headless/server environments:
 export JACS_CONFIG=/srv/my-project/jacs.config.json
 export JACS_PASSWORD_FILE=/run/secrets/jacs-password
 export JACS_KEYCHAIN_BACKEND=disabled
-export JACS_MCP_BASE_DIR=/srv/my-project
-# Optional: export JACS_MCP_PROFILE=full
-jacs mcp
+jacs mcp --profile local-sign
 ```
 
 ## Links

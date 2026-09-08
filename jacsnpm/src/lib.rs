@@ -1562,6 +1562,32 @@ pub struct JacsSimpleAgent {
     inner: SimpleAgentWrapper,
 }
 
+#[cfg(feature = "human-approval")]
+#[napi]
+impl JacsSimpleAgent {
+    /// Verify retained public human-approval evidence and JACS provenance.
+    /// Available in native builds with the `human-approval` Cargo feature.
+    /// No agent, private key, configuration or network lookup is needed.
+    /// Select expected intent and both public-key pins independently of the
+    /// submitted bundle. Returns the complete JSON report; current execution
+    /// authority is not evaluated or implied by successful verification.
+    #[napi(js_name = "verifyHumanApprovedDocument")]
+    pub fn verify_human_approved_document(
+        bundle_json: String,
+        expected_json: String,
+        authority_json: String,
+        provenance_json: String,
+    ) -> Result<String> {
+        SimpleAgentWrapper::verify_human_approved_document_json(
+            &bundle_json,
+            &expected_json,
+            &authority_json,
+            &provenance_json,
+        )
+        .to_napi()
+    }
+}
+
 #[napi]
 impl JacsSimpleAgent {
     /// Create a new agent with persistent identity.
@@ -2878,7 +2904,13 @@ pub fn legacy_update_agent(new_agent_string: String) -> Result<String> {
 #[napi(object)]
 pub struct VerifyStandaloneResult {
     pub valid: bool,
-    /// Signer agent ID; exposed to JS as signerId (camelCase).
+    /// True only when independently enrolled local identity evidence matched.
+    pub identity_bound: bool,
+    /// Local evidence only: unavailable or locally_enrolled, not Current policy.
+    pub identity_binding_status: String,
+    /// Always false: this compatibility API does not evaluate authorization.
+    pub policy_accepted: bool,
+    /// Signed agent-ID claim, not an independently authorized identity.
     pub signer_id: String,
     /// Signing timestamp from jacsSignature.date.
     pub timestamp: String,
@@ -2904,6 +2936,9 @@ pub fn verify_document_standalone(
     .to_napi()?;
     Ok(VerifyStandaloneResult {
         valid: r.valid,
+        identity_bound: r.identity_bound(),
+        identity_binding_status: r.identity_binding_status.to_string(),
+        policy_accepted: r.policy_accepted(),
         signer_id: r.signer_id,
         timestamp: r.timestamp,
         agent_version: r.agent_version,

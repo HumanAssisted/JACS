@@ -12,13 +12,18 @@ use super::schema_map;
 
 /// Parameters for signing arbitrary content as a JACS document.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SignDocumentParams {
     /// The JSON content string to sign.
-    #[schemars(description = "The JSON content to sign as a JACS document")]
+    #[schemars(
+        description = "JSON data nested as content inside an ordinary JACS document; supplied jacsType, schema and signature fields remain data"
+    )]
     pub content: String,
 
     /// Optional MIME type of the content (default: "application/json").
-    #[schemars(description = "MIME type of the content (default: 'application/json')")]
+    #[schemars(
+        description = "Descriptive MIME type recorded as contentType (default: 'application/json')"
+    )]
     pub content_type: Option<String>,
 }
 
@@ -50,10 +55,19 @@ pub struct SignDocumentResult {
 
 /// Parameters for verifying a raw signed JACS document string.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct VerifyDocumentParams {
     /// The full JACS signed document as a JSON string.
     #[schemars(description = "The full signed JACS document JSON string to verify")]
     pub document: String,
+
+    /// Exact raw public-key bytes selected by the caller. Supplying a key
+    /// proves signature integrity only; it does not establish signer trust.
+    #[schemars(description = "Exact raw Ed25519 or ML-DSA-87 public-key bytes")]
+    pub public_key: Vec<u8>,
+
+    /// Exact verification algorithm (`ed25519` or `pq2025`).
+    pub algorithm: String,
 }
 
 /// Result of verifying a signed document.
@@ -143,17 +157,17 @@ pub fn tools() -> Vec<Tool> {
     vec![
         Tool::new(
             "jacs_sign_document",
-            "Sign arbitrary JSON content to create a cryptographically signed JACS document. \
-             Use this for attestation -- when you want to prove that content was signed by \
-             this agent. Returns the signed envelope with hash and document ID.",
+            "Sign JSON data as content inside an ordinary JACS document using the configured \
+             local agent. Caller-supplied protocol fields stay nested data. Requires an explicit \
+             local-sign config; returns and persists the signed envelope with hash and document \
+             ID. This is agent provenance, not per-action human approval. Arguments are limited to 1 MiB.",
             schema_map::<SignDocumentParams>(),
         ),
         Tool::new(
             "jacs_verify_document",
-            "Verify a signed JACS document given its full JSON string. Checks both the \
-             content hash and cryptographic signature. Use this when you have a signed \
-             document in memory (e.g. from an approval context or signed payload) and \
-             need to confirm its integrity and authenticity.",
+            "Verify exact submitted JACS document bytes with an explicit caller-selected \
+             raw public key and algorithm. This checks integrity only; it does not establish \
+             signer identity, trust, authorization, freshness, or revocation status.",
             schema_map::<VerifyDocumentParams>(),
         ),
         Tool::new(

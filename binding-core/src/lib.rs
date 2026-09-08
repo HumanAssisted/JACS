@@ -804,10 +804,6 @@ fn is_editable_level(level: &str) -> bool {
     matches!(level, "artifact" | "config")
 }
 
-fn normalize_agent_id_for_compare(agent_id: &str) -> &str {
-    agent_id.split(':').next().unwrap_or(agent_id)
-}
-
 fn extract_agreement_payload(value: &Value) -> Value {
     if let Some(payload) = value.get("jacsDocument") {
         return payload.clone();
@@ -1283,26 +1279,22 @@ impl AgentWrapper {
 
         let mut agent = self.lock()?;
 
-        let doc = agent.load_document(document_string).map_err(|e| {
-            BindingCoreError::document_failed(format!("Failed to load document: {}", e))
-        })?;
-
-        let document_key = doc.getkey();
-        let value = doc.getvalue();
-
-        agent.verify_hash(value).map_err(|e| {
-            BindingCoreError::verification_failed(format!("Failed to verify document hash: {}", e))
+        let value = agent.validate_header(document_string).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to validate document: {}", e))
         })?;
 
         // Prefer the currently loaded agent's public key first. This keeps
         // local self-verification fast and avoids falling through to remote key
         // resolution for documents we just signed in the same workspace.
+        jacs::trust::verify_document_identity_binding(&value).map_err(|e| {
+            BindingCoreError::verification_failed(format!("Identity binding check failed: {e}"))
+        })?;
         if agent
-            .verify_document_signature(&document_key, None, None, None, None)
+            .verify_document_signature_value(&value, None, None, None, None)
             .is_err()
         {
             agent
-                .verify_external_document_signature(&document_key)
+                .verify_external_document_signature_value(&value)
                 .map_err(|e| {
                     BindingCoreError::verification_failed(format!(
                         "Failed to verify document signature: {}",
@@ -1347,16 +1339,14 @@ impl AgentWrapper {
 
         let mut agent = self.lock()?;
 
-        let doc = agent.load_document(document_string).map_err(|e| {
-            BindingCoreError::document_failed(format!("Failed to load document: {}", e))
+        let value = agent.validate_header(document_string).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to validate document: {}", e))
         })?;
-
-        let document_key = doc.getkey();
         let sig_field_ref = signature_field.as_ref();
 
         agent
-            .verify_document_signature(
-                &document_key,
+            .verify_document_signature_value(
+                &value,
                 sig_field_ref.map(|s| s.as_str()),
                 None,
                 None,
@@ -1622,7 +1612,11 @@ impl AgentWrapper {
         Ok(agent.get_document_keys())
     }
 
-    /// Check an agreement on a document.
+    /// Inspect the present signatures on a legacy Agreement v1 document.
+    ///
+    /// The returned JSON is the native closed inspection result. It always
+    /// reports `complete=false` and `policy_accepted=false`; bindings must not
+    /// reconstruct completion from the unauthenticated v1 signer sidecar.
     pub fn check_agreement(
         &self,
         document_string: &str,
@@ -1637,77 +1631,12 @@ impl AgentWrapper {
             .clone()
             .unwrap_or_else(|| AGENT_AGREEMENT_FIELDNAME.to_string());
 
-        agent
+        let inspection = agent
             .check_agreement(&document_key, Some(agreement_fieldname_key.clone()))
             .map_err(|e| {
                 BindingCoreError::agreement_failed(format!("Failed to check agreement: {}", e))
             })?;
-
-        let requested = doc
-            .agreement_requested_agents(Some(agreement_fieldname_key.clone()))
-            .map_err(|e| {
-                BindingCoreError::agreement_failed(format!(
-                    "Failed to read requested signers: {}",
-                    e
-                ))
-            })?;
-
-        let pending = doc
-            .agreement_unsigned_agents(Some(agreement_fieldname_key.clone()))
-            .map_err(|e| {
-                BindingCoreError::agreement_failed(format!("Failed to read pending signers: {}", e))
-            })?;
-
-        let signatures = doc
-            .value
-            .get(&agreement_fieldname_key)
-            .and_then(|agreement| agreement.get("signatures"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        let mut signed_at_by_agent: HashMap<String, String> = HashMap::new();
-        for signature in signatures {
-            if let Some(agent_id) = signature.get("agentID").and_then(|v| v.as_str()) {
-                let normalized = normalize_agent_id_for_compare(agent_id).to_string();
-                let signed_at = signature
-                    .get("date")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                signed_at_by_agent.insert(normalized, signed_at);
-            }
-        }
-
-        let signers = requested
-            .iter()
-            .map(|agent_id| {
-                let normalized = normalize_agent_id_for_compare(agent_id).to_string();
-                let signed_at = signed_at_by_agent
-                    .get(&normalized)
-                    .filter(|ts| !ts.is_empty())
-                    .cloned();
-                let signed = signed_at.is_some();
-                let mut signer = json!({
-                    "agentId": agent_id,
-                    "agent_id": agent_id,
-                    "signed": signed
-                });
-                if let Some(ts) = signed_at {
-                    signer["signedAt"] = json!(ts.clone());
-                    signer["signed_at"] = json!(ts);
-                }
-                signer
-            })
-            .collect::<Vec<Value>>();
-
-        let result = json!({
-            "complete": pending.is_empty(),
-            "signers": signers,
-            "pending": pending
-        });
-
-        Ok(result.to_string())
+        Ok(inspection)
     }
 
     /// Sign a request payload (wraps in a JACS document).
@@ -2775,18 +2704,37 @@ pub fn diagnostics_standalone() -> String {
 pub struct VerificationResult {
     /// Whether the document's signature and hash are valid.
     pub valid: bool,
-    /// The signer's agent ID from the document's jacsSignature.agentID (empty if unparseable).
+    /// Captured local enrollment evidence; never a Current/purpose decision.
+    pub identity_binding_status: jacs::trust::IdentityBindingStatus,
+    /// Signed agent-ID claim, not an independently authorized identity. Empty on failure.
     pub signer_id: String,
     /// The signing timestamp from jacsSignature.date (empty if unparseable).
     pub timestamp: String,
-    /// The signer's agent version from jacsSignature.agentVersion (empty if unparseable).
+    /// Signed version claim, not independently authorized. Empty on failure.
     pub agent_version: String,
+}
+
+impl VerificationResult {
+    /// True only for a valid signature matched to explicit local enrollment.
+    pub fn identity_bound(&self) -> bool {
+        self.valid
+            && self.identity_binding_status == jacs::trust::IdentityBindingStatus::LocallyEnrolled
+    }
+
+    /// This compatibility API never evaluates an authorization policy.
+    pub fn policy_accepted(&self) -> bool {
+        false
+    }
 }
 
 /// Verify a signed JACS document without loading an agent.
 ///
 /// Creates a minimal verifier context (config with data/key directories and optional
-/// key resolution), runs verification, and returns a result with valid flag and signer_id.
+/// key resolution), runs integrity verification, and returns signed claims.
+/// `valid` does not authorize `signer_id`: a hash-addressed cached or discovered
+/// key is not an independent identity binding. Identity-sensitive callers must
+/// independently select the public key and expected signer claims, or use an
+/// authenticated enrollment policy. No cached claim supplies that expectation.
 /// Does not persist any state.
 ///
 /// # Arguments
@@ -2817,18 +2765,20 @@ pub fn verify_document_standalone(
     // one value, so it must remain a hard error before any metadata extraction.
     if serde_json::from_str::<serde_json::Value>(signed_document).is_err() {
         return Ok(VerificationResult {
+            identity_binding_status: Default::default(),
             valid: false,
             signer_id: String::new(),
             timestamp: String::new(),
             agent_version: String::new(),
         });
     }
-    jacs_core::strict_json::parse_strict_json(signed_document).map_err(|e| {
-        BindingCoreError::serialization_failed(format!(
-            "Failed to parse signed document JSON: {}",
-            e
-        ))
-    })?;
+    let parsed_document =
+        jacs_core::strict_json::parse_strict_json(signed_document).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse signed document JSON: {}",
+                e
+            ))
+        })?;
 
     fn absolutize_dir(raw: &str) -> String {
         let p = PathBuf::from(raw);
@@ -2869,6 +2819,13 @@ pub fn verify_document_standalone(
                 .join("public_keys")
                 .join(format!("{}.enc_type", key_hash))
                 .exists()
+    }
+
+    fn is_public_key_hash(value: &str) -> bool {
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     }
 
     fn build_fixture_key_cache(cache_root: &Path, source_dirs: &[PathBuf]) -> usize {
@@ -2913,7 +2870,7 @@ pub fn verify_document_standalone(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .trim();
-                if key_hash.is_empty() || signing_algorithm.is_empty() {
+                if !is_public_key_hash(key_hash) || signing_algorithm.is_empty() {
                     continue;
                 }
                 if written.contains(key_hash) {
@@ -2973,6 +2930,15 @@ pub fn verify_document_standalone(
         )
     };
     let signer_public_key_hash = sig_field(signed_document, "publicKeyHash");
+    if !is_public_key_hash(&signer_public_key_hash) {
+        return Ok(VerificationResult {
+            identity_binding_status: Default::default(),
+            valid: false,
+            signer_id: String::new(),
+            timestamp: String::new(),
+            agent_version: String::new(),
+        });
+    }
 
     // Always resolve caller-provided directories to absolute paths so relative
     // inputs like "../fixtures" work regardless of process CWD.
@@ -3134,6 +3100,10 @@ pub fn verify_document_standalone(
     };
 
     let result: BindingResult<VerificationResult> = (|| {
+        let identity_binding_status =
+            jacs::trust::verify_document_identity_binding(&parsed_document).map_err(|e| {
+                BindingCoreError::verification_failed(format!("Identity binding check failed: {e}"))
+            })?;
         let wrapper = AgentWrapper::new();
         wrapper.load_file_only(config_path.to_string_lossy().to_string())?;
         let _ = wrapper.set_storage_root(PathBuf::from(&effective_storage_root));
@@ -3159,20 +3129,12 @@ pub fn verify_document_standalone(
                 .to_string();
 
             let mut agent = wrapper.lock()?;
-            let doc = agent.load_document(signed_document).map_err(|e| {
-                BindingCoreError::document_failed(format!("Failed to load document: {}", e))
-            })?;
-            let document_key = doc.getkey();
-            let value = doc.getvalue();
-            agent.verify_hash(value).map_err(|e| {
-                BindingCoreError::verification_failed(format!(
-                    "Failed to verify document hash: {}",
-                    e
-                ))
+            let value = agent.validate_header(signed_document).map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to validate document: {}", e))
             })?;
             agent
-                .verify_document_signature(
-                    &document_key,
+                .verify_document_signature_value(
+                    &value,
                     None,
                     None,
                     Some(public_key),
@@ -3186,6 +3148,7 @@ pub fn verify_document_standalone(
                 })?;
 
             return Ok(VerificationResult {
+                identity_binding_status,
                 valid: true,
                 signer_id: signer_id.clone(),
                 timestamp: timestamp.clone(),
@@ -3195,6 +3158,7 @@ pub fn verify_document_standalone(
 
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
+            identity_binding_status,
             valid,
             signer_id: signer_id.clone(),
             timestamp: timestamp.clone(),
@@ -3216,10 +3180,11 @@ pub fn verify_document_standalone(
                 || e.kind == ErrorKind::InvalidArgument
             {
                 Ok(VerificationResult {
+                    identity_binding_status: Default::default(),
                     valid: false,
-                    signer_id,
-                    timestamp,
-                    agent_version,
+                    signer_id: String::new(),
+                    timestamp: String::new(),
+                    agent_version: String::new(),
                 })
             } else {
                 Err(e)
@@ -3677,6 +3642,81 @@ mod tests {
         let result = verify_document_standalone("not json", Some("local"), None, None).unwrap();
         assert!(!result.valid);
         assert_eq!(result.signer_id, "");
+        assert!(!result.identity_bound());
+        assert!(!result.policy_accepted());
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn standalone_enrollment_is_explicit_and_distrust_stops_cached_verification() {
+        struct TrustEnvironment(Option<std::ffi::OsString>);
+        impl Drop for TrustEnvironment {
+            fn drop(&mut self) {
+                // Serialized with other environment-mutating trust tests.
+                unsafe {
+                    match &self.0 {
+                        Some(value) => std::env::set_var("JACS_TRUST_STORE_DIR", value),
+                        None => std::env::remove_var("JACS_TRUST_STORE_DIR"),
+                    }
+                }
+            }
+        }
+        let directory = tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let _environment = TrustEnvironment(std::env::var_os("JACS_TRUST_STORE_DIR"));
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", root.join("trusted"));
+        }
+        let (signer, _) = jacs::simple::SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+        let signed = signer
+            .sign_message(&serde_json::json!({"message": "public cached verification"}))
+            .unwrap();
+        let key = signer.get_public_key().unwrap();
+        let hash = jacs::crypt::hash::hash_public_key(&key);
+        let cache = root.join("public_keys");
+        std::fs::create_dir(&cache).unwrap();
+        std::fs::write(cache.join(format!("{hash}.pem")), &key).unwrap();
+        std::fs::write(cache.join(format!("{hash}.enc_type")), "ring-Ed25519").unwrap();
+        let verify = || {
+            verify_document_standalone(&signed.raw, Some("local"), root.to_str(), root.to_str())
+                .unwrap()
+        };
+        let unknown = verify();
+        assert!(unknown.valid);
+        assert!(!unknown.identity_bound());
+        assert_eq!(
+            unknown.identity_binding_status,
+            jacs::trust::IdentityBindingStatus::Unavailable
+        );
+        assert!(!root.join("trusted").exists());
+        let identity = jacs::trust::trust_agent_with_key(
+            &signer.export_agent().unwrap(),
+            Some(&signer.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let enrolled = verify();
+        assert!(enrolled.valid);
+        assert!(enrolled.identity_bound());
+        assert!(!enrolled.policy_accepted());
+        jacs::trust::untrust_agent(&identity).unwrap();
+        let distrusted = verify();
+        assert!(!distrusted.valid);
+        assert!(!distrusted.identity_bound());
+        assert!(distrusted.signer_id.is_empty());
+        assert!(cache.join(format!("{hash}.pem")).exists());
+    }
+
+    #[test]
+    fn standalone_success_is_never_an_identity_authorization_report() {
+        let result = VerificationResult {
+            identity_binding_status: Default::default(),
+            valid: true,
+            signer_id: "signed-claim".into(),
+            timestamp: String::new(),
+            agent_version: "signed-version".into(),
+        };
+        assert!(!result.identity_bound());
+        assert!(!result.policy_accepted());
     }
 
     #[test]
@@ -3880,6 +3920,14 @@ mod tests {
         )
         .expect("standalone verify should not error");
         assert!(result.valid, "absolute-path fixture should verify");
+        assert!(
+            !result.identity_bound(),
+            "a cached public key is not identity enrollment"
+        );
+        assert!(
+            !result.policy_accepted(),
+            "ordinary integrity verification is non-authorizing"
+        );
     }
 
     #[test]

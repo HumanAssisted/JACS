@@ -89,25 +89,13 @@ pub fn document_check_agreement(
 
     let docresult = agent.load_document(document_string)?;
     let document_key = docresult.getkey();
-    let result = agent.check_agreement(&document_key, Some(agreement_fieldname_key));
-    match result {
-        Err(err) => Err(JacsError::DocumentError(format!(
-            "Agreement check failed: {}",
-            err
-        ))),
-        Ok(_) => Ok(format!(
-            "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
-            docresult
-                .agreement_requested_agents(agreement_fieldname.clone())
-                .unwrap(),
-            docresult
-                .agreement_unsigned_agents(agreement_fieldname.clone())
-                .unwrap(),
-            docresult
-                .agreement_signed_agents(agreement_fieldname)
-                .unwrap()
-        )),
-    }
+    // Forward the closed native v1 inspection report unchanged. Rebuilding a
+    // status from the unauthenticated `agentIDs`/quorum sidecar used to let the
+    // CLI and FFI surfaces turn successful signature mathematics back into an
+    // actionable-looking completion result.
+    agent
+        .check_agreement(&document_key, Some(agreement_fieldname_key))
+        .map_err(|err| JacsError::DocumentError(format!("Agreement check failed: {}", err)))
 }
 
 #[allow(clippy::too_many_arguments)]
