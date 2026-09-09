@@ -11,7 +11,7 @@ license = { file = "LICENSE-APACHE" }
 authors = [
     { name = "HAI.AI", email = "engineering@hai.io" },
 ]
-keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp", "langgraph", "langchain", "crewai", "fastapi", "data-provenance", "a2a", "agent-to-agent"]
+keywords = ["cryptography", "signing", "verification", "ai", "agents", "mcp", "langgraph", "langchain", "fastapi", "data-provenance", "a2a", "agent-to-agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -34,7 +34,6 @@ mcp = ["fastmcp>=3.2.0"]
 ws = ["websockets>=13.0"]
 langchain = ["langchain>=1.3.9,<2.0.0"]
 langgraph = ["langgraph>=1.0.0,<2.0.0"]
-crewai = ["crewai>=1.15.6,<2.0.0"]
 fastapi = ["fastapi>=0.115.0,<1.0.0", "starlette>=1.3.1"]
 anthropic = ["anthropic>=0.79.0"]
 a2a = []
@@ -42,7 +41,7 @@ a2a-server = ["fastapi>=0.115.0,<1.0.0", "uvicorn>=0.30.0"]
 # Dev extras: used by tests/test_image_signature.py (PIL) and
 # tests/test_inline_text.py (PyYAML). Not required at runtime.
 dev = ["pillow>=12.3.0", "pyyaml>=6.0"]
-all = ["jacs[mcp,ws,langchain,langgraph,crewai,fastapi,anthropic,a2a,a2a-server]"]
+all = ["jacs[mcp,ws,langchain,langgraph,fastapi,anthropic,a2a,a2a-server]"]
 
 [project.urls] 
 Homepage = "https://github.com/HumanAssisted/JACS" 
@@ -59,19 +58,17 @@ markers = [
 ]
 
 # Floors for transitive deps pulled in only by the optional adapter extras
-# (langchain/langgraph/crewai/fastapi/anthropic/mcp) and dev tooling. The
+# (langchain/langgraph/fastapi/anthropic/mcp) and dev tooling. The
 # published wheel has no runtime dependencies (`dependencies = []`); these
 # constraints exist solely to keep the dev/CI resolution (uv.lock) clear of
 # known-vulnerable transitive versions. Each floor is the first patched
-# release for a dependency advisory. chromadb (~=1.1.0), pinned by crewai,
-# still has no compatible patched resolution and is addressed separately.
+# release for a dependency advisory.
 [tool.uv]
 constraint-dependencies = [
     "aiohttp>=3.14.3",
     "Pygments>=2.20.0",
     "cryptography>=50.0.0",
     "idna>=3.15",
-    "json-repair>=0.60.1",
     "urllib3>=2.7.0",
     "requests>=2.33.0",
     "pillow>=12.3.0",

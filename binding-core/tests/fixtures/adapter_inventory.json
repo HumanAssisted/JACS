@@ -11,10 +11,6 @@
         "module": "jacs.adapters.langchain",
         "public_functions": ["jacs_wrap_tool_call", "jacs_awrap_tool_call", "jacs_signing_middleware", "JacsSigningMiddleware", "signed_tool", "with_jacs_signing"]
       },
-      "crewai": {
-        "module": "jacs.adapters.crewai",
-        "public_functions": ["jacs_guardrail", "signed_task", "JacsSignedTool", "JacsVerifiedInput"]
-      },
       "fastapi": {
         "module": "jacs.adapters.fastapi",
         "public_functions": ["JacsMiddleware", "jacs_route"]

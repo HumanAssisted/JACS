@@ -165,7 +165,6 @@ status = alice.check_agreement(signed)
 ```bash
 pip install jacs[langchain]    # LangChain / LangGraph
 pip install jacs[fastapi]      # FastAPI / Starlette
-pip install jacs[crewai]       # CrewAI
 pip install jacs[anthropic]    # Anthropic / Claude SDK
 pip install jacs[all]          # Everything
 ```
@@ -180,12 +179,6 @@ agent = create_agent(model="openai:gpt-4o", tools=tools, middleware=[jacs_signin
 ```python
 from jacs.adapters.fastapi import JacsMiddleware
 app.add_middleware(JacsMiddleware)
-```
-
-**CrewAI:**
-```python
-from jacs.adapters.crewai import jacs_guardrail
-task = Task(description="Analyze data", agent=my_agent, guardrail=jacs_guardrail())
 ```
 
 **Anthropic:**
@@ -383,7 +376,6 @@ cd jacsgo && make build
 | Integration | Import | Status |
 |-------------|--------|--------|
 | Python + LangChain | `from jacs.adapters.langchain import jacs_signing_middleware` | Experimental |
-| Python + CrewAI | `from jacs.adapters.crewai import jacs_guardrail` | Experimental |
 | Python + FastAPI | `from jacs.adapters.fastapi import JacsMiddleware` | Experimental |
 | Python + Anthropic SDK | `from jacs.adapters.anthropic import signed_tool` | Experimental |
 | Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | Experimental |

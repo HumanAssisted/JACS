@@ -157,5 +157,5 @@ client session.
 Choose [Python Framework Adapters](adapters.md) instead of MCP when:
 
 - the model and tools already live in the same Python process
-- you only need signed LangChain, LangGraph, CrewAI, or FastAPI boundaries
+- you only need signed LangChain, LangGraph, or FastAPI boundaries
 - you do not need MCP clients to connect from outside the app

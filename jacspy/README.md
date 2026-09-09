@@ -254,7 +254,6 @@ The older `create_agreement()` / `sign_agreement()` / `check_agreement()` method
 ```bash
 pip install jacs[langchain]    # LangChain / LangGraph
 pip install jacs[fastapi]      # FastAPI / Starlette
-pip install jacs[crewai]       # CrewAI
 pip install jacs[anthropic]    # Anthropic / Claude SDK
 pip install jacs[a2a]          # A2A protocol
 pip install jacs[all]          # Everything

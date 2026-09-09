@@ -9,7 +9,6 @@ Use adapters when the model already runs inside your Python app and you want pro
 | Signed LangChain tool results | `jacs_signing_middleware`, `signed_tool` | LangChain / LangGraph section below |
 | Signed LangGraph `ToolNode` outputs | `jacs_wrap_tool_call`, `with_jacs_signing` | LangChain / LangGraph section below |
 | Signed FastAPI responses and verified inbound requests | `JacsMiddleware`, `jacs_route` | FastAPI section below |
-| Signed CrewAI task output | `jacs_guardrail`, `signed_task` | CrewAI section below |
 | Signed Anthropic tool return values | `jacs.adapters.anthropic.signed_tool` | Anthropic section below |
 
 Install only the extra you need:
@@ -17,7 +16,6 @@ Install only the extra you need:
 ```bash
 pip install jacs[langchain]
 pip install jacs[fastapi]
-pip install jacs[crewai]
 pip install jacs[anthropic]
 ```
 
@@ -115,25 +113,6 @@ from jacs.adapters.fastapi import jacs_route
 async def signed_endpoint():
     return {"ok": True}
 ```
-
-## CrewAI
-
-CrewAI support is guardrail-first:
-
-```python
-from crewai import Task
-from jacs.adapters.crewai import jacs_guardrail
-
-task = Task(
-    description="Summarize the report",
-    agent=my_agent,
-    guardrail=jacs_guardrail(client=client),
-)
-```
-
-If you build tasks with factories, `signed_task()` can pre-attach the guardrail.
-It rejects an existing guardrail rather than silently allowing that guardrail
-to suppress JACS signing; compose guardrails explicitly when both are needed.
 
 ## Anthropic / Claude SDK
 

@@ -16,7 +16,7 @@ The JACS Python package (`jacs`) provides Python bindings to the JACS Rust libra
 pip install jacs
 ```
 
-For framework adapters (LangChain, FastAPI, CrewAI, Anthropic, etc.) use optional extras, e.g. `pip install jacs[langchain]`, `jacs[fastapi]`, or `jacs[all]`. Optional: `jacs[langgraph]`, `jacs[ws]`. See [Framework Adapters](adapters.md) and the package `pyproject.toml`.
+For framework adapters (LangChain, FastAPI, Anthropic, etc.) use optional extras, e.g. `pip install jacs[langchain]`, `jacs[fastapi]`, or `jacs[all]`. Optional: `jacs[langgraph]`, `jacs[ws]`. See [Framework Adapters](adapters.md) and the package `pyproject.toml`.
 
 ### Using conda
 ```bash

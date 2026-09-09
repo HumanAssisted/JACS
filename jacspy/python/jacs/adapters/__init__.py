@@ -5,7 +5,6 @@ JACS cryptographic signing and verification into Python frameworks.
 
 Usage:
     from jacs.adapters.base import BaseJacsAdapter
-    from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
     from jacs.adapters.fastapi import JacsMiddleware, jacs_route
     from jacs.adapters.langchain import jacs_wrap_tool_call, with_jacs_signing
     from jacs.adapters.mcp import register_jacs_tools, JacsMCPMiddleware
@@ -14,13 +13,6 @@ Usage:
 from .base import BaseJacsAdapter
 
 __all__ = ["BaseJacsAdapter"]
-
-try:
-    from .crewai import JacsSignedTool, JacsVerifiedInput, jacs_guardrail, signed_task
-
-    __all__ += ["jacs_guardrail", "signed_task", "JacsSignedTool", "JacsVerifiedInput"]
-except ImportError:
-    pass
 
 try:
     from .fastapi import JacsMiddleware, jacs_route

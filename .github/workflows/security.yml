@@ -141,7 +141,7 @@ jobs:
         working-directory: jacspy
         run: |
           set -euo pipefail
-          extras=(core mcp ws langchain langgraph crewai fastapi anthropic a2a a2a-server all)
+          extras=(core mcp ws langchain langgraph fastapi anthropic a2a a2a-server all)
           for extra in "${extras[@]}"; do
             requirements="/tmp/jacs-${extra}.txt"
             if [ "$extra" = core ]; then
@@ -149,13 +149,7 @@ jobs:
             else
               uv export --locked --no-dev --no-emit-project --no-hashes --extra "$extra" --output-file "$requirements" >/dev/null
             fi
-            if [ "$extra" = crewai ] || [ "$extra" = all ]; then
-              pip-audit --requirement "$requirements" \
-                --ignore-vuln PYSEC-2026-311 \
-                --ignore-vuln GHSA-f4j7-r4q5-qw2c
-            else
-              pip-audit --requirement "$requirements"
-            fi
+            pip-audit --requirement "$requirements"
           done
       - name: Audit standalone Python MCP example lock
         working-directory: jacspy/examples/jacs-mcp

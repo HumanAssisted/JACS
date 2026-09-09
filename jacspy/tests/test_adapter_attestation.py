@@ -343,55 +343,6 @@ class TestFastapiAdapterAttest:
         assert callable(my_endpoint)
 
 
-# --------------------------------------------------------------------------
-# CrewAI adapter attestation tests
-# --------------------------------------------------------------------------
-
-
-class TestCrewaiAdapterAttest:
-    """Test CrewAI adapter with attest mode."""
-
-    def test_guardrail_accepts_attest(self, ephemeral_client):
-        """jacs_guardrail with attest=True produces output."""
-        from jacs.adapters.crewai import jacs_guardrail
-
-        guardrail = jacs_guardrail(
-            client=ephemeral_client,
-            attest=True,
-            allow_plain_signature_fallback=True,
-        )
-        assert callable(guardrail)
-
-        # Simulate a TaskOutput-like object
-        class FakeOutput:
-            raw = "This is the task output"
-
-        ok, result = guardrail(FakeOutput())
-        assert ok is True
-        parsed = json.loads(result)
-        assert "jacsSignature" in parsed or "jacsHash" in parsed
-
-    def test_signed_tool_wrapper_accepts_attest(self, ephemeral_client):
-        """JacsSignedTool accepts attest=True parameter."""
-        from jacs.adapters.crewai import JacsSignedTool
-
-        class FakeTool:
-            name = "test_tool"
-            description = "A test tool"
-            args_schema = None
-
-            def _run(self, **kwargs):
-                return "result"
-
-        wrapped = JacsSignedTool(FakeTool(), client=ephemeral_client, attest=True)
-        assert wrapped._adapter.attest is True
-
-
-# --------------------------------------------------------------------------
-# Anthropic adapter attestation tests
-# --------------------------------------------------------------------------
-
-
 class TestAnthropicAdapterAttest:
     """Test Anthropic adapter with attest mode."""
 

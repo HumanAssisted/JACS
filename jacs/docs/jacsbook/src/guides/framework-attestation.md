@@ -1,6 +1,6 @@
 # Framework Adapter Attestation Guide
 
-JACS provides Python framework adapters for LangChain, FastAPI, CrewAI, and
+JACS provides Python framework adapters for LangChain, FastAPI, and
 Anthropic. Each adapter can be configured to produce attestations (not just
 signatures) for tool calls, API requests, and agent actions.
 
@@ -138,53 +138,6 @@ async def approve_request(request_id: str):
 
 The response headers will include `X-JACS-Attestation-Id` with the
 attestation document ID.
-
-## CrewAI
-
-### Attestation Guardrails
-
-Use `jacs_guardrail` with attestation mode to create trust-verified
-task execution:
-
-```python
-from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
-from jacs.client import JacsClient
-
-client = JacsClient.quickstart()
-
-@jacs_guardrail(client, attest=True)
-def verified_analysis(task_result):
-    """Guardrail that attests to analysis quality."""
-    return task_result
-```
-
-### Signed Tasks
-
-```python
-from jacs.adapters.crewai import signed_task
-
-@signed_task(client, attest=True, claims=[
-    {"name": "analysis_type", "value": "financial", "confidence": 0.9},
-])
-def analyze_portfolio(data):
-    return {"risk_score": 0.3, "recommendation": "hold"}
-```
-
-### JacsSignedTool
-
-```python
-class MyTool(JacsSignedTool):
-    """A CrewAI tool with built-in attestation."""
-    name = "market_data"
-    description = "Fetch market data"
-    attest = True
-    default_claims = [
-        {"name": "data_source", "value": "bloomberg"},
-    ]
-
-    def _run(self, ticker: str) -> dict:
-        return {"ticker": ticker, "price": 150.0}
-```
 
 ## Anthropic
 

@@ -37,8 +37,6 @@ NOTICE_PACKAGE_PATTERN = re.compile(r"^  - ([A-Za-z0-9_-]+) [^\r\n]+$", re.MULTI
 
 BLOCKING_IGNORES = {
     "RUSTSEC-2023-0071",
-    "PYSEC-2026-311",
-    "GHSA-f4j7-r4q5-qw2c",
 }
 DOCUMENTED_EXCEPTIONS = BLOCKING_IGNORES | {
     "RUSTSEC-2023-0089",
@@ -351,7 +349,6 @@ def main() -> int:
         require_exact_parents(
             ROOT / "jacs-surrealdb/Cargo.lock", "bincode", {"surrealmx"}
         )
-        require_exact_parents(ROOT / "jacspy/uv.lock", "chromadb", {"crewai"})
     except (OSError, KeyError, tomllib.TOMLDecodeError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1

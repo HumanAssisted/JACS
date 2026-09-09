@@ -181,14 +181,12 @@
 <tr><td>Signed LangChain tool results</td><td><code>jacs_signing_middleware</code>, <code>signed_tool</code></td><td>LangChain / LangGraph section below</td></tr>
 <tr><td>Signed LangGraph <code>ToolNode</code> outputs</td><td><code>jacs_wrap_tool_call</code>, <code>with_jacs_signing</code></td><td>LangChain / LangGraph section below</td></tr>
 <tr><td>Signed FastAPI responses and verified inbound requests</td><td><code>JacsMiddleware</code>, <code>jacs_route</code></td><td>FastAPI section below</td></tr>
-<tr><td>Signed CrewAI task output</td><td><code>jacs_guardrail</code>, <code>signed_task</code></td><td>CrewAI section below</td></tr>
 <tr><td>Signed Anthropic tool return values</td><td><code>jacs.adapters.anthropic.signed_tool</code></td><td>Anthropic section below</td></tr>
 </tbody></table>
 </div>
 <p>Install only the extra you need:</p>
 <pre><code class="language-bash">pip install jacs[langchain]
 pip install jacs[fastapi]
-pip install jacs[crewai]
 pip install jacs[anthropic]
 </code></pre>
 <p>Optional: <code>jacs[langgraph]</code> (LangGraph ToolNode), <code>jacs[ws]</code> (WebSockets). See <code>pyproject.toml</code> for the full list.</p>
@@ -262,20 +260,6 @@ unverified.</p>
 async def signed_endpoint():
     return {"ok": True}
 </code></pre>
-<h2 id="crewai"><a class="header" href="#crewai">CrewAI</a></h2>
-<p>CrewAI support is guardrail-first:</p>
-<pre><code class="language-python">from crewai import Task
-from jacs.adapters.crewai import jacs_guardrail
-
-task = Task(
-    description="Summarize the report",
-    agent=my_agent,
-    guardrail=jacs_guardrail(client=client),
-)
-</code></pre>
-<p>If you build tasks with factories, <code>signed_task()</code> can pre-attach the guardrail.
-It rejects an existing guardrail rather than silently allowing that guardrail
-to suppress JACS signing; compose guardrails explicitly when both are needed.</p>
 <h2 id="anthropic--claude-sdk"><a class="header" href="#anthropic--claude-sdk">Anthropic / Claude SDK</a></h2>
 <p>Use the Anthropic adapter when you want signed return values from normal Python tool functions:</p>
 <pre><code class="language-python">from jacs.adapters.anthropic import signed_tool

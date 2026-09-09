@@ -113,7 +113,7 @@ A: Use `JACS_KEY_RESOLUTION` to configure key lookup. Set `JACS_KEY_RESOLUTION=l
 - **[A2A Interoperability Reference](../integrations/a2a.md)** -- Full API reference, well-known documents, MCP integration
 - **[Trust Store](../advanced/trust-store.md)** -- Managing trusted agents
 - **[Express Middleware](../nodejs/express.md)** -- Add A2A to existing Express apps
-- **[Framework Adapters](../python/adapters.md)** -- Auto-sign with LangChain, FastAPI, CrewAI
+- **[Framework Adapters](../python/adapters.md)** -- Auto-sign with LangChain, FastAPI, Anthropic
 - **[Observability & Monitoring Guide](observability.md)** -- Monitor signing and verification events
 - **[Hero Demo (Python)](https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.py)** -- 3-agent trust verification example
 - **[Hero Demo (Node.js)](https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.ts)** -- Same demo in TypeScript

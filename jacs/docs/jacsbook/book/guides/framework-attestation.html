@@ -175,7 +175,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="framework-adapter-attestation-guide"><a class="header" href="#framework-adapter-attestation-guide">Framework Adapter Attestation Guide</a></h1>
-<p>JACS provides Python framework adapters for LangChain, FastAPI, CrewAI, and
+<p>JACS provides Python framework adapters for LangChain, FastAPI, and
 Anthropic. Each adapter can be configured to produce attestations (not just
 signatures) for tool calls, API requests, and agent actions.</p>
 <h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
@@ -278,42 +278,6 @@ async def approve_request(request_id: str):
 </code></pre>
 <p>The response headers will include <code>X-JACS-Attestation-Id</code> with the
 attestation document ID.</p>
-<h2 id="crewai"><a class="header" href="#crewai">CrewAI</a></h2>
-<h3 id="attestation-guardrails"><a class="header" href="#attestation-guardrails">Attestation Guardrails</a></h3>
-<p>Use <code>jacs_guardrail</code> with attestation mode to create trust-verified
-task execution:</p>
-<pre><code class="language-python">from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
-from jacs.client import JacsClient
-
-client = JacsClient.quickstart()
-
-@jacs_guardrail(client, attest=True)
-def verified_analysis(task_result):
-    """Guardrail that attests to analysis quality."""
-    return task_result
-</code></pre>
-<h3 id="signed-tasks"><a class="header" href="#signed-tasks">Signed Tasks</a></h3>
-<pre><code class="language-python">from jacs.adapters.crewai import signed_task
-
-@signed_task(client, attest=True, claims=[
-    {"name": "analysis_type", "value": "financial", "confidence": 0.9},
-])
-def analyze_portfolio(data):
-    return {"risk_score": 0.3, "recommendation": "hold"}
-</code></pre>
-<h3 id="jacssignedtool"><a class="header" href="#jacssignedtool">JacsSignedTool</a></h3>
-<pre><code class="language-python">class MyTool(JacsSignedTool):
-    """A CrewAI tool with built-in attestation."""
-    name = "market_data"
-    description = "Fetch market data"
-    attest = True
-    default_claims = [
-        {"name": "data_source", "value": "bloomberg"},
-    ]
-
-    def _run(self, ticker: str) -&gt; dict:
-        return {"ticker": ticker, "price": 150.0}
-</code></pre>
 <h2 id="anthropic"><a class="header" href="#anthropic">Anthropic</a></h2>
 <h3 id="tool-hook-attestation"><a class="header" href="#tool-hook-attestation">Tool Hook Attestation</a></h3>
 <p>The Anthropic adapter hooks into Claude tool calls to produce attestations:</p>

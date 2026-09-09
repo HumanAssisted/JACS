@@ -185,7 +185,7 @@ JACS agents declare the `urn:jacs:provenance-v1` extension in their Agent Card s
   - [Exchange Artifacts](./jacs/docs/jacsbook/src/guides/a2a-exchange.md) -- Sign, verify, chain of custody
 - **[A2A Interoperability Reference](./jacs/docs/jacsbook/src/integrations/a2a.md)** -- Full API reference, MCP integration, framework adapters
 - **[Trust Store](./jacs/docs/jacsbook/src/advanced/trust-store.md)** -- Managing trusted agents
-- **[Framework Adapters](./jacs/docs/jacsbook/src/python/adapters.md)** -- Auto-sign with LangChain, FastAPI, CrewAI
+- **[Framework Adapters](./jacs/docs/jacsbook/src/python/adapters.md)** -- Auto-sign with LangChain, FastAPI, Anthropic
 - **[Express Middleware](./jacs/docs/jacsbook/src/nodejs/express.md)** -- Add A2A to Express apps
 - **[Hero Demo (Python)](./examples/a2a_trust_demo.py)** -- 3-agent trust verification example
 - **[Hero Demo (Node.js)](./examples/a2a_trust_demo.ts)** -- Same demo in TypeScript

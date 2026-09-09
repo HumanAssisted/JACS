@@ -2,6 +2,14 @@
 
 (unreleased)
 
+### Removed
+
+- **The CrewAI adapter and the `crewai` Python extra.** CrewAI pins
+  `chromadb ~=1.1.0`, which carries four advisories with no patched release;
+  rather than keep an expired security exception, the adapter, its tests, docs,
+  and audit suppression are gone. Use the LangChain, FastAPI, Anthropic, or MCP
+  adapters instead.
+
 ### Changed
 
 - **JACS is licensed under Apache-2.0 without the Common Clause.** The former

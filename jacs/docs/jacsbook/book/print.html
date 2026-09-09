@@ -6048,7 +6048,7 @@ JSON payload, verifies it, and waits for <code>SMOKE OK</code> in the page outpu
 <h3 id="using-pip"><a class="header" href="#using-pip">Using pip</a></h3>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
-<p>For framework adapters (LangChain, FastAPI, CrewAI, Anthropic, etc.) use optional extras, e.g. <code>pip install jacs[langchain]</code>, <code>jacs[fastapi]</code>, or <code>jacs[all]</code>. Optional: <code>jacs[langgraph]</code>, <code>jacs[ws]</code>. See <a href="python/adapters.html">Framework Adapters</a> and the package <code>pyproject.toml</code>.</p>
+<p>For framework adapters (LangChain, FastAPI, Anthropic, etc.) use optional extras, e.g. <code>pip install jacs[langchain]</code>, <code>jacs[fastapi]</code>, or <code>jacs[all]</code>. Optional: <code>jacs[langgraph]</code>, <code>jacs[ws]</code>. See <a href="python/adapters.html">Framework Adapters</a> and the package <code>pyproject.toml</code>.</p>
 <h3 id="using-conda"><a class="header" href="#using-conda">Using conda</a></h3>
 <pre><code class="language-bash">conda install -c conda-forge jacs
 </code></pre>
@@ -7434,7 +7434,7 @@ client session.</p>
 <p>Choose <a href="python/adapters.html">Python Framework Adapters</a> instead of MCP when:</p>
 <ul>
 <li>the model and tools already live in the same Python process</li>
-<li>you only need signed LangChain, LangGraph, CrewAI, or FastAPI boundaries</li>
+<li>you only need signed LangChain, LangGraph, or FastAPI boundaries</li>
 <li>you do not need MCP clients to connect from outside the app</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="framework-adapters"><a class="header" href="#framework-adapters">Framework Adapters</a></h1>
@@ -7444,14 +7444,12 @@ client session.</p>
 <tr><td>Signed LangChain tool results</td><td><code>jacs_signing_middleware</code>, <code>signed_tool</code></td><td>LangChain / LangGraph section below</td></tr>
 <tr><td>Signed LangGraph <code>ToolNode</code> outputs</td><td><code>jacs_wrap_tool_call</code>, <code>with_jacs_signing</code></td><td>LangChain / LangGraph section below</td></tr>
 <tr><td>Signed FastAPI responses and verified inbound requests</td><td><code>JacsMiddleware</code>, <code>jacs_route</code></td><td>FastAPI section below</td></tr>
-<tr><td>Signed CrewAI task output</td><td><code>jacs_guardrail</code>, <code>signed_task</code></td><td>CrewAI section below</td></tr>
 <tr><td>Signed Anthropic tool return values</td><td><code>jacs.adapters.anthropic.signed_tool</code></td><td>Anthropic section below</td></tr>
 </tbody></table>
 </div>
 <p>Install only the extra you need:</p>
 <pre><code class="language-bash">pip install jacs[langchain]
 pip install jacs[fastapi]
-pip install jacs[crewai]
 pip install jacs[anthropic]
 </code></pre>
 <p>Optional: <code>jacs[langgraph]</code> (LangGraph ToolNode), <code>jacs[ws]</code> (WebSockets). See <code>pyproject.toml</code> for the full list.</p>
@@ -7525,20 +7523,6 @@ unverified.</p>
 async def signed_endpoint():
     return {"ok": True}
 </code></pre>
-<h2 id="crewai"><a class="header" href="#crewai">CrewAI</a></h2>
-<p>CrewAI support is guardrail-first:</p>
-<pre><code class="language-python">from crewai import Task
-from jacs.adapters.crewai import jacs_guardrail
-
-task = Task(
-    description="Summarize the report",
-    agent=my_agent,
-    guardrail=jacs_guardrail(client=client),
-)
-</code></pre>
-<p>If you build tasks with factories, <code>signed_task()</code> can pre-attach the guardrail.
-It rejects an existing guardrail rather than silently allowing that guardrail
-to suppress JACS signing; compose guardrails explicitly when both are needed.</p>
 <h2 id="anthropic--claude-sdk"><a class="header" href="#anthropic--claude-sdk">Anthropic / Claude SDK</a></h2>
 <p>Use the Anthropic adapter when you want signed return values from normal Python tool functions:</p>
 <pre><code class="language-python">from jacs.adapters.anthropic import signed_tool
@@ -12198,7 +12182,7 @@ A: Use <code>JACS_KEY_RESOLUTION</code> to configure key lookup. Set <code>JACS_
 <li><strong><a href="guides/../integrations/a2a.html">A2A Interoperability Reference</a></strong> -- Full API reference, well-known documents, MCP integration</li>
 <li><strong><a href="guides/../advanced/trust-store.html">Trust Store</a></strong> -- Managing trusted agents</li>
 <li><strong><a href="guides/../nodejs/express.html">Express Middleware</a></strong> -- Add A2A to existing Express apps</li>
-<li><strong><a href="guides/../python/adapters.html">Framework Adapters</a></strong> -- Auto-sign with LangChain, FastAPI, CrewAI</li>
+<li><strong><a href="guides/../python/adapters.html">Framework Adapters</a></strong> -- Auto-sign with LangChain, FastAPI, Anthropic</li>
 <li><strong><a href="guides/observability.html">Observability &amp; Monitoring Guide</a></strong> -- Monitor signing and verification events</li>
 <li><strong><a href="https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.py">Hero Demo (Python)</a></strong> -- 3-agent trust verification example</li>
 <li><strong><a href="https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.ts">Hero Demo (Node.js)</a></strong> -- Same demo in TypeScript</li>
@@ -13294,7 +13278,7 @@ API (when available in a future release).</p>
 <p>For JWTs and other credential-based evidence, default to <code>Restricted</code> and only
 include non-PII fields (<code>iss</code>, <code>sub</code>, <code>aud</code>, <code>iat</code>, <code>exp</code>) in claims.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="framework-adapter-attestation-guide"><a class="header" href="#framework-adapter-attestation-guide">Framework Adapter Attestation Guide</a></h1>
-<p>JACS provides Python framework adapters for LangChain, FastAPI, CrewAI, and
+<p>JACS provides Python framework adapters for LangChain, FastAPI, and
 Anthropic. Each adapter can be configured to produce attestations (not just
 signatures) for tool calls, API requests, and agent actions.</p>
 <h2 id="common-patterns-1"><a class="header" href="#common-patterns-1">Common Patterns</a></h2>
@@ -13397,42 +13381,6 @@ async def approve_request(request_id: str):
 </code></pre>
 <p>The response headers will include <code>X-JACS-Attestation-Id</code> with the
 attestation document ID.</p>
-<h2 id="crewai-1"><a class="header" href="#crewai-1">CrewAI</a></h2>
-<h3 id="attestation-guardrails"><a class="header" href="#attestation-guardrails">Attestation Guardrails</a></h3>
-<p>Use <code>jacs_guardrail</code> with attestation mode to create trust-verified
-task execution:</p>
-<pre><code class="language-python">from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
-from jacs.client import JacsClient
-
-client = JacsClient.quickstart()
-
-@jacs_guardrail(client, attest=True)
-def verified_analysis(task_result):
-    """Guardrail that attests to analysis quality."""
-    return task_result
-</code></pre>
-<h3 id="signed-tasks"><a class="header" href="#signed-tasks">Signed Tasks</a></h3>
-<pre><code class="language-python">from jacs.adapters.crewai import signed_task
-
-@signed_task(client, attest=True, claims=[
-    {"name": "analysis_type", "value": "financial", "confidence": 0.9},
-])
-def analyze_portfolio(data):
-    return {"risk_score": 0.3, "recommendation": "hold"}
-</code></pre>
-<h3 id="jacssignedtool"><a class="header" href="#jacssignedtool">JacsSignedTool</a></h3>
-<pre><code class="language-python">class MyTool(JacsSignedTool):
-    """A CrewAI tool with built-in attestation."""
-    name = "market_data"
-    description = "Fetch market data"
-    attest = True
-    default_claims = [
-        {"name": "data_source", "value": "bloomberg"},
-    ]
-
-    def _run(self, ticker: str) -&gt; dict:
-        return {"ticker": ticker, "price": 150.0}
-</code></pre>
 <h2 id="anthropic"><a class="header" href="#anthropic">Anthropic</a></h2>
 <h3 id="tool-hook-attestation"><a class="header" href="#tool-hook-attestation">Tool Hook Attestation</a></h3>
 <p>The Anthropic adapter hooks into Claude tool calls to produce attestations:</p>
