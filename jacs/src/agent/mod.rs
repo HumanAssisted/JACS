@@ -4523,6 +4523,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_ephemeral_create_agent_and_load() {
         let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
@@ -4539,6 +4540,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_ephemeral_sign_and_verify_round_trip() {
         use crate::agent::document::DocumentTraits;
 
@@ -4574,6 +4576,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_ephemeral_agent_is_ready() {
         let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
@@ -4587,6 +4590,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_ephemeral_no_files_on_disk() {
         let temp = std::env::temp_dir().join("jacs_ephemeral_test_no_files");
         let _ = std::fs::remove_dir_all(&temp);
@@ -4609,6 +4613,7 @@ mod ephemeral_tests {
 
     #[cfg(feature = "pq-tests")]
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_ephemeral_pq2025() {
         let mut agent = Agent::ephemeral("pq2025").unwrap();
         let json = make_agent_json();
