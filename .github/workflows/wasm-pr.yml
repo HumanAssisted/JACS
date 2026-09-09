@@ -176,6 +176,10 @@ jobs:
         working-directory: jacs-wasm/examples/vite-smoke
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
+          # The runner image ships a Google Chrome apt source whose index has been
+          # failing its hash check; Playwright's --with-deps runs apt-get update
+          # itself, so drop that unrelated source first.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*
           npx playwright install --with-deps chromium
 
       - name: Vite build
