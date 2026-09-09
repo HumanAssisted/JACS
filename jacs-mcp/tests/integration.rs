@@ -367,6 +367,7 @@ async fn mcp_local_document_round_trip_and_unlisted_tools_are_denied() -> anyhow
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_document_and_attestation_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
@@ -473,6 +474,7 @@ async fn mcp_document_and_attestation_round_trip_over_stdio() -> anyhow::Result<
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_w3c_did_discovery_and_request_proof_round_trip() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
@@ -903,6 +905,7 @@ async fn mcp_verify_agreement_v2_surfaces_invalid_verdict() -> anyhow::Result<()
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_check_agreement_rejects_tampered_agreement() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
@@ -998,6 +1001,7 @@ async fn mcp_check_agreement_rejects_tampered_agreement() -> anyhow::Result<()> 
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_admin_tools_reject_inline_secrets_without_opt_in() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
@@ -1051,6 +1055,7 @@ async fn mcp_admin_tools_reject_inline_secrets_without_opt_in() -> anyhow::Resul
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
@@ -1142,6 +1147,7 @@ async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
@@ -1256,6 +1262,7 @@ async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[ignore = "exercises the removed `full` MCP profile; these tool surfaces stay parked until the TP-39 capability broker exists"]
 #[tokio::test]
 async fn mcp_attestation_negative_paths_and_dsse_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;

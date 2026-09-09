@@ -66,5 +66,4 @@ jobs:
       - name: Run jacs-mcp tests
         run: cargo test -p jacs-mcp --features full-tools --verbose
         env:
-          JACS_MCP_PROFILE: full
           JACS_KEYCHAIN_BACKEND: disabled
