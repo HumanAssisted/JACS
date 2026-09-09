@@ -3702,10 +3702,10 @@ impl Agent {
             self.fs_load_keys()?;
         }
 
-        // Save public key hash — skip for ephemeral (no filesystem)
-        if !self.ephemeral
-            && let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm)
-        {
+        // Cache the agent's own public key under its hash so self-signed
+        // documents (including legacy v1 agreements) resolve through the same
+        // lookup path. Ephemeral agents write this into their memory storage.
+        if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm) {
             let public_key_hash = hash_public_key(public_key);
             let _ = self.fs_save_remote_public_key(
                 &public_key_hash,
