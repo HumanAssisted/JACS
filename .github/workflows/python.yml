@@ -123,7 +123,7 @@ jobs:
           toolchain: '1.97'
 
       - name: Install libdbus (required by keyring crate on Linux)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install uv and maturin
         run: >-
