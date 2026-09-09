@@ -11,7 +11,9 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 # preinstalled minimal toolchain instead of lazily installing its components.
 ENV RUSTUP_TOOLCHAIN=1.97.0
 
-RUN yum install -y curl gcc make perl-IPC-Cmd openssl-devel && \
+# perl-core supplies Time::Piece and friends that OpenSSL's Configure needs
+# when the human-approval-vendored feature builds OpenSSL from source.
+RUN yum install -y curl gcc make perl-core perl-IPC-Cmd openssl-devel && \
     yum clean all && \
     rm -rf /var/cache/yum
 
