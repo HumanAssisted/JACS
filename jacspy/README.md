@@ -3,7 +3,7 @@
 Cryptographic identity, signing, and verification for AI agents from Python.
 
 > **Registry status (observed 2026-07-11):** PyPI serves `jacs==0.11.3`; this
-> branch is source `0.11.4`. Pin the package when exact cross-language contracts
+> branch is source `0.12.0`. Pin the package when exact cross-language contracts
 > matter.
 
 ```bash

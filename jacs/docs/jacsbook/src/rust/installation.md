@@ -26,7 +26,7 @@ cargo install jacs-cli
 ```
 
 At the 2026-07-09 shipped-artifact snapshot, crates.io resolves `jacs-cli`
-`0.11.3`; the documentation source is `0.11.4`. Check the resolved version
+`0.11.3`; the documentation source is `0.12.0`. Check the resolved version
 instead of assuming the source branch has already been published.
 
 ### From Homebrew (macOS)
@@ -66,7 +66,7 @@ jacs = "0.11.3"
 ```
 
 `0.11.3` is the published crate recorded in
-`release/shipped-artifacts.json`; source checkout `0.11.4` is not installable
+`release/shipped-artifacts.json`; source checkout `0.12.0` is not installable
 from crates.io until its release completes.
 
 ### With Optional Features
@@ -120,7 +120,7 @@ Observed public artifacts on 2026-07-09:
 | Rust library crate | `jacs 0.11.3` | None; crates.io distributes source | Full source suites run in release CI on Ubuntu and macOS. This does not imply every Rust-supported target. |
 | CLI crate | `jacs-cli 0.11.3` | `cargo install` builds from source | Source compilation follows the consumer's Rust target and native dependencies. |
 | CLI archives | `jacs-cli 0.11.3` | macOS arm64/x86_64; glibc Linux arm64/x86_64; Windows x86_64 | The release job builds each target and executes `jacs --version` on its runner. Full feature suites are not run separately on every archive target. |
-| Browser WASM | source `0.11.4` only | No published `@jacs/wasm` package | Source CI runs Firefox `wasm-pack` tests and a Chromium/Playwright package smoke on Ubuntu. |
+| Browser WASM | source `0.12.0` only | No published `@jacs/wasm` package | Source CI runs Firefox `wasm-pack` tests and a Chromium/Playwright package smoke on Ubuntu. |
 
 There is no basis for a blanket “full support” claim across operating systems.
 In particular, the Windows x86_64 CLI archive does not imply Windows wheels or

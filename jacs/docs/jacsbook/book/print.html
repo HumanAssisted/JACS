@@ -1183,7 +1183,7 @@ cd jacsnpm &amp;&amp; npm run build
 <pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <p>At the 2026-07-09 shipped-artifact snapshot, crates.io resolves <code>jacs-cli</code>
-<code>0.11.3</code>; the documentation source is <code>0.11.4</code>. Check the resolved version
+<code>0.11.3</code>; the documentation source is <code>0.12.0</code>. Check the resolved version
 instead of assuming the source branch has already been published.</p>
 <h3 id="from-homebrew-macos"><a class="header" href="#from-homebrew-macos">From Homebrew (macOS)</a></h3>
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
@@ -1208,7 +1208,7 @@ JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
 jacs = "0.11.3"
 </code></pre>
 <p><code>0.11.3</code> is the published crate recorded in
-<code>release/shipped-artifacts.json</code>; source checkout <code>0.11.4</code> is not installable
+<code>release/shipped-artifacts.json</code>; source checkout <code>0.12.0</code> is not installable
 from crates.io until its release completes.</p>
 <h3 id="with-optional-features"><a class="header" href="#with-optional-features">With Optional Features</a></h3>
 <p>JACS supports several optional features for observability and integrations:</p>
@@ -1252,7 +1252,7 @@ also published as platform archives.</p>
 <tr><td>Rust library crate</td><td><code>jacs 0.11.3</code></td><td>None; crates.io distributes source</td><td>Full source suites run in release CI on Ubuntu and macOS. This does not imply every Rust-supported target.</td></tr>
 <tr><td>CLI crate</td><td><code>jacs-cli 0.11.3</code></td><td><code>cargo install</code> builds from source</td><td>Source compilation follows the consumer's Rust target and native dependencies.</td></tr>
 <tr><td>CLI archives</td><td><code>jacs-cli 0.11.3</code></td><td>macOS arm64/x86_64; glibc Linux arm64/x86_64; Windows x86_64</td><td>The release job builds each target and executes <code>jacs --version</code> on its runner. Full feature suites are not run separately on every archive target.</td></tr>
-<tr><td>Browser WASM</td><td>source <code>0.11.4</code> only</td><td>No published <code>@jacs/wasm</code> package</td><td>Source CI runs Firefox <code>wasm-pack</code> tests and a Chromium/Playwright package smoke on Ubuntu.</td></tr>
+<tr><td>Browser WASM</td><td>source <code>0.12.0</code> only</td><td>No published <code>@jacs/wasm</code> package</td><td>Source CI runs Firefox <code>wasm-pack</code> tests and a Chromium/Playwright package smoke on Ubuntu.</td></tr>
 </tbody></table>
 </div>
 <p>There is no basis for a blanket “full support” claim across operating systems.
@@ -5046,7 +5046,7 @@ complete HTTP authentication protocol.</p>
 <blockquote>
 <p><strong>Security boundary:</strong> <code>signRequest()</code> / <code>verifyResponse()</code> do not bind the
 actual method, absolute URL, query, exact body bytes, or service audience. Do
-not use them alone to authorize an endpoint. Source <code>0.11.4</code> clients use
+not use them alone to authorize an endpoint. Source <code>0.12.0</code> clients use
 <code>JacsSimpleAgent.buildRequestAuthHeader(method, url, body, audience)</code> for a <code>JACS v2</code>
 credential. Servers verify the same request context with a trusted key and
 atomically consume its nonce. Signed events use <code>signResponse()</code> on

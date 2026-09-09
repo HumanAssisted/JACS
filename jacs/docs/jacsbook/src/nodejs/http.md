@@ -8,7 +8,7 @@ complete HTTP authentication protocol.
 
 > **Security boundary:** `signRequest()` / `verifyResponse()` do not bind the
 > actual method, absolute URL, query, exact body bytes, or service audience. Do
-> not use them alone to authorize an endpoint. Source `0.11.4` clients use
+> not use them alone to authorize an endpoint. Source `0.12.0` clients use
 > `JacsSimpleAgent.buildRequestAuthHeader(method, url, body, audience)` for a `JACS v2`
 > credential. Servers verify the same request context with a trusted key and
 > atomically consume its nonce. Signed events use `signResponse()` on

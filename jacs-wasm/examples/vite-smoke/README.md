@@ -30,9 +30,9 @@ To test an exact package installed from npm, install it into this example and
 select it explicitly:
 
 ```bash
-npm install --no-save --ignore-scripts @jacs/wasm@0.11.4
+npm install --no-save --ignore-scripts @jacs/wasm@0.12.0
 JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@jacs/wasm" \
-  JACS_WASM_EXPECTED_VERSION=0.11.4 \
+  JACS_WASM_EXPECTED_VERSION=0.12.0 \
   npm test
 ```
 
