@@ -7,6 +7,10 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     RUSTUP_VERSION=1.29.0 \
     RUSTUP_INIT_SHA256=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
 
+# Override the repository rust-toolchain.toml at run time so rustup uses the
+# preinstalled minimal toolchain instead of lazily installing its components.
+ENV RUSTUP_TOOLCHAIN=1.97.0
+
 RUN yum install -y curl gcc make perl-IPC-Cmd openssl-devel && \
     yum clean all && \
     rm -rf /var/cache/yum
