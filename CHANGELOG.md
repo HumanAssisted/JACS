@@ -34,6 +34,19 @@
   installation guide now uses the exact current stable compiler. A root
   `rust-toolchain.toml` pins Rust 1.97.0 with Clippy and rustfmt, and bootstrap
   paths pin checksum-verified rustup 1.29.0 binaries.
+- **Ephemeral agents cache their own public key.** Agent creation now stores the
+  agent's public key under its hash in whichever storage the agent uses, so an
+  ephemeral (memory-storage) agent resolves its own key through the same lookup
+  path as a persistent one when inspecting documents it signed.
+- **Node MCP `jacs_verify_document` matches the canonical contract.** The Node
+  tool now requires `document`, raw `public_key` bytes, and `algorithm`
+  (`ed25519` or `pq2025`) and verifies with exactly that key instead of the MCP
+  process's loaded identity and trust store; the result reports integrity only.
+- **Test suites track the closed agreement semantics.** Rust, Node, and Python
+  tests assert `mathematical_checks_valid` for Agreement v2 reports and
+  `complete: false` for legacy v1 inspection, matching the fail-closed reports
+  the library now returns; the MCP integration tests that spawned the removed
+  `full` profile are ignored with a reason until the capability broker exists.
 
 ### Security
 
