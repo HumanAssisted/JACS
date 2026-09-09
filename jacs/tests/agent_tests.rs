@@ -191,7 +191,11 @@ fn test_update_ed25519_agent_and_verify_versions() {
         .expect("updated agent signature must verify");
 }
 
+/// `#[serial]` because `set_min_test_env_vars()` rewrites the process-wide
+/// key-directory variables that the serial Ed25519 tests above rely on while
+/// they create keys.
 #[test]
+#[serial]
 fn test_validate_agent_json_raw() {
     setup();
     set_min_test_env_vars();
