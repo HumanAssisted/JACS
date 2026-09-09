@@ -204,7 +204,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: >-
             set -eux;
             if command -v yum >/dev/null 2>&1; then
-              yum install -y openssl-devel perl-IPC-Cmd;
+              yum install -y openssl-devel perl-core perl-IPC-Cmd;
             elif command -v apk >/dev/null 2>&1; then
               apk add --no-cache openssl-dev perl musl-dev;
             fi;
@@ -216,15 +216,15 @@ jobs:
               *) echo "unsupported rustup architecture: $(uname -m)" >&2; exit 1 ;;
             esac;
             rustup_init=/tmp/rustup-init;
-            curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2
-              --retry 3 --connect-timeout 15 --max-time 120 --output "$rustup_init"
-              "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_ARCH}/rustup-init";
+            curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --connect-timeout 15 --max-time 120 --output "$rustup_init" "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_ARCH}/rustup-init";
             echo "${RUSTUP_SHA256}  ${rustup_init}" | sha256sum -c -;
             chmod 0755 "$rustup_init";
             "$rustup_init" -y --profile minimal --no-modify-path --default-toolchain "$RUST_VERSION";
             rm -f "$rustup_init";
             "$HOME/.cargo/bin/rustc" --version | grep -F "rustc ${RUST_VERSION} "
-          CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
+          # RUSTUP_TOOLCHAIN keeps rustup from lazily installing the components
+          # listed in rust-toolchain.toml inside the container.
+          CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH RUSTUP_TOOLCHAIN=1.97.0'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
