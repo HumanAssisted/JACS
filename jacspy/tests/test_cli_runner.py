@@ -58,6 +58,9 @@ def test_ensure_cli_returns_none_for_unsupported_platform(monkeypatch):
 def test_main_exits_one_when_cli_unavailable(monkeypatch, capsys):
     monkeypatch.setattr(cli_runner, "ensure_cli", lambda: None)
     monkeypatch.setattr(cli_runner.platform, "system", lambda: "Linux")
+    # The hint honors CARGO_HOME (set in the manylinux builder image); pin the
+    # default so the expected path is deterministic.
+    monkeypatch.delenv("CARGO_HOME", raising=False)
 
     with pytest.raises(SystemExit) as exc:
         cli_runner.main()
