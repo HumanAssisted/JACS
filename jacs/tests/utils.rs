@@ -608,14 +608,18 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
     }
 
     let mut agent = create_agent_v1()?;
+    // Build the config from the values chosen above rather than reading the
+    // environment back: tests in other modules mutate these process-global
+    // variables concurrently, and a read-back could point key generation at
+    // the shared fixture directory (`File exists` on the committed keys).
     let config = Config::new(
         Some("false".to_string()),
-        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
-        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
-        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
-        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
-        Some(std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default()),
-        Some(std::env::var(PASSWORD_ENV_VAR).unwrap_or_default()),
+        Some(data_dir.to_string_lossy().to_string()),
+        Some(key_dir.to_string_lossy().to_string()),
+        Some("test-ring-Ed25519-private.pem.enc".to_string()),
+        Some("test-ring-Ed25519-public.pem".to_string()),
+        Some("ring-Ed25519".to_string()),
+        Some(TEST_PASSWORD_FIXTURES.to_string()),
         None,
         Some("fs".to_string()),
     );
