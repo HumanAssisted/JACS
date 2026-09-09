@@ -210,10 +210,13 @@ jobs:
             fi;
             RUSTUP_VERSION=1.29.0;
             RUST_VERSION=1.97.0;
-            case "$(uname -m)" in
-              x86_64) RUSTUP_SHA256=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10; RUSTUP_ARCH=x86_64-unknown-linux-gnu ;;
-              aarch64) RUSTUP_SHA256=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792; RUSTUP_ARCH=aarch64-unknown-linux-gnu ;;
-              *) echo "unsupported rustup architecture: $(uname -m)" >&2; exit 1 ;;
+            if command -v apk >/dev/null 2>&1; then RUSTUP_LIBC=musl; else RUSTUP_LIBC=gnu; fi;
+            case "$(uname -m)-${RUSTUP_LIBC}" in
+              x86_64-gnu) RUSTUP_SHA256=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10; RUSTUP_ARCH=x86_64-unknown-linux-gnu ;;
+              aarch64-gnu) RUSTUP_SHA256=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792; RUSTUP_ARCH=aarch64-unknown-linux-gnu ;;
+              x86_64-musl) RUSTUP_SHA256=9cd3fda5fd293890e36ab271af6a786ee22084b5f6c2b83fd8323cec6f0992c1; RUSTUP_ARCH=x86_64-unknown-linux-musl ;;
+              aarch64-musl) RUSTUP_SHA256=88761caacddb92cd79b0b1f939f3990ba1997d701a38b3e8dd6746a562f2a759; RUSTUP_ARCH=aarch64-unknown-linux-musl ;;
+              *) echo "unsupported rustup platform: $(uname -m)-${RUSTUP_LIBC}" >&2; exit 1 ;;
             esac;
             rustup_init=/tmp/rustup-init;
             curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --connect-timeout 15 --max-time 120 --output "$rustup_init" "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_ARCH}/rustup-init";
