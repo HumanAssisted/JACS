@@ -22,7 +22,7 @@
 //! init_tracing();
 //! ```
 
-use std::io;
+use std::io::{self, IsTerminal};
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initialize logging with sensible defaults.
@@ -49,7 +49,7 @@ pub fn init_logging() {
 ///
 /// Sets up `tracing-subscriber` with:
 /// - `EnvFilter` respecting `RUST_LOG` (defaults to `jacs=info`)
-/// - Formatted output to stderr with ANSI colors
+/// - Formatted output to stderr, with ANSI colors only when stderr is a terminal
 /// - Suppressed networking crate noise
 ///
 /// This does **not** enable OTLP export. For OTLP tracing, use
@@ -67,6 +67,12 @@ pub fn init_tracing() {
     // try_init is a no-op if a subscriber is already set
     let _ = Registry::default()
         .with(filter)
-        .with(fmt::layer().with_writer(io::stderr).with_ansi(true))
+        .with(
+            fmt::layer()
+                .with_writer(io::stderr)
+                // Piped or captured stderr (supervisors, MCP clients, tests)
+                // must receive plain text, not escape codes.
+                .with_ansi(io::stderr().is_terminal()),
+        )
         .try_init();
 }
