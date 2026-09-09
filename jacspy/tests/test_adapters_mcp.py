@@ -292,7 +292,7 @@ class TestAgreementTools:
         check_fn = mcp.tools["jacs_check_agreement"]["fn"]
         status = json.loads(check_fn(signed))
         assert status["success"] is True
-        assert status["complete"] is True
+        assert status["complete"] is False  # v1 inspection never reconstructs completion
         assert isinstance(status["signers"], list)
 
 

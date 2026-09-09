@@ -271,7 +271,7 @@ fn agreement_vc_does_not_touch_native_signature() {
 
     // The native agreement still verifies through the agreement verifier.
     let report = jacs::agreements::v2::verify(&agent, &agreement).expect("verify agreement");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     // Non-vacuous no-mutate check: re-fetch the STORED copy from agent
     // storage by id and re-verify hash + signature. Comparing an owned
     // local clone to itself would pass regardless of exporter behavior;

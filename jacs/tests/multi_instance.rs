@@ -161,7 +161,13 @@ fn test_cross_verification_fails_with_wrong_key() {
         !result.valid,
         "Agent B must not successfully verify Agent A's signature (wrong key)"
     );
-    assert_eq!(result.signer_id, info_a.agent_id);
+    // A failed verification is fail-closed: it surfaces no signer claim, even
+    // though the document names agent A.
+    assert!(
+        result.signer_id.is_empty(),
+        "failed verification must not surface the document's signer claim"
+    );
+    assert_ne!(result.signer_id, info_a.agent_id);
 }
 
 /// Same as above but in strict mode: verification failure should return Err.

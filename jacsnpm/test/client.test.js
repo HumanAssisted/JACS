@@ -760,7 +760,7 @@ describe('JacsClient', function () {
           expect(signed.documentId).to.be.a('string').and.not.empty;
 
           const status = client.checkAgreementSync(signed);
-          expect(status.complete).to.equal(true);
+          expect(status.complete).to.equal(false); // v1 inspection never reconstructs completion
           expect(status.pending).to.be.an('array').that.is.empty;
         } finally {
           process.chdir(originalCwd);
@@ -788,7 +788,7 @@ describe('JacsClient', function () {
 
           const signed = client.signAgreementSync(agreement);
           const status = client.checkAgreementSync(signed);
-          expect(status.complete).to.equal(true);
+          expect(status.complete).to.equal(false); // v1 inspection never reconstructs completion
         } finally {
           process.chdir(originalCwd);
         }

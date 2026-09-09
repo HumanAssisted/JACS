@@ -881,7 +881,7 @@ class TestCheckAgreement:
         assert isinstance(status.pending, list)
 
     def test_check_agreement_shows_completion(self, loaded_agent):
-        """check_agreement() should show complete=True after all sign."""
+        """check_agreement() reports no pending signers but never reconstructs completion."""
         # Create agreement with only the loaded agent
         agreement = simple.create_agreement(
             document={"proposal": "Single signer"},
@@ -891,9 +891,9 @@ class TestCheckAgreement:
         # Sign it
         signed = simple.sign_agreement(agreement)
 
-        # Should be complete
+        # Every party signed, but legacy v1 inspection is closed: complete stays False
         status = simple.check_agreement(signed)
-        assert status.complete is True
+        assert status.complete is False  # v1 inspection never reconstructs completion
         assert len(status.pending) == 0
 
 
@@ -920,9 +920,9 @@ class TestAgreementWorkflow:
         signed = simple.sign_agreement(agreement)
         assert signed.document_id
 
-        # Step 4: Check status (should be complete)
+        # Step 4: Check status (no pending signers; v1 inspection never reports complete)
         final_status = simple.check_agreement(signed)
-        assert final_status.complete is True
+        assert final_status.complete is False  # v1 inspection never reconstructs completion
         assert len(final_status.pending) == 0
 
         # Step 5: Verify the signed document is valid
@@ -987,7 +987,7 @@ class TestAgreementWorkflow:
             seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
-            assert status.complete is True
+            assert status.complete is False  # v1 inspection never reconstructs completion
             assert len(status.pending) == 0
         finally:
             os.chdir(original_cwd)
@@ -1059,7 +1059,7 @@ class TestAllAlgorithms:
             seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
-            assert status.complete is True
+            assert status.complete is False  # v1 inspection never reconstructs completion
             assert len(status.pending) == 0
         finally:
             os.chdir(original_cwd)

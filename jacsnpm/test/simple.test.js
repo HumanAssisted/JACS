@@ -684,7 +684,7 @@ describe('JACS Simple API', function() {
       expect(signed.documentId).to.be.a('string').and.not.empty;
 
       const complete = freshSimple.checkAgreementSync(signed);
-      expect(complete.complete).to.equal(true);
+      expect(complete.complete).to.equal(false); // v1 inspection never reconstructs completion
       expect(complete.pending).to.be.an('array').that.is.empty;
 
       const verified = freshSimple.verifySync(signed.raw);
@@ -774,7 +774,7 @@ describe('JACS Simple API', function() {
         process.chdir(agent2Dir);
         const signedByBoth = simpleB.signAgreementSync(signedByA);
         const status = simpleB.checkAgreementSync(signedByBoth);
-        expect(status.complete).to.equal(true);
+        expect(status.complete).to.equal(false); // v1 inspection never reconstructs completion
         expect(status.pending).to.be.an('array').that.is.empty;
       } finally {
         process.chdir(originalCwd);

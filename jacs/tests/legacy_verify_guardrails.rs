@@ -876,7 +876,7 @@ fn targeted_content_export_does_not_mutate_native_document() {
         assert!(agreement_value.get("jacsProjections").is_none());
         assert!(agreement_value.get("proof").is_none());
         let report = jacs::agreements::v2::verify(&agent, &agreement).expect("verify agreement");
-        assert!(report.valid, "{:?}", report.errors);
+        assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     }
 
     // Neither exporter wrote, rewrote, or annotated ANY native artifact:
