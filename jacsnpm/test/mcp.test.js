@@ -9,8 +9,11 @@ const { expect } = require('chai');
 const sinon = require('sinon');
 const path = require('path');
 
+const fs = require('fs');
 const NATIVE_FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const NATIVE_TEST_CONFIG = path.join(NATIVE_FIXTURES_DIR, 'jacs.config.json');
+// The shared scratch fixtures are gitignored and absent on CI runners.
+const nativeFixturesExist = fs.existsSync(NATIVE_TEST_CONFIG);
 
 let mcpModule;
 let NativeJacsAgent;
@@ -643,7 +646,7 @@ describe('JACSTransportProxy', function () {
       expect(errorSpy.firstCall.args[0].message).to.match(/unexpected MCP peer public key hash/i);
     });
 
-    (available ? it : it.skip)('should bind a real native verification to the configured peer', () => {
+    (available && nativeFixturesExist ? it : it.skip)('should bind a real native verification to the configured peer', () => {
       const originalCwd = process.cwd();
       const originalLegacy = process.env.JACS_ALLOW_LEGACY_SIGNATURE_CONTENT;
       process.chdir(NATIVE_FIXTURES_DIR);
@@ -1328,14 +1331,55 @@ describe('JACSTransportProxy', function () {
       expect(client.signMessage.calledOnce).to.be.true;
     });
 
-    (available ? it : it.skip)('jacs_verify_document should verify', async () => {
+    (available ? it : it.skip)('jacs_verify_document verifies exact bytes with the caller-selected raw key', async function () {
+      this.timeout(30000);
+      const { JacsSimpleAgent } = require('../index.js');
       const client = createMockJacsClient();
-      const result = await mcpModule.handleJacsMcpToolCall(
-        client, 'jacs_verify_document', { document: '{"signed":"doc"}' },
-      );
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed).to.have.property('valid', true);
-      expect(parsed).to.have.property('signerId', 'agent-b');
+      for (const algorithm of ['ed25519', 'pq2025']) {
+        const signer = JacsSimpleAgent.ephemeral(algorithm);
+        const signed = signer.signMessage(JSON.stringify({ hello: algorithm }));
+        const signerId = JSON.parse(signed).jacsSignature.agentID;
+        const publicKey = Array.from(Buffer.from(signer.getPublicKeyBase64(), 'base64'));
+
+        const ok = JSON.parse((await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_verify_document', { document: signed, public_key: publicKey, algorithm },
+        )).content[0].text);
+        expect(ok).to.include({ success: true, valid: true, signer_id: signerId, error: null });
+
+        const other = JacsSimpleAgent.ephemeral(algorithm);
+        const wrongKey = Array.from(Buffer.from(other.getPublicKeyBase64(), 'base64'));
+        const rejected = JSON.parse((await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_verify_document', { document: signed, public_key: wrongKey, algorithm },
+        )).content[0].text);
+        expect(rejected.valid).to.equal(false);
+        expect(rejected.success).to.equal(true);
+        expect(rejected.error).to.be.a('string').and.not.empty;
+
+        const tampered = signed.replace(`"hello":"${algorithm}"`, '"hello":"tampered"');
+        expect(tampered).to.not.equal(signed);
+        const tamperedResult = JSON.parse((await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_verify_document', { document: tampered, public_key: publicKey, algorithm },
+        )).content[0].text);
+        expect(tamperedResult.valid).to.equal(false);
+      }
+      // The loaded MCP identity never participates in canonical verification.
+      expect(client.verify.called).to.equal(false);
+    });
+
+    (available ? it : it.skip)('jacs_verify_document fails closed on malformed key selection', async () => {
+      const client = createMockJacsClient();
+      const cases = [
+        [{ document: '{"signed":"doc"}', public_key: new Array(32).fill(0), algorithm: 'rsa' }, 'INVALID_ALGORITHM'],
+        [{ document: '{"signed":"doc"}', public_key: new Array(31).fill(0), algorithm: 'ed25519' }, 'INVALID_PUBLIC_KEY'],
+        [{ document: '{"signed":"doc"}', public_key: [1, 2, 300], algorithm: 'ed25519' }, 'INVALID_PUBLIC_KEY'],
+        [{ document: '{"signed":"doc"}', public_key: 'AAAA', algorithm: 'ed25519' }, 'INVALID_PUBLIC_KEY'],
+        [{ document: '', public_key: new Array(32).fill(0), algorithm: 'ed25519' }, 'EMPTY_DOCUMENT'],
+      ];
+      for (const [args, error] of cases) {
+        const parsed = JSON.parse((await mcpModule.handleJacsMcpToolCall(client, 'jacs_verify_document', args)).content[0].text);
+        expect(parsed).to.include({ success: false, valid: false, error });
+      }
+      expect(client.verify.called).to.equal(false);
     });
 
     (available ? it : it.skip)('jacs_verify_by_id should verify by storage ID', async () => {

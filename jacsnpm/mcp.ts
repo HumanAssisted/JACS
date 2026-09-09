@@ -13,7 +13,7 @@
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage, JSONRPCMessageSchema } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from 'node:crypto';
-import { JacsAgent, fetchRemoteKeyLookup, jacsMcpResolveInputPath } from './index.js';
+import { JacsAgent, JacsSimpleAgent, fetchRemoteKeyLookup, jacsMcpResolveInputPath } from './index.js';
 import { JacsClient } from './client.js';
 import { allowUnsignedOutput, requireSignedEnvelope } from './output-policy.js';
 
@@ -766,13 +766,19 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
     },
     {
       name: 'jacs_verify_document',
-      description: 'Verify a JACS-signed document. Returns validity, signer, and errors.',
+      description: 'Verify exact submitted JACS document bytes with a caller-selected raw public key and algorithm. Integrity only; does not establish identity or authorization.',
       inputSchema: {
         type: 'object',
         properties: {
-          document: { type: 'string', description: 'The signed JSON document to verify' },
+          document: { type: 'string', description: 'The full signed JACS document JSON string to verify' },
+          public_key: {
+            type: 'array',
+            items: { type: 'integer', minimum: 0, maximum: 255 },
+            description: 'Exact raw Ed25519 (32 bytes) or ML-DSA-87 (2592 bytes) public-key bytes',
+          },
+          algorithm: { type: 'string', description: 'Exact verification algorithm (`ed25519` or `pq2025`)' },
         },
-        required: ['document'],
+        required: ['document', 'public_key', 'algorithm'],
       },
     },
     {
@@ -1098,6 +1104,83 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
   ];
 }
 
+/** Exact raw public-key lengths accepted by `jacs_verify_document`, keyed by canonical algorithm. */
+const EXACT_VERIFY_KEY_LENGTHS: Readonly<Record<string, number>> = Object.freeze({
+  ed25519: 32,
+  pq2025: 2592,
+});
+
+interface ExactKeyVerificationResult {
+  success: boolean;
+  valid: boolean;
+  signer_id: string | null;
+  message: string;
+  error: string | null;
+}
+
+function exactKeyBytes(value: unknown): Uint8Array | null {
+  const source = value instanceof Uint8Array ? Array.from(value) : Array.isArray(value) ? value : null;
+  if (source === null) return null;
+  const bytes = new Uint8Array(source.length);
+  for (let i = 0; i < source.length; i += 1) {
+    const byte = source[i];
+    if (typeof byte !== 'number' || !Number.isInteger(byte) || byte < 0 || byte > 255) return null;
+    bytes[i] = byte;
+  }
+  return bytes;
+}
+
+/**
+ * Canonical `jacs_verify_document`: verify the submitted document bytes against
+ * the caller-selected raw public key and algorithm only. No loaded identity,
+ * trust store, storage lookup, or key discovery participates, so a `valid`
+ * result is integrity evidence and never identity or authorization.
+ */
+function verifyDocumentWithExactKey(args: Record<string, any>): ExactKeyVerificationResult {
+  const failure = (message: string, error: string): ExactKeyVerificationResult => ({
+    success: false, valid: false, signer_id: null, message, error,
+  });
+  const document = args.document;
+  if (typeof document !== 'string' || document.length === 0) {
+    return failure('Document string is empty', 'EMPTY_DOCUMENT');
+  }
+  const algorithm = typeof args.algorithm === 'string' ? args.algorithm : '';
+  const expectedLength = EXACT_VERIFY_KEY_LENGTHS[algorithm];
+  if (expectedLength === undefined) {
+    return failure('Explicit verifier requires ed25519 or pq2025', 'INVALID_ALGORITHM');
+  }
+  const publicKey = exactKeyBytes(args.public_key);
+  if (publicKey === null || publicKey.length !== expectedLength) {
+    return failure('Public key must use the exact raw algorithm encoding', 'INVALID_PUBLIC_KEY');
+  }
+  let signerId: string | null = null;
+  try {
+    const parsed = JSON.parse(document);
+    const signature = parsed && typeof parsed === 'object' ? parsed.jacsSignature : undefined;
+    const claimed = signature && typeof signature === 'object' ? (signature.agentID ?? signature.agentId) : undefined;
+    signerId = typeof claimed === 'string' ? claimed : null;
+  } catch {
+    signerId = null;
+  }
+  try {
+    // A throwaway verifier keeps this path free of the MCP process's loaded
+    // identity; only the supplied key bytes participate in the check.
+    const verifier = JacsSimpleAgent.ephemeral(algorithm);
+    const report = JSON.parse(verifier.verifyWithKey(document, Buffer.from(publicKey).toString('base64')));
+    const errors: string[] = Array.isArray(report?.errors) ? report.errors.map(String) : [];
+    const valid = report?.valid === true && errors.length === 0;
+    return {
+      success: true,
+      valid,
+      signer_id: signerId,
+      message: valid ? 'Document verified successfully' : 'Document signature verification failed',
+      error: errors.length > 0 ? errors.join('; ') : null,
+    };
+  } catch (e) {
+    return failure('Document signature verification failed', String(e));
+  }
+}
+
 /**
  * Handle a JACS MCP tool call. Returns a JSON string result.
  *
@@ -1124,12 +1207,7 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'jacs_verify_document': {
-        const result = await client.verify(args.document);
-        return text(JSON.stringify({
-          success: result.valid, valid: result.valid,
-          signerId: result.signerId, timestamp: result.timestamp,
-          data: result.data, errors: result.errors,
-        }));
+        return text(JSON.stringify(verifyDocumentWithExactKey(args)));
       }
 
       case 'jacs_verify_by_id': {
