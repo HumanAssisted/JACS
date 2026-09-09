@@ -150,6 +150,10 @@ fn resolve_with_policy(
 /// This is a path boundary for the MCP caller, not a sandbox against the local
 /// host owner concurrently replacing directories. Shared JACS IO still performs
 /// its descriptor-relative no-follow reads and atomic replacements.
+// The local-signing file policy is only constructed by the `mcp` server
+// modules; bindings that consume this module without that feature only need
+// `resolve`, so keep the policy out of their dead-code lint surface.
+#[cfg(feature = "mcp")]
 #[derive(Debug, Clone)]
 pub(crate) struct LocalFilePolicy {
     root: PathBuf,
@@ -159,6 +163,7 @@ pub(crate) struct LocalFilePolicy {
     trust_directory: PathBuf,
 }
 
+#[cfg(feature = "mcp")]
 impl LocalFilePolicy {
     pub(crate) fn capture(
         config_path: &Path,
@@ -280,6 +285,7 @@ impl LocalFilePolicy {
 /// exists. Existing-parent canonicalization alone cannot normalize the absent
 /// `.bak` suffix or an as-yet-uncreated `documents` directory. Conservatively
 /// applying this on case-sensitive hosts also avoids platform-dependent grants.
+#[cfg(feature = "mcp")]
 fn reserved_path_contains(reserved: &Path, candidate: &Path) -> bool {
     let mut parts = candidate.components();
     reserved.components().all(|reserved| {
@@ -292,6 +298,7 @@ fn reserved_path_contains(reserved: &Path, candidate: &Path) -> bool {
 
 /// Canonicalize the existing part without requiring a not-yet-created trust
 /// or document directory. Missing suffixes remain explicit protected paths.
+#[cfg(feature = "mcp")]
 fn absolute_with_existing_parent(path: PathBuf) -> anyhow::Result<PathBuf> {
     let path = if path.is_absolute() {
         path
