@@ -1203,7 +1203,11 @@ mod tests {
     fn audit_resolves_relative_directories_from_config_location() {
         let root = tempfile::Builder::new()
             .prefix("jacs-audit-config-path-")
-            .tempdir_in("/private/tmp")
+            .tempdir_in(
+                std::env::temp_dir()
+                    .canonicalize()
+                    .expect("canonical temp dir"),
+            )
             .expect("temp root");
         let project = root.path().join("project");
         std::fs::create_dir_all(project.join("data")).expect("create data directory");

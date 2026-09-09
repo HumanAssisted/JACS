@@ -10,7 +10,11 @@ const TEST_PASSWORD: &str = "CliConfigPaths!2026";
 fn temp_root() -> TempDir {
     tempfile::Builder::new()
         .prefix("jacs-cli-config-paths-")
-        .tempdir_in("/private/tmp")
+        .tempdir_in(
+            std::env::temp_dir()
+                .canonicalize()
+                .expect("canonical temp dir"),
+        )
         .expect("temp root")
 }
 

@@ -44,7 +44,11 @@ fn assert_quickstart_emits_requested_algorithm(
 ) {
     let directory = tempfile::Builder::new()
         .prefix("jacs-cli-algorithm-label-")
-        .tempdir_in("/private/tmp")
+        .tempdir_in(
+            std::env::temp_dir()
+                .canonicalize()
+                .expect("canonical temp dir"),
+        )
         .expect("temporary quickstart directory");
     let mut command = Command::cargo_bin("jacs").expect("jacs binary should exist");
     command
