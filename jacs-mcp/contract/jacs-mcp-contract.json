@@ -3,7 +3,7 @@
   "server": {
     "name": "jacs-mcp",
     "title": "JACS MCP Server",
-    "version": "0.11.4",
+    "version": "0.12.0",
     "website_url": "https://humanassisted.github.io/JACS/",
     "instructions": "JACS MCP compiled contract inventory contains 42 tools. Runtime defaults to verification-only and advertises only its active subset.\n\nCompiled tools:\n- jacs_apply_agreement_v2\n- jacs_assess_a2a_agent\n- jacs_attest_create\n- jacs_attest_export_dsse\n- jacs_attest_lift\n- jacs_attest_verify\n- jacs_check_agreement\n- jacs_create_agent\n- jacs_create_agreement\n- jacs_create_agreement_v2\n- jacs_detect_agreement_v2_branch_conflict\n- jacs_export_agent\n- jacs_export_agent_card\n- jacs_extract_media_signature\n- jacs_generate_well_known\n- jacs_get_trusted_agent\n- jacs_is_trusted\n- jacs_list_trusted_agents\n- jacs_merge_agreement_v2_transcript_branches\n- jacs_reencrypt_key\n- jacs_resolve_agreement_v2_branch_conflict\n- jacs_rotate_keys\n- jacs_search\n- jacs_sign_agreement\n- jacs_sign_agreement_v2\n- jacs_sign_document\n- jacs_sign_image\n- jacs_sign_text\n- jacs_trust_agent\n- jacs_untrust_agent\n- jacs_verify_a2a_artifact\n- jacs_verify_agreement_v2\n- jacs_verify_document\n- jacs_verify_image\n- jacs_verify_text\n- jacs_w3c_export_agent_description\n- jacs_w3c_export_did\n- jacs_w3c_export_did_document\n- jacs_w3c_generate_well_known\n- jacs_w3c_sign_request\n- jacs_w3c_verify_request\n- jacs_wrap_a2a_artifact"
   },

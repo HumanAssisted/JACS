@@ -2424,7 +2424,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jacs"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-core"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2519,7 +2519,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-media"
-version = "0.11.4"
+version = "0.12.0"
 dependencies = [
  "base64",
  "image",
@@ -2531,7 +2531,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-surrealdb"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "chrono",
  "jacs",

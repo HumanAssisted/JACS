@@ -1,6 +1,6 @@
 [package]
 name = "jacs-core"
-version = "0.11.4"
+version = "0.12.0"
 edition = "2024"
 rust-version = "1.97"
 resolver = "3"

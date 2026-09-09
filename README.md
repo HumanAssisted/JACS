@@ -128,7 +128,7 @@ JACS is most useful when signed data leaves the process, service, team, or organ
 
 The CLI and MCP server are the recommended starting points. Native APIs are available when you need direct library integration:
 
-> **Shipped versions observed 2026-07-11:** source is `0.11.4`, while crates.io
+> **Shipped versions observed 2026-07-11:** source is `0.12.0`, while crates.io
 > and PyPI publish `0.11.3`, npm publishes `@hai.ai/jacs@0.10.1`, and
 > `@jacs/wasm` is not published. The Go module has only a pseudo-version and no
 > matching native-library release. Do not assume source-head API parity from an
@@ -139,13 +139,13 @@ The CLI and MCP server are the recommended starting points. Native APIs are avai
 |----------|---------|-------|
 | Rust | `cargo add jacs` | Registry `0.11.3`; deepest API surface, including `jacs::email`, `jacs::text`, and `jacs::media`. |
 | Python | `pip install jacs` | Registry `0.11.3`; simple API, framework adapters, text/image signing. |
-| Node.js | `npm install @hai.ai/jacs` | Registry `0.10.1`; it does **not** contain every API documented on this `0.11.4` branch. |
+| Node.js | `npm install @hai.ai/jacs` | Registry `0.10.1`; it does **not** contain every API documented on this `0.12.0` branch. |
 | Go | See [`jacsgo/README.md`](jacsgo/README.md) | `go get` alone cannot link. Build the full repository today; after a semantic release exists, install its checksum-verified native library. |
 | Browser | Source build only | `@jacs/wasm` is not yet available from npm. |
 
 ## HTTP trust-boundary protocol
 
-Source `0.11.4` includes a request-bound HTTP credential and a fully signed
+Source `0.12.0` includes a request-bound HTTP credential and a fully signed
 response/event envelope on the instance-based simple API:
 
 | Language | Request credential | Signed response | Strict event verification |
@@ -204,4 +204,4 @@ Report vulnerabilities to security@hai.ai. Do not open public issues for securit
 
 ---
 
-v0.11.4 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.12.0 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)

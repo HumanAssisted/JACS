@@ -15,7 +15,7 @@ JACS extends the A2A (Agent-to-Agent) protocol with cryptographic document prove
 ## Install
 
 > **Node registry status (observed 2026-07-09):** npm serves
-> `@hai.ai/jacs@0.10.1`, while this source tree is `0.11.4`. Pin the Node
+> `@hai.ai/jacs@0.10.1`, while this source tree is `0.12.0`. Pin the Node
 > version and verify that the A2A methods used below are present; an
 > unqualified install does not provide source-head parity.
 
