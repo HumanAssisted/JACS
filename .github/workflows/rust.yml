@@ -374,7 +374,11 @@ jobs:
 
       - name: Keychain integration tests (macOS)
         if: runner.os == 'macOS'
-        run: cargo test -p jacs --features keychain-tests -- keychain_macos --verbose
+        # Evidence only: the keychain-tests feature needs a real, unlocked login
+        # keychain ("Omit for CI" in jacs/Cargo.toml). This step had passed
+        # --verbose to libtest since v0.9.7 and never completed on a runner.
+        continue-on-error: true
+        run: cargo test -p jacs --features keychain-tests --verbose -- keychain_macos
 
       - name: Run cross-language and observability suites
         run: |

@@ -101,8 +101,11 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             # zig's cross compile of the vendored OpenSSL strips the quotes
-            # from -DOPENSSLDIR; build with musl-gcc on the native host instead.
+            # from -DOPENSSLDIR, and Ubuntu's musl-tools sysroot has no
+            # libgcc_s.so.1 for a musl cdylib link; build inside the napi-rs
+            # Alpine image, where musl is the native libc.
             use_zig: false
+            use_alpine_container: true
             allow_failure: false
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
@@ -160,7 +163,7 @@ jobs:
           node-version: 20
 
       - name: Install musl toolchain
-        if: contains(matrix.target, 'musl') && !matrix.use_zig
+        if: contains(matrix.target, 'musl') && !matrix.use_zig && !matrix.use_alpine_container
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Install Zig
@@ -177,7 +180,7 @@ jobs:
         working-directory: jacsnpm
 
       - name: Set musl CC for native musl builds
-        if: contains(matrix.target, 'musl') && !matrix.use_zig
+        if: contains(matrix.target, 'musl') && !matrix.use_zig && !matrix.use_alpine_container
         run: |
           arch="${{ matrix.target }}"; arch="${arch%%-*}"
           upper="$(echo "${{ matrix.target }}" | tr '[:lower:]-' '[:upper:]_')"
@@ -187,7 +190,28 @@ jobs:
             echo "CARGO_TARGET_${upper}_LINKER=musl-gcc"
           } >> "$GITHUB_ENV"
 
+      - name: Build native module (Alpine container)
+        if: ${{ matrix.use_alpine_container }}
+        id: build_native_module_alpine
+        continue-on-error: ${{ matrix.allow_failure }}
+        shell: bash
+        run: |
+          # Same Alpine recipe the musllinux wheel lane uses: musl is the native
+          # libc, perl/openssl-dev satisfy the vendored OpenSSL configure, and
+          # RUSTUP_TOOLCHAIN keeps rustup from installing rust-toolchain.toml's
+          # components. Digest pinned like the manylinux images.
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/build" -w /build/jacsnpm \
+            -e RUSTUP_TOOLCHAIN=1.97.0 -e CARGO_TARGET_DIR=/tmp/jacs-target \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine@sha256:caac2d1b9194eada0c69e669e72763869701351d8957ab805cc45a43999d8be2 \
+            sh -euxc '
+              apk add --no-cache openssl-dev perl musl-dev
+              rustup toolchain install 1.97.0 --profile minimal --target ${{ matrix.target }}
+              npx napi build --platform --release --features human-approval-vendored --target ${{ matrix.target }} --cargo-flags=--locked
+            '
+
       - name: Build native module
+        if: ${{ !matrix.use_alpine_container }}
         id: build_native_module
         continue-on-error: ${{ matrix.allow_failure }}
         working-directory: jacsnpm
@@ -200,11 +224,11 @@ jobs:
           fi
 
       - name: Reject external OpenSSL linkage in native artifacts
-        if: ${{ steps.build_native_module.outcome == 'success' }}
+        if: ${{ steps.build_native_module.outcome == 'success' || steps.build_native_module_alpine.outcome == 'success' }}
         run: python3 scripts/check_native_crypto_linkage.py jacsnpm/*.node
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: ${{ steps.build_native_module.outcome == 'success' }}
+        if: ${{ steps.build_native_module.outcome == 'success' || steps.build_native_module_alpine.outcome == 'success' }}
         with:
           # Keep cross-build evidence, but only runtime-covered targets may
           # enter the registry candidate. ARM musl is conditionally gated below.
