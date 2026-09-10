@@ -45,47 +45,47 @@ build = "build.rs"
 
 
 [dependencies]
-base64 = "0.22.1"
+base64 = "0.23.0"
 chrono = "0.4.40"
-jsonschema = { version = "0.29", features = ["resolve-http", "resolve-file"] }
+jsonschema = { version = "0.49", features = ["resolve-http", "resolve-file"] }
 log = "0.4.27"
-pem = "3.0.5"
-rand = "0.9.0"
+pem = "4.0.0"
+rand = "0.10.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-signature = "2.2.0"
+signature = "3.0.0"
 moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
-sha2 = "0.10.8"
-phf = { version = "0.11.3", features = ["macros"] }
-strum = "0.27.1"
-strum_macros = "0.27.0"
+sha2 = "0.11.0"
+phf = { version = "0.13.1", features = ["macros"] }
+strum = "0.28.0"
+strum_macros = "0.28.0"
 secrecy = "0.10.3"
-aes-gcm = "0.10.3"
-argon2 = "0.5.3"
+aes-gcm = "0.11.1"
+argon2 = "0.6.0"
 regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
 encoding_rs = "0.8.35"
-similar = "2.6"
+similar = "3.2"
 rpassword = "7.3.1"
-validator = "0.20.0"
+validator = "0.21.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }
 lazy_static = "1.5"
 mail-parser = "0.11"
 unicode-normalization = "0.1"
 thiserror = "2"
-dirs = "5.0"
+dirs = "7.0"
 env_logger = "0.11.8"
 futures-util = "0.3.31"
-referencing = "0.33.0"
+referencing = "0.49.9"
 futures-executor = "0.3.31"
 # 0.1.7 floor: 0.1.6 pulled in unmaintained proc-macro-error2 (RUSTSEC-2026-0173)
 getset = "0.1.7"
 hex = "0.4"
-html5ever = "0.35"
+html5ever = "0.39"
 hickory-resolver = { version = "0.26.1", features = ["dnssec-ring"] }
-hkdf = "0.12"
+hkdf = "0.13"
 zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 serde_yaml_ng = "0.10"
@@ -124,12 +124,12 @@ jacs-binding-core = { path = "../binding-core" }
 # synthesizers — re-add as a dev-only dependency.
 serde_json_canonicalizer = "0.3.2"
 color-eyre = "0.6"
-criterion = "0.6.0"
-mdbook = "0.4.48"
+criterion = "0.8.2"
+mdbook = "0.5.4"
 assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.19.1"
-serial_test = "3.2.0"
+serial_test = "4.0.1"
 futures = "0.3"
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
 testcontainers = "0.27"
@@ -156,7 +156,7 @@ fips204 = "0.4.6"
 # ES256 (ECDSA P-256) ecosystem compatibility keys (P2 Task 002). Narrow
 # RustCrypto stack per the PRD buy/build note: never used for native JACS
 # signing, and `ring` stays out of portable core paths.
-p256 = { version = "0.13", features = ["pkcs8", "pem"] }
+p256 = { version = "0.14", features = ["pkcs8", "pem"] }
 # base58btc for Multikey (publicKeyMultibase) encoding of the ES256 key —
 # already in the tree transitively.
 bs58 = "0.5"

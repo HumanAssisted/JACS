@@ -41,17 +41,17 @@ serde_json_canonicalizer = "0.3.2"
 thiserror = "2"
 # Embedded $ref resolution for jsonschema. `default-features = false` keeps
 # `resolve-http` and `resolve-file` (both native-only) out of the wasm tree.
-jsonschema = { version = "0.29", default-features = false }
-phf = { version = "0.11.3", features = ["macros"] }
+jsonschema = { version = "0.49", default-features = false }
+phf = { version = "0.13.1", features = ["macros"] }
 # Encrypted private-key envelope (V2 Argon2id + legacy PBKDF2 — both
 # pure-Rust and wasm-friendly per WASM_FINDINGS). See PRD §4.6.
-aes-gcm = "0.10.3"
-argon2 = "0.5"
+aes-gcm = "0.11.1"
+argon2 = "0.6"
 pbkdf2 = "0.12"
-sha2 = "0.10.8"
-rand = "0.9"
+sha2 = "0.11.0"
+rand = "0.10"
 zeroize = "1.8"
-base64 = "0.22"
+base64 = "0.23"
 # Post-quantum signatures (ML-DSA-87 / Dilithium). Pure-Rust, wasm-friendly.
 # See PRD §4.2, §4.7.
 fips204 = "0.4.6"
@@ -60,8 +60,8 @@ fips204 = "0.4.6"
 # `ring` path emits; `zeroize` wipes the private key on drop; `rand_core`
 # wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
 # §4.5.
-ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
 # `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
 # already a transitive dep of native jacs. See PRD §4.2.
 secrecy = "0.10.3"
@@ -78,9 +78,9 @@ chrono = { version = "0.4", default-features = false, features = ["std", "now", 
 serde_json = "1.0"
 # For the envelope tests' legacy-fixture synthesizer and the CoreAgent
 # raw-key unlock helper.
-aes-gcm = "0.10.3"
-base64 = "0.22"
-rand = "0.9"
+aes-gcm = "0.11.1"
+base64 = "0.23"
+rand = "0.10"
 secrecy = "0.10.3"
 
 # Browser RNG wiring. Transitive deps need two flavors of `getrandom` on

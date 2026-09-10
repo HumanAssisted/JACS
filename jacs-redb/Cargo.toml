@@ -14,11 +14,11 @@ description = "Redb (pure-Rust embedded KV) storage backend for JACS documents"
 
 [dependencies]
 jacs = { version = "0.12.0", path = "../jacs", default-features = false }
-redb = "3.1"
+redb = "4.2"
 chrono = "0.4.40"
 serde_json = "1.0"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
-serial_test = "3.2.0"
+serial_test = "4.0.1"
 tempfile = "3.19.1"

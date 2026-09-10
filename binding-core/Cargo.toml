@@ -25,17 +25,17 @@ pq-tests = []
 jacs = { version = "0.12.0", path = "../jacs" }
 jacs-core = { version = "0.12.0", path = "../jacs-core" }
 serde_json = "1.0"
-base64 = "0.22.1"
+base64 = "0.23.0"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
-rand = "0.9"
+rand = "0.10"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 
 [dev-dependencies]
 tempfile = "3"
-base64 = "0.22.1"
-serial_test = "3"
-p256 = { version = "0.13", features = ["ecdsa"] }
+base64 = "0.23.0"
+serial_test = "4"
+p256 = { version = "0.14", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"] }
 
