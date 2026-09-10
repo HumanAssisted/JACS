@@ -108,10 +108,14 @@ jobs:
             "jacs-mcp:jacs-mcp"
             "jacs-cli:jacs-cli"
           )
+          # One invocation packages the whole set: cargo resolves the sibling
+          # crates from the workspace, whereas packaging each manifest alone
+          # fails because jacs-core@${VERSION} is not on crates.io until this
+          # very release publishes it.
+          cargo package --locked --no-verify \
+            -p jacs-core -p jacs-media -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
           for candidate in "${candidates[@]}"; do
-            directory="${candidate%%:*}"
             package="${candidate#*:}"
-            cargo package --locked --no-verify --manifest-path "${directory}/Cargo.toml"
             archive="target/package/${package}-${VERSION}.crate"
             test -f "$archive"
             cp "$archive" security-candidates/archives/
