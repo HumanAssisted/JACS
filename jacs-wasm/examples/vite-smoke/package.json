@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.45.0",
-    "typescript": "^5.4.0",
+    "typescript": "^7.0.2",
     "vite": "^6.4.2",
     "vite-plugin-wasm": "^3.3.0"
   }
