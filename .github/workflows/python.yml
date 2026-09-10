@@ -232,6 +232,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: wheels-jacs-${{ matrix.os }}
+          # ci-wheels-*: release-pypi.yml collects only its own wheels-* artifacts.
+          name: ci-wheels-jacs-${{ matrix.os }}
           # Path is relative to GITHUB_WORKSPACE (repo root)
           path: ./wheelhouse/*.whl

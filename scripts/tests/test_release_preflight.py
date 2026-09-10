@@ -172,7 +172,11 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
         self.assertIn("cargo build --locked --release", cli_build)
 
         pypi_build = job_block(workflow_text("release-pypi.yml"), "build-wheels")
-        self.assertEqual(pypi_build.count("maturin build --locked"), 2)
+        # native, zig, and the pinned manylinux_2_28 container builds
+        self.assertEqual(pypi_build.count("maturin build --locked"), 3)
+        self.assertIn("--compatibility manylinux_2_28", pypi_build)
+        self.assertIn("manylinux_dockerfile: DockerfileBuilder", pypi_build)
+        self.assertIn("manylinux_dockerfile: Dockerfile\n", pypi_build)
 
         npm_build = job_block(workflow_text("release-npm.yml"), "build")
         # Every napi build path (zig cross, native, Alpine container) stays locked.

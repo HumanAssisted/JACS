@@ -68,6 +68,10 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             use_zig: false
+            # Built inside the pinned manylinux_2_28 image: a native Ubuntu build
+            # links glibc 2.38 symbols and maturin can only tag it linux_*, which
+            # PyPI rejects.
+            manylinux_dockerfile: DockerfileBuilder
             allow_failure: false
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -76,6 +80,7 @@ jobs:
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             use_zig: false
+            manylinux_dockerfile: Dockerfile
             allow_failure: false
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
@@ -126,7 +131,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Install maturin
-        if: ${{ !matrix.use_zig }}
+        if: ${{ !matrix.use_zig && !matrix.manylinux_dockerfile }}
         run: pip install "maturin==1.5.0"
 
       - name: Install maturin with zig support
@@ -135,10 +140,25 @@ jobs:
 
       - name: Build wheel
         id: build_wheel
-        if: ${{ !matrix.use_zig }}
+        if: ${{ !matrix.use_zig && !matrix.manylinux_dockerfile }}
         continue-on-error: ${{ matrix.allow_failure }}
         working-directory: jacspy
         run: maturin build --locked --release --target ${{ matrix.target }} --out dist
+
+      - name: Build wheel (manylinux_2_28 container)
+        id: build_wheel_manylinux
+        if: ${{ matrix.manylinux_dockerfile }}
+        continue-on-error: ${{ matrix.allow_failure }}
+        run: |
+          # jacspy/Dockerfile and jacspy/DockerfileBuilder pin the manylinux_2_28
+          # image digest, rustup, Rust 1.97.0 and maturin 1.5.0 (contract-tested).
+          docker build --file "jacspy/${{ matrix.manylinux_dockerfile }}" --tag jacs-manylinux-builder jacspy
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work/jacspy \
+            -e CARGO_TARGET_DIR=/tmp/jacs-target \
+            jacs-manylinux-builder \
+            maturin build --locked --release --target ${{ matrix.target }} --out dist --compatibility manylinux_2_28
 
       - name: Build wheel (zig)
         id: build_wheel_zig
@@ -148,7 +168,7 @@ jobs:
         run: maturin build --locked --release --target ${{ matrix.target }} --out dist --zig
 
       - name: Verify wheel package inventory
-        if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' }}
+        if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' || steps.build_wheel_manylinux.outcome == 'success' }}
         run: >-
           python3 scripts/check_python_package_inventory.py
           --license LICENSE-APACHE
@@ -156,11 +176,11 @@ jobs:
           jacspy/dist/*.whl
 
       - name: Reject external OpenSSL linkage in wheel artifacts
-        if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' }}
+        if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' || steps.build_wheel_manylinux.outcome == 'success' }}
         run: python3 scripts/check_native_crypto_linkage.py jacspy/dist/*.whl
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' }}
+        if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' || steps.build_wheel_manylinux.outcome == 'success' }}
         with:
           name: wheels-${{ matrix.target }}
           path: jacspy/dist/*.whl
@@ -208,10 +228,19 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Only the release matrix's wheels and sdist: the functional gate uploads
+      # its own cibuildwheel wheels (ci-wheels-*) with identical filenames, and
+      # merging both would leave the published bytes to artifact ordering.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sdist
+          path: dist
 
       - name: Generate Python distribution SPDX SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0

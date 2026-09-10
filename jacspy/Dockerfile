@@ -7,7 +7,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     RUSTUP_VERSION=1.29.0 \
     RUSTUP_INIT_SHA256=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792
 
-RUN yum install -y curl gcc make perl-IPC-Cmd openssl-devel && \
+RUN yum install -y curl gcc make perl-core perl-IPC-Cmd openssl-devel && \
     yum clean all && \
     rm -rf /var/cache/yum
 
