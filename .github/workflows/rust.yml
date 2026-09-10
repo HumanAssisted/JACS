@@ -358,7 +358,7 @@ jobs:
           JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run jacs-mcp tests (without attestation)
-        run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+        run: cargo test -p jacs-mcp --no-default-features --features mcp,core-tools --lib --tests --verbose
         env:
           JACS_KEYCHAIN_BACKEND: disabled
 
@@ -421,7 +421,7 @@ jobs:
           JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run jacs-mcp tests (without attestation)
-        run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+        run: cargo test -p jacs-mcp --no-default-features --features mcp,core-tools --lib --tests --verbose
 
       - name: Run in-process backend crate tests (nightly)
         run: |
