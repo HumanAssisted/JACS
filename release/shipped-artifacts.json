@@ -1,21 +1,23 @@
 {
   "schema_version": 1,
-  "observed_at": "2026-07-11",
-  "review_baseline": "f621a99d",
+  "observed_at": "2026-09-10",
+  "review_baseline": "743df757",
   "source_version": "0.13.0",
   "artifacts": {
     "rust": {
       "package": "jacs",
       "registry": "crates.io",
-      "version": "0.11.3",
+      "version": "0.13.0",
       "status": "published",
-      "platforms": ["source only; no prebuilt library artifact"],
-      "evidence": "Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied."
+      "platforms": [
+        "source only; no prebuilt library artifact"
+      ],
+      "evidence": "Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied. The four storage crates (jacs-duckdb, jacs-redb, jacs-postgresql 0.1.20; jacs-surrealdb 0.1.21) are published against jacs 0.13.0."
     },
     "cli": {
       "package": "jacs-cli",
       "registry": "crates.io and GitHub Releases",
-      "version": "0.11.3",
+      "version": "0.13.0",
       "status": "published",
       "platforms": [
         "macOS arm64",
@@ -24,21 +26,21 @@
         "Linux arm64 glibc",
         "Windows x86_64"
       ],
-      "evidence": "Release jobs build each listed target and run a launch smoke; cargo install remains a source build."
+      "evidence": "Release jobs build each listed target, run a launch smoke, and install the staged archive through the Python and Node CLI installers (sign/verify smoke on Unix only: the trust model refuses to create key files on Windows). cargo install remains a source build."
     },
     "python": {
       "package": "jacs",
       "registry": "PyPI",
-      "version": "0.11.3",
+      "version": "0.13.0",
       "status": "published",
       "platforms": [
         "macOS arm64",
         "macOS x86_64",
-        "Linux x86_64 manylinux_2_38",
-        "Linux arm64 manylinux_2_38",
+        "Linux x86_64 manylinux_2_28",
+        "Linux arm64 manylinux_2_28",
         "Linux x86_64 musllinux"
       ],
-      "evidence": "CI runtime-smokes Linux x86_64; other wheels are build-only evidence. No Windows or arm64 musllinux wheel is recorded."
+      "evidence": "glibc wheels are built inside the pinned manylinux_2_28 images; release candidate smokes install and sign/verify on Ubuntu x86_64 and arm64, macOS x86_64 and arm64, and Alpine x86_64. No Windows or arm64 musllinux wheel is recorded."
     },
     "node": {
       "package": "@hai.ai/jacs",
@@ -59,16 +61,23 @@
       "registry": "npm",
       "version": null,
       "status": "source-only-not-published",
-      "platforms": ["browser source build; release package unavailable"],
+      "platforms": [
+        "browser source build; release package unavailable"
+      ],
       "evidence": "Source CI builds wasm32 and runs Firefox plus Chromium/Playwright tests; Safari and Windows-hosted browsers are unverified."
     },
     "go": {
       "package": "github.com/HumanAssisted/JACS/jacsgo",
       "registry": "Go module proxy",
-      "version": "v0.0.0-20260613002535-44c41d103146",
-      "status": "pseudo-version-native-library-required",
-      "platforms": ["source binding; native library distribution is separate"],
-      "evidence": "Source CI runs Ubuntu x86_64; the observed module cannot link without a separately installed libjacsgo."
+      "version": "v0.13.0",
+      "status": "published",
+      "platforms": [
+        "macOS arm64",
+        "macOS x86_64",
+        "Linux x86_64 glibc",
+        "Linux arm64 glibc"
+      ],
+      "evidence": "Release publishes libjacsgo for each listed target with SHA-256 digests and GitHub attestations; consumer smokes passed on Ubuntu x86_64 and arm64 and macOS x86_64. The macOS arm64 consumer smoke failed only because its Go 1.21 toolchain cannot run on macOS 26 (fixed for the next release)."
     }
   }
 }

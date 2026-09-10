@@ -190,18 +190,18 @@ cross-compiled binary is only a build result, not a runtime test.</li>
 target. This is narrower than full feature testing.</li>
 </ul>
 <p>The shipped rows below come from <code>release/shipped-artifacts.json</code>, observed
-2026-07-11 against source <code>0.11.4</code> at <code>f621a99d</code>. Registry contents can change;
+2026-09-10 against source <code>0.13.0</code> at <code>743df757</code>. Registry contents can change;
 run <code>python3 scripts/check-release-matrix.py --online</code> or inspect the registry
 before choosing a deployment target.</p>
 <h2 id="what-users-could-install-at-the-review-baseline"><a class="header" href="#what-users-could-install-at-the-review-baseline">What users could install at the review baseline</a></h2>
 <!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->
 <div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Shipped version/status</th><th>Prebuilt targets</th><th>CI/runtime evidence and limits</th></tr></thead><tbody>
-<tr><td>Rust library (<code>jacs</code>)</td><td>crates.io <code>0.11.3</code>; published</td><td>source only; no prebuilt library artifact</td><td>Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied.</td></tr>
-<tr><td>CLI (<code>jacs-cli</code>)</td><td>crates.io and GitHub Releases <code>0.11.3</code>; published</td><td>macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc; Windows x86_64</td><td>Release jobs build each listed target and run a launch smoke; cargo install remains a source build.</td></tr>
-<tr><td>Python (<code>jacs</code>)</td><td>PyPI <code>0.11.3</code>; published</td><td>macOS arm64; macOS x86_64; Linux x86_64 manylinux_2_38; Linux arm64 manylinux_2_38; Linux x86_64 musllinux</td><td>CI runtime-smokes Linux x86_64; other wheels are build-only evidence. No Windows or arm64 musllinux wheel is recorded.</td></tr>
+<tr><td>Rust library (<code>jacs</code>)</td><td>crates.io <code>0.13.0</code>; published</td><td>source only; no prebuilt library artifact</td><td>Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied. The four storage crates (jacs-duckdb, jacs-redb, jacs-postgresql 0.1.20; jacs-surrealdb 0.1.21) are published against jacs 0.13.0.</td></tr>
+<tr><td>CLI (<code>jacs-cli</code>)</td><td>crates.io and GitHub Releases <code>0.13.0</code>; published</td><td>macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc; Windows x86_64</td><td>Release jobs build each listed target, run a launch smoke, and install the staged archive through the Python and Node CLI installers (sign/verify smoke on Unix only: the trust model refuses to create key files on Windows). cargo install remains a source build.</td></tr>
+<tr><td>Python (<code>jacs</code>)</td><td>PyPI <code>0.13.0</code>; published</td><td>macOS arm64; macOS x86_64; Linux x86_64 manylinux_2_28; Linux arm64 manylinux_2_28; Linux x86_64 musllinux</td><td>glibc wheels are built inside the pinned manylinux_2_28 images; release candidate smokes install and sign/verify on Ubuntu x86_64 and arm64, macOS x86_64 and arm64, and Alpine x86_64. No Windows or arm64 musllinux wheel is recorded.</td></tr>
 <tr><td>Node (<code>@hai.ai/jacs</code>)</td><td>npm <code>0.10.1</code>; published behind source</td><td>macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux x86_64 musl; Linux arm64 glibc</td><td>Source CI runtime-smokes Node 20 on Ubuntu x86_64. Other listed native binaries are not runtime-smoked here.</td></tr>
 <tr><td>Browser (<code>@jacs/wasm</code>)</td><td>npm unpublished; source only not published</td><td>browser source build; release package unavailable</td><td>Source CI builds wasm32 and runs Firefox plus Chromium/Playwright tests; Safari and Windows-hosted browsers are unverified.</td></tr>
-<tr><td>Go (<code>github.com/HumanAssisted/JACS/jacsgo</code>)</td><td>Go module proxy <code>v0.0.0-20260613002535-44c41d103146</code>; pseudo version native library required</td><td>source binding; native library distribution is separate</td><td>Source CI runs Ubuntu x86_64; the observed module cannot link without a separately installed libjacsgo.</td></tr>
+<tr><td>Go (<code>github.com/HumanAssisted/JACS/jacsgo</code>)</td><td>Go module proxy <code>v0.13.0</code>; published</td><td>macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc</td><td>Release publishes libjacsgo for each listed target with SHA-256 digests and GitHub attestations; consumer smokes passed on Ubuntu x86_64 and arm64 and macOS x86_64. The macOS arm64 consumer smoke failed only because its Go 1.21 toolchain cannot run on macOS 26 (fixed for the next release).</td></tr>
 </tbody></table>
 </div><!-- END GENERATED SHIPPED ARTIFACT MATRIX -->
 <h2 id="declared-toolchain-baselines"><a class="header" href="#declared-toolchain-baselines">Declared toolchain baselines</a></h2>
@@ -215,7 +215,7 @@ before choosing a deployment target.</p>
 <h2 id="platform-decisions"><a class="header" href="#platform-decisions">Platform decisions</a></h2>
 <h3 id="windows"><a class="header" href="#windows">Windows</a></h3>
 <p>The observed Windows prebuilt is the x86_64 CLI only. Do not infer Windows
-Python or Node support from the CLI artifact: PyPI <code>0.11.3</code> has no Windows
+Python or Node support from the CLI artifact: PyPI <code>0.13.0</code> has no Windows
 wheel, npm <code>0.10.1</code> has no Windows <code>.node</code> binary, and the Go bindings have no
 Windows CGo linker directive or native asset. The browser/WASM source may be
 portable at the WebAssembly level, but no Windows browser runtime lane was
@@ -223,12 +223,12 @@ recorded.</p>
 <h3 id="linux-libc-and-architecture"><a class="header" href="#linux-libc-and-architecture">Linux libc and architecture</a></h3>
 <p>“Linux” is not one ABI:</p>
 <ul>
-<li>Python glibc wheels are tagged <code>manylinux_2_38</code>; systems with glibc older
-than 2.38 cannot use those wheels. The observed musllinux wheel is x86_64
+<li>Python glibc wheels are tagged <code>manylinux_2_28</code>; systems with glibc older
+than 2.28 cannot use those wheels. The observed musllinux wheel is x86_64
 only.</li>
 <li>Node <code>0.10.1</code> ships x86_64 glibc and musl binaries, plus an arm64 glibc
 binary. It does not ship arm64 musl.</li>
-<li>CLI <code>0.11.3</code> ships glibc Linux x86_64 and arm64 archives. No musl CLI archive
+<li>CLI <code>0.13.0</code> ships glibc Linux x86_64 and arm64 archives. No musl CLI archive
 is recorded in the shipped inventory.</li>
 <li>A source build is a separate claim. It may work on additional targets when
 the required compiler, linker, libc headers, Rust dependencies, and system
@@ -238,11 +238,11 @@ libraries are available, but that is not prebuilt support.</li>
 <p>A container orchestrator does not remove the native ABI requirement. Match the
 image architecture and libc to an actual wheel, <code>.node</code> file, CLI archive, or
 Go shared library. For example, the observed Python musllinux wheel supports an
-x86_64 Alpine-style image, while its glibc wheels require glibc 2.38 or newer.</p>
+x86_64 Alpine-style image, while its glibc wheels require glibc 2.28 or newer.</p>
 <p>This x86_64 example deliberately requires a prebuilt musllinux wheel instead of
 silently falling back to an undocumented source build:</p>
 <pre><code class="language-dockerfile">FROM --platform=linux/amd64 python:3.12-alpine
-RUN python -m pip install --only-binary=:all: "jacs==0.11.3"
+RUN python -m pip install --only-binary=:all: "jacs==0.13.0"
 ENV JACS_KEYCHAIN_BACKEND=disabled
 WORKDIR /app
 COPY . /app

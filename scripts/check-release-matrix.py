@@ -50,6 +50,8 @@ PYTHON_PLATFORM_TAGS = {
     "macOS x86_64": ("macosx_", "_x86_64.whl"),
     "Linux x86_64 manylinux_2_38": ("manylinux_2_38_x86_64.whl",),
     "Linux arm64 manylinux_2_38": ("manylinux_2_38_aarch64.whl",),
+    "Linux x86_64 manylinux_2_28": ("manylinux_2_28_x86_64.whl",),
+    "Linux arm64 manylinux_2_28": ("manylinux_2_28_aarch64.whl",),
     "Linux x86_64 musllinux": ("musllinux_", "_x86_64.whl"),
 }
 
