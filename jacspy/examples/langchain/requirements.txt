@@ -3,7 +3,7 @@
 # Core LangChain packages
 langchain>=0.3.0
 langchain-core>=0.3.0
-langgraph>=0.2.0
+langgraph>=1.2.11
 
 # MCP integration
 langchain-mcp-adapters>=0.1.0
