@@ -4651,6 +4651,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_sign_config_produces_header_fields() {
         let mut agent = ready_ephemeral_agent();
         let config = make_config_json();
@@ -4673,6 +4674,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_verify_config_valid() {
         let mut agent = ready_ephemeral_agent();
         let signed = agent.sign_config(&make_config_json()).unwrap();
@@ -4682,6 +4684,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_verify_config_detects_tampering() {
         let mut agent = ready_ephemeral_agent();
         let mut signed = agent.sign_config(&make_config_json()).unwrap();
@@ -4691,6 +4694,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_update_config_bumps_version() {
         let mut agent = ready_ephemeral_agent();
         let signed_v1 = agent.sign_config(&make_config_json()).unwrap();
@@ -4725,6 +4729,7 @@ mod ephemeral_tests {
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn audit_previous_version_is_signed_and_tamperproof() {
         let mut agent = ready_ephemeral_agent();
         let signed_v1 = agent.sign_config(&make_config_json()).unwrap();
@@ -4758,6 +4763,7 @@ mod ephemeral_tests {
     // unauthenticated metadata. It is refused by default; only an explicitly
     // scoped migration/compatibility operation may reach cryptographic verify.
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn legacy_v1_signature_content_default_reject_sv4() {
         let mut agent = ready_ephemeral_agent();
         let signed = agent.sign_config(&make_config_json()).unwrap();

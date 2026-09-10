@@ -119,6 +119,10 @@ jobs:
       # ------------------------------------------------------------------
       - name: wasm-pack test --headless --firefox (jacs-wasm)
         working-directory: jacs-wasm
+        env:
+          # Agreement v2 tests do ML-DSA-87 signing in debug wasm; the runner's
+          # default 20s per-test budget is too tight on shared release runners.
+          WASM_BINDGEN_TEST_TIMEOUT: "120"
         run: wasm-pack test --headless --firefox . --locked
 
       # ------------------------------------------------------------------
