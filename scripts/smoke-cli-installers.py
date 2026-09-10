@@ -9,6 +9,7 @@ import hashlib
 import http.server
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -76,9 +77,24 @@ def run(
         raise RuntimeError(f"{label} failed with exit code {result.returncode}")
 
 
+# jacs/src/secure_io.rs refuses to create authority-bearing key files unless it
+# can validate owner and ACL race-safely, which it only implements on Unix, so
+# quickstart cannot mint keys on Windows. The installer smoke still proves the
+# download, checksum, extraction and launch of both installers there.
+SIGNING_SMOKE_SUPPORTED = os.name == "posix"
+
+
 def smoke_sign_and_verify(
     launcher: list[str], env: dict[str, str], workspace: Path, label: str
 ) -> None:
+    if not SIGNING_SMOKE_SUPPORTED:
+        print(
+            f"SKIP: {label} quickstart/sign/verify on {platform.system()}: "
+            "JACS only creates authority-bearing key files where secure_io can "
+            "validate owner and ACL race-safely (Unix).",
+            flush=True,
+        )
+        return
     workspace.mkdir(mode=0o700)
     (workspace / "input.json").write_text(
         '{"action":"staged-installer-smoke"}\n', encoding="utf-8"
