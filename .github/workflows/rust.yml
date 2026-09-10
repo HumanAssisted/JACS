@@ -87,7 +87,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Forbidden-deps guard (wasm-portable crates)
         # Both jacs-core and jacs-wasm must stay free of native-only
@@ -149,7 +149,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Run quick Rust test suite (core - ${{ matrix.shard }})
         run: make test-jacs-fast-${{ matrix.shard }}
@@ -177,7 +177,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Run CLI integration tests
         run: make test-jacs-cli
@@ -215,7 +215,7 @@ jobs:
           node-version: 22
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Run exporters + stock verifier scripts
         run: make smoke-verifiers
@@ -242,7 +242,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Run binding-core tests
         run: make test-jacs-binding-core
@@ -277,7 +277,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Run in-process backend crate tests
         run: |
@@ -304,7 +304,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Run jacs-postgresql tests
         run: cargo test -p jacs-postgresql --lib --tests --verbose
@@ -337,7 +337,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Security audit (cargo-deny, Linux)
         if: runner.os == 'Linux'
@@ -401,7 +401,7 @@ jobs:
           toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Security audit (cargo-deny)
         run: |
