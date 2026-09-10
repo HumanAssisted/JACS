@@ -100,7 +100,9 @@ jobs:
             allow_failure: false
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            use_zig: true
+            # zig's cross compile of the vendored OpenSSL strips the quotes
+            # from -DOPENSSLDIR; build with musl-gcc on the native host instead.
+            use_zig: false
             allow_failure: false
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
@@ -172,13 +174,15 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: jacsnpm
 
-      - name: Set musl CC for native ARM builds
-        if: contains(matrix.target, 'aarch64') && contains(matrix.target, 'musl') && !matrix.use_zig
+      - name: Set musl CC for native musl builds
+        if: contains(matrix.target, 'musl') && !matrix.use_zig
         run: |
+          arch="${{ matrix.target }}"; arch="${arch%%-*}"
+          upper="$(echo "${{ matrix.target }}" | tr '[:lower:]-' '[:upper:]_')"
           {
-            echo "CC_aarch64_unknown_linux_musl=musl-gcc"
-            echo "AR_aarch64_unknown_linux_musl=ar"
-            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc"
+            echo "CC_${arch}_unknown_linux_musl=musl-gcc"
+            echo "AR_${arch}_unknown_linux_musl=ar"
+            echo "CARGO_TARGET_${upper}_LINKER=musl-gcc"
           } >> "$GITHUB_ENV"
 
       - name: Build native module
