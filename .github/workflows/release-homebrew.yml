@@ -51,7 +51,7 @@ jobs:
           fi
           echo "available=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
         if: steps.tap-token.outputs.available == 'true'
         with:
           ref: ${{ github.sha }}
@@ -81,7 +81,7 @@ jobs:
 
       - name: Checkout Homebrew tap repository
         if: steps.tap-token.outputs.available == 'true'
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
         with:
           repository: ${{ steps.resolve.outputs.tap_repository }}
           ref: ${{ steps.resolve.outputs.tap_branch }}
