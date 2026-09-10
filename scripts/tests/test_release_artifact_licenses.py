@@ -97,7 +97,7 @@ class ReleaseArtifactLicenseTests(unittest.TestCase):
         )
 
         self.assertIn(
-            'tar czf "${CLI_ASSET_NAME}.tar.gz" jacs-cli LICENSE-APACHE THIRD-PARTY-NOTICES',
+            'tar czf "${CLI_ASSET_NAME}.tar.gz" -C "${staging}" jacs-cli LICENSE-APACHE THIRD-PARTY-NOTICES',
             workflow,
         )
         self.assertIn(

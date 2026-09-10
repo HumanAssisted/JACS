@@ -205,8 +205,13 @@ jobs:
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
-          cp "target/${{ matrix.target }}/release/jacs" jacs-cli
-          tar czf "${CLI_ASSET_NAME}.tar.gz" jacs-cli LICENSE-APACHE THIRD-PARTY-NOTICES
+          # Stage in a scratch directory: the repository root already holds the
+          # jacs-cli/ crate directory, so `cp ... jacs-cli` would drop the binary
+          # inside it and tar would ship the crate sources instead of a binary.
+          staging="$(mktemp -d)"
+          cp "target/${{ matrix.target }}/release/jacs" "${staging}/jacs-cli"
+          cp LICENSE-APACHE THIRD-PARTY-NOTICES "${staging}/"
+          tar czf "${CLI_ASSET_NAME}.tar.gz" -C "${staging}" jacs-cli LICENSE-APACHE THIRD-PARTY-NOTICES
           python3 scripts/check_release_artifact_licenses.py \
             --license LICENSE-APACHE \
             --notices THIRD-PARTY-NOTICES \
