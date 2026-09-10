@@ -106,7 +106,16 @@ jobs:
         run: |
           set -euo pipefail
           cargo package --locked --manifest-path "$CRATE/Cargo.toml"
+          # A crate outside the workspace (jacs-surrealdb keeps its own lock)
+          # packages into its own target directory; stage the candidate under
+          # the workspace target so the evidence layout stays uniform.
+          target_dir="$(cargo metadata --locked --no-deps --format-version 1 --manifest-path "$CRATE/Cargo.toml" | jq -r '.target_directory')"
+          built="${target_dir}/package/${CRATE}-${VERSION}.crate"
           archive="target/package/${CRATE}-${VERSION}.crate"
+          if ! cmp -s "$built" "$archive" 2>/dev/null; then
+            mkdir -p "$(dirname "$archive")"
+            cp "$built" "$archive"
+          fi
           test -f "$archive"
           mkdir -p packaged-crate
           tar -xzf "$archive" -C packaged-crate
