@@ -90,6 +90,7 @@ type _ExpectMethods = {
     algorithm: string,
   ) => string;
   exportAgent: () => string;
+  exportEncryptedAgent: (password: string) => string;
   getPublicKeyBase64: () => string;
   algorithm: () => string;
   isUnlocked: () => boolean;
@@ -105,6 +106,7 @@ const _instanceMethodCheck: (h: CoreAgentHandle) => _ExpectMethods = (h) => ({
   verifyJson: h.verifyJson.bind(h),
   verifyWithKeyJson: h.verifyWithKeyJson.bind(h),
   exportAgent: h.exportAgent.bind(h),
+  exportEncryptedAgent: h.exportEncryptedAgent.bind(h),
   getPublicKeyBase64: h.getPublicKeyBase64.bind(h),
   algorithm: h.algorithm.bind(h),
   isUnlocked: h.isUnlocked.bind(h),

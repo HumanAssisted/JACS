@@ -29,6 +29,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.jacsKoaMiddleware = jacsKoaMiddleware;
 const auth_replay_js_1 = require("./auth-replay.js");
+const output_policy_js_1 = require("./output-policy.js");
 // =============================================================================
 // Internal helpers
 // =============================================================================
@@ -63,6 +64,7 @@ async function resolveClient(options) {
 function jacsKoaMiddleware(options = {}) {
     const shouldVerify = options.verify !== false;
     const shouldSign = options.sign === true;
+    const unsignedOutputAllowed = (0, output_policy_js_1.allowUnsignedOutput)(options.allowUnsignedOutput, options.strict);
     const isOptional = options.optional === true;
     const enableA2A = options.a2a === true;
     const authReplay = (0, auth_replay_js_1.normalizeAuthReplayOptions)(options.authReplay);
@@ -152,7 +154,7 @@ function jacsKoaMiddleware(options = {}) {
             if (rawBody) {
                 try {
                     const result = await client.verify(rawBody);
-                    if (result.valid) {
+                    if (result.valid === true) {
                         ctx.state.jacsPayload = result.data;
                         if (authReplay.enabled) {
                             const replayError = (0, auth_replay_js_1.checkAuthReplay)(rawBody, result, replayCache, authReplay);
@@ -191,14 +193,23 @@ function jacsKoaMiddleware(options = {}) {
         }
         await next();
         // ----- Auto-sign response -----
-        if (shouldSign && ctx.body && typeof ctx.body === 'object' && !Buffer.isBuffer(ctx.body)) {
+        if (shouldSign && typeof ctx.body !== 'undefined' && !Buffer.isBuffer(ctx.body)) {
+            const originalBody = ctx.body;
             try {
                 const signed = await client.signMessage(ctx.body);
-                ctx.body = signed.raw;
+                ctx.body = (0, output_policy_js_1.requireSignedRaw)(signed, 'JACS Koa response signing');
                 ctx.type = 'application/json';
             }
-            catch {
-                // Signing failed — leave the original body intact.
+            catch (error) {
+                console.error('[jacs/koa] response signing failed; unsigned output withheld:', error);
+                if (unsignedOutputAllowed) {
+                    ctx.body = originalBody;
+                }
+                else {
+                    ctx.status = 500;
+                    ctx.type = 'application/json';
+                    ctx.body = JSON.stringify({ error: 'JACS response signing failed' });
+                }
             }
         }
     };

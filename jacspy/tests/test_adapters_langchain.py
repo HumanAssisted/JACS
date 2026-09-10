@@ -49,7 +49,9 @@ class FakeToolMessage:
 class FakeToolCallRequest:
     """Mock for langchain ToolCallRequest."""
 
-    def __init__(self, tool_name: str = "search", args: dict = None, call_id: str = "call_abc"):
+    def __init__(
+        self, tool_name: str = "search", args: dict = None, call_id: str = "call_abc"
+    ):
         self.tool_call = {
             "name": tool_name,
             "args": args or {},
@@ -108,7 +110,7 @@ class TestJacsSigningMiddleware:
         result = mw.wrap_tool_call(request, handler)
         assert result.tool_call_id == "req_id_123"
 
-    def test_passthrough_non_tool_message(self, client):
+    def test_rejects_non_tool_message_by_default(self, client):
         mw = JacsSigningMiddleware(client=client)
         request = FakeToolCallRequest()
         sentinel = {"raw": "value"}
@@ -116,7 +118,15 @@ class TestJacsSigningMiddleware:
         def handler(req):
             return sentinel
 
-        result = mw.wrap_tool_call(request, handler)
+        with pytest.raises(TypeError, match="without content"):
+            mw.wrap_tool_call(request, handler)
+
+    def test_non_tool_passthrough_requires_explicit_opt_in(self, client):
+        mw = JacsSigningMiddleware(client=client, allow_unsigned_output=True)
+        request = FakeToolCallRequest()
+        sentinel = {"raw": "value"}
+
+        result = mw.wrap_tool_call(request, lambda _request: sentinel)
         assert result is sentinel
 
     def test_signed_content_is_verifiable(self, client):
@@ -143,9 +153,22 @@ class TestJacsSigningMiddleware:
         with pytest.raises(Exception):
             mw.wrap_tool_call(request, handler)
 
-    def test_permissive_passthrough_on_signing_failure(self):
+    def test_fails_closed_on_signing_failure_by_default(self):
         cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         mw = JacsSigningMiddleware(client=cl, strict=False)
+        cl.reset()
+
+        request = FakeToolCallRequest()
+
+        def handler(req):
+            return FakeToolMessage(content="original", tool_call_id="c1")
+
+        with pytest.raises(Exception):
+            mw.wrap_tool_call(request, handler)
+
+    def test_unsigned_passthrough_requires_explicit_opt_in(self):
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        mw = JacsSigningMiddleware(client=cl, allow_unsigned_output=True)
         cl.reset()
 
         request = FakeToolCallRequest()
@@ -169,6 +192,7 @@ class TestJacsSigningMiddlewareDecorator:
         """jacs_signing_middleware raises ImportError if langchain is missing."""
         try:
             import langchain.agents.middleware  # noqa: F401
+
             pytest.skip("langchain>=1.0 is installed, cannot test ImportError")
         except (ImportError, ModuleNotFoundError):
             from jacs.adapters.langchain import jacs_signing_middleware
@@ -218,16 +242,15 @@ class TestJacsWrapToolCall:
         result = wrapper("req", execute)
         assert result.name == "search"
 
-    def test_passthrough_non_tool_message(self, client):
-        """Results without .content are returned unchanged."""
+    def test_rejects_non_tool_message_by_default(self, client):
         wrapper = jacs_wrap_tool_call(client=client)
         sentinel = {"raw": "value"}
 
         def execute(request):
             return sentinel
 
-        result = wrapper("req", execute)
-        assert result is sentinel
+        with pytest.raises(TypeError, match="without content"):
+            wrapper("req", execute)
 
     def test_signed_content_is_verifiable(self, client):
         wrapper = jacs_wrap_tool_call(client=client)
@@ -250,9 +273,23 @@ class TestJacsWrapToolCall:
         with pytest.raises(Exception):
             wrapper("req", execute)
 
-    def test_permissive_passthrough_on_signing_failure(self):
+    def test_fails_closed_on_signing_failure_by_default(self):
         cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         wrapper = jacs_wrap_tool_call(client=cl, strict=False)
+        cl.reset()
+
+        def execute(request):
+            return FakeToolMessage(content="original data", tool_call_id="c1")
+
+        with pytest.raises(Exception):
+            wrapper("req", execute)
+
+    def test_unsigned_passthrough_requires_explicit_opt_in(self):
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        wrapper = jacs_wrap_tool_call(
+            client=cl,
+            allow_unsigned_output=True,
+        )
         cl.reset()
 
         def execute(request):
@@ -270,7 +307,8 @@ class TestJacsWrapToolCall:
             return FakeToolMessage(content="data", tool_call_id="c1")
 
         with caplog.at_level(logging.WARNING, logger="jacs.adapters"):
-            wrapper("req", execute)
+            with pytest.raises(Exception):
+                wrapper("req", execute)
         assert any("signing failed" in r.message.lower() for r in caplog.records)
 
 
@@ -311,15 +349,15 @@ class TestJacsAwrapToolCall:
         assert vr.valid is True
 
     @pytest.mark.asyncio
-    async def test_passthrough_non_tool_message(self, client):
+    async def test_rejects_non_tool_message_by_default(self, client):
         wrapper = jacs_awrap_tool_call(client=client)
         sentinel = 42
 
         async def execute(request):
             return sentinel
 
-        result = await wrapper("req", execute)
-        assert result is sentinel
+        with pytest.raises(TypeError, match="without content"):
+            await wrapper("req", execute)
 
     @pytest.mark.asyncio
     async def test_strict_raises_on_failure(self):
@@ -346,6 +384,7 @@ class TestSignedTool:
         """signed_tool raises ImportError if langchain-core is missing."""
         try:
             import langchain_core  # noqa: F401
+
             pytest.skip("langchain-core is installed, cannot test ImportError")
         except ImportError:
             from jacs.adapters.langchain import signed_tool
@@ -431,6 +470,7 @@ class TestWithJacsSigning:
         """with_jacs_signing raises ImportError if langgraph is missing."""
         try:
             import langgraph  # noqa: F401
+
             pytest.skip("langgraph is installed, cannot test ImportError")
         except ImportError:
             from jacs.adapters.langchain import with_jacs_signing
@@ -533,6 +573,7 @@ class TestCoverage:
         ]
 
         for name, output in tools_data:
+
             def execute(request, _output=output, _name=name):
                 return FakeToolMessage(
                     content=_output, tool_call_id=f"call_{_name}", name=_name
@@ -560,7 +601,9 @@ class TestCoverage:
             request = FakeToolCallRequest(tool_name=name, call_id=f"call_{name}")
 
             def handler(req, _output=output):
-                return FakeToolMessage(content=_output, tool_call_id=req.tool_call["id"])
+                return FakeToolMessage(
+                    content=_output, tool_call_id=req.tool_call["id"]
+                )
 
             result = mw.wrap_tool_call(request, handler)
             parsed = json.loads(result.content)

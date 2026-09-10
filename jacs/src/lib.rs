@@ -56,6 +56,7 @@ use tracing::debug;
 pub mod a2a;
 pub mod agent;
 pub mod audit;
+pub mod compatibility;
 pub mod config;
 pub mod convert;
 pub mod crypt;
@@ -64,8 +65,11 @@ pub mod document;
 pub mod email;
 pub mod error;
 pub mod health;
+#[cfg(all(feature = "human-approval", not(target_arch = "wasm32")))]
+pub mod human_approval;
 pub mod inline;
 pub mod keystore;
+pub mod media_signing;
 pub mod mime;
 pub mod observability;
 pub mod paths;
@@ -75,16 +79,25 @@ pub mod rate_limit;
 pub mod replay;
 pub mod schema;
 pub mod search;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod secure_fetch;
 pub(crate) mod secure_io;
 pub mod shared;
 pub mod shutdown;
+pub mod signer;
 pub mod simple;
 pub mod storage;
 pub mod testing;
 pub mod time_utils;
 pub mod trust;
+pub mod trust_ledger;
 pub mod validation;
+pub mod verification;
 pub mod w3c;
+
+pub use jacs_core::response_context;
+/// Strict raw-JSON decoding for signing and verification trust boundaries.
+pub use jacs_core::strict_json;
 
 #[cfg(feature = "agreements")]
 pub mod agreements;
@@ -205,42 +218,30 @@ fn find_config_for_agent_path(filepath: &str) -> Option<std::path::PathBuf> {
     candidates.into_iter().find(|p| p.exists())
 }
 
-fn prepare_agent_for_agent_path(agent: &mut Agent, filepath: &str) {
+fn prepare_agent_for_agent_path(agent: &mut Agent, filepath: &str) -> Result<(), JacsError> {
     let Some(config_path) = find_config_for_agent_path(filepath) else {
         debug!(
             "[load_path_agent] No nearby jacs.config.json found for '{}'; using defaults/env",
             filepath
         );
-        return;
+        return Ok(());
     };
 
     let config_path_str = config_path.to_string_lossy().to_string();
-    #[allow(deprecated)]
-    match crate::config::load_config_12factor_optional(Some(&config_path_str)) {
-        Ok(config) => {
-            debug!(
-                "[load_path_agent] Loaded config context from '{}'",
-                config_path.display()
-            );
-            agent.config = Some(config);
-            if let Some(root) = config_path.parent()
-                && let Err(e) = agent.set_storage_root(root.to_path_buf())
-            {
-                debug!(
-                    "[load_path_agent] Failed to re-root storage to '{}': {}",
-                    root.display(),
-                    e
-                );
-            }
-        }
-        Err(e) => {
-            debug!(
-                "[load_path_agent] Failed to load config '{}' (continuing with defaults/env): {}",
-                config_path.display(),
-                e
-            );
-        }
-    }
+    let mut config = crate::config::Config::from_file(&config_path_str).map_err(|error| {
+        JacsError::ConfigError(format!(
+            "Failed to load nearby config '{}' for explicit agent-file verification: {}",
+            config_path.display(),
+            error
+        ))
+    })?;
+    config.apply_env_overrides();
+    agent.install_verified_config_context(config, &config_path_str)?;
+    debug!(
+        "[load_path_agent] Loaded verified config context from '{}'",
+        config_path.display()
+    );
+    Ok(())
 }
 
 fn default_config_path() -> String {
@@ -277,7 +278,7 @@ fn load_path_agent(
     debug!("[load_path_agent] Loading from path: {}", filepath);
     let mut agent = get_empty_agent();
     apply_dns_policy(&mut agent, dns_validate, dns_required, dns_strict);
-    prepare_agent_for_agent_path(&mut agent, &filepath);
+    prepare_agent_for_agent_path(&mut agent, &filepath)?;
 
     // Extract filename (e.g., "ID:VERSION.json") from the full path
     let agent_filename = Path::new(&filepath)

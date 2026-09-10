@@ -3,20 +3,18 @@
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Once};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-/// Ed25519 agent fixture in jacs/tests/fixtures/agent/. Use this variant
-/// for tests that load fixture agents and tests that sign new documents.
-const AGENT_ID_ED25519: &str =
-    "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a";
 
 /// Password used to encrypt test fixture keys in jacs/tests/fixtures/keys/
 /// Note: intentional typo "secretpassord" matches TEST_PASSWORD_LEGACY in jacs/tests/utils.rs
 pub const TEST_PASSWORD: &str = "secretpassord";
+pub const LEGACY_SIGNATURE_CONTENT_ENV_VAR: &str = "JACS_ALLOW_LEGACY_SIGNATURE_CONTENT";
 const IAT_SKEW_ENV_VAR: &str = "JACS_MAX_IAT_SKEW_SECONDS";
 
 static FIXTURE_IAT_INIT: Once = Once::new();
+static WORKSPACE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub static ENV_LOCK: LazyLock<std::sync::Mutex<()>> = LazyLock::new(|| std::sync::Mutex::new(()));
 
 pub struct ScopedEnvVar {
@@ -56,14 +54,7 @@ fn configure_fixture_iat_policy() {
     });
 }
 
-fn jacs_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_path_buf()
-}
-
-/// Create a temp workspace with agent JSON, keys, and config.
+/// Create a temp workspace with a freshly generated agent, keys, and signed config.
 /// Returns (config_path, base_dir). Config uses relative paths so tests can
 /// verify the loader resolves them from the config path rather than the CWD.
 ///
@@ -74,74 +65,36 @@ pub fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
 /// Create a temp workspace backed by the Ed25519 agent fixture. Use this
 /// variant for tests that need deterministic key material.
 pub fn prepare_temp_workspace_ed25519() -> (PathBuf, PathBuf) {
-    prepare_temp_workspace_with_fixture(
-        AGENT_ID_ED25519,
-        "ring-Ed25519",
-        "agent-ed25519.private.pem.enc",
-        "agent-ed25519.public.pem",
-    )
-}
-
-fn prepare_temp_workspace_with_fixture(
-    agent_id: &str,
-    algorithm: &str,
-    private_key_filename: &str,
-    public_key_filename: &str,
-) -> (PathBuf, PathBuf) {
-    configure_fixture_iat_policy();
-
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+    let sequence = WORKSPACE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let temp_root = std::env::temp_dir()
         .canonicalize()
         .unwrap_or_else(|_| std::env::temp_dir());
-    let base = temp_root.join(format!("jacs_mcp_ws_{}_{}", std::process::id(), ts));
+    let base = temp_root.join(format!(
+        "jacs_mcp_ws_{}_{}_{}",
+        std::process::id(),
+        ts,
+        sequence
+    ));
     let data_dir = base.join("jacs_data");
     let keys_dir = base.join("jacs_keys");
-    fs::create_dir_all(data_dir.join("agent")).expect("mkdir data/agent");
-    fs::create_dir_all(&keys_dir).expect("mkdir keys");
-
-    let root = jacs_root();
-
-    let agent_src = root.join(format!("jacs/tests/fixtures/agent/{}.json", agent_id));
-    let agent_dst = data_dir.join(format!("agent/{}.json", agent_id));
-    fs::copy(&agent_src, &agent_dst).unwrap_or_else(|e| {
-        panic!(
-            "copy agent fixture from {:?} to {:?}: {}",
-            agent_src, agent_dst, e
-        )
-    });
-
-    let keys_fixture = root.join("jacs/tests/fixtures/keys");
-    fs::copy(
-        keys_fixture.join(private_key_filename),
-        keys_dir.join(private_key_filename),
-    )
-    .expect("copy private key");
-    fs::copy(
-        keys_fixture.join(public_key_filename),
-        keys_dir.join(public_key_filename),
-    )
-    .expect("copy public key");
-
-    let config_json = serde_json::json!({
-        "jacs_agent_id_and_version": agent_id,
-        "jacs_agent_key_algorithm": algorithm,
-        "jacs_agent_private_key_filename": private_key_filename,
-        "jacs_agent_public_key_filename": public_key_filename,
-        "jacs_data_directory": "jacs_data",
-        "jacs_default_storage": "fs",
-        "jacs_key_directory": "jacs_keys",
-        "jacs_use_security": "false"
-    });
     let cfg_path = base.join("jacs.config.json");
-    fs::write(
-        &cfg_path,
-        serde_json::to_string_pretty(&config_json).unwrap(),
-    )
-    .expect("write config");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name(&format!("jacs-mcp-test-{ts}"))
+        .password(TEST_PASSWORD)
+        .algorithm("ed25519")
+        .data_directory(data_dir.to_str().expect("UTF-8 data directory"))
+        .key_directory(keys_dir.to_str().expect("UTF-8 key directory"))
+        .config_path(cfg_path.to_str().expect("UTF-8 config path"))
+        .default_storage("fs")
+        .build();
+    jacs::simple::SimpleAgent::create_with_params(params).expect("create signed MCP test identity");
+
+    configure_fixture_iat_policy();
 
     (cfg_path, base)
 }
@@ -173,6 +126,7 @@ pub fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Out
         .current_dir(&base)
         .env("JACS_CONFIG", &config)
         .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
+        .env(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());

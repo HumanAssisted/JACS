@@ -30,7 +30,9 @@ use serde_json::{Value, json};
 /// `generate_keys_with_store` with an in-memory store instead — that
 /// is the same code path `SimpleAgent::ephemeral` ends up running.
 fn native_ephemeral_ed25519() -> Agent {
-    let mut agent = Agent::ephemeral("ring-Ed25519").expect("ephemeral agent");
+    // This fixture path keeps the historical native test shape while the
+    // suite cross-verifies genuine Ed25519 signatures against jacs-core.
+    let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures().expect("ephemeral agent");
     let ks = jacs::keystore::InMemoryKeyStore::new("ring-Ed25519");
     agent.generate_keys_with_store(&ks).expect("generate keys");
     agent
@@ -104,7 +106,10 @@ fn core_signed_doc_verifies_via_native() {
         jacs_core::verify::build_signature_content_v2(&signed, &fields, "jacsSignature", &sig_obj)
             .expect("canonical");
 
-    let native = Agent::ephemeral("ring-Ed25519").expect("ephemeral");
+    // Verification of supported Ed25519 signatures is algorithm-dispatched:
+    // any agent (here a resolver-created pq2025 one) verifies the explicit
+    // ring-Ed25519 signature via verify_string's algorithm parameter.
+    let native = Agent::ephemeral("pq2025").expect("ephemeral");
     native
         .verify_string(&canonical, sig_b64, pk, Some("ring-Ed25519".to_string()))
         .expect("native verify_string must accept jacs-core's signature");

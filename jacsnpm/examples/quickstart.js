@@ -52,7 +52,7 @@ async function advanced() {
     const agent = await jacs.load('./jacs.config.json');
     console.log(`\nLoaded agent: ${agent.agentId}`);
   } catch (e) {
-    console.error('No agent found. Run: jacs create --name "my-agent"');
+    console.error('No agent found. Run: npx jacs-cli quickstart --name my-agent --domain my-agent.example.com');
     process.exit(1);
   }
 

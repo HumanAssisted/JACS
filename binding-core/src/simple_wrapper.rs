@@ -1,7 +1,7 @@
 //! `SimpleAgentWrapper` — thin FFI adapter over the narrow `SimpleAgent` contract.
 //!
-//! This module contains zero business logic. Every method delegates to
-//! `jacs::simple::SimpleAgent` and marshals the result to FFI-safe types
+//! This module contains zero business logic. Methods delegate to
+//! `jacs::simple::SimpleAgent` or a stateless native verifier and marshal FFI-safe types
 //! (String in/out, base64 for bytes, JSON for structured data).
 
 use crate::{BindingCoreError, BindingResult, ErrorKind};
@@ -116,8 +116,9 @@ impl SimpleAgentWrapper {
     /// Returns `(wrapper, info_json)` where `info_json` is a serialized
     /// [`jacs::simple::AgentInfo`].
     pub fn create_with_params(params_json: &str) -> BindingResult<(Self, String)> {
+        crate::check_binding_json_size(params_json, "CreateAgentParams JSON")?;
         let params: jacs::simple::CreateAgentParams =
-            serde_json::from_str(params_json).map_err(|e| {
+            jacs_core::strict_json::deserialize_strict_json(params_json).map_err(|e| {
                 BindingCoreError::invalid_argument(format!("Invalid CreateAgentParams JSON: {}", e))
             })?;
 
@@ -251,8 +252,9 @@ impl SimpleAgentWrapper {
     ///
     /// `params_json` is a JSON string of `W3cRequestProofParams`.
     pub fn sign_w3c_request_json(&self, params_json: &str) -> BindingResult<String> {
+        crate::check_binding_json_size(params_json, "W3C request proof params JSON")?;
         let params: jacs::w3c::W3cRequestProofParams =
-            serde_json::from_str(params_json).map_err(|e| {
+            jacs_core::strict_json::deserialize_strict_json(params_json).map_err(|e| {
                 BindingCoreError::invalid_argument(format!(
                     "Invalid W3C request proof params JSON: {}",
                     e
@@ -333,6 +335,53 @@ impl SimpleAgentWrapper {
         serialize_json(&result, "VerificationResult")
     }
 
+    /// Verify a complete authority-mapped human approval without an agent,
+    /// private key, storage lookup, network access or enrollment side effect.
+    ///
+    /// The caller supplies the exact expected intent/enrolled credential and
+    /// separately selected public pins for enrollment authority and provenance.
+    /// Never derive these trust inputs from the submitted bundle. The complete
+    /// native report is retained; success leaves both current-status fields
+    /// `not_evaluated` and does not authorize live execution or claim trusted
+    /// approval time, schema/media policy, current revocation or global non-reuse.
+    #[cfg(feature = "human-approval")]
+    pub fn verify_human_approved_document_json(
+        bundle_json: &str,
+        expected_json: &str,
+        authority_json: &str,
+        provenance_json: &str,
+    ) -> BindingResult<String> {
+        use jacs::human_approval::{
+            HumanApprovalExpectationV1, PinnedHumanApprovalAuthorityV1, PinnedJacsProvenanceV1,
+        };
+
+        fn policy<T: serde::de::DeserializeOwned>(json: &str, label: &str) -> BindingResult<T> {
+            crate::check_binding_json_size(json, label)?;
+            jacs_core::strict_json::deserialize_strict_json(json).map_err(|error| {
+                BindingCoreError::invalid_argument(format!("Invalid {label}: {error}"))
+            })
+        }
+
+        crate::check_binding_json_size(bundle_json, "human-approved document JSON")?;
+        let expected: HumanApprovalExpectationV1 =
+            policy(expected_json, "human approval expectation")?;
+        let authority: PinnedHumanApprovalAuthorityV1 =
+            policy(authority_json, "human approval authority pin")?;
+        let provenance: PinnedJacsProvenanceV1 = policy(provenance_json, "JACS provenance pin")?;
+        let report = jacs::human_approval::verify_human_approved_document_v1(
+            bundle_json,
+            &expected,
+            &authority,
+            &provenance,
+        )
+        .map_err(|error| {
+            BindingCoreError::verification_failed(format!(
+                "Human-approved document verification failed: {error}"
+            ))
+        })?;
+        serialize_json(&report, "HumanApprovedDocumentVerificationV1")
+    }
+
     /// Verify a stored document by its ID (e.g., "uuid:version").
     /// Returns JSON `VerificationResult`.
     pub fn verify_by_id_json(&self, document_id: &str) -> BindingResult<String> {
@@ -348,9 +397,11 @@ impl SimpleAgentWrapper {
 
     /// Sign a JSON message string. Returns the signed JACS document JSON.
     pub fn sign_message_json(&self, data_json: &str) -> BindingResult<String> {
-        let value: serde_json::Value = serde_json::from_str(data_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid JSON input: {}", e))
-        })?;
+        crate::check_binding_json_size(data_json, "sign_message JSON")?;
+        let value: serde_json::Value = jacs_core::strict_json::parse_strict_json(data_json)
+            .map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid JSON input: {}", e))
+            })?;
 
         let signed = self
             .inner
@@ -379,14 +430,136 @@ impl SimpleAgentWrapper {
     }
 
     // =========================================================================
+    // Protocol helpers
+    // =========================================================================
+
+    /// Build the legacy unbound JACS Authorization header.
+    pub fn build_auth_header(&self) -> BindingResult<String> {
+        self.inner.build_auth_header().map_err(|e| {
+            BindingCoreError::signing_failed(format!("Failed to build auth header: {e}"))
+        })
+    }
+
+    /// Build a request-bound JACS v2 Authorization header.
+    pub fn build_request_auth_header(
+        &self,
+        method: &str,
+        url: &str,
+        body: &[u8],
+        audience: &str,
+    ) -> BindingResult<String> {
+        self.inner
+            .build_request_auth_header(method, url, body, audience)
+            .map_err(|e| {
+                BindingCoreError::signing_failed(format!(
+                    "Failed to build request auth header: {e}"
+                ))
+            })
+    }
+
+    /// Deterministically serialize strict JSON per RFC 8785.
+    pub fn canonicalize_json(&self, json_string: &str) -> BindingResult<String> {
+        crate::check_binding_json_size(json_string, "canonicalization JSON")?;
+        let value = jacs_core::strict_json::parse_strict_json(json_string).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse JSON for canonicalization: {e}"
+            ))
+        })?;
+        Ok(jacs::protocol::canonicalize_json(&value))
+    }
+
+    /// Sign a fully bound v2 response envelope and return JSON.
+    pub fn sign_response(&self, payload_json: &str) -> BindingResult<String> {
+        crate::check_binding_json_size(payload_json, "response payload JSON")?;
+        let payload = jacs_core::strict_json::parse_strict_json(payload_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse payload JSON for sign_response: {e}"
+            ))
+        })?;
+        let envelope = self.inner.sign_response(&payload).map_err(|e| {
+            BindingCoreError::signing_failed(format!("Failed to sign response: {e}"))
+        })?;
+        serialize_json(&envelope, "signed response")
+    }
+
+    /// Encode document text as URL-safe base64 without padding.
+    pub fn encode_verify_payload(&self, document: &str) -> String {
+        jacs::protocol::encode_verify_payload(document)
+    }
+
+    /// Decode a URL-safe verification payload.
+    pub fn decode_verify_payload(&self, encoded: &str) -> BindingResult<String> {
+        jacs::protocol::decode_verify_payload(encoded).map_err(|e| {
+            BindingCoreError::serialization_failed(format!("Failed to decode verify payload: {e}"))
+        })
+    }
+
+    /// Inspect an unverified document identifier.
+    ///
+    /// The result remains attacker-controlled until the document is verified;
+    /// it must not drive authorization, key lookup, replay, or trust decisions.
+    pub fn extract_document_id(&self, document: &str) -> BindingResult<String> {
+        jacs::protocol::extract_document_id(document).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Failed to extract document ID: {e}"))
+        })
+    }
+
+    /// Strictly verify and unwrap a v2 signed event with pinned server keys.
+    pub fn unwrap_signed_event(
+        &self,
+        event_json: &str,
+        server_keys_json: &str,
+    ) -> BindingResult<String> {
+        crate::check_binding_json_size(event_json, "signed event JSON")?;
+        let event = jacs_core::strict_json::parse_strict_json(event_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse signed event JSON: {e}"
+            ))
+        })?;
+        let keys = crate::parse_server_public_keys_json(server_keys_json, "unwrap_signed_event")?;
+        let verified = jacs::protocol::verify_signed_event_with_trusted_keys(&event, &keys)
+            .map_err(|e| {
+                BindingCoreError::verification_failed(format!("Failed to unwrap signed event: {e}"))
+            })?;
+        serialize_json(
+            &serde_json::json!({
+                "data": verified.data,
+                "verified": true,
+                "status": "verified",
+                "signerId": verified.signer_id,
+                "timestamp": verified.timestamp,
+                "algorithm": verified.algorithm,
+                "documentId": verified.document_id,
+            }),
+            "verified signed event",
+        )
+    }
+
+    /// Verify signed-event cryptography and freshness without consuming replay
+    /// state or returning payload data.
+    pub fn prepare_signed_event_replay_json(
+        &self,
+        event_json: &str,
+        server_keys_json: &str,
+        max_age_seconds: u64,
+    ) -> BindingResult<String> {
+        crate::prepare_signed_event_replay_binding_json(
+            event_json,
+            server_keys_json,
+            max_age_seconds,
+        )
+    }
+
+    // =========================================================================
     // Agreement v2 (feature-gated protocol surface)
     // =========================================================================
 
     /// Create a standalone agreement v2 document from JSON input.
     #[cfg(feature = "agreements")]
     pub fn create_agreement_v2_json(&self, input_json: &str) -> BindingResult<String> {
-        let input: jacs::agreements::v2::CreateAgreementV2 = serde_json::from_str(input_json)
-            .map_err(|e| {
+        crate::check_binding_json_size(input_json, "agreement create JSON")?;
+        let input: jacs::agreements::v2::CreateAgreementV2 =
+            jacs_core::strict_json::deserialize_strict_json(input_json).map_err(|e| {
                 BindingCoreError::validation(format!(
                     "{}: {}",
                     crate::agreement_v2::CTX_INVALID_CREATE_INPUT,
@@ -410,8 +583,10 @@ impl SimpleAgentWrapper {
         document_json: &str,
         mutation_json: &str,
     ) -> BindingResult<String> {
+        crate::check_binding_json_size(document_json, "agreement document JSON")?;
+        crate::check_binding_json_size(mutation_json, "agreement mutation JSON")?;
         let mutation: jacs::agreements::v2::AgreementV2Mutation =
-            serde_json::from_str(mutation_json).map_err(|e| {
+            jacs_core::strict_json::deserialize_strict_json(mutation_json).map_err(|e| {
                 BindingCoreError::validation(format!(
                     "{}: {}",
                     crate::agreement_v2::CTX_INVALID_MUTATION,
@@ -516,8 +691,9 @@ impl SimpleAgentWrapper {
         side_branch_document_json: &str,
         mutation_json: &str,
     ) -> BindingResult<String> {
+        crate::check_binding_json_size(mutation_json, "agreement resolution mutation JSON")?;
         let mutation: jacs::agreements::v2::AgreementV2Mutation =
-            serde_json::from_str(mutation_json).map_err(|e| {
+            jacs_core::strict_json::deserialize_strict_json(mutation_json).map_err(|e| {
                 BindingCoreError::validation(format!(
                     "{}: {}",
                     crate::agreement_v2::CTX_INVALID_RESOLUTION_MUTATION,
@@ -571,13 +747,136 @@ impl SimpleAgentWrapper {
 
     /// Rotate the agent's cryptographic keys.
     ///
-    /// Optionally change the signing algorithm. Returns a JSON string of the
-    /// `RotationResult` (jacs_id, old_version, new_version, key hash, proof).
+    /// Rotation always creates a `pq2025` native root. Omit `algorithm` or pass
+    /// `pq2025`; Ed25519 and unknown targets are rejected. Returns a JSON string
+    /// of the `RotationResult` (jacs_id, old_version, new_version, key hash,
+    /// proof).
     pub fn rotate_keys(&self, algorithm: Option<&str>) -> BindingResult<String> {
         let result = jacs::simple::advanced::rotate(&self.inner, algorithm).map_err(|e| {
             BindingCoreError::new(ErrorKind::Generic, format!("Key rotation failed: {}", e))
         })?;
         serialize_json(&result, "rotation result")
+    }
+
+    /// Explicit migration (P2 Task 002): add the ES256 `ecosystem_signing`
+    /// compatibility key to an EXISTING agent. Loading never mints key
+    /// material; new agents get the key eagerly at creation unless they
+    /// opt out. Returns a JSON `CompatKeyInfo` (role, algorithm, kid, key
+    /// paths). Errors if the key already exists (no silent re-mint;
+    /// ES256 key rotation is out of P2 scope) or the agent is ephemeral.
+    pub fn add_compat_key_json(&self) -> BindingResult<String> {
+        // PRD §9.7 mapping via map_compat_err: duplicate/ephemeral guard
+        // failures are Validation; a missing key is KeyNotFound.
+        let info = self
+            .inner
+            .add_compat_key()
+            .map_err(|e| map_compat_err(e, "Failed to add compatibility key"))?;
+        serialize_json(&info, "compatibility key info")
+    }
+
+    /// Issue (or re-issue) the native-root-signed compatibility key binding
+    /// (P2 Task 003, FR11/FR24). Content scopes (`ap2-mandate`,
+    /// `agreement-vc`) are never auto-issued: they require this explicit
+    /// grant, and every grant is signed by the current native root. This is also the
+    /// re-issue path after `rotate_keys` — a binding signed by a previous
+    /// root no longer authorizes exports.
+    ///
+    /// `scopes_json` accepts:
+    /// - `""` | `"null"` — grant the default identity scopes
+    ///   (`jwks`, `did`, `a2a-agent-card`, `w3c-agent-identity`).
+    /// - a JSON array of scope strings, e.g.
+    ///   `["jwks","did","ap2-mandate"]` — an unknown scope is a
+    ///   `Validation` error.
+    ///
+    /// `expires_at` is an optional RFC 3339 timestamp (invalid values are
+    /// rejected at issuance). Returns the binding document JSON.
+    pub fn issue_compat_binding_json(
+        &self,
+        scopes_json: &str,
+        expires_at: Option<&str>,
+    ) -> BindingResult<String> {
+        let trimmed = scopes_json.trim();
+        crate::check_binding_json_size(trimmed, "compatibility binding scopes JSON")?;
+        let scopes: Option<Vec<String>> =
+            if trimmed.is_empty() || trimmed == "null" {
+                None
+            } else {
+                Some(jacs_core::strict_json::deserialize_strict_json(trimmed).map_err(|e| {
+                BindingCoreError::invalid_argument(format!(
+                    "issue_compat_binding scopes: expected a JSON array of scope strings: {}",
+                    e
+                ))
+            })?)
+            };
+        let scope_refs: Option<Vec<&str>> = scopes
+            .as_ref()
+            .map(|v| v.iter().map(|s| s.as_str()).collect());
+        let binding = self
+            .inner
+            .issue_compat_binding(scope_refs.as_deref(), expires_at)
+            .map_err(|e| map_compat_err(e, "Failed to issue compatibility key binding"))?;
+        serialize_json(&binding, "compatibility key binding")
+    }
+
+    /// Export the agent's compatibility JWKS (ES256 public key only —
+    /// native-root material is never published here). Gated by the `jwks`
+    /// scope of the native-root-signed binding; auto-issues the default identity
+    /// binding on first use (P2 Task 004).
+    pub fn export_compatibility_jwks_json(&self) -> BindingResult<String> {
+        let jwks = self
+            .inner
+            .export_compatibility_jwks()
+            .map_err(|e| map_compat_err(e, "Failed to export compatibility JWKS"))?;
+        serialize_json(&jwks, "compatibility JWKS")
+    }
+
+    /// Export the A2A agent card signed with the ES256 compatibility key
+    /// (P2 Task 004-B; typ "JOSE", binding referenced by content hash).
+    #[cfg(feature = "a2a")]
+    pub fn export_a2a_agent_card_json(&self) -> BindingResult<String> {
+        let card = self
+            .inner
+            .export_a2a_agent_card()
+            .map_err(|e| map_compat_err(e, "Failed to export A2A agent card"))?;
+        serialize_json(&card, "A2A agent card")
+    }
+
+    /// Export the current verified native-root-signed compatibility key
+    /// binding document, so relying parties can trace the ES256 key back to
+    /// the agent's native root (P2 Task 004).
+    pub fn export_compatibility_key_binding_json(&self) -> BindingResult<String> {
+        let binding = self
+            .inner
+            .export_compatibility_key_binding()
+            .map_err(|e| map_compat_err(e, "Failed to export compatibility key binding"))?;
+        serialize_json(&binding, "compatibility key binding")
+    }
+
+    /// Export an Agreement-v2 JSON document as a Verifiable Credential
+    /// with an `ecdsa-jcs-2019` Data Integrity proof (P2 Task 004c,
+    /// FR16). Takes agreement JSON, never a document id; gated by the
+    /// explicit `agreement-vc` binding scope (content exports never
+    /// auto-issue a binding).
+    #[cfg(feature = "agreements")]
+    pub fn export_agreement_v2_as_vc_json(&self, agreement_json: &str) -> BindingResult<String> {
+        let vc = self
+            .inner
+            .export_agreement_v2_as_vc(agreement_json)
+            .map_err(|e| map_compat_err(e, "Failed to export Agreement-v2 VC"))?;
+        serialize_json(&vc, "Agreement-v2 VC export")
+    }
+
+    /// Export the AP2 merchant-authorization mandate for a UCP checkout
+    /// as a detached ES256 JWS (P2 Task 004b, FR15). Typed input only —
+    /// the checkout is validated against the named ap2-mandate schema —
+    /// and gated by the explicit `ap2-mandate` binding scope (content
+    /// exports never auto-issue a binding).
+    pub fn export_ap2_mandate_json(&self, checkout_json: &str) -> BindingResult<String> {
+        let mandate = self
+            .inner
+            .export_ap2_mandate(checkout_json)
+            .map_err(|e| map_compat_err(e, "Failed to export AP2 mandate"))?;
+        serialize_json(&mandate, "AP2 mandate export")
     }
 
     // =========================================================================
@@ -610,17 +909,44 @@ impl SimpleAgentWrapper {
     /// Permissive returns JSON with a `status` discriminator. Strict mode on
     /// an unsigned file returns `Err(BindingCoreError::missing_signature(path))`.
     pub fn verify_text_file_json(&self, path: &str, opts_json: &str) -> BindingResult<String> {
-        let opts = parse_verify_options(opts_json)?;
+        let opts = parse_verify_options(opts_json).inspect_err(|_error| {
+            record_binding_security_outcome(
+                jacs::observability::convenience::SecuritySource::InlineText,
+                jacs::observability::convenience::SecurityOutcome::ParserRejected,
+                false,
+                None,
+            );
+        })?;
         let strict = opts.strict;
         match jacs::simple::advanced::verify_text_file(&self.inner, path, opts) {
-            Ok(result) => serialize_verify_text_result(&result),
-            Err(jacs::error::JacsError::MissingSignature(p)) if strict => Err(
-                BindingCoreError::missing_signature(format!("no JACS signature found in {}", p)),
-            ),
+            Ok(result) => {
+                record_verify_text_security_outcomes(&result, strict);
+                serialize_verify_text_result(&result)
+            }
+            Err(jacs::error::JacsError::MissingSignature(p)) if strict => {
+                record_binding_security_outcome(
+                    jacs::observability::convenience::SecuritySource::InlineText,
+                    jacs::observability::convenience::SecurityOutcome::Unverified,
+                    true,
+                    None,
+                );
+                Err(BindingCoreError::missing_signature(format!(
+                    "no JACS signature found in {}",
+                    p
+                )))
+            }
             // R-008: route to map_jacs_err so callers get precise error kinds
             // (FileNotFound -> InvalidArgument, validation -> InvalidArgument,
             // etc.) instead of every error collapsing to VerificationFailed.
-            Err(e) => Err(map_jacs_err(e, "verify_text_file")),
+            Err(e) => {
+                record_binding_security_outcome(
+                    jacs::observability::convenience::SecuritySource::InlineText,
+                    jacs::observability::convenience::security_outcome_for_error(&e),
+                    strict,
+                    None,
+                );
+                Err(map_jacs_err(e, "verify_text_file"))
+            }
         }
     }
 
@@ -650,15 +976,42 @@ impl SimpleAgentWrapper {
     /// - `{"keyDir": "/abs/path"}` — `--key-dir` override.
     /// - `{"robust": bool}` — scan LSB channel as a fallback (default false).
     pub fn verify_image_json(&self, path: &str, opts_json: &str) -> BindingResult<String> {
-        let opts = parse_verify_image_options(opts_json)?;
+        let opts = parse_verify_image_options(opts_json).inspect_err(|_error| {
+            record_binding_security_outcome(
+                jacs::observability::convenience::SecuritySource::InlineImage,
+                jacs::observability::convenience::SecurityOutcome::ParserRejected,
+                false,
+                None,
+            );
+        })?;
         let strict = opts.base.strict;
         match jacs::simple::advanced::verify_image(&self.inner, path, opts) {
-            Ok(result) => serialize_json(&result, "verify_image result"),
-            Err(jacs::error::JacsError::MissingSignature(p)) if strict => Err(
-                BindingCoreError::missing_signature(format!("no JACS signature found in {}", p)),
-            ),
+            Ok(result) => {
+                record_verify_image_security_outcome(&result, strict);
+                serialize_json(&result, "verify_image result")
+            }
+            Err(jacs::error::JacsError::MissingSignature(p)) if strict => {
+                record_binding_security_outcome(
+                    jacs::observability::convenience::SecuritySource::InlineImage,
+                    jacs::observability::convenience::SecurityOutcome::Unverified,
+                    true,
+                    None,
+                );
+                Err(BindingCoreError::missing_signature(format!(
+                    "no JACS signature found in {}",
+                    p
+                )))
+            }
             // R-008: precise error kinds (see verify_text_file_json comment).
-            Err(e) => Err(map_jacs_err(e, "verify_image")),
+            Err(e) => {
+                record_binding_security_outcome(
+                    jacs::observability::convenience::SecuritySource::InlineImage,
+                    jacs::observability::convenience::security_outcome_for_error(&e),
+                    strict,
+                    None,
+                );
+                Err(map_jacs_err(e, "verify_image"))
+            }
         }
     }
 
@@ -698,6 +1051,20 @@ impl SimpleAgentWrapper {
 // Option parsing helpers
 // =============================================================================
 
+/// Error mapping for the compatibility-key surface (PRD §9.7): a missing
+/// ES256 ecosystem key is `ErrorKind::KeyNotFound` so callers across
+/// Python/Node/Go can distinguish "run add-compat-key" from bad input.
+/// Every other failure (scope denial, duplicate/ephemeral guards, typed
+/// input rejection) stays `ErrorKind::Validation` on existing kinds —
+/// no new ErrorKind variants (P2 NG10).
+fn map_compat_err(e: jacs::error::JacsError, context: &str) -> BindingCoreError {
+    let kind = match e {
+        jacs::error::JacsError::KeyNotFound { .. } => ErrorKind::KeyNotFound,
+        _ => ErrorKind::Validation,
+    };
+    BindingCoreError::new(kind, format!("{}: {}", context, e))
+}
+
 fn map_jacs_err(e: jacs::error::JacsError, op: &str) -> BindingCoreError {
     use jacs::error::JacsError;
     match e {
@@ -726,7 +1093,8 @@ fn parse_sign_text_options(opts_json: &str) -> BindingResult<jacs::simple::types
     if opts_is_default(opts_json) {
         return Ok(jacs::simple::types::SignTextOptions::default());
     }
-    let v: serde_json::Value = serde_json::from_str(opts_json)
+    crate::check_binding_json_size(opts_json, "sign_text_file options JSON")?;
+    let v: serde_json::Value = jacs_core::strict_json::parse_strict_json(opts_json)
         .map_err(|e| BindingCoreError::invalid_argument(format!("sign_text_file opts: {}", e)))?;
     let mut o = jacs::simple::types::SignTextOptions::default();
     if let Some(b) = v.get("backup").and_then(|x| x.as_bool()) {
@@ -755,7 +1123,8 @@ fn parse_verify_options(opts_json: &str) -> BindingResult<jacs::inline::VerifyOp
     if opts_is_default(opts_json) {
         return Ok(jacs::inline::VerifyOptions::default());
     }
-    let v: serde_json::Value = serde_json::from_str(opts_json)
+    crate::check_binding_json_size(opts_json, "verify options JSON")?;
+    let v: serde_json::Value = jacs_core::strict_json::parse_strict_json(opts_json)
         .map_err(|e| BindingCoreError::invalid_argument(format!("verify opts: {}", e)))?;
     let strict = v.get("strict").and_then(|x| x.as_bool()).unwrap_or(false);
     let key_dir = v
@@ -772,7 +1141,8 @@ fn parse_sign_image_options(
     if opts_is_default(opts_json) {
         return Ok(jacs::simple::types::SignImageOptions::default());
     }
-    let v: serde_json::Value = serde_json::from_str(opts_json)
+    crate::check_binding_json_size(opts_json, "sign_image options JSON")?;
+    let v: serde_json::Value = jacs_core::strict_json::parse_strict_json(opts_json)
         .map_err(|e| BindingCoreError::invalid_argument(format!("sign_image opts: {}", e)))?;
     let mut o = jacs::simple::types::SignImageOptions::default();
     if let Some(b) = v.get("robust").and_then(|x| x.as_bool()) {
@@ -811,7 +1181,8 @@ fn parse_verify_image_options(
     if opts_is_default(opts_json) {
         return Ok(jacs::simple::types::VerifyImageOptions::default());
     }
-    let v: serde_json::Value = serde_json::from_str(opts_json)
+    crate::check_binding_json_size(opts_json, "verify_image options JSON")?;
+    let v: serde_json::Value = jacs_core::strict_json::parse_strict_json(opts_json)
         .map_err(|e| BindingCoreError::invalid_argument(format!("verify_image opts: {}", e)))?;
     let strict = v.get("strict").and_then(|x| x.as_bool()).unwrap_or(false);
     let key_dir = v
@@ -843,9 +1214,11 @@ fn parse_extract_options(opts_json: &str) -> BindingResult<ParsedExtractOptions>
     if opts_is_default(opts_json) {
         return Ok(ParsedExtractOptions::default());
     }
-    let v: serde_json::Value = serde_json::from_str(opts_json).map_err(|e| {
-        BindingCoreError::invalid_argument(format!("extract_media_signature opts: {}", e))
-    })?;
+    crate::check_binding_json_size(opts_json, "extract_media_signature options JSON")?;
+    let v: serde_json::Value =
+        jacs_core::strict_json::parse_strict_json(opts_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("extract_media_signature opts: {}", e))
+        })?;
     let raw_payload = v
         .get("rawPayload")
         .or_else(|| v.get("raw_payload"))
@@ -861,6 +1234,86 @@ fn parse_extract_options(opts_json: &str) -> BindingResult<ParsedExtractOptions>
         raw_payload,
         scan_robust,
     })
+}
+
+fn record_binding_security_outcome(
+    source: jacs::observability::convenience::SecuritySource,
+    outcome: jacs::observability::convenience::SecurityOutcome,
+    strict: bool,
+    subject_id: Option<&str>,
+) {
+    let policy = if strict {
+        jacs::observability::convenience::SecurityPolicy::Strict
+    } else {
+        jacs::observability::convenience::SecurityPolicy::Permissive
+    };
+    jacs::observability::convenience::record_security_outcome(
+        source, outcome, policy, subject_id, None,
+    );
+}
+
+fn record_verify_text_security_outcomes(result: &jacs::inline::VerifyTextResult, strict: bool) {
+    use jacs::inline::{SignatureStatus, VerifyTextResult};
+    use jacs::observability::convenience::{SecurityOutcome, SecuritySource};
+
+    match result {
+        VerifyTextResult::MissingSignature => record_binding_security_outcome(
+            SecuritySource::InlineText,
+            SecurityOutcome::Unverified,
+            strict,
+            None,
+        ),
+        VerifyTextResult::Malformed(_) => record_binding_security_outcome(
+            SecuritySource::InlineText,
+            SecurityOutcome::ParserRejected,
+            strict,
+            None,
+        ),
+        VerifyTextResult::Signed { signatures } => {
+            for signature in signatures {
+                let outcome = match &signature.status {
+                    SignatureStatus::Valid => SecurityOutcome::Valid,
+                    SignatureStatus::InvalidSignature | SignatureStatus::HashMismatch => {
+                        SecurityOutcome::BadSignature
+                    }
+                    SignatureStatus::KeyNotFound => SecurityOutcome::UnknownKey,
+                    SignatureStatus::UnsupportedAlgorithm => SecurityOutcome::PolicyRejected,
+                    SignatureStatus::Malformed(_) => SecurityOutcome::ParserRejected,
+                };
+                record_binding_security_outcome(
+                    SecuritySource::InlineText,
+                    outcome,
+                    strict,
+                    Some(&signature.signer_id),
+                );
+            }
+        }
+    }
+}
+
+fn record_verify_image_security_outcome(
+    result: &jacs::simple::types::MediaVerificationResult,
+    strict: bool,
+) {
+    use jacs::observability::convenience::{SecurityOutcome, SecuritySource};
+    use jacs::simple::types::MediaVerifyStatus;
+
+    let outcome = match &result.status {
+        MediaVerifyStatus::Valid => SecurityOutcome::Valid,
+        MediaVerifyStatus::InvalidSignature | MediaVerifyStatus::HashMismatch => {
+            SecurityOutcome::BadSignature
+        }
+        MediaVerifyStatus::KeyNotFound => SecurityOutcome::UnknownKey,
+        MediaVerifyStatus::MissingSignature => SecurityOutcome::Unverified,
+        MediaVerifyStatus::Malformed(_) => SecurityOutcome::ParserRejected,
+        MediaVerifyStatus::UnsupportedFormat => SecurityOutcome::PolicyRejected,
+    };
+    record_binding_security_outcome(
+        SecuritySource::InlineImage,
+        outcome,
+        strict,
+        result.signer_id.as_deref(),
+    );
 }
 
 fn serialize_verify_text_result(result: &jacs::inline::VerifyTextResult) -> BindingResult<String> {
@@ -924,8 +1377,90 @@ mod tests {
     /// so we only need a default wrapper (no agent loaded).
     fn test_wrapper() -> SimpleAgentWrapper {
         let (wrapper, _info) =
-            SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral agent");
+            SimpleAgentWrapper::ephemeral(Some("pq2025")).expect("ephemeral agent");
         wrapper
+    }
+
+    #[test]
+    fn protocol_helpers_live_on_public_simple_wrapper() {
+        let wrapper = test_wrapper();
+        let body = br#"{"include_test":false}"#;
+        let legacy = wrapper.build_auth_header().expect("legacy auth");
+        assert!(legacy.starts_with("JACS "));
+        let auth = wrapper
+            .build_request_auth_header("POST", "https://hai.ai/api/v1/agents/hello", body, "hai.ai")
+            .expect("request-bound auth");
+        assert!(auth.starts_with("JACS v2."));
+
+        let envelope_json = wrapper
+            .sign_response(r#"{"type":"connected"}"#)
+            .expect("response envelope");
+        let envelope: serde_json::Value =
+            serde_json::from_str(&envelope_json).expect("envelope JSON");
+        let signer_id = envelope["jacsSignature"]["agentID"]
+            .as_str()
+            .expect("signer id");
+        let keys = serde_json::json!({
+            signer_id: wrapper.get_public_key_pem().expect("public key PEM")
+        });
+        let verified_json = wrapper
+            .unwrap_signed_event(&envelope_json, &keys.to_string())
+            .expect("strict event verification");
+        let verified: serde_json::Value =
+            serde_json::from_str(&verified_json).expect("verified result");
+        assert_eq!(verified["verified"], true);
+        assert_eq!(verified["data"]["type"], "connected");
+
+        let preparation_json = wrapper
+            .prepare_signed_event_replay_json(&envelope_json, &keys.to_string(), 300)
+            .expect("external replay preparation");
+        let preparation: serde_json::Value =
+            serde_json::from_str(&preparation_json).expect("preparation JSON");
+        let contract: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/external_replay_contract.json"
+        ))
+        .expect("external replay contract fixture");
+        for field in contract["preparation"]["requiredFields"]
+            .as_array()
+            .expect("required fields")
+        {
+            let field = field.as_str().expect("field name");
+            assert!(
+                preparation.get(field).is_some(),
+                "missing claim field {field}"
+            );
+        }
+        for field in contract["preparation"]["forbiddenFields"]
+            .as_array()
+            .expect("forbidden fields")
+        {
+            let field = field.as_str().expect("field name");
+            assert!(
+                preparation.get(field).is_none(),
+                "preparation must not expose {field}"
+            );
+        }
+        assert_eq!(preparation["replayConsumed"], false);
+        assert_eq!(preparation["status"], "crypto_verified_replay_pending");
+    }
+
+    #[test]
+    fn protocol_json_inputs_reject_oversize_before_parsing() {
+        let wrapper = test_wrapper();
+        let oversized = " ".repeat(jacs::schema::utils::max_document_size() + 1);
+
+        for result in [
+            wrapper.canonicalize_json(&oversized),
+            wrapper.sign_response(&oversized),
+            wrapper.unwrap_signed_event(&oversized, "{}"),
+            wrapper.unwrap_signed_event("{}", &oversized),
+            wrapper.prepare_signed_event_replay_json(&oversized, "{}", 300),
+            wrapper.prepare_signed_event_replay_json("{}", &oversized, 300),
+        ] {
+            let error = result.expect_err("oversized JSON must fail before parsing");
+            assert_eq!(error.kind, ErrorKind::Validation);
+            assert!(error.to_string().contains("JSON input limit"));
+        }
     }
 
     #[test]

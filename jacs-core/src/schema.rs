@@ -23,6 +23,8 @@ use std::error::Error;
 
 /// Canonical schema identity for standalone agreement v2 documents.
 pub const V2_SCHEMA_ID: &str = "https://hai.ai/schemas/agreement/v2/agreement.schema.json";
+/// Canonical schema identity for purpose-bound Agreement v3 versions.
+pub const V3_SCHEMA_ID: &str = "https://hai.ai/schemas/agreement/v3/agreement.schema.json";
 
 /// Static map of `schemas/<path>` keys to their JSON contents. The wasm
 /// build needs this to resolve every `$ref` without disk access.
@@ -33,8 +35,10 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/components/files/v1/files.schema.json" => include_str!("../schemas/components/files/v1/files.schema.json"),
     "schemas/components/agreement/v1/agreement.schema.json" => include_str!("../schemas/components/agreement/v1/agreement.schema.json"),
     "schemas/agreement/v2/agreement.schema.json" => include_str!("../schemas/agreement/v2/agreement.schema.json"),
+    "schemas/agreement/v3/agreement.schema.json" => include_str!("../schemas/agreement/v3/agreement.schema.json"),
     "schemas/attestation/v1/attestation.schema.json" => include_str!("../schemas/attestation/v1/attestation.schema.json"),
     "schemas/conflict/v1/conflict.schema.json" => include_str!("../schemas/conflict/v1/conflict.schema.json"),
+    "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json" => include_str!("../schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json"),
 };
 
 /// Maps fully qualified `$id` URLs to short JACS document-type names
@@ -44,12 +48,14 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/agent/v1/agent.schema.json" => "agent",
     "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json" => "agreement",
     "https://hai.ai/schemas/agreement/v2/agreement.schema.json" => "agreement",
+    "https://hai.ai/schemas/agreement/v3/agreement.schema.json" => "agreementV3",
     "https://hai.ai/schemas/components/files/v1/files.schema.json" => "files",
     "https://hai.ai/schemas/components/signature/v1/signature.schema.json" => "signature",
     "https://hai.ai/schemas/header/v1/header.schema.json" => "header",
     "document" => "document",
     "https://hai.ai/schemas/attestation/v1/attestation.schema.json" => "attestation",
     "https://hai.ai/schemas/conflict/v1/conflict.schema.json" => "conflict",
+    "https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json" => "compatibilityKeyBinding",
 };
 
 /// The embedded JACS config schema, used to validate `jacs.config.json`.

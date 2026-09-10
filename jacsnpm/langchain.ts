@@ -41,6 +41,7 @@
  */
 
 import type { JacsClient } from './client.js';
+import { allowUnsignedOutput, requireSignedRaw } from './output-policy.js';
 
 // =============================================================================
 // Public types
@@ -49,8 +50,26 @@ import type { JacsClient } from './client.js';
 export interface JacsToolOptions {
   /** An initialized JacsClient instance. */
   client: JacsClient;
-  /** Throw on signing failure instead of logging and passing through. Default: false. */
+  /** Force fail-closed output even if allowUnsignedOutput is true. */
   strict?: boolean;
+  /**
+   * DANGEROUS: return the original tool output when signing or output-shape
+   * validation fails. Enabled only by literal `true`; default is fail closed.
+   */
+  allowUnsignedOutput?: boolean;
+}
+
+function serializeToolOutput(value: unknown): string {
+  if (typeof value === 'string') return value;
+  const serialized = JSON.stringify(value);
+  if (typeof serialized !== 'string') {
+    throw new TypeError('Tool output could not be serialized as JSON');
+  }
+  return serialized;
+}
+
+function reportUnsignedFallback(error: unknown): void {
+  console.error('[jacs/langchain] signing failed: returning explicitly allowed unsigned output:', error);
 }
 
 // =============================================================================
@@ -89,17 +108,17 @@ export function signedTool(tool: any, options: JacsToolOptions): any {
     schema: originalSchema,
     func: async (input: any) => {
       const result = await tool.invoke(input);
-      const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
       try {
+        const resultStr = serializeToolOutput(result);
         const signed = await options.client.signMessage({
           tool: originalName,
           result: resultStr,
         });
-        return signed.raw;
+        return requireSignedRaw(signed, 'JACS LangChain tool signing');
       } catch (err) {
-        if (options.strict) throw err;
-        console.error('[jacs/langchain] signing failed:', err);
-        return resultStr;
+        if (!allowUnsignedOutput(options.allowUnsignedOutput, options.strict)) throw err;
+        reportUnsignedFallback(err);
+        return result;
       }
     },
   });
@@ -130,38 +149,37 @@ export function jacsWrapToolCall(
     const result = await runnable.invoke(toolCall);
 
     // result is expected to be a ToolMessage (has .content, .tool_call_id, .name)
-    if (!result || typeof result.content === 'undefined') {
+    if (!result || typeof result !== 'object' || typeof result.content === 'undefined') {
+      const error = new TypeError('LangChain runnable did not return a ToolMessage with content');
+      if (!allowUnsignedOutput(options.allowUnsignedOutput, options.strict)) throw error;
+      reportUnsignedFallback(error);
       return result;
     }
 
-    const contentStr =
-      typeof result.content === 'string'
-        ? result.content
-        : JSON.stringify(result.content);
-
     try {
+      const contentStr = serializeToolOutput(result.content);
       const signed = await options.client.signMessage({
         tool: toolCall.name || result.name || 'unknown',
         content: contentStr,
       });
+      const signedRaw = requireSignedRaw(signed, 'JACS LangChain tool-call signing');
 
       let ToolMessage: any;
       try {
         ToolMessage = require('@langchain/core/messages').ToolMessage;
       } catch {
-        // If ToolMessage is not available, mutate in place as fallback.
-        result.content = signed.raw;
-        return result;
+        // Preserve the result shape without mutating a caller-owned object.
+        return { ...result, content: signedRaw };
       }
 
       return new ToolMessage({
-        content: signed.raw,
+        content: signedRaw,
         tool_call_id: result.tool_call_id || '',
         name: result.name,
       });
     } catch (err) {
-      if (options.strict) throw err;
-      console.error('[jacs/langchain] signing failed:', err);
+      if (!allowUnsignedOutput(options.allowUnsignedOutput, options.strict)) throw err;
+      reportUnsignedFallback(err);
       return result;
     }
   };
@@ -259,7 +277,7 @@ export function createJacsTools(options: JacsToolOptions): any[] {
             documentId: signed.documentId,
             agentId: signed.agentId,
             timestamp: signed.timestamp,
-            raw: signed.raw,
+            raw: requireSignedRaw(signed, 'JACS LangChain signing tool'),
           });
         } catch (err) {
           return handleError(err, 'signing failed');
@@ -317,7 +335,7 @@ export function createJacsTools(options: JacsToolOptions): any[] {
             documentId: signed.documentId,
             agentId: signed.agentId,
             timestamp: signed.timestamp,
-            raw: signed.raw,
+            raw: requireSignedRaw(signed, 'JACS LangChain agreement creation'),
           });
         } catch (err) {
           return handleError(err, 'create agreement failed');
@@ -340,7 +358,7 @@ export function createJacsTools(options: JacsToolOptions): any[] {
             documentId: signed.documentId,
             agentId: signed.agentId,
             timestamp: signed.timestamp,
-            raw: signed.raw,
+            raw: requireSignedRaw(signed, 'JACS LangChain agreement signing'),
           });
         } catch (err) {
           return handleError(err, 'sign agreement failed');

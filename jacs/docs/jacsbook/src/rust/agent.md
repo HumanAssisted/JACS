@@ -63,26 +63,28 @@ jacs agent create --create-keys true -f my-agent.json
 
 ## Cryptographic Keys
 
-JACS supports:
+New agents hold two key roles:
 
-| Algorithm | Description |
-|-----------|-------------|
-| `ring-Ed25519` | Fast elliptic curve signatures |
-| `pq2025` | Post-quantum ML-DSA-87 signatures |
+| Role | Algorithm | Purpose |
+|------|-----------|---------|
+| `native_root` | `pq2025` (default) or `ring-Ed25519` | Signs native JACS documents. Creation honors explicit Ed25519 selection. Rotation preserves the current algorithm unless Ed25519 explicitly upgrades to `pq2025`; downgrade is rejected. |
+| `ecosystem_signing` | `ES256` (ECDSA P-256) | Compatibility credential for ecosystems that require classical signatures (JWKS/DID/A2A). Never signs native documents. |
 
-Configure the default algorithm in `jacs.config.json`:
+Use `ed25519` as the user-facing creation label; configuration and signed
+documents use the canonical `ring-Ed25519` wire label.
 
-```json
-{
-  "jacs_agent_key_algorithm": "ring-Ed25519"
-}
+The compatibility key is minted eagerly at creation (skip with
+`CreateAgentParams::builder().no_compat_key(true)` or the CLI
+`--no-compat-key`). Existing agents migrate explicitly:
+
+```rust,ignore
+let compat = agent.add_compat_key()?; // role, algorithm, RFC 7638 kid, paths
+let info = agent.ecosystem_key_info()?; // typed KeyNotFound when absent
 ```
 
-Or with an environment variable:
-
-```bash
-JACS_AGENT_KEY_ALGORITHM=ring-Ed25519 jacs agent create --create-keys true
-```
+Roles are recorded in `jacs_keys/jacs.keyring.json` (metadata only); the
+ES256 private key uses the same AES-256-GCM + Argon2id envelope and 0600
+permissions as the native root.
 
 ## Verifying Agents
 
@@ -92,6 +94,45 @@ jacs agent verify -a ./path/to/agent.json
 jacs agent verify --require-dns
 jacs agent verify --require-strict-dns
 ```
+
+## HTTP protocol helpers
+
+`SimpleAgent` signs request context and complete response envelopes without
+exposing its internal mutex:
+
+```rust
+use std::collections::HashMap;
+use jacs::{protocol::verify_signed_event_with_trusted_keys, simple::SimpleAgent};
+
+let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
+let body = br#"{"action":"approve"}"#;
+let authorization = agent.build_request_auth_header(
+    "POST",
+    "https://api.example.com/v1/jobs?mode=strict",
+    body,
+    "jobs-api",
+)?;
+
+let envelope = agent.sign_response(&serde_json::json!({"decision": "allow"}))?;
+let signer_id = envelope["jacsSignature"]["agentID"]
+    .as_str()
+    .ok_or("missing signer ID")?;
+let keys = HashMap::from([(signer_id.to_owned(), agent.get_public_key()?)]);
+let verified = verify_signed_event_with_trusted_keys(&envelope, &keys)?;
+assert!(authorization.starts_with("JACS v2."));
+assert_eq!(verified.data["decision"], "allow");
+```
+
+The request header binds method, absolute URL including query, exact body
+bytes, audience, key, time, and nonce. The response signature covers both data
+and every envelope field. The verifier rejects unsigned/plain events, unknown
+signers, legacy payload-only envelopes, and any metadata or payload mutation.
+See [Security](../advanced/security.md#request-bound-http-authorization) for
+server replay-store requirements and migration from unbound headers.
+
+The supplied key map is the trust boundary. A valid signature proves possession
+of that key, not a real-world identity unless the application established the
+signer-to-key association under its configured policy.
 
 ## Agent Document Structure
 

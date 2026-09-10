@@ -4,7 +4,7 @@
 //! in `tests/cli_command_snapshot.rs`) can pick it up without dragging in the
 //! full binary entry point. See `src/lib.rs` for the public re-export.
 
-use clap::{Arg, ArgAction, Command, crate_name, value_parser};
+use clap::{Arg, ArgAction, ArgGroup, Command, crate_name, value_parser};
 
 use crate::password_bootstrap::quickstart_password_bootstrap_help;
 
@@ -86,6 +86,70 @@ pub fn build_cli() -> Command {
                                 .required(true)
                                 .help("Create keys or not if they already exist. Configure key type in jacs.config.json")
                                 .value_parser(value_parser!(bool)),
+                        )
+                        .arg(
+                            Arg::new("no-compat-key")
+                                .long("no-compat-key")
+                                .action(ArgAction::SetTrue)
+                                .help("Skip the ES256 ecosystem compatibility key (minimal/air-gapped agents); add later with 'jacs agent add-compat-key'"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("add-compat-key")
+                        .about("Add the ES256 ecosystem compatibility key to an existing agent (explicit migration; loading never creates keys)")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("export-jwks")
+                        .about("Export the compatibility JWKS (ES256 public key; PQ material is never published)")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("export-compat-binding")
+                        .about("Export the native-root-signed compatibility key binding (traces the ES256 key to the agent's native root)")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("issue-compat-binding")
+                        .about("Issue (or re-issue) the native-root-signed compatibility key binding; content scopes (ap2-mandate, agreement-vc) and post-rotation re-issue require this explicit command")
+                        .arg(
+                            Arg::new("scopes")
+                                .long("scopes")
+                                .value_delimiter(',')
+                                // The library's scope list is the single
+                                // authority: a scope added to ALL_SCOPES is
+                                // CLI-reachable without a retyped literal.
+                                .value_parser(clap::builder::PossibleValuesParser::new(
+                                    jacs::compatibility::binding::ALL_SCOPES.iter().copied(),
+                                ))
+                                .help("Comma-separated binding scopes (defaults to the identity scopes: jwks,did,a2a-agent-card,w3c-agent-identity)"),
+                        )
+                        .arg(
+                            Arg::new("expires-at")
+                                .long("expires-at")
+                                .value_parser(value_parser!(String))
+                                .help("Optional RFC 3339 expiry; omitted means no expiry"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
                         ),
                 )
                 .subcommand(
@@ -149,8 +213,8 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("algorithm")
                                 .long("algorithm")
-                                .value_parser(["ring-Ed25519", "pq2025"])
-                                .help("Signing algorithm for the new keys (defaults to current)"),
+                                .value_parser(["pq2025"])
+                                .help("Signing algorithm for the new keys (defaults to the current algorithm; Ed25519 may upgrade to pq2025, but pq2025 cannot downgrade)"),
                         )
                         .arg(
                             Arg::new("config")
@@ -202,6 +266,8 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("output")
                                 .short('o')
+                                .long("output")
+                                .conflicts_with("directory")
                                 .help("Output filename. ")
                                 .value_parser(value_parser!(String)),
                         )
@@ -215,6 +281,12 @@ pub fn build_cli() -> Command {
                             Arg::new("verbose")
                                 .short('v')
                                 .long("verbose")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .help("Output a machine-readable result with document keys and saved paths")
                                 .action(ArgAction::SetTrue),
                         )
                         .arg(
@@ -243,6 +315,11 @@ pub fn build_cli() -> Command {
                                 .help("Embed documents or keep the documents external")
                                 .long("embed")
                                 .value_parser(value_parser!(bool)),
+                        )
+                        .group(
+                            ArgGroup::new("document-input")
+                                .args(["filename", "directory", "attach"])
+                                .required(true),
                         ),
                 )
                 .subcommand(
@@ -311,7 +388,7 @@ pub fn build_cli() -> Command {
                 )
                 .subcommand(
                     Command::new("check-agreement")
-                        .about("List the agents that should sign a document's agreement (legacy v1; prefer `jacs agreement-v2`)")
+                        .about("Inspect legacy v1 signatures and claimed signer metadata; never reports completion or policy acceptance (use Agreement v3 for actionable decisions)")
                         .arg(
                             Arg::new("agent-file")
                                 .short('a')
@@ -694,6 +771,23 @@ pub fn build_cli() -> Command {
                                 .help("Explicit resolving mutation (JSON or path to JSON)"),
                         ),
                 )
+                .subcommand(
+                    Command::new("export-vc")
+                        .about("Export an agreement v2 document as a W3C Verifiable Credential with an ecdsa-jcs-2019 Data Integrity proof (requires the agreement-vc binding scope)")
+                        .arg(
+                            Arg::new("agreement")
+                                .long("agreement")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Agreement v2 document (JSON, path, or '-' for stdin)"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
+                )
         )
         .subcommand(
             Command::new("key")
@@ -709,12 +803,20 @@ pub fn build_cli() -> Command {
                 .arg(
                     Arg::new("profile")
                         .long("profile")
-                        .default_value("core")
                         .help(
-                            "Tool profile: 'core' (default; document, trust, search, key, w3c tools) or \
-                             'full' (adds agreement, a2a, and attestation tools). Agreement v2 tools are \
-                             only registered under 'full' (or JACS_MCP_PROFILE=full).",
+                            "Security profile: 'verify-only' (default) or 'local-sign'. Local signing \
+                             requires --config or JACS_CONFIG pointing to an existing signed config; \
+                             it enables only offline JSON/Agreement signing as that local agent, not \
+                             human approval. File tools and key/trust administration remain unavailable. \
+                             When omitted, JACS_MCP_PROFILE is used before falling back to verify-only. \
+                             Reserved 'trust-admin' and 'legacy-core' profiles refuse startup.",
                         ),
+                )
+                .arg(
+                    Arg::new("config")
+                        .long("config")
+                        .value_parser(value_parser!(String))
+                        .help("Existing signed agent config (overrides JACS_CONFIG). Required for local-sign; no implicit config discovery or new key creation."),
                 )
                 .subcommand(
                     Command::new("install")
@@ -725,6 +827,27 @@ pub fn build_cli() -> Command {
                     Command::new("run")
                         .about("Deprecated: use `jacs mcp` directly")
                         .hide(true)
+                ),
+        )
+        .subcommand(
+            Command::new("ap2")
+                .about("AP2 (Agent Payments Protocol) compatibility exports")
+                .subcommand(
+                    Command::new("export-mandate")
+                        .about("Export the AP2 merchant-authorization mandate for a UCP checkout as a detached ES256 JWS (requires the ap2-mandate binding scope)")
+                        .arg(
+                            Arg::new("input")
+                                .long("input")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Checkout input: inline JSON, a file path, or '-' for stdin"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (defaults to ./jacs.config.json)"),
+                        ),
                 ),
         )
         .subcommand(
@@ -800,6 +923,12 @@ pub fn build_cli() -> Command {
                                 .long("host")
                                 .default_value("127.0.0.1")
                                 .help("Host to bind to (default: 127.0.0.1)"),
+                        )
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Canonical origin embedded in the signed Agent Card. Defaults to the exact loopback HTTP listener; non-loopback binds require an explicit HTTPS origin (for example, a TLS reverse proxy)"),
                         ),
                 )
                 .subcommand(
@@ -840,11 +969,17 @@ pub fn build_cli() -> Command {
                                 .help("Host to bind to (default: 127.0.0.1)"),
                         )
                         .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Canonical origin embedded in the signed Agent Card. Defaults to the exact loopback HTTP listener; pass the public HTTPS reverse-proxy origin in production"),
+                        )
+                        .arg(
                             Arg::new("algorithm")
                                 .long("algorithm")
                                 .short('a')
-                                .value_parser(["pq2025", "ring-Ed25519"])
-                                .help("Signing algorithm (default: pq2025)"),
+                                .value_parser(["pq2025", "ed25519", "ring-Ed25519"])
+                                .help("Signing algorithm: pq2025 (default) or ed25519; ring-Ed25519 remains accepted as a legacy alias"),
                         ),
                 ),
         )
@@ -1051,9 +1186,9 @@ pub fn build_cli() -> Command {
                     Arg::new("algorithm")
                         .long("algorithm")
                         .short('a')
-                        .value_parser(["ed25519", "pq2025"])
+                        .value_parser(["ed25519", "pq2025", "ring-Ed25519"])
                         .default_value("pq2025")
-                        .help("Signing algorithm (default: pq2025)"),
+                        .help("Signing algorithm: pq2025 (default) or ed25519; ring-Ed25519 remains accepted as a legacy alias"),
                 )
                 .arg(
                     Arg::new("sign")
@@ -1078,6 +1213,12 @@ pub fn build_cli() -> Command {
                         .short('y')
                         .action(ArgAction::SetTrue)
                         .help("Automatically set the new agent ID in jacs.config.json without prompting"),
+                )
+                .arg(
+                    Arg::new("no-compat-key")
+                        .long("no-compat-key")
+                        .action(ArgAction::SetTrue)
+                        .help("Skip the ES256 ecosystem compatibility key (minimal/air-gapped agents); add later with 'jacs agent add-compat-key'"),
                 )
         )
         .subcommand(

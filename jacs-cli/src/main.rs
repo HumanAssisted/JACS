@@ -10,7 +10,7 @@ use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::cli_utils::create::{
-    handle_agent_create, handle_agent_create_auto, handle_config_create,
+    handle_agent_create_auto_opts, handle_agent_create_opts, handle_config_create,
 };
 use jacs::cli_utils::default_set_file_list;
 use jacs::cli_utils::document::{
@@ -23,6 +23,7 @@ use jacs_cli::password_bootstrap::{
     ensure_cli_private_key_password, quickstart_password_bootstrap_help,
     wrap_quickstart_error_with_password_help,
 };
+use jacs_cli::{a2a_bind_address, generate_a2a_serve_documents, resolve_a2a_serve_origin};
 
 use rpassword::read_password;
 use std::env;
@@ -32,6 +33,19 @@ use std::process;
 
 // install/download functions removed — MCP is now built into the CLI
 // build_cli moved to src/cli_builder.rs (re-exported by lib.rs)
+
+/// Load the `SimpleAgent` for subcommands that take an optional `--config`
+/// path — the ONE place the CLI's load-failure wrapping lives.
+fn load_simple_agent(
+    config_path: Option<&str>,
+) -> Result<jacs::simple::SimpleAgent, Box<dyn Error>> {
+    jacs::simple::SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+        Box::new(std::io::Error::other(format!(
+            "Failed to load agent: {}",
+            e
+        )))
+    })
+}
 
 fn read_json_arg(raw: &str) -> Result<String, Box<dyn Error>> {
     if raw == "-" {
@@ -72,6 +86,30 @@ fn parse_agreement_v2_role(
     }
 }
 
+/// Install the process-wide stderr tracing subscriber (Issue 016).
+///
+/// Delegates to `jacs::observability::init_logging()`: STDERR writer,
+/// `RUST_LOG`-honoring `EnvFilter`, `try_init` semantics (repeated calls —
+/// e.g. the `jacs mcp` arm's own call — are no-ops). STDOUT is never
+/// touched; it stays reserved for machine-readable output (JSON envelopes,
+/// JWKS/PEM exports) and, under `jacs mcp`, the JSON-RPC transport.
+///
+/// Level policy: when `RUST_LOG` is unset, one-shot commands default to
+/// `jacs=warn` so operators see the §9.8 WARN diagnostics
+/// (`compatibility_key_missing`, `content_export_scope_denied`, ...) without
+/// success-path INFO noise; the `jacs mcp` serve path keeps the library's
+/// `jacs=info` default so the `mcp_server_starting` line is emitted even
+/// without `RUST_LOG` (CLAUDE.md norm 1: silent stdio is not acceptable).
+fn init_cli_tracing(is_mcp: bool) {
+    if !is_mcp && std::env::var_os("RUST_LOG").is_none() {
+        // SAFETY: called from main() before any threads are spawned (the
+        // signal handler installed earlier only sets a panic hook; the
+        // tokio runtime is built later, inside the `mcp` arm).
+        unsafe { std::env::set_var("RUST_LOG", "jacs=warn") };
+    }
+    jacs::observability::init_logging();
+}
+
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
     install_signal_handler();
@@ -79,6 +117,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // Create shutdown guard to ensure cleanup on exit (including early returns)
     let _shutdown_guard = ShutdownGuard::new();
     let matches = build_cli().arg_required_else_help(true).get_matches();
+
+    // Observability (CLAUDE.md norm 1 / P2 §9.8, Issue 016): install the
+    // stderr tracing subscriber BEFORE subcommand dispatch so structured
+    // events from the library are never dropped to a no-op dispatcher —
+    // including for one-shot commands like `agent export-jwks` and
+    // `ap2 export-mandate`, the primary P2 delivery surface.
+    init_cli_tracing(matches.subcommand_name() == Some("mcp"));
 
     match matches.subcommand() {
         Some(("version", _sub_matches)) => {
@@ -198,9 +243,70 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Parse args for the specific agent create command
                 let filename = create_matches.get_one::<String>("filename");
                 let create_keys = *create_matches.get_one::<bool>("create-keys").unwrap();
+                let no_compat_key = create_matches.get_flag("no-compat-key");
 
                 // Call the refactored handler function
-                handle_agent_create(filename, create_keys)?;
+                handle_agent_create_opts(filename, create_keys, no_compat_key)?;
+            }
+            Some(("add-compat-key", sub_m)) => {
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent = load_simple_agent(config_path)?;
+                let compat = agent.add_compat_key().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(format!(
+                        "Failed to add compatibility key: {}",
+                        e
+                    )))
+                })?;
+                println!("Ecosystem compatibility key added.");
+                println!("  Role:      {}", compat.role);
+                println!("  Algorithm: {}", compat.algorithm);
+                println!("  Kid:       {}", compat.kid);
+                println!("  Public:    {}", compat.public_key_path);
+                println!("  Private:   {}", compat.private_key_path);
+            }
+            Some(("export-jwks", sub_m)) => {
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent = load_simple_agent(config_path)?;
+                let jwks = agent
+                    .export_compatibility_jwks()
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to export JWKS: {}",
+                            e
+                        )))
+                    })?;
+                println!("{}", serde_json::to_string_pretty(&jwks)?);
+            }
+            Some(("export-compat-binding", sub_m)) => {
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent = load_simple_agent(config_path)?;
+                let binding =
+                    agent
+                        .export_compatibility_key_binding()
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to export compatibility binding: {}",
+                                e
+                            )))
+                        })?;
+                println!("{}", serde_json::to_string_pretty(&binding)?);
+            }
+            Some(("issue-compat-binding", sub_m)) => {
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent = load_simple_agent(config_path)?;
+                let scope_values: Option<Vec<&str>> = sub_m
+                    .get_many::<String>("scopes")
+                    .map(|vals| vals.map(|s| s.as_str()).collect());
+                let expires_at = sub_m.get_one::<String>("expires-at").map(|s| s.as_str());
+                let binding = agent
+                    .issue_compat_binding(scope_values.as_deref(), expires_at)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to issue compatibility binding: {}",
+                            e
+                        )))
+                    })?;
+                println!("{}", serde_json::to_string_pretty(&binding)?);
             }
             Some(("verify", verify_matches)) => {
                 let _agentfile = verify_matches.get_one::<String>("agent-file");
@@ -329,18 +435,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Some(("rotate-keys", sub_m)) => {
-                use jacs::simple::SimpleAgent;
-
                 let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
                 let algorithm = sub_m.get_one::<String>("algorithm").map(|s| s.as_str());
 
-                let agent =
-                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to load agent: {}",
-                            e
-                        )))
-                    })?;
+                let agent = load_simple_agent(config_path)?;
 
                 let result = jacs::simple::advanced::rotate(&agent, algorithm).map_err(
                     |e| -> Box<dyn Error> {
@@ -370,11 +468,28 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             e
                         )))
                     })?;
+                jacs::agent::Agent::verify_existing_config_before_use(&config).map_err(
+                    |error| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Refusing key listing from unverified config: {}",
+                            error
+                        )))
+                    },
+                )?;
 
                 let key_dir = config
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys");
+                    .resolve_config_relative_path(
+                        config
+                            .jacs_key_directory()
+                            .as_deref()
+                            .unwrap_or("./jacs_keys"),
+                    )
+                    .map_err(|error| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to resolve configured key directory: {}",
+                            error
+                        )))
+                    })?;
                 let algo = config
                     .jacs_agent_key_algorithm()
                     .as_deref()
@@ -385,7 +500,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap_or("jacs.public.pem");
 
                 // Show active key
-                let active_path = std::path::Path::new(key_dir).join(pub_name);
+                let active_path = key_dir.join(pub_name);
                 if active_path.exists() {
                     let meta = std::fs::metadata(&active_path).ok();
                     let modified = meta
@@ -411,7 +526,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 // Scan for archived keys
                 let mut archived: Vec<(String, String)> = Vec::new();
-                if let Ok(entries) = std::fs::read_dir(key_dir) {
+                if let Ok(entries) = std::fs::read_dir(&key_dir) {
                     for entry in entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
                         // Archived keys look like: jacs.public.{uuid}.pem
@@ -439,7 +554,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 } else {
                     archived.sort_by(|a, b| b.1.cmp(&a.1));
                     for (name, modified) in &archived {
-                        println!("Archived: {}/{} (modified: {})", key_dir, name, modified);
+                        println!(
+                            "Archived: {}/{} (modified: {})",
+                            key_dir.display(),
+                            name,
+                            modified
+                        );
                     }
                 }
             }
@@ -459,11 +579,33 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             e
                         )))
                     })?;
+                jacs::agent::Agent::verify_existing_config_before_use(&config).map_err(
+                    |error| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Refusing repair path selection from unverified config: {}",
+                            error
+                        )))
+                    },
+                )?;
 
                 let key_dir = config
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys");
+                    .resolve_config_relative_path(
+                        config
+                            .jacs_key_directory()
+                            .as_deref()
+                            .unwrap_or("./jacs_keys"),
+                    )
+                    .map_err(|error| -> Box<dyn Error> {
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to resolve configured key directory: {}",
+                            error
+                        )))
+                    })?;
+                let key_dir = key_dir.to_str().ok_or_else(|| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(
+                        "Configured key directory is not valid UTF-8",
+                    ))
+                })?;
 
                 let journal_path = RotationJournal::journal_path(key_dir);
                 if RotationJournal::load(&journal_path).is_some() {
@@ -471,7 +613,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         "Incomplete rotation detected (journal at {}). Loading agent to trigger auto-repair...",
                         journal_path
                     );
-                    // Loading the agent triggers warn_if_config_tampered -> auto-repair
+                    // Loading the agent validates the journal, historical config,
+                    // direct-child transition proof, and then performs auto-repair.
                     let _agent =
                         SimpleAgent::load(Some(config_p), None).map_err(|e| -> Box<dyn Error> {
                             Box::new(std::io::Error::other(format!("Repair failed: {}", e)))
@@ -498,6 +641,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+                let json_output = *create_matches.get_one::<bool>("json").unwrap_or(&false);
                 let _agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches
@@ -510,7 +654,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 })?;
 
                 let _attachment_links = agent.parse_attachement_arg(attachments);
-                let _ = create_documents(
+                let outputs = create_documents(
                     &mut agent,
                     filename,
                     directory,
@@ -519,7 +663,26 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     embed,
                     no_save,
                     schema,
-                );
+                )?;
+
+                if json_output {
+                    print_json_pretty(&serde_json::json!({
+                        "status": "created",
+                        "documents": outputs,
+                    }))?;
+                } else if no_save {
+                    for output in outputs {
+                        if let Some(document) = output.document {
+                            println!("{}", serde_json::to_string(&document)?);
+                        }
+                    }
+                } else {
+                    for output in outputs {
+                        if let Some(path) = output.saved_path {
+                            println!("Saved signed document: {}", path);
+                        }
+                    }
+                }
             }
             // TODO copy for sharing
             // Some(("copy", create_matches)) => {
@@ -644,7 +807,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             Some(("create", sub_m)) => {
                 let input_raw = read_json_arg(sub_m.get_one::<String>("input").unwrap())?;
                 let input: jacs::agreements::v2::CreateAgreementV2 =
-                    serde_json::from_str(&input_raw)?;
+                    serde_json::from_value(jacs::strict_json::parse_strict_json(&input_raw)?)?;
                 let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
                     format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
                 })?;
@@ -655,7 +818,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
                 let mutation_raw = read_json_arg(sub_m.get_one::<String>("mutation").unwrap())?;
                 let mutation: jacs::agreements::v2::AgreementV2Mutation =
-                    serde_json::from_str(&mutation_raw)?;
+                    serde_json::from_value(jacs::strict_json::parse_strict_json(&mutation_raw)?)?;
                 let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
                     format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
                 })?;
@@ -683,7 +846,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let report = jacs::agreements::v2::verify_with_agent(&mut agent, &agreement)?;
                 print_json_pretty(&report)?;
                 if !report.valid {
-                    let agreement_id = serde_json::from_str::<serde_json::Value>(&agreement)
+                    let agreement_id = jacs::strict_json::parse_strict_json(&agreement)
                         .ok()
                         .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
                         .unwrap_or_else(|| "unknown".to_string());
@@ -721,7 +884,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let side = read_json_arg(sub_m.get_one::<String>("side").unwrap())?;
                 let mutation_raw = read_json_arg(sub_m.get_one::<String>("mutation").unwrap())?;
                 let mutation: jacs::agreements::v2::AgreementV2Mutation =
-                    serde_json::from_str(&mutation_raw)?;
+                    serde_json::from_value(jacs::strict_json::parse_strict_json(&mutation_raw)?)?;
                 let mut agent: Agent = load_agent().map_err(|e| -> Box<dyn Error> {
                     format!("failed to load agent from config (expected ./jacs.config.json or $JACS_CONFIG). Run 'jacs config create' and 'jacs agent create' first. cause: {e}").into()
                 })?;
@@ -729,6 +892,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     &mut agent, &base, &previous, &side, mutation,
                 )?;
                 print_json_pretty(&doc.value)?;
+            }
+            Some(("export-vc", sub_m)) => {
+                let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent = load_simple_agent(config_path)?;
+                let vc =
+                    agent
+                        .export_agreement_v2_as_vc(&agreement)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to export Agreement-v2 VC: {}",
+                                e
+                            )))
+                        })?;
+                println!("{}", serde_json::to_string_pretty(&vc)?);
             }
             _ => {
                 eprintln!("No agreement-v2 subcommand given. Run `jacs agreement-v2 --help`.");
@@ -743,15 +921,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         Some(("key", key_matches)) => match key_matches.subcommand() {
             Some(("reencrypt", _reencrypt_matches)) => {
                 use jacs::crypt::aes_encrypt::password_requirements;
-                use jacs::simple::SimpleAgent;
 
                 // Load the agent first to find the key file
-                let agent = SimpleAgent::load(None, None).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::other(format!(
-                        "Failed to load agent: {}",
-                        e
-                    )))
-                })?;
+                let agent = load_simple_agent(None)?;
 
                 println!("Re-encrypting private key.\n");
 
@@ -817,24 +989,70 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 process::exit(0);
             }
             _ => {
-                // Observability (CLAUDE.md norm): install a tracing subscriber
-                // before serving so verification/trust/auth events are not
-                // dropped to a no-op dispatcher. init_logging() writes to STDERR
-                // (never STDOUT — that is the JSON-RPC transport) and honors
-                // RUST_LOG. Scoped to the serve path so one-shot CLI commands
-                // that emit machine-readable envelopes to stderr are unaffected.
+                // Observability (CLAUDE.md norm): the subscriber is installed
+                // at the top of main() via init_cli_tracing() for EVERY
+                // command (Issue 016). init_logging() writes to STDERR (never
+                // STDOUT — that is the JSON-RPC transport) and honors
+                // RUST_LOG. This call is a try_init no-op kept as a safety
+                // net so the serve path can never start silent even if the
+                // early init is refactored away.
                 jacs::observability::init_logging();
                 let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
+                let profile = match jacs_mcp::Profile::resolve(profile_str) {
+                    Ok(profile) => profile,
+                    Err(error) => {
+                        tracing::error!(
+                            event = "mcp_profile_invalid",
+                            profile = error.value(),
+                            allowed_profiles = "verify-only,local-sign,trust-admin,legacy-core",
+                            "MCP profile selection failed"
+                        );
+                        eprintln!("{error}");
+                        process::exit(2);
+                    }
+                };
                 // Emitted to STDERR by the subscriber above; the operator gets a
                 // startup line and stdout stays clean for the JSON-RPC transport.
                 tracing::info!(
                     event = "mcp_server_starting",
-                    profile = profile_str.unwrap_or("default"),
+                    profile = %profile,
                     "Starting JACS MCP server (stdio transport)"
                 );
-                let profile = jacs_mcp::Profile::resolve(profile_str);
-                let (agent, _info) = jacs_mcp::load_agent_from_config_env_with_info()?;
-                let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
+                let config_path = match mcp_matches.get_one::<String>("config") {
+                    Some(path) => Some(path.clone()),
+                    None => match std::env::var("JACS_CONFIG") {
+                        Ok(path) => Some(path),
+                        Err(std::env::VarError::NotPresent) => None,
+                        Err(std::env::VarError::NotUnicode(_)) => {
+                            return Err(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "JACS_CONFIG is not valid Unicode",
+                            )));
+                        }
+                    },
+                };
+                let server = if profile == jacs_mcp::Profile::LocalSign {
+                    let path = config_path.as_deref().ok_or_else(|| {
+                        tracing::warn!(event = "mcp_local_signing_denied", reason = "config_required",
+                            "Local signing requires an explicit existing config");
+                        std::io::Error::new(std::io::ErrorKind::InvalidInput,
+                            "local-sign requires --config <existing signed jacs.config.json> or JACS_CONFIG; run jacs init first")
+                    })?;
+                    jacs_mcp::JacsMcpServer::local_signing_from_config(path).map_err(|error| {
+                        tracing::warn!(event = "mcp_local_signing_denied", reason = %error,
+                            "Local signing startup refused");
+                        error
+                    })?
+                } else {
+                    match config_path {
+                        Some(path) => {
+                            let (agent, _info) =
+                                jacs_mcp::load_public_agent_from_config_path_with_info(path)?;
+                            jacs_mcp::JacsMcpServer::with_profile(agent, profile)
+                        }
+                        None => jacs_mcp::JacsMcpServer::verification_only(),
+                    }
+                };
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(jacs_mcp::serve_stdio(server))?;
             }
@@ -846,6 +1064,29 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             );
             process::exit(1);
         }
+        Some(("ap2", ap2_matches)) => match ap2_matches.subcommand() {
+            Some(("export-mandate", sub_m)) => {
+                let checkout_json = read_json_arg(sub_m.get_one::<String>("input").unwrap())?;
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let agent = load_simple_agent(config_path)?;
+                let mandate =
+                    agent
+                        .export_ap2_mandate(&checkout_json)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to export AP2 mandate: {}",
+                                e
+                            )))
+                        })?;
+                println!("{}", serde_json::to_string_pretty(&mandate)?);
+            }
+            _ => {
+                eprintln!(
+                    "Unknown ap2 command. Try: jacs ap2 export-mandate --input <JSON, path, or - for stdin>"
+                );
+                process::exit(1);
+            }
+        },
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
             Some(("assess", assess_matches)) => {
                 use jacs::a2a::AgentCard;
@@ -878,7 +1119,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .map_err(|e| format!("Read file failed: {}", e))?
                 };
 
-                let card: AgentCard = serde_json::from_str(&card_json)
+                let card_value = jacs::strict_json::parse_strict_json(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
+                let card: AgentCard = serde_json::from_value(card_value)
                     .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
 
                 // Create an empty agent for assessment context
@@ -933,7 +1176,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .map_err(|e| format!("Read file failed: {}", e))?
                 };
 
-                let card: AgentCard = serde_json::from_str(&card_json)
+                let card_value = jacs::strict_json::parse_strict_json(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
+                let card: AgentCard = serde_json::from_value(card_value)
                     .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
 
                 // Extract agent ID and version from metadata
@@ -1008,7 +1253,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .text()
                     .map_err(|e| format!("Read body failed: {}", e))?;
 
-                let card: AgentCard = serde_json::from_str(&card_json)
+                let card_value = jacs::strict_json::parse_strict_json(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON at {}: {}", card_url, e))?;
+                let card: AgentCard = serde_json::from_value(card_value)
                     .map_err(|e| format!("Invalid Agent Card JSON at {}: {}", card_url, e))?;
 
                 if json_output {
@@ -1067,6 +1314,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .get_one::<String>("host")
                     .map(|s| s.as_str())
                     .unwrap_or("127.0.0.1");
+                let canonical_origin = resolve_a2a_serve_origin(
+                    host,
+                    port,
+                    serve_matches
+                        .get_one::<String>("origin")
+                        .map(String::as_str),
+                )
+                .map_err(std::io::Error::other)?;
 
                 // Load or quickstart the agent
                 ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
@@ -1076,33 +1331,31 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) = jacs::simple::advanced::quickstart(
+                let (simple_agent, info) = jacs::simple::advanced::quickstart(
                     "jacs-agent",
-                    "localhost",
+                    &canonical_origin,
                     Some("JACS A2A agent"),
                     None,
                     None,
                 )
                 .map_err(|e| wrap_quickstart_error_with_password_help("Failed to load agent", e))?;
 
-                // Export the Agent Card for display
-                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
-                    |e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to export Agent Card: {}",
-                            e
-                        )))
-                    },
-                )?;
-
-                // Generate well-known documents via public API
-                let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
-                    .map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to generate well-known documents: {}",
-                            e
-                        )))
-                    })?;
+                // Generate a card whose signed interface URL names the exact
+                // loopback listener, or the explicit public TLS origin. Load
+                // the core Agent so the CLI can pass that card through the
+                // identity-bound generator without mutating persistent agent
+                // metadata just to select a serving origin.
+                drop(simple_agent);
+                let mut agent = load_agent()?;
+                let (agent_card, documents) =
+                    generate_a2a_serve_documents(&mut agent, &canonical_origin).map_err(
+                        |e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to generate well-known documents: {}",
+                                e
+                            )))
+                        },
+                    )?;
 
                 // Build a lookup map: path -> JSON body
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1114,15 +1367,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     );
                 }
 
-                let addr = format!("{}:{}", host, port);
+                let addr = a2a_bind_address(host, port);
                 let server = tiny_http::Server::http(&addr)
                     .map_err(|e| format!("Failed to start server on {}: {}", addr, e))?;
 
-                println!("Serving A2A well-known endpoints at http://{}", addr);
+                println!("A2A listener: http://{}", addr);
+                println!("Canonical discovery origin: {}", canonical_origin);
                 println!("  Agent: {} ({})", agent_card.name, info.agent_id);
                 println!("  Endpoints:");
                 for path in routes.keys() {
-                    println!("    http://{}{}", addr, path);
+                    println!("    {}{}", canonical_origin, path);
                 }
                 println!("\nPress Ctrl+C to stop.");
 
@@ -1158,6 +1412,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .get_one::<String>("host")
                     .map(|s| s.as_str())
                     .unwrap_or("127.0.0.1");
+                let canonical_origin = resolve_a2a_serve_origin(
+                    host,
+                    port,
+                    qs_matches.get_one::<String>("origin").map(String::as_str),
+                )
+                .map_err(std::io::Error::other)?;
                 let algorithm = qs_matches
                     .get_one::<String>("algorithm")
                     .map(|s| s.as_str());
@@ -1181,7 +1441,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) =
+                let (simple_agent, info) =
                     jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
                         .map_err(|e| {
                             wrap_quickstart_error_with_password_help(
@@ -1190,24 +1450,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             )
                         })?;
 
-                // Export the Agent Card
-                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
-                    |e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to export Agent Card: {}",
-                            e
-                        )))
-                    },
-                )?;
-
-                // Generate well-known documents
-                let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
-                    .map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::other(format!(
-                            "Failed to generate well-known documents: {}",
-                            e
-                        )))
-                    })?;
+                drop(simple_agent);
+                let mut agent = load_agent()?;
+                let (agent_card, documents) =
+                    generate_a2a_serve_documents(&mut agent, &canonical_origin).map_err(
+                        |e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::other(format!(
+                                "Failed to generate well-known documents: {}",
+                                e
+                            )))
+                        },
+                    )?;
 
                 // Build route map
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1219,7 +1472,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     );
                 }
 
-                let addr = format!("{}:{}", host, port);
+                let addr = a2a_bind_address(host, port);
                 let server = tiny_http::Server::http(&addr)
                     .map_err(|e| format!("Failed to start server on {}: {}", addr, e))?;
 
@@ -1227,12 +1480,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("==============");
                 println!("Agent: {} ({})", agent_card.name, info.agent_id);
                 println!("Algorithm: {}", algorithm.unwrap_or("pq2025"));
+                println!("Listener: http://{}", addr);
+                println!("Canonical origin: {}", canonical_origin);
                 println!();
-                println!("Discovery URL: http://{}/.well-known/agent-card.json", addr);
+                println!(
+                    "Discovery URL: {}/.well-known/agent-card.json",
+                    canonical_origin
+                );
                 println!();
                 println!("Endpoints:");
                 for path in routes.keys() {
-                    println!("  http://{}{}", addr, path);
+                    println!("  {}{}", canonical_origin, path);
                 }
                 println!();
                 println!("Press Ctrl+C to stop.");
@@ -1445,7 +1703,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     buf
                 };
 
-                let value: serde_json::Value = serde_json::from_str(&input)
+                let value: serde_json::Value = jacs::strict_json::parse_strict_json(&input)
                     .map_err(|e| format!("Invalid JSON input: {}", e))?;
 
                 let signed = agent.sign_message(&value).map_err(|e| -> Box<dyn Error> {
@@ -1489,7 +1747,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     let claims_str = create_matches
                         .get_one::<String>("claims")
                         .expect("claims is required");
-                    let claims: Vec<Claim> = serde_json::from_str(claims_str).map_err(|e| {
+                    let claims_value = jacs::strict_json::parse_strict_json(claims_str).map_err(|e| {
+                        format!(
+                            "Invalid claims JSON: {}. \
+                             Provide a JSON array like '[{{\"name\":\"reviewed\",\"value\":true}}]'",
+                            e
+                        )
+                    })?;
+                    let claims: Vec<Claim> = serde_json::from_value(claims_value).map_err(|e| {
                         format!(
                             "Invalid claims JSON: {}. \
                              Provide a JSON array like '[{{\"name\":\"reviewed\",\"value\":true}}]'",
@@ -1500,7 +1765,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     // Parse optional evidence
                     let evidence: Vec<EvidenceRef> =
                         if let Some(ev_str) = create_matches.get_one::<String>("evidence") {
-                            serde_json::from_str(ev_str)
+                            let value = jacs::strict_json::parse_strict_json(ev_str)
+                                .map_err(|e| format!("Invalid evidence JSON: {}", e))?;
+                            serde_json::from_value(value)
                                 .map_err(|e| format!("Invalid evidence JSON: {}", e))?
                         } else {
                             vec![]
@@ -1600,15 +1867,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     let agent = match SimpleAgent::load(None, None) {
                         Ok(a) => a,
                         Err(_) => {
-                            let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                            let (a, _) = SimpleAgent::ephemeral(Some("pq2025"))
                                 .map_err(|e| format!("Failed to create verifier: {}", e))?;
                             a
                         }
                     };
 
                     // Load the attestation document into agent storage first
-                    let att_value: serde_json::Value = serde_json::from_str(&att_content)
-                        .map_err(|e| format!("Invalid attestation JSON: {}", e))?;
+                    let att_value: serde_json::Value =
+                        jacs::strict_json::parse_strict_json(&att_content)
+                            .map_err(|e| format!("Invalid attestation JSON: {}", e))?;
                     let doc_key = format!(
                         "{}:{}",
                         att_value["jacsId"].as_str().unwrap_or("unknown"),
@@ -1704,8 +1972,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         process::exit(1);
                     });
 
-                    let (_agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
-                        .unwrap_or_else(|e| {
+                    let (_agent, _info) =
+                        SimpleAgent::ephemeral(Some("pq2025")).unwrap_or_else(|e| {
                             eprintln!("Failed to create agent: {}", e);
                             process::exit(1);
                         });
@@ -1796,13 +2064,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             );
                             eprintln!("{}", quickstart_password_bootstrap_help());
                         }
-                        let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                        let (a, _) = SimpleAgent::ephemeral(Some("pq2025"))
                             .map_err(|e| format!("Failed to create verifier: {}", e))?;
                         a
                     }
                 }
             } else {
-                let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                let (a, _) = SimpleAgent::ephemeral(Some("pq2025"))
                     .map_err(|e| format!("Failed to create verifier: {}", e))?;
                 a
             };
@@ -1945,10 +2213,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         }
         Some(("init", init_matches)) => {
             let auto_yes = *init_matches.get_one::<bool>("yes").unwrap_or(&false);
+            let no_compat_key = init_matches.get_flag("no-compat-key");
             println!("--- Running Config Creation ---");
             handle_config_create()?;
             println!("\n--- Running Agent Creation (with keys) ---");
-            handle_agent_create_auto(None, true, auto_yes)?;
+            handle_agent_create_auto_opts(None, true, auto_yes, no_compat_key)?;
+            print_init_key_summary(no_compat_key);
             println!("\n--- JACS Initialization Complete ---");
         }
         #[cfg(feature = "keychain")]
@@ -2027,6 +2297,49 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+/// Print the post-`jacs init` key summary (P2 Task 002, Issue 019): one
+/// line per key role so the operator sees the pq2025 native root and the
+/// ES256 ecosystem compatibility key (or the explicit `--no-compat-key`
+/// opt-out) without opening the keyring file. Best-effort and read-only:
+/// it must never fail an init that already succeeded.
+fn print_init_key_summary(no_compat_key: bool) {
+    let config: Option<serde_json::Value> = std::fs::read_to_string("jacs.config.json")
+        .ok()
+        .and_then(|raw| jacs::strict_json::parse_strict_json(&raw).ok());
+    let key_directory = config
+        .as_ref()
+        .and_then(|cfg| cfg.get("jacs_key_directory"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("./jacs_keys")
+        .to_string();
+    let keyring = jacs::keystore::compat::read_keyring(&key_directory).unwrap_or_default();
+
+    println!("\nKey summary ({}):", key_directory);
+    match keyring.keys.iter().find(|k| k.role == "native_root") {
+        Some(root) => println!("  native_root:       {} (kid {})", root.algorithm, root.kid),
+        None => {
+            // `--no-compat-key` inits never write keyring metadata; fall
+            // back to the configured native algorithm (default pq2025).
+            let algorithm = config
+                .as_ref()
+                .and_then(|cfg| cfg.get("jacs_agent_key_algorithm"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("pq2025")
+                .to_string();
+            println!("  native_root:       {}", algorithm);
+        }
+    }
+    match keyring.keys.iter().find(|k| k.role == "ecosystem_signing") {
+        Some(eco) => println!("  ecosystem_signing: {} (kid {})", eco.algorithm, eco.kid),
+        None if no_compat_key => println!(
+            "  ecosystem_signing: skipped (--no-compat-key); add later with `jacs agent add-compat-key`"
+        ),
+        None => {
+            println!("  ecosystem_signing: missing; add with `jacs agent add-compat-key`")
+        }
+    }
 }
 
 fn w3c_did_options(matches: &clap::ArgMatches) -> jacs::w3c::W3cDidOptions {
@@ -2118,6 +2431,9 @@ fn serve_w3c_documents(
 /// Load an agent for sign operations: prefer the local config; fall back to a
 /// fresh ephemeral agent if none exists. Mirrors the resolution logic of the
 /// top-level `verify` handler so behaviour is consistent.
+///
+/// The fallback requests the documented `pq2025` default explicitly so its
+/// algorithm cannot vary with unrelated configuration.
 fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
     use jacs::simple::SimpleAgent;
     if std::path::Path::new("./jacs.config.json").exists() {
@@ -2138,7 +2454,7 @@ fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
                         wrap_quickstart_error_with_password_help("loading agent", &e)
                     );
                 }
-                let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+                let (a, _) = SimpleAgent::ephemeral(Some("pq2025")).unwrap_or_else(|err| {
                     eprintln!("Failed to create ephemeral agent: {}", err);
                     process::exit(1);
                 });
@@ -2146,7 +2462,7 @@ fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
             }
         }
     } else {
-        let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+        let (a, _) = SimpleAgent::ephemeral(Some("pq2025")).unwrap_or_else(|err| {
             eprintln!("Failed to create ephemeral agent: {}", err);
             process::exit(1);
         });
@@ -2237,9 +2553,9 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
     while search_from < content.len() {
         // Find the next BEGIN occurrence at column zero (i.e. either at
         // index 0 or immediately after an LF).
-        let begin_idx = match content[search_from..].find(BEGIN) {
-            Some(rel) => search_from + rel,
-            None => return None,
+        let begin_idx = {
+            let rel = content[search_from..].find(BEGIN)?;
+            search_from + rel
         };
         let at_column_zero =
             begin_idx == 0 || content.as_bytes().get(begin_idx.wrapping_sub(1)) == Some(&b'\n');
@@ -2249,14 +2565,14 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
         }
         let after_begin = begin_idx + BEGIN.len();
         // Expect a trailing newline.
-        let body_start = match content[after_begin..].find('\n') {
-            Some(n) => after_begin + n + 1,
-            None => return None, // Missing newline — the lib will reject this on its own.
+        let body_start = {
+            let n = content[after_begin..].find('\n')?;
+            after_begin + n + 1
         };
         // Find the matching END marker.
-        let end_offset = match content[body_start..].find(END) {
-            Some(n) => body_start + n,
-            None => return None, // No END — the lib will reject.
+        let end_offset = {
+            let n = content[body_start..].find(END)?;
+            body_start + n
         };
         let body = content[body_start..end_offset].trim();
         // Required-field heuristic. New inline footers are full JACS documents;

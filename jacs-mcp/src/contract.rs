@@ -1,6 +1,4 @@
 use crate::jacs_tools::JacsMcpServer;
-use jacs_binding_core::AgentWrapper;
-use rmcp::ServerHandler;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -58,16 +56,27 @@ pub fn canonical_contract_snapshot() -> JacsMcpContractSnapshot {
 
     tools.sort_by(|left, right| left.name.cmp(&right.name));
 
-    let info = JacsMcpServer::new(AgentWrapper::new()).get_info();
+    // The contract is an inventory, not an authority-bearing runtime profile.
+    // Generate its prose directly from the full compiled list so no unsafe
+    // `full` process profile needs to exist merely for documentation.
+    let tool_names = tools
+        .iter()
+        .map(|tool| format!("- {}", tool.name))
+        .collect::<Vec<_>>()
+        .join("\n");
 
     JacsMcpContractSnapshot {
         schema_version: 1,
         server: JacsMcpServerMetadata {
-            name: info.server_info.name,
-            title: info.server_info.title,
-            version: info.server_info.version,
-            website_url: info.server_info.website_url,
-            instructions: info.instructions,
+            name: "jacs-mcp".into(),
+            title: Some("JACS MCP Server".into()),
+            version: env!("CARGO_PKG_VERSION").into(),
+            website_url: Some("https://humanassisted.github.io/JACS/".into()),
+            instructions: Some(format!(
+                "JACS MCP compiled contract inventory contains {} tools. Runtime defaults to verification-only and advertises only its active subset.\n\nCompiled tools:\n{}",
+                tools.len(),
+                tool_names
+            )),
         },
         tools,
     }

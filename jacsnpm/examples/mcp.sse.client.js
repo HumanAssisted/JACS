@@ -1,23 +1,28 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { createJACSTransportProxy } from '../mcp.js';
+import { createJACSTransportProxyAsync } from '../mcp.js';
 // No longer need path or fileURLToPath for stdio server spawning
 
 const SERVER_URL = "http://localhost:3000/sse"; // Matches the server's SSE path
 const CLIENT_CONFIG_PATH = "./jacs.client.config.json";
+const EXPECTED_SERVER_AGENT_ID = process.env.JACS_EXPECTED_MCP_SERVER_AGENT_ID;
 
 async function runExample() {
     let client = null;
     
     try {
+        if (!EXPECTED_SERVER_AGENT_ID) {
+            throw new Error('Set JACS_EXPECTED_MCP_SERVER_AGENT_ID to the server jacsSignature.agentID');
+        }
         console.log(`Connecting to SSE server at ${SERVER_URL} with JACS middleware...`);
 
         const baseTransport  = new SSEClientTransport(new URL(SERVER_URL));
         console.log('1!');
-        const secureTransport = createJACSTransportProxy(
+        const secureTransport = await createJACSTransportProxyAsync(
             baseTransport,
             CLIENT_CONFIG_PATH,
-            "client"
+            "client",
+            { expectedPeerAgentId: EXPECTED_SERVER_AGENT_ID },
         );      
         
         console.log('2!'); 

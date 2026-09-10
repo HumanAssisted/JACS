@@ -22,6 +22,7 @@ jacs = { version = "0.3", features = ["cli", "observability"] }
 |---------|-------------|
 | `sqlite` | Lightweight sync SQLite backend (default) |
 | `sqlx-sqlite` | Async SQLite backend via sqlx (requires tokio) |
+| `s3` | AWS S3 storage; opt-in because it adds cloud HTTP/XML dependencies |
 | `otlp-logs` | OTLP log export support |
 | `otlp-metrics` | OTLP metrics export support |
 | `otlp-tracing` | OTLP distributed tracing support |

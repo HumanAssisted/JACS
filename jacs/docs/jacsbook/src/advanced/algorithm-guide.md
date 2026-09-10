@@ -2,25 +2,25 @@
 
 Choosing the right signing algorithm affects key size, signature size, verification speed, and compliance posture. This guide helps you pick the right one.
 
+## New-Agent Selection
+
+**`pq2025` (ML-DSA-87 / FIPS-204) is the secure default.** Pass `ed25519`
+explicitly when its smaller keys and signatures are required. JACS returns the
+canonical wire label `ring-Ed25519`; the requested label, generated key shape,
+persisted configuration, and emitted signature algorithm always agree.
+`ring-Ed25519` remains accepted as a legacy input alias. ES256 is an ecosystem
+compatibility key, never a native `jacsSignature` algorithm.
+
+All key rotations currently resolve to `pq2025`, so rotation is also the
+supported Ed25519-to-post-quantum migration path — see
+[Key Rotation](key-rotation.md).
+
 ## Supported Algorithms
 
-| Algorithm | Config Value | Public Key | Signature | Best For |
-|-----------|-------------|------------|-----------|----------|
-| Ed25519 | `ring-Ed25519` | 32 bytes | 64 bytes | Speed, small signatures |
-| ML-DSA-87 | `pq2025` | 2,592 bytes | 4,627 bytes | Post-quantum compliance (FIPS-204) |
-
-## How to Choose
-
-```
-Do you need FIPS/NIST post-quantum compliance?
-  ├── Yes → pq2025
-  └── No
-       └── Need a compact classical algorithm for new keys? → ring-Ed25519
-```
-
-**Default recommendation for new projects: `pq2025`**
-
-Ed25519 is well-understood and widely deployed, but it is not quantum-resistant. If you don't have a specific reason to stay classical, start with `pq2025` so you don't have to migrate later.
+| Algorithm | Config Value | Public Key | Signature | Status |
+|-----------|-------------|------------|-----------|--------|
+| ML-DSA-87 | `pq2025` | 2,592 bytes | 4,627 bytes | Default; post-quantum (FIPS-204) |
+| Ed25519 | `ring-Ed25519` (input alias: `ed25519`) | 32 bytes | 64 bytes | Supported for creation, signing, and verification |
 
 ## When to Choose Post-Quantum
 
@@ -57,7 +57,9 @@ Or via environment variable:
 export JACS_AGENT_KEY_ALGORITHM=pq2025
 ```
 
-Valid values for new keys: `ring-Ed25519`, `pq2025`
+User-facing values for new keys: `ed25519`, `pq2025`. The historical
+`ring-Ed25519` input remains accepted and is the canonical signature/config
+label emitted for Ed25519.
 
 In Python and Node.js, pass the algorithm to `quickstart(...)`:
 

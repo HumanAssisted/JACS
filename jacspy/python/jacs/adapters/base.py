@@ -1,14 +1,13 @@
 """Base adapter for JACS framework integrations.
 
 Wraps a JacsClient instance and provides sign/verify primitives that
-framework-specific adapters can hook into. Supports strict mode
-(raise on failures) and permissive mode (log and passthrough).
+framework-specific adapters can hook into. Signing and verification fail
+closed by default; legacy fallback behavior requires explicit opt-ins.
 
 When ``attest=True`` is passed, the adapter produces attestation
 documents instead of plain signatures.  If the underlying client
-does not support attestation (feature not compiled in), the adapter
-falls back to plain signatures in permissive mode or raises in
-strict mode.
+does not support attestation (feature not compiled in), the adapter raises
+unless plain-signature fallback is explicitly enabled.
 
 Example:
     from jacs.adapters.base import BaseJacsAdapter
@@ -27,6 +26,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from .._signed_document import require_portable_v2_signed_raw
+
 logger = logging.getLogger("jacs.adapters")
 
 
@@ -42,13 +43,18 @@ class BaseJacsAdapter:
             the other parameters.
         config_path: Path to jacs.config.json. If provided (and no
             client), a JacsClient will be created from this config.
-        strict: If True, sign/verify failures raise exceptions.
-            If False (default), failures are logged and the original
-            data is returned unchanged.
+        strict: If True, sign/verify failures raise exceptions and all
+            compatibility fallbacks are disabled.
+        allow_unverified_passthrough: Dangerous compatibility option that
+            exposes original input after failed verification. Default False.
+        allow_unsigned_output: Dangerous compatibility option that exposes
+            original output after signing fails. Default False.
+        allow_plain_signature_fallback: Compatibility option that permits an
+            attestation request to downgrade to a plain signature when
+            attestation creation fails. Default False.
         attest: If True, produce attestation documents instead of
-            plain signatures. Falls back to plain signatures when
-            attestation is unavailable (permissive mode) or raises
-            (strict mode). Default False.
+            plain signatures. Attestation failures raise unless
+            ``allow_plain_signature_fallback`` is enabled. Default False.
         default_claims: A list of claim dicts to include in every
             attestation. Only used when attest=True.
     """
@@ -58,10 +64,25 @@ class BaseJacsAdapter:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        allow_unverified_passthrough: bool = False,
+        allow_unsigned_output: bool = False,
+        allow_plain_signature_fallback: bool = False,
         attest: bool = False,
         default_claims: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self._strict = strict
+        # Verification is a trust boundary and fails closed independently of
+        # permissive signing behavior. Keep the legacy passthrough available
+        # only behind an explicit dangerous opt-in; strict mode always wins.
+        self._allow_unverified_passthrough = (
+            allow_unverified_passthrough is True and strict is not True
+        )
+        self._allow_unsigned_output = (
+            allow_unsigned_output is True and strict is not True
+        )
+        self._allow_plain_signature_fallback = (
+            allow_plain_signature_fallback is True and strict is not True
+        )
         self._attest = attest
         self._default_claims = default_claims or []
 
@@ -90,6 +111,25 @@ class BaseJacsAdapter:
     def strict(self) -> bool:
         """Whether the adapter is in strict mode."""
         return self._strict
+
+    @property
+    def allow_unverified_passthrough(self) -> bool:
+        """Whether failed verification may expose the original input.
+
+        This compatibility behavior is unsafe at trust boundaries and is
+        disabled by default. ``strict=True`` disables it even when requested.
+        """
+        return self._allow_unverified_passthrough
+
+    @property
+    def allow_unsigned_output(self) -> bool:
+        """Whether a signing failure may expose the original output."""
+        return self._allow_unsigned_output
+
+    @property
+    def allow_plain_signature_fallback(self) -> bool:
+        """Whether failed attestation creation may downgrade to signing."""
+        return self._allow_plain_signature_fallback
 
     @property
     def attest(self) -> bool:
@@ -135,15 +175,17 @@ class BaseJacsAdapter:
 
         return subject, claims
 
-    def sign_output(self, data: Any, extra_claims: Optional[List[Dict[str, Any]]] = None) -> str:
+    def sign_output(
+        self, data: Any, extra_claims: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
         """Sign data and return signed JSON string.
 
         When ``attest=True``, this produces an attestation document.
         When ``attest=False`` (default), this produces a plain signed
         document.
 
-        If attestation fails and strict mode is off, falls back to
-        plain signing.
+        Attestation failure raises by default. Plain-signature downgrade is
+        available only with ``allow_plain_signature_fallback=True``.
 
         Args:
             data: The data to sign. Can be a dict, string, or any
@@ -155,30 +197,46 @@ class BaseJacsAdapter:
             Signed JSON string.
 
         Raises:
-            SigningError: If signing fails and strict mode is enabled.
+            SigningError: If signing or requested attestation creation fails.
         """
         if self._attest:
             return self._sign_as_attestation(data, extra_claims)
         signed_doc = self._client.sign_message(data)
-        return signed_doc.raw_json
+        return self._require_signed_output(signed_doc.raw_json, "JACS adapter signer")
 
-    def _sign_as_attestation(self, data: Any, extra_claims: Optional[List[Dict[str, Any]]] = None) -> str:
-        """Attempt to create an attestation; fall back to plain signing on failure."""
+    @staticmethod
+    def _require_signed_output(raw_json: Any, context: str) -> str:
+        from ..types import SigningError
+
+        try:
+            return require_portable_v2_signed_raw(raw_json, context=context)
+        except ValueError as exc:
+            raise SigningError(str(exc)) from exc
+
+    def _sign_as_attestation(
+        self, data: Any, extra_claims: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
+        """Create an attestation, applying only explicitly enabled fallback."""
         try:
             subject, claims = self._build_attestation_params(data, extra_claims)
             signed_doc = self._client.create_attestation(
                 subject=subject,
                 claims=claims,
             )
-            return signed_doc.raw_json
-        except Exception as exc:
-            if self._strict:
-                raise
-            logger.warning(
-                "JACS attestation failed, falling back to plain signing: %s", exc
+            return self._require_signed_output(
+                signed_doc.raw_json,
+                "JACS attestation signer",
             )
+        except Exception as exc:
+            logger.warning("JACS attestation creation failed: %s", exc)
+            if not self._allow_plain_signature_fallback:
+                raise
+            logger.warning("JACS falling back to a plain signature")
             signed_doc = self._client.sign_message(data)
-            return signed_doc.raw_json
+            return self._require_signed_output(
+                signed_doc.raw_json,
+                "JACS adapter signer",
+            )
 
     def verify_input(self, signed_json: str) -> Any:
         """Verify signed JSON and return the original payload.
@@ -193,16 +251,19 @@ class BaseJacsAdapter:
             The verified payload (dict or other Python object).
 
         Raises:
-            VerificationError: If verification fails and strict mode
-                is enabled.
+            VerificationError: If verification fails.
         """
         from ..types import VerificationError
 
         result = self._client.verify(signed_json)
-        if not result.valid:
-            raise VerificationError(
-                f"Verification failed: {result.errors}"
-            )
+        if isinstance(result, dict):
+            valid = result.get("valid") is True
+            errors = result.get("errors", [])
+        else:
+            valid = getattr(result, "valid", False) is True
+            errors = getattr(result, "errors", [])
+        if not valid:
+            raise VerificationError(f"Verification failed: {errors}")
         # Extract the payload from the signed document
         doc = json.loads(signed_json)
         return doc.get("jacsDocument", doc.get("content", doc))
@@ -210,22 +271,23 @@ class BaseJacsAdapter:
     def sign_output_or_passthrough(self, data: Any) -> str:
         """Sign if possible, passthrough if not.
 
-        In strict mode, signing failures raise. In permissive mode,
-        failures are logged and the original data is returned as JSON.
+        Signing failures raise by default. When the dangerous
+        ``allow_unsigned_output`` compatibility option is enabled, failures
+        are logged and the original data is returned as JSON.
 
         Args:
             data: The data to sign.
 
         Returns:
-            Signed JSON string on success, or JSON-serialized original
-            data on failure (permissive mode only).
+            Signed JSON string on success, or JSON-serialized original data
+            only when ``allow_unsigned_output`` is explicitly enabled.
         """
         try:
             return self.sign_output(data)
         except Exception as exc:
-            if self._strict:
+            logger.warning("JACS signing failed: %s", exc)
+            if not self._allow_unsigned_output:
                 raise
-            logger.warning("JACS signing failed (passthrough): %s", exc)
             if isinstance(data, str):
                 return data
             return json.dumps(data)
@@ -233,23 +295,23 @@ class BaseJacsAdapter:
     def verify_input_or_passthrough(self, signed_json: str) -> Any:
         """Verify if possible, passthrough if not.
 
-        In strict mode, verification failures raise. In permissive
-        mode, failures are logged and the original input is returned
-        as-is (parsed from JSON if possible).
+        Verification failures raise by default. When the dangerous
+        ``allow_unverified_passthrough`` compatibility option is enabled,
+        failures are logged and the original input is returned as-is.
 
         Args:
             signed_json: A signed JACS document as a JSON string.
 
         Returns:
-            Verified payload on success, or the original parsed JSON
-            on failure (permissive mode only).
+            Verified payload on success, or the original parsed JSON only
+            when ``allow_unverified_passthrough`` is explicitly enabled.
         """
         try:
             return self.verify_input(signed_json)
         except Exception as exc:
-            if self._strict:
+            logger.warning("JACS verification failed: %s", exc)
+            if not self._allow_unverified_passthrough:
                 raise
-            logger.warning("JACS verification failed (passthrough): %s", exc)
             try:
                 return json.loads(signed_json)
             except json.JSONDecodeError:
@@ -334,9 +396,9 @@ class BaseJacsAdapter:
                 trust = json.loads(canonical_json)
                 return {
                     "card": card,
-                    "jacs_registered": trust.get("jacsRegistered", False),
+                    "jacs_registered": trust.get("jacsRegistered") is True,
                     "trust_level": trust.get("trustLevel", "untrusted"),
-                    "allowed": trust.get("allowed", False),
+                    "allowed": trust.get("allowed") is True,
                 }
             except (ImportError, AttributeError, TypeError):
                 logger.warning(

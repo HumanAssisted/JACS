@@ -5,8 +5,8 @@ mod utils;
 use jacs::simple::SimpleAgent;
 
 fn make_ephemeral_agent() -> SimpleAgent {
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("should create ephemeral agent");
+    let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("should create grandfathered Ed25519 fixture");
     agent
 }
 

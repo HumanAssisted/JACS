@@ -23,7 +23,7 @@
  * const hash = jacs.hashString('data to hash');
  * ```
  */
-import { JacsAgent, hashString, createConfig } from './index';
+import { JacsAgent, JacsSimpleAgent, hashString, createConfig } from './index';
 export { JacsAgent, hashString, createConfig };
 export interface AgentInfo {
     agentId: string;
@@ -46,12 +46,72 @@ export interface SignedDocument {
 }
 export interface VerificationResult {
     valid: boolean;
+    /** Local enrollment only, not Current/purpose authorization. Missing means unavailable. */
+    identityBindingStatus?: 'unavailable' | 'locally_enrolled';
+    identityBound?: boolean;
     data?: any;
     signerId: string;
     signerName?: string;
     timestamp: string;
     attachments: Attachment[];
     errors: string[];
+}
+export type SignedEventReplayErrorCode = 'replay_duplicate' | 'replay_store_unavailable' | 'replay_store_timeout' | 'replay_store_invalid_result' | 'replay_store_not_shared' | 'signed_event_expired';
+export type SignedEventReplayPreparer = JacsAgent | JacsSimpleAgent;
+export interface SharedReplayStore {
+    readonly scope: 'shared';
+    /** Stable operational label; must be a nonblank string. */
+    readonly name: string;
+    /**
+     * Must be declared with `async`, perform nonblocking I/O, and honor the
+     * AbortSignal. Synchronous work blocks JavaScript's event loop and therefore
+     * cannot be preempted by any Promise-based timeout.
+     */
+    consume(key: string, ttlSeconds: number, signal: AbortSignal): Promise<boolean>;
+}
+export interface SignedEventReplayOptions {
+    /** Freshness window passed to native cryptographic verification. Default 300. */
+    maxAgeSeconds?: number;
+    /** Application replay-store deadline in milliseconds. Default 5000, maximum 30000. */
+    timeoutMs?: number;
+}
+export interface SignedEventReplayPreparation {
+    contractVersion: 1;
+    status: 'crypto_verified_replay_pending';
+    cryptographicallyVerified: true;
+    freshnessVerified: true;
+    replayConsumed: false;
+    signerId: string;
+    timestamp: string;
+    algorithm: string;
+    documentId: string;
+    eventSha256: string;
+    replayKey: string;
+    replayTtlSeconds: number;
+    expiresAtUnixSeconds: number;
+}
+export interface VerifiedSignedEvent<T = unknown> {
+    status: 'verified';
+    verified: true;
+    replayConsumed: true;
+    data: T;
+    signerId: string;
+    timestamp: string;
+    algorithm: string;
+    documentId: string;
+}
+export interface SignedEventReplaySecurityEvent {
+    level: 'warn';
+    event: 'jacs_security_outcome';
+    operation: 'signed_event_replay';
+    outcome: 'rejected';
+    error_code: SignedEventReplayErrorCode;
+}
+/** Node diagnostics_channel name for structured JACS security outcomes. */
+export declare const JACS_SECURITY_DIAGNOSTICS_CHANNEL = "jacs.security";
+export declare class SignedEventReplayError extends Error {
+    readonly code: SignedEventReplayErrorCode;
+    constructor(code: SignedEventReplayErrorCode, message: string);
 }
 export interface Attachment {
     filename: string;
@@ -242,7 +302,12 @@ export declare const AgreementV2Role: {
  * the wire format emitted by the Rust verifier.
  */
 export interface AgreementV2VerificationReport {
+    /** Always false: consent-signature inspection is not policy acceptance. */
     valid: boolean;
+    /** Mathematical and structural checks only; not authorization. */
+    mathematicalChecksValid: boolean;
+    policyAccepted: false;
+    overallScope: 'consent_signatures_only';
     status: string;
     expectedStatus: string;
     recomputedAgreementHash: string;
@@ -308,6 +373,7 @@ export declare function verifyImage(filePath: string, opts?: VerifyImageOpts): P
 export declare function verifyImageSync(filePath: string, opts?: VerifyImageOpts): any;
 export declare function extractMediaSignature(filePath: string, opts?: ExtractMediaOpts): Promise<string | null>;
 export declare function extractMediaSignatureSync(filePath: string, opts?: ExtractMediaOpts): string | null;
+export declare function unwrapSignedEventWithReplayStore<T = unknown>(agent: SignedEventReplayPreparer, eventJson: string, serverKeysJson: string, store: SharedReplayStore, options?: SignedEventReplayOptions): Promise<VerifiedSignedEvent<T>>;
 /**
  * Verifies a signed document and extracts its content.
  */

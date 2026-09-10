@@ -9,12 +9,19 @@ use serde_json::json;
 use std::sync::Arc;
 use std::thread;
 
+fn ed25519_fixture() -> (SimpleAgent, jacs::simple::AgentInfo) {
+    SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("create grandfathered Ed25519 fixture")
+}
+
 /// Two ephemeral agents created with different algorithms have different IDs
 /// and can each sign independently.
 #[test]
 fn test_two_simple_agents_different_configs() {
-    let (agent_a, info_a) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A (ed25519)");
+    // Use the historical fixture path for agent A and the default current
+    // pq2025 path for agent B to exercise genuinely mixed algorithms.
+    let (agent_a, info_a) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("Failed to create agent A (legacy ed25519)");
     let (agent_b, info_b) =
         SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create agent B (pq2025)");
 
@@ -57,8 +64,8 @@ fn test_two_simple_agents_different_configs() {
 /// Two agents created with the same algorithm still get unique identities.
 #[test]
 fn test_two_agents_same_algorithm_unique_ids() {
-    let (_, info_a) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
-    let (_, info_b) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
+    let (_, info_a) = ed25519_fixture();
+    let (_, info_b) = ed25519_fixture();
 
     assert_ne!(
         info_a.agent_id, info_b.agent_id,
@@ -69,8 +76,8 @@ fn test_two_agents_same_algorithm_unique_ids() {
 /// Concurrent signing from two Arc<SimpleAgent> instances on separate threads.
 #[test]
 fn test_concurrent_signing_two_instances() {
-    let (agent_a, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
-    let (agent_b, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
+    let (agent_a, _) = ed25519_fixture();
+    let (agent_b, _) = ed25519_fixture();
 
     let agent_a = Arc::new(agent_a);
     let agent_b = Arc::new(agent_b);
@@ -138,10 +145,8 @@ fn test_concurrent_signing_two_instances() {
 /// (valid=false in non-strict mode).
 #[test]
 fn test_cross_verification_fails_with_wrong_key() {
-    let (agent_a, info_a) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
-    let (agent_b, _info_b) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent B");
+    let (agent_a, info_a) = ed25519_fixture();
+    let (agent_b, _info_b) = ed25519_fixture();
 
     let signed = agent_a
         .sign_message(&json!({"secret": "from A"}))
@@ -156,14 +161,20 @@ fn test_cross_verification_fails_with_wrong_key() {
         !result.valid,
         "Agent B must not successfully verify Agent A's signature (wrong key)"
     );
-    assert_eq!(result.signer_id, info_a.agent_id);
+    // A failed verification is fail-closed: it surfaces no signer claim, even
+    // though the document names agent A.
+    assert!(
+        result.signer_id.is_empty(),
+        "failed verification must not surface the document's signer claim"
+    );
+    assert_ne!(result.signer_id, info_a.agent_id);
 }
 
 /// Same as above but in strict mode: verification failure should return Err.
 #[test]
 fn test_cross_verification_strict_returns_error() {
     // Create agent A (non-strict, just for signing)
-    let (agent_a, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A");
+    let (agent_a, _) = ed25519_fixture();
 
     // Create agent B as strict (by setting env var temporarily)
     // We can't set strict directly on ephemeral, but we can verify the behavior
@@ -182,8 +193,9 @@ fn test_cross_verification_strict_returns_error() {
 /// Multiple agents can sign different content types concurrently.
 #[test]
 fn test_concurrent_different_algorithms() {
-    let (agent_ed, _) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create ed25519 agent");
+    // Mixed algorithms: grandfathered Ed25519 fixture + normal pq2025 agent.
+    let (agent_ed, _) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("Failed to create legacy ed25519 agent");
     let (agent_pq, _) =
         SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create pq2025 agent");
 

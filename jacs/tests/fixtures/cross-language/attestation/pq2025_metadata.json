@@ -1,13 +1,13 @@
 {
-  "agent_id": "b34bf03f-1851-4de5-9352-6f0dafa35879",
+  "agent_id": "ba9a365c-d79a-4375-b7a6-a00e6962147f",
   "algorithm": "pq2025",
-  "document_id": "3c5e4897-f2af-47d1-8537-8327034988e9",
+  "document_id": "4f47b736-43ab-48a9-9373-aad892ea9d25",
   "generated_by": "rust",
   "has_attestation": true,
-  "jacs_id": "3c5e4897-f2af-47d1-8537-8327034988e9",
-  "jacs_version": "06c6e129-c6ab-48f0-afc3-0cc4c99487d2",
-  "jacs_version_str": "0.8.0",
-  "public_key_hash": "3a0661407db83586a65cbed3c0de027aeccc01bff3032d94918e91623a76c300",
+  "jacs_id": "4f47b736-43ab-48a9-9373-aad892ea9d25",
+  "jacs_version": "63e1a4de-83d4-407b-95ba-d60123833b3b",
+  "jacs_version_str": "0.11.4",
+  "public_key_hash": "9f9fd1746c374ad88e6f0c7d8192437afa786dfea718f583458c2341bac4b47b",
   "signing_algorithm": "pq2025",
-  "timestamp": "2026-03-05T01:12:26.215972+00:00"
+  "timestamp": "2026-07-10T08:23:42.771217+00:00"
 }

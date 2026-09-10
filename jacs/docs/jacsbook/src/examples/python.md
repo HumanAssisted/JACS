@@ -127,6 +127,16 @@ if __name__ == "__main__":
 
 ## HTTP Server with FastAPI
 
+> **Signed-artifact example, not request authentication:** the legacy
+> `sign_request` / `verify_request` calls below sign a generic JACS document but
+> do not bind the HTTP method, absolute URL, query, body bytes, or audience. Do
+> not use this pattern to authorize an endpoint. A source `0.11.4` client builds
+> `JACS v2` with `SimpleAgent.build_request_auth_header(method, url, body, audience)`;
+> the server must verify the same context with a trusted key and atomically
+> consume the nonce. Likewise, use `SimpleAgent.sign_response` and
+> `unwrap_signed_event` with pinned keys for fail-closed response events. See
+> [Security](../advanced/security.md#request-bound-http-authorization).
+
 ### Complete FastAPI Server
 
 ```python
@@ -296,7 +306,11 @@ agent = jacs.JacsAgent()
 agent.load('./jacs.config.json')
 
 # Create FastMCP server with JACS
-mcp = JACSMCPServer(FastMCP("JACS Demo Server"))
+mcp = JACSMCPServer(
+    FastMCP("JACS Demo Server"),
+    "./jacs.config.json",
+    allowed_peer_agent_ids=["CLIENT_AGENT_ID"],
+)
 
 @mcp.tool()
 def echo(message: str) -> str:
@@ -329,7 +343,7 @@ def server_info() -> str:
     })
 
 # Get ASGI app with JACS middleware
-app = mcp.sse_app()
+app = mcp.http_app(transport="sse")
 
 if __name__ == "__main__":
     print("Starting JACS MCP Server...")
@@ -349,7 +363,11 @@ async def main():
     agent.load('./jacs.client.config.json')
 
     # Create authenticated client
-    client = JACSMCPClient("http://localhost:8000/sse")
+    client = JACSMCPClient(
+        "http://localhost:8000/sse",
+        "./jacs.client.config.json",
+        expected_peer_agent_id="SERVER_AGENT_ID",
+    )
 
     async with client:
         # Call echo tool

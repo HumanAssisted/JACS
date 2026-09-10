@@ -1,10 +1,15 @@
 # Node.js Installation
 
-The JACS Node.js package (`@hai.ai/jacs`) provides JavaScript/TypeScript bindings to the JACS Rust library, making it easy to integrate JACS into web applications, servers, and Node.js projects.
+{{#include ../_snippets/node-registry-status.md}}
+
+The JACS Node.js package (`@hai.ai/jacs`) provides JavaScript/TypeScript
+bindings to the JACS Rust library for servers and other Node.js projects. It is
+a native `.node` package and does not run in a browser; see the source-built
+WASM package for browser applications.
 
 ## Requirements
 
-- **Node.js**: Version 16.0 or higher
+- **Node.js**: Version 20.0 or higher
 - **npm** or **yarn**: For package management
 - **Operating System**: macOS, Linux, or Windows with WSL
 
@@ -287,7 +292,7 @@ If you get `Module not found` errors:
 
 ```bash
 # Check Node.js version
-node --version  # Should be 16+
+node --version  # Should be 20+
 
 # Clear node_modules and reinstall
 rm -rf node_modules package-lock.json

@@ -603,9 +603,10 @@ fn parse_signature_block(body: &str) -> Result<ParsedSignatureBlock, String> {
     if let Ok(value) = parse_full_jacs_inline_block(body) {
         return Ok(ParsedSignatureBlock::FullJacs(value));
     }
-    serde_yaml_ng::from_str::<SignatureBlockYaml>(body)
+    let json = crate::convert::yaml_to_jacs(body).map_err(|e| format!("YAML parse: {e}"))?;
+    jacs_core::strict_json::deserialize_strict_json::<SignatureBlockYaml>(&json)
         .map(ParsedSignatureBlock::Legacy)
-        .map_err(|e| format!("YAML parse: {e}"))
+        .map_err(|e| format!("YAML shape: {e}"))
 }
 
 fn parse_full_jacs_inline_block(body: &str) -> Result<Value, String> {
@@ -912,10 +913,7 @@ fn verify_full_jacs_block(
         Ok(s) => s,
         Err(e) => return malformed(format!("full JACS footer JSON serialise: {e}")),
     };
-    let verifier = match SimpleAgent::ephemeral(Some("ed25519")) {
-        Ok((agent, _)) => agent,
-        Err(e) => return malformed(format!("verifier init failed: {e}")),
-    };
+    let verifier = SimpleAgent::verification_only(false);
     let status = match verifier.verify_with_key(&json, resolved.public_key_pem) {
         Ok(result) if result.valid => SignatureStatus::Valid,
         Ok(_) => SignatureStatus::InvalidSignature,
@@ -1002,7 +1000,8 @@ mod tests {
     }
 
     fn make_ed25519_agent() -> SimpleAgent {
-        SimpleAgent::ephemeral(Some("ring-Ed25519"))
+        // Historical Ed25519 fixture for mixed-algorithm coverage.
+        SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
             .expect("ephemeral agent")
             .0
     }
@@ -1175,6 +1174,40 @@ mod tests {
         let s = serde_yaml_ng::to_string(&block).unwrap();
         let back: SignatureBlockYaml = serde_yaml_ng::from_str(&s).unwrap();
         assert_eq!(block, back);
+    }
+
+    #[test]
+    fn legacy_inline_block_rejects_duplicate_and_merge_keys() {
+        let duplicate = r#"signature_block_version: 1
+signer: first
+signer: second
+public_key_hash: sha256-b64url:xxx
+algorithm: ed25519
+hash_algorithm: sha256
+canonicalization: jacs-text-v1
+timestamp: 2026-04-24T00:00:00Z
+signed_content_hash: AAAA
+signature: BBBB
+"#;
+        let error = parse_signature_block(duplicate)
+            .expect_err("duplicate legacy inline fields must fail closed");
+        assert!(error.contains("duplicate YAML mapping key"), "{error}");
+
+        let merge = r#"defaults: &defaults
+  signer: first
+<<: *defaults
+signature_block_version: 1
+public_key_hash: sha256-b64url:xxx
+algorithm: ed25519
+hash_algorithm: sha256
+canonicalization: jacs-text-v1
+timestamp: 2026-04-24T00:00:00Z
+signed_content_hash: AAAA
+signature: BBBB
+"#;
+        let error = parse_signature_block(merge)
+            .expect_err("legacy inline YAML merge keys must fail closed");
+        assert!(error.contains("merge keys"), "{error}");
     }
 
     #[test]

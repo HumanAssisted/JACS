@@ -26,6 +26,7 @@
     "reason": "Verified policy: agent has JACS provenance extension",
     "jacsRegistered": true,
     "agentId": "agent-foreign-002",
-    "policy": "Verified"
+    "policy": "Verified",
+    "firstContact": false
   }
 }

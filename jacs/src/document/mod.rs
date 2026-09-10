@@ -290,7 +290,7 @@ pub fn sqlite_database_path(base_dir: &Path) -> PathBuf {
 }
 
 pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentService>, JacsError> {
-    let (storage_input, base_dir, agent_storage) = {
+    let (storage_input, base_dir, _config_dir, agent_storage) = {
         let agent_guard = agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -312,6 +312,8 @@ pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentSe
             .as_ref()
             .cloned()
             .unwrap_or_else(|| "fs".to_string());
+        let resolved_data_dir = config.resolve_config_relative_path(&data_dir)?;
+        let resolved_config_dir = config.resolve_config_relative_path(".")?;
 
         // Clone the agent's pre-configured MultiStorage so that the FS
         // backend reuses the correctly-rooted store that `load_by_config`
@@ -319,7 +321,12 @@ pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentSe
         // only meaningful relative to the config file's parent directory).
         let agent_storage = agent_guard.storage_ref().clone();
 
-        (storage, PathBuf::from(data_dir), agent_storage)
+        (
+            storage,
+            resolved_data_dir,
+            resolved_config_dir,
+            agent_storage,
+        )
     };
 
     // Resolve the storage input through the backend resolver.
@@ -343,28 +350,26 @@ pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentSe
             // If the resolver extracted a path from a connection string, use that.
             // Otherwise fall back to the default sqlite database path.
             let db_path = if let Some(ref path) = backend_config.path {
-                PathBuf::from(path)
-            } else {
-                if let Some(parent) = base_dir.parent()
-                    && !parent.as_os_str().is_empty()
-                {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        JacsError::StorageError(format!(
-                            "Failed to create sqlite parent directory '{}': {}",
-                            parent.display(),
-                            e
-                        ))
-                    })?;
+                let configured_path = PathBuf::from(path);
+                if configured_path.is_absolute() {
+                    configured_path
+                } else {
+                    _config_dir.join(configured_path)
                 }
-                std::fs::create_dir_all(&base_dir).map_err(|e| {
+            } else {
+                sqlite_database_path(&base_dir)
+            };
+            if let Some(parent) = db_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent).map_err(|e| {
                     JacsError::StorageError(format!(
-                        "Failed to create data directory '{}': {}",
-                        base_dir.display(),
+                        "Failed to create sqlite parent directory '{}': {}",
+                        parent.display(),
                         e
                     ))
                 })?;
-                sqlite_database_path(&base_dir)
-            };
+            }
             let service = SqliteDocumentService::with_agent(&db_path.to_string_lossy(), agent)?;
             Ok(Arc::new(service))
         }

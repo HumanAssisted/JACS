@@ -14,6 +14,11 @@ JACS extends the A2A (Agent-to-Agent) protocol with cryptographic document prove
 
 ## Install
 
+> **Node registry status (observed 2026-07-09):** npm serves
+> `@hai.ai/jacs@0.10.1`, while this source tree is `0.12.0`. Pin the Node
+> version and verify that the A2A methods used below are present; an
+> unqualified install does not provide source-head parity.
+
 ```bash
 pip install jacs                    # Python
 pip install jacs[a2a-server]        # Python + discovery server (FastAPI + uvicorn)
@@ -59,8 +64,19 @@ const server = await a2a.listen({ port: 8080 });                           // 6.
 jacs quickstart                                        # 1. Create agent
 jacs a2a export-card                                   # 2. Export Agent Card
 echo '{"action":"classify"}' | jacs a2a sign --type task  # 3. Sign an artifact
-jacs a2a serve --port 8080                             # 4. Serve discovery endpoints
+jacs a2a serve --host 127.0.0.1 --port 8080            # 4. Card signs this exact loopback origin
 ```
+
+For production, terminate TLS at a reverse proxy and pass the externally
+reachable origin explicitly:
+
+```bash
+jacs a2a serve --host 127.0.0.1 --port 8080 --origin https://agent.example.com
+```
+
+The signed Agent Card uses that canonical origin to locate its sibling JWKS and
+native-root compatibility-binding documents. Public or wildcard plaintext
+listeners without `--origin` are rejected.
 
 ## Discover and Assess Remote Agents
 
@@ -101,8 +117,8 @@ const step2 = await clientB.signArtifact({ step: 2, data: 'processed' }, 'messag
 | Policy | Behavior | Use Case |
 |--------|----------|----------|
 | `open` | Accept all agents | Development, testing |
-| `verified` | Require JACS extension in agent card | **Default** -- production use |
-| `strict` | Require agent in local trust store | High-security environments |
+| `verified` | Require a valid Agent Card JWS against the same-origin JWKS and a durable identity-scoped key pin | **Default** -- origin/key continuity, not proof of native JACS identity |
+| `strict` | Require an explicitly trusted native JACS root and a valid native-root-signed ES256 compatibility binding | High-security identity verification |
 
 ```python
 from jacs.a2a import JACSA2AIntegration
@@ -116,14 +132,31 @@ const a2a = new JACSA2AIntegration(client, 'strict');
 const assessment = a2a.assessRemoteAgent(remoteCardJson);
 ```
 
+`verified` uses trust-on-first-use key pinning. Use `strict` when a caller must
+prove that the Agent Card's ES256 compatibility key is authorized by a native
+JACS identity already present in the trust store.
+
+Strict verification also pins the latest observed native-root-signed binding
+hash, compatibility `kid`, and `issuedAt`. A later, newer binding advances that
+pin and old card/binding replays are rejected. Independently of `expiresAt`,
+Strict accepts a binding for at most seven days after its signed `issuedAt`
+(with at most five minutes of future clock skew). Discovery generation refreshes
+an authentic binding after six days under the shared issuance lock, preserving
+its scopes and explicit expiry. This bounds first-contact replay, but it is not
+an online revocation service; use an earlier `expiresAt` when compromise
+response needs a shorter cutoff and distribute refreshed documents promptly.
+
 ## Well-Known Endpoints
 
-JACS serves five endpoints for A2A discovery:
+JACS serves six endpoints for A2A discovery. The Agent Card and compatibility
+binding are generated from the persisted ES256 compatibility key, so repeated
+exports and replicas sharing the same agent storage publish the same identity:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/.well-known/agent-card.json` | A2A Agent Card |
-| `/.well-known/jwks.json` | JWK set for verifying signatures |
+| `/.well-known/agent-card.json` | A2A Agent Card with an ES256/JCS JWS |
+| `/.well-known/jwks.json` | Stable ES256 compatibility JWK used by the Agent Card |
+| `/.well-known/jacs-compat-binding.json` | Native-root-signed binding from the ES256 key to the claimed JACS identity |
 | `/.well-known/jacs-agent.json` | JACS agent descriptor |
 | `/.well-known/jacs-pubkey.json` | JACS public key |
 | `/.well-known/jacs-extension.json` | JACS provenance extension descriptor |
@@ -152,7 +185,7 @@ JACS agents declare the `urn:jacs:provenance-v1` extension in their Agent Card s
   - [Exchange Artifacts](./jacs/docs/jacsbook/src/guides/a2a-exchange.md) -- Sign, verify, chain of custody
 - **[A2A Interoperability Reference](./jacs/docs/jacsbook/src/integrations/a2a.md)** -- Full API reference, MCP integration, framework adapters
 - **[Trust Store](./jacs/docs/jacsbook/src/advanced/trust-store.md)** -- Managing trusted agents
-- **[Framework Adapters](./jacs/docs/jacsbook/src/python/adapters.md)** -- Auto-sign with LangChain, FastAPI, CrewAI
+- **[Framework Adapters](./jacs/docs/jacsbook/src/python/adapters.md)** -- Auto-sign with LangChain, FastAPI, Anthropic
 - **[Express Middleware](./jacs/docs/jacsbook/src/nodejs/express.md)** -- Add A2A to Express apps
 - **[Hero Demo (Python)](./examples/a2a_trust_demo.py)** -- 3-agent trust verification example
 - **[Hero Demo (Node.js)](./examples/a2a_trust_demo.ts)** -- Same demo in TypeScript

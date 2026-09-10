@@ -9,7 +9,6 @@ Use adapters when the model already runs inside your Python app and you want pro
 | Signed LangChain tool results | `jacs_signing_middleware`, `signed_tool` | LangChain / LangGraph section below |
 | Signed LangGraph `ToolNode` outputs | `jacs_wrap_tool_call`, `with_jacs_signing` | LangChain / LangGraph section below |
 | Signed FastAPI responses and verified inbound requests | `JacsMiddleware`, `jacs_route` | FastAPI section below |
-| Signed CrewAI task output | `jacs_guardrail`, `signed_task` | CrewAI section below |
 | Signed Anthropic tool return values | `jacs.adapters.anthropic.signed_tool` | Anthropic section below |
 
 Install only the extra you need:
@@ -17,7 +16,6 @@ Install only the extra you need:
 ```bash
 pip install jacs[langchain]
 pip install jacs[fastapi]
-pip install jacs[crewai]
 pip install jacs[anthropic]
 ```
 
@@ -77,9 +75,20 @@ app.add_middleware(JacsMiddleware, client=client)
 
 Useful options:
 
-- `strict=True` to reject verification failures instead of passing through
+- Signing and verification failures fail closed by default
 - `sign_responses=False` or `verify_requests=False` to narrow the behavior
 - `a2a=True` to also expose A2A discovery routes from the same FastAPI app
+
+Legacy compatibility options are explicit and dangerous:
+
+- `allow_unsigned_output=True` permits raw output after signing fails
+- `allow_unverified_passthrough=True` permits unverifiable input to continue
+- `allow_plain_signature_fallback=True` permits an attestation request to
+  downgrade to a plain signature, dropping attestation claims
+
+`strict=True` always disables all three fallbacks. Do not use these options at
+a trust boundary unless the caller separately marks the data as unsigned or
+unverified.
 
 For auth-style endpoints, replay protection is available:
 
@@ -104,23 +113,6 @@ from jacs.adapters.fastapi import jacs_route
 async def signed_endpoint():
     return {"ok": True}
 ```
-
-## CrewAI
-
-CrewAI support is guardrail-first:
-
-```python
-from crewai import Task
-from jacs.adapters.crewai import jacs_guardrail
-
-task = Task(
-    description="Summarize the report",
-    agent=my_agent,
-    guardrail=jacs_guardrail(client=client),
-)
-```
-
-If you build tasks with factories, `signed_task()` can pre-attach the guardrail.
 
 ## Anthropic / Claude SDK
 

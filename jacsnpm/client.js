@@ -59,6 +59,7 @@ Object.defineProperty(exports, "hashString", { enumerable: true, get: function (
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const path = __importStar(require("path"));
 const deprecation_1 = require("./deprecation");
+const verification_1 = require("./verification");
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -98,29 +99,6 @@ function normalizeDocumentInput(document) {
         }
     }
     return JSON.stringify(document);
-}
-function normalizeA2AVerificationResult(rawVerificationResult) {
-    if (typeof rawVerificationResult === 'boolean') {
-        return {
-            valid: rawVerificationResult,
-            verificationResult: rawVerificationResult,
-        };
-    }
-    if (rawVerificationResult && typeof rawVerificationResult === 'object') {
-        const rawObj = rawVerificationResult;
-        const payload = rawObj.payload;
-        return {
-            valid: true,
-            verifiedPayload: payload && typeof payload === 'object'
-                ? payload
-                : undefined,
-            verificationResult: rawObj,
-        };
-    }
-    return {
-        valid: false,
-        verificationResult: false,
-    };
 }
 function parseLoadedAgentInfo(resultJson) {
     const info = JSON.parse(resultJson);
@@ -494,14 +472,16 @@ class JacsClient {
             return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Invalid JSON: ${e}`] };
         }
         try {
-            await agent.verifyDocument(signedDocument);
+            const verified = await agent.verifyDocument(signedDocument);
+            (0, verification_1.requireLiteralTrueVerification)(verified, 'Native document verification');
             const attachments = extractAttachmentsFromDocument(doc);
-            return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
+            const metadata = (0, verification_1.authenticatedSignatureMetadata)(doc);
+            return { valid: true, data: doc.content, signerId: metadata.signerId, timestamp: metadata.timestamp, attachments, errors: [] };
         }
         catch (e) {
             if (this._strict)
                 throw new Error(`Verification failed (strict mode): ${e}`);
-            return { valid: false, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments: [], errors: [String(e)] };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
         }
     }
     verifySync(signedDocument) {
@@ -518,20 +498,23 @@ class JacsClient {
             return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Invalid JSON: ${e}`] };
         }
         try {
-            agent.verifyDocumentSync(signedDocument);
+            const verified = agent.verifyDocumentSync(signedDocument);
+            (0, verification_1.requireLiteralTrueVerification)(verified, 'Native document verification');
             const attachments = extractAttachmentsFromDocument(doc);
-            return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
+            const metadata = (0, verification_1.authenticatedSignatureMetadata)(doc);
+            return { valid: true, data: doc.content, signerId: metadata.signerId, timestamp: metadata.timestamp, attachments, errors: [] };
         }
         catch (e) {
             if (this._strict)
                 throw new Error(`Verification failed (strict mode): ${e}`);
-            return { valid: false, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments: [], errors: [String(e)] };
+            return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
         }
     }
     async verifySelf() {
         const agent = this.requireAgent();
         try {
-            await agent.verifyAgent();
+            const verified = await agent.verifyAgent();
+            (0, verification_1.requireLiteralTrueVerification)(verified, 'Native agent verification');
             return { valid: true, signerId: this.info?.agentId || '', timestamp: '', attachments: [], errors: [] };
         }
         catch (e) {
@@ -543,7 +526,8 @@ class JacsClient {
     verifySelfSync() {
         const agent = this.requireAgent();
         try {
-            agent.verifyAgentSync();
+            const verified = agent.verifyAgentSync();
+            (0, verification_1.requireLiteralTrueVerification)(verified, 'Native agent verification');
             return { valid: true, signerId: this.info?.agentId || '', timestamp: '', attachments: [], errors: [] };
         }
         catch (e) {
@@ -558,13 +542,15 @@ class JacsClient {
             return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Document ID must be in 'uuid:version' format, got '${documentId}'.`] };
         }
         try {
-            await agent.verifyDocumentById(documentId);
+            const verified = await agent.verifyDocumentById(documentId);
+            (0, verification_1.requireLiteralTrueVerification)(verified, 'Native stored-document verification');
             const storedJson = await agent.getDocumentById(documentId);
             const stored = JSON.parse(storedJson);
+            const metadata = (0, verification_1.authenticatedSignatureMetadata)(stored);
             return {
                 valid: true,
-                signerId: stored?.jacsSignature?.agentID || '',
-                timestamp: stored?.jacsSignature?.date || '',
+                signerId: metadata.signerId,
+                timestamp: metadata.timestamp,
                 attachments: extractAttachmentsFromDocument(stored || {}),
                 errors: [],
             };
@@ -581,13 +567,15 @@ class JacsClient {
             return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [`Document ID must be in 'uuid:version' format, got '${documentId}'.`] };
         }
         try {
-            agent.verifyDocumentByIdSync(documentId);
+            const verified = agent.verifyDocumentByIdSync(documentId);
+            (0, verification_1.requireLiteralTrueVerification)(verified, 'Native stored-document verification');
             const storedJson = agent.getDocumentByIdSync(documentId);
             const stored = JSON.parse(storedJson);
+            const metadata = (0, verification_1.authenticatedSignatureMetadata)(stored);
             return {
                 valid: true,
-                signerId: stored?.jacsSignature?.agentID || '',
-                timestamp: stored?.jacsSignature?.date || '',
+                signerId: metadata.signerId,
+                timestamp: metadata.timestamp,
                 attachments: extractAttachmentsFromDocument(stored || {}),
                 errors: [],
             };
@@ -812,13 +800,13 @@ class JacsClient {
         const agent = this.requireAgent();
         const docString = normalizeDocumentInput(document);
         const result = await agent.checkAgreement(docString, fieldName || null);
-        return JSON.parse(result);
+        return (0, verification_1.normalizeAgreementStatus)(JSON.parse(result));
     }
     checkAgreementSync(document, fieldName) {
         const agent = this.requireAgent();
         const docString = normalizeDocumentInput(document);
         const result = agent.checkAgreementSync(docString, fieldName || null);
-        return JSON.parse(result);
+        return (0, verification_1.normalizeAgreementStatus)(JSON.parse(result));
     }
     // ---------------------------------------------------------------------------
     // Agent management
@@ -868,7 +856,7 @@ class JacsClient {
      * Generates a new keypair, archives the old keys, creates a new agent
      * version, and re-signs the config file.
      *
-     * @param options - Optional. `{ algorithm?: string }` to change the signing algorithm.
+     * @param options - Optional. Omit `algorithm` or pass `"pq2025"`; Ed25519 and unknown targets are rejected.
      * @returns Rotation result with old_version, new_version, transition_proof, etc.
      */
     async rotateKeys(options) {
@@ -945,7 +933,7 @@ class JacsClient {
         else {
             resultJson = await agent.verifyAttestation(docKey);
         }
-        return JSON.parse(resultJson);
+        return (0, verification_1.normalizeAttestationVerificationResult)(JSON.parse(resultJson));
     }
     /**
      * Lift a signed document into an attestation.
@@ -1019,53 +1007,52 @@ class JacsClient {
     /**
      * Verify a JACS-signed A2A artifact.
      *
-     * Accepts the raw JSON string from signArtifact() or a parsed object.
-     * When a string is given it is passed directly to verifyResponse to
-     * preserve the original serialization and hash.
+     * `signArtifact()` returns the direct canonical `a2a-*` document as an
+     * object. Raw JSON for the same document is also accepted. Cryptographic
+     * verification does not synthesize identity trust from artifact claims.
      *
      * @param wrappedArtifact - The signed artifact (string or object).
      */
     async verifyArtifact(wrappedArtifact) {
-        const agent = this.requireAgent();
-        const docString = typeof wrappedArtifact === 'string'
-            ? wrappedArtifact
-            : JSON.stringify(wrappedArtifact);
+        this.requireAgent();
         const doc = typeof wrappedArtifact === 'string'
             ? JSON.parse(wrappedArtifact)
             : wrappedArtifact;
-        const payload = doc.jacs_payload && typeof doc.jacs_payload === 'object'
-            ? doc.jacs_payload
-            : null;
         try {
-            const rawVerificationResult = agent.verifyResponse(docString);
-            const normalized = normalizeA2AVerificationResult(rawVerificationResult);
-            const sig = doc.jacsSignature || {};
+            // Keep a single canonical normalization path. The A2A integration
+            // prefers the policy-bound native verifier, validates parent evidence,
+            // and rejects arbitrary object values from the legacy verifyResponse API.
+            const canonical = await this.getA2A().verifyWrappedArtifact(doc);
+            const valid = canonical.valid === true;
             const result = {
-                valid: normalized.valid,
-                verificationResult: normalized.verificationResult,
-                signerId: sig.agentID || 'unknown',
-                signerVersion: sig.agentVersion || 'unknown',
-                artifactType: doc.jacsType || 'unknown',
-                timestamp: doc.jacsVersionDate || '',
-                originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
+                valid,
+                verificationResult: canonical.verificationResult ?? canonical,
+                // Provenance and payload are exposed only when the canonical verifier
+                // authenticated them. Parsed input fields are never attribution.
+                signerId: valid ? canonical.signerId : '',
+                signerVersion: valid ? canonical.signerVersion : '',
+                artifactType: valid ? canonical.artifactType : '',
+                timestamp: valid ? canonical.timestamp : '',
+                originalArtifact: valid ? canonical.originalArtifact : {},
             };
-            if (normalized.verifiedPayload) {
-                result.verifiedPayload = normalized.verifiedPayload;
+            if (valid
+                && canonical.verifiedPayload
+                && typeof canonical.verifiedPayload === 'object') {
+                result.verifiedPayload = canonical.verifiedPayload;
             }
             return result;
         }
         catch (e) {
             if (this._strict)
                 throw new Error(`Artifact verification failed (strict mode): ${e}`);
-            const sig = doc.jacsSignature || {};
             return {
                 valid: false,
                 verificationResult: false,
-                signerId: sig.agentID || 'unknown',
-                signerVersion: sig.agentVersion || 'unknown',
-                artifactType: doc.jacsType || 'unknown',
-                timestamp: doc.jacsVersionDate || '',
-                originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
+                signerId: '',
+                signerVersion: '',
+                artifactType: '',
+                timestamp: '',
+                originalArtifact: {},
                 error: String(e),
             };
         }

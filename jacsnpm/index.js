@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { JacsAgent, JacsSimpleAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, trustAgentWithKey, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId, ensureNetworkAccess, fetchAgentCard, fetchRemoteKeyLookup, hashPublicKeyBase64, buildJwkSetFromPublicKey, resolvePrivateKeyPassword, quickstartPrivateKeyPassword, jacsMcpResolveInputPath } = nativeBinding
+const { JacsAgent, JacsSimpleAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, trustAgentWithKey, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId, ensureNetworkAccess, fetchAgentCard, fetchAgentCardAsync, fetchRemoteKeyLookup, hashPublicKeyBase64, buildJwkSetFromPublicKey, resolvePrivateKeyPassword, quickstartPrivateKeyPassword, jacsMcpResolveInputPath } = nativeBinding
 
 module.exports.JacsAgent = JacsAgent
 module.exports.JacsSimpleAgent = JacsSimpleAgent
@@ -345,6 +345,7 @@ module.exports.legacyVerifyResponse = legacyVerifyResponse
 module.exports.legacyVerifyResponseWithAgentId = legacyVerifyResponseWithAgentId
 module.exports.ensureNetworkAccess = ensureNetworkAccess
 module.exports.fetchAgentCard = fetchAgentCard
+module.exports.fetchAgentCardAsync = fetchAgentCardAsync
 module.exports.fetchRemoteKeyLookup = fetchRemoteKeyLookup
 module.exports.hashPublicKeyBase64 = hashPublicKeyBase64
 module.exports.buildJwkSetFromPublicKey = buildJwkSetFromPublicKey

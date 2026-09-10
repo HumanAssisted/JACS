@@ -321,6 +321,10 @@ is_valid = agent.verify_string(
 
 Sign a request payload, wrapping it in a JACS document.
 
+This is a generic document wrapper, not an HTTP authorization credential: it
+does not bind the actual method, absolute URL, query, body bytes, or audience.
+Use `SimpleAgent.build_request_auth_header(method, url, body, audience)` for HTTP.
+
 **Parameters:**
 - `params` (any): The request payload (will be JSON serialized)
 
@@ -341,6 +345,12 @@ signed_request = agent.sign_request({
 ### agent.verify_response(document_string)
 
 Verify a JACS-signed response and extract the payload.
+
+This verifies the legacy generic document shape. It is not the strict
+`jacs-response-v2` event contract. New event consumers use
+`SimpleAgent.unwrap_signed_event(event_json, server_keys_json)`, which rejects
+plain events, unknown signers, legacy envelopes, and mutations without
+releasing data.
 
 **Parameters:**
 - `document_string` (str): The JACS-signed response
@@ -453,6 +463,10 @@ jacs.load('./jacs.config.json')
 
 Sign a request using the global agent.
 
+This deprecated helper signs request-like data only; it does not authenticate
+HTTP context. Use instance-based `SimpleAgent.build_auth_header(...)` for a
+request-bound v2 credential.
+
 ```python
 signed = jacs.sign_request({'method': 'tools/call', 'params': {...}})
 ```
@@ -469,6 +483,9 @@ payload = jacs.verify_request(incoming_request_string)
 
 Sign a response using the global agent.
 
+This deprecated global helper is not the fully bound response-envelope API.
+Use `SimpleAgent.sign_response(payload_json)` for `jacs-response-v2`.
+
 ```python
 signed = jacs.sign_response({'result': 'success'})
 ```
@@ -476,6 +493,10 @@ signed = jacs.sign_response({'result': 'success'})
 ### jacs.verify_response(data)
 
 Verify an incoming response using the global agent.
+
+This deprecated global helper is not strict signed-event unwrapping. Use
+`SimpleAgent.unwrap_signed_event(event_json, server_keys_json)` and treat every
+error as untrusted input.
 
 ```python
 result = jacs.verify_response(response_string)
@@ -492,10 +513,14 @@ from jacs.mcp import JACSMCPServer, JACSMCPClient, create_jacs_mcp_server, jacs_
 
 Canonical MCP documentation lives at [Python MCP Integration](mcp.md). This API section lists the MCP entry points only:
 
-- `JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False)` - Wrap a FastMCP server with JACS request verification and response signing.
-- `JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)` - Create a FastMCP client with JACS signing/verification interceptors.
-- `create_jacs_mcp_server(name, config_path=None)` - One-line server factory.
-- `jacs_call(server_url, method, **params)` - One-shot authenticated MCP call.
+- `JACSMCPServer(..., allowed_peer_agent_ids=[...])` - Wrap a FastMCP HTTP server with allowlisted JACS request verification and response signing.
+- `JACSMCPClient(..., expected_peer_agent_id="...")` - Create a FastMCP SSE client pinned to the expected server signer.
+- `create_jacs_mcp_server(..., allowed_peer_agent_ids=[...])` - One-line authenticated HTTP server factory.
+- `jacs_call(..., expected_peer_agent_id="...")` - One-shot authenticated local MCP call.
+
+The wrappers reject `stdio`, require portable-v2 signed carriers for every
+POST, randomize request IDs per session, and cap buffered JSON messages. See
+the canonical MCP page for the dangerous compatibility flags and key-hash pin.
 
 For examples, strict-mode behavior, and security guidance, see [Python MCP Integration](mcp.md).
 

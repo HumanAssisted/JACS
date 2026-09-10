@@ -11,6 +11,7 @@ const { expect } = require('chai');
 const { JacsAgent, hashString, createConfig } = require('../index');
 const path = require('path');
 const fs = require('fs');
+const { enableLegacyFixtureCompatibility } = require('./legacy-fixture');
 
 // Path to test fixtures (use jacspy fixtures which have a working agent)
 // Use shared fixtures from jacs/tests/scratch (single source of truth)
@@ -30,6 +31,16 @@ function withFixturesDir(fn) {
 
 describe('JACS Integration Tests', function() {
   this.timeout(15000);
+
+  let restoreLegacyFixtureCompatibility;
+
+  before(() => {
+    restoreLegacyFixtureCompatibility = enableLegacyFixtureCompatibility();
+  });
+
+  after(() => {
+    restoreLegacyFixtureCompatibility();
+  });
 
   const fixturesExist = fs.existsSync(TEST_CONFIG);
 

@@ -58,6 +58,39 @@ fn create_test_agent(
     (agent, info, tmp, guard)
 }
 
+/// Build a pre-compat-key Ed25519 agent via the legacy/test-only escape
+/// hatch; the cross-algorithm migration tests need that historical shape.
+fn create_legacy_ed25519_test_agent(
+    name: &str,
+) -> (SimpleAgent, simple::AgentInfo, tempfile::TempDir, CwdGuard) {
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+    let guard = CwdGuard { saved: saved_cwd };
+
+    let params = CreateAgentParams::builder()
+        .name(name)
+        .password("EdgeCaseTest!2026")
+        .algorithm("ring-Ed25519")
+        .description("Grandfathered Ed25519 test agent")
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .build();
+
+    let (agent, info) =
+        SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params).expect("legacy test agent");
+
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "EdgeCaseTest!2026");
+        std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
+        std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+        std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+    }
+
+    (agent, info, tmp, guard)
+}
+
 // =============================================================================
 // Crash Recovery Tests
 // =============================================================================
@@ -71,7 +104,7 @@ fn test_crash_after_rotate_self_before_config_write() {
     use jacs::keystore::RotationJournal;
 
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, info, _tmp, _guard) = create_test_agent("crash-before-config", "ring-Ed25519");
+    let (agent, info, _tmp, _guard) = create_test_agent("crash-before-config", "pq2025");
     let old_public_key = agent.get_public_key().expect("get old public key");
     let old_key_hash = hash_public_key(&old_public_key);
 
@@ -82,15 +115,18 @@ fn test_crash_after_rotate_self_before_config_write() {
 
     // Simulate crash: restore pre-rotation config, add a journal
     std::fs::write("./jacs.config.json", &config_before).expect("restore stale config");
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
         &old_key_hash,
-        "ring-Ed25519",
+        "pq2025",
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload: should auto-repair
     let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None).expect("should auto-repair");
@@ -123,7 +159,7 @@ fn test_double_crash_recovery() {
     use jacs::keystore::RotationJournal;
 
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, info, _tmp, _guard) = create_test_agent("double-crash", "ring-Ed25519");
+    let (agent, info, _tmp, _guard) = create_test_agent("double-crash", "pq2025");
 
     // First rotation succeeds
     let result1 = advanced::rotate(&agent, None).expect("first rotation");
@@ -138,15 +174,18 @@ fn test_double_crash_recovery() {
     std::fs::write("./jacs.config.json", &config_after_first).expect("restore mid-state config");
 
     // Write journal for second rotation
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &result1.new_version,
         &result1.new_public_key_hash,
-        "ring-Ed25519",
+        "pq2025",
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload: should auto-repair to the second rotation's state
     let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None).expect("should auto-repair");
@@ -178,7 +217,7 @@ fn test_double_crash_recovery() {
 #[serial(jacs_env, cwd_env)]
 fn test_transition_proof_message_contains_correct_hashes() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, _info, _tmp, _guard) = create_test_agent("proof-hashes-test", "ring-Ed25519");
+    let (agent, _info, _tmp, _guard) = create_test_agent("proof-hashes-test", "pq2025");
 
     let old_pub_key = agent.get_public_key().expect("get old pub key");
     let old_key_hash = jacs::crypt::hash::hash_public_key(&old_pub_key);
@@ -214,12 +253,61 @@ fn test_transition_proof_message_contains_correct_hashes() {
     );
 }
 
+/// A relying party must bind the old-key proof to both the expected stable
+/// identity and the candidate new public key; validating the detached proof
+/// alone is insufficient for registry rotation.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_transition_proof_binds_expected_identity_and_new_key() {
+    let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, info, _tmp, _guard) = create_test_agent("proof-binding-test", "pq2025");
+    let old_key = agent.get_public_key().expect("old public key");
+    let result = advanced::rotate(&agent, None).expect("rotation");
+    let new_key = agent.get_public_key().expect("new public key");
+    let proof: Value = serde_json::from_str(
+        result
+            .transition_proof
+            .as_deref()
+            .expect("transition proof"),
+    )
+    .expect("parse transition proof");
+
+    jacs::agent::Agent::verify_transition_proof_for_rotation(
+        &proof,
+        &info.agent_id,
+        &old_key,
+        &new_key,
+    )
+    .expect("bound transition proof");
+
+    assert!(
+        jacs::agent::Agent::verify_transition_proof_for_rotation(
+            &proof,
+            &uuid::Uuid::new_v4().to_string(),
+            &old_key,
+            &new_key,
+        )
+        .is_err(),
+        "proof must not authorize a different stable identity"
+    );
+    assert!(
+        jacs::agent::Agent::verify_transition_proof_for_rotation(
+            &proof,
+            &info.agent_id,
+            &old_key,
+            &old_key,
+        )
+        .is_err(),
+        "proof must bind the exact candidate new public key"
+    );
+}
+
 /// Chain of two rotations: each proof is independently verifiable.
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_chain_of_two_rotations_proofs() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, _info, _tmp, _guard) = create_test_agent("chain-proofs-test", "ring-Ed25519");
+    let (agent, _info, _tmp, _guard) = create_test_agent("chain-proofs-test", "pq2025");
 
     // Capture key A
     let key_a = agent.get_public_key().expect("get key A");
@@ -274,12 +362,13 @@ fn test_chain_of_two_rotations_proofs() {
 // Cross-Algorithm Rotation Tests
 // =============================================================================
 
-/// Ed25519 to pq2025: agent should sign correctly with the new algorithm.
+/// Ed25519 to pq2025: a grandfathered agent migrates and signs correctly
+/// with the new algorithm. (Rotation is THE Ed25519->PQ migration path.)
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_ed25519_to_pq2025_signs_correctly() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, _info, _tmp, _guard) = create_test_agent("ed25519-to-pq2025", "ring-Ed25519");
+    let (agent, _info, _tmp, _guard) = create_legacy_ed25519_test_agent("ed25519-to-pq2025");
 
     let result =
         advanced::rotate(&agent, Some("pq2025")).expect("cross-algo rotation ed25519->pq2025");
@@ -305,35 +394,33 @@ fn test_ed25519_to_pq2025_signs_correctly() {
     );
 }
 
-/// pq2025 to Ed25519: reverse direction should also work.
+/// pq2025 to Ed25519 is a downgrade and must be rejected.
 #[test]
 #[serial(jacs_env, cwd_env)]
-fn test_pq2025_to_ed25519_signs_correctly() {
+fn test_rotation_to_ed25519_is_rejected() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let (agent, _info, _tmp, _guard) = create_test_agent("pq2025-to-ed25519", "pq2025");
 
-    let result = advanced::rotate(&agent, Some("ring-Ed25519"))
-        .expect("cross-algo rotation pq2025->ed25519");
+    for bad in ["ring-Ed25519", "ed25519"] {
+        let err = advanced::rotate(&agent, Some(bad))
+            .expect_err("rotation to Ed25519 must be a typed error");
+        assert!(
+            err.to_string().contains("downgrade"),
+            "rotation error should identify the downgrade, got: {err}"
+        );
+    }
 
-    // Sign and verify with Ed25519
+    // The agent is untouched by the rejected rotations: it still signs pq2025.
     let signed = agent
-        .sign_message(&serde_json::json!({"algo": "ed25519"}))
-        .expect("sign with ed25519");
-    let verification = agent.verify(&signed.raw).expect("verify");
-    assert!(
-        verification.valid,
-        "ed25519 signature should verify: {:?}",
-        verification.errors
-    );
-
-    // Proof's signing algorithm should be the OLD algorithm (pq2025)
-    let proof: Value =
-        serde_json::from_str(result.transition_proof.as_ref().unwrap()).expect("parse proof");
+        .sign_message(&serde_json::json!({"still": "pq2025"}))
+        .expect("sign after rejected rotation");
+    let signed_value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
     assert_eq!(
-        proof["signingAlgorithm"].as_str().unwrap(),
-        "pq2025",
-        "Transition proof should be signed with old algorithm pq2025"
+        signed_value["jacsSignature"]["signingAlgorithm"].as_str(),
+        Some("pq2025")
     );
+    let verification = agent.verify(&signed.raw).expect("verify");
+    assert!(verification.valid, "{:?}", verification.errors);
 }
 
 /// After cross-algorithm rotation, config on disk should reflect the new algorithm.
@@ -341,7 +428,7 @@ fn test_pq2025_to_ed25519_signs_correctly() {
 #[serial(jacs_env, cwd_env)]
 fn test_cross_algo_config_field_updated() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, _info, _tmp, _guard) = create_test_agent("cross-algo-config", "ring-Ed25519");
+    let (agent, _info, _tmp, _guard) = create_legacy_ed25519_test_agent("cross-algo-config");
 
     let _result = advanced::rotate(&agent, Some("pq2025")).expect("cross-algo rotation");
 
@@ -359,7 +446,7 @@ fn test_cross_algo_config_field_updated() {
 #[serial(jacs_env, cwd_env)]
 fn test_cross_algo_invalid_algorithm_rejected() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, _info, _tmp, _guard) = create_test_agent("invalid-algo-reject", "ring-Ed25519");
+    let (agent, _info, _tmp, _guard) = create_test_agent("invalid-algo-reject", "pq2025");
 
     let result = advanced::rotate(&agent, Some("not-a-real-algo"));
     assert!(result.is_err(), "Invalid algorithm should be rejected");
@@ -384,7 +471,7 @@ fn test_cross_algo_invalid_algorithm_rejected() {
 #[serial(jacs_env, cwd_env)]
 fn test_create_rotate_sign_verify_lifecycle() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, info, _tmp, _guard) = create_test_agent("lifecycle-test", "ring-Ed25519");
+    let (agent, info, _tmp, _guard) = create_test_agent("lifecycle-test", "pq2025");
 
     // Rotate
     let result = advanced::rotate(&agent, None).expect("rotation");
@@ -425,7 +512,7 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
     use jacs::keystore::RotationJournal;
 
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, info, _tmp, _guard) = create_test_agent("crash-lifecycle-test", "ring-Ed25519");
+    let (agent, info, _tmp, _guard) = create_test_agent("crash-lifecycle-test", "pq2025");
     let old_public_key = agent.get_public_key().expect("get old public key");
     let old_key_hash = hash_public_key(&old_public_key);
 
@@ -437,15 +524,18 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
 
     // Simulate crash: restore pre-rotation config + write journal
     std::fs::write("./jacs.config.json", &config_before).expect("restore stale config");
-    let _journal = RotationJournal::create(
+    let mut journal = RotationJournal::create(
         "./jacs_keys",
         &info.agent_id,
         &info.version,
         &old_key_hash,
-        "ring-Ed25519",
+        "pq2025",
         "./jacs.config.json",
     )
     .expect("create journal");
+    journal
+        .advance("agent_saved")
+        .expect("record crash after rotated agent save");
 
     // Reload: auto-repair
     let recovered =
@@ -478,7 +568,7 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
 #[serial(jacs_env, cwd_env)]
 fn test_rotation_stress_repeated_sign_verify() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, _info, _tmp, _guard) = create_test_agent("rotation-stress", "ring-Ed25519");
+    let (agent, _info, _tmp, _guard) = create_test_agent("rotation-stress", "pq2025");
 
     // Pre-rotation sign/verify baseline
     let baseline = agent
@@ -529,7 +619,7 @@ fn test_rotation_stress_repeated_sign_verify() {
 #[serial(jacs_env, cwd_env)]
 fn test_rotation_retains_old_key_and_marks_it_obsolete() {
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    let (agent, info, _tmp, _guard) = create_test_agent("obsolete-marker", "ring-Ed25519");
+    let (agent, info, _tmp, _guard) = create_test_agent("obsolete-marker", "pq2025");
     let old_version = info.version.clone();
 
     advanced::rotate(&agent, None).expect("rotation should succeed");

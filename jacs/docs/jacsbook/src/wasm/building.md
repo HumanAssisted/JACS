@@ -5,18 +5,29 @@ web page needs to create a browser-local JACS agent, sign JSON, verify
 signed JACS documents, or collect multi-party agreement signatures
 without calling a backend service.
 
+> **Distribution status (observed 2026-07-11):** `@jacs/wasm` is not published
+> on npm. The API on this page is available from a source build; the registry
+> install command becomes valid only after a release is published and
+> smoke-tested.
+
 For Node.js server applications, use the native `@hai.ai/jacs` package
 instead. `@jacs/wasm` is browser-only: no filesystem access, no DNS
 trust lookup, no MCP server, and no CLI process.
 
-## Install
+## Build and install today
 
 ```sh
-npm install @jacs/wasm
+git clone https://github.com/HumanAssisted/JACS.git
+cd JACS
+make build-wasm
+# From your consuming project:
+npm install /absolute/path/to/JACS/jacs-wasm/pkg
 ```
 
 Bundlers must be able to load an ES module plus the generated
-`jacs_wasm_bg.wasm` asset. Vite works with the package as published.
+`jacs_wasm_bg.wasm` asset. The source package is smoke-tested with Vite and
+Chromium. After the first registry publication, the consumer command becomes
+`npm install @jacs/wasm`.
 
 ## Quick Start
 

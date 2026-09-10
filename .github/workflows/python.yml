@@ -1,25 +1,41 @@
 name: Python (jacs)
 
 on:
+  workflow_call:
   push:
     branches: ["main"]
     paths:
       - "jacspy/**"
       - "jacs/**"
+      - "jacs-core/**"
+      - "jacs-media/**"
       - "binding-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/python.yml"
+      - ".github/workflows/release-pypi.yml"
+      - "scripts/check_native_crypto_linkage.py"
+      - "scripts/check_cargo_lock_subset.py"
+      - "scripts/smoke/verify_human_approval.py"
   pull_request:
     branches: ["main"]
     paths:
       - "jacspy/**"
       - "jacs/**"
+      - "jacs-core/**"
+      - "jacs-media/**"
       - "binding-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/python.yml"
+      - ".github/workflows/release-pypi.yml"
+      - "scripts/check_native_crypto_linkage.py"
+      - "scripts/check_cargo_lock_subset.py"
+      - "scripts/smoke/verify_human_approval.py"
   workflow_dispatch: # Allows manual triggering
+
+permissions:
+  contents: read
 
 concurrency:
   group: python-${{ github.event.pull_request.number || github.ref }}
@@ -36,13 +52,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build Docker image for testing (x86_64)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: jacspy
           file: jacspy/DockerfileBuilder
@@ -63,9 +81,11 @@ jobs:
               cd /workspace/jacspy && \
               /opt/python/cp311-cp311/bin/python3.11 -m venv .venv && \
               source .venv/bin/activate && \
-              pip install maturin pytest pytest-asyncio pytest-xdist && \
-              pip install fastmcp mcp starlette && \
-              PYTEST_XDIST_WORKERS=4 make test-python-parallel"
+              pip install --disable-pip-version-check --only-binary=:all: \
+                maturin==1.5.0 pytest==9.1.1 pytest-asyncio==1.4.0 \
+                pytest-xdist==3.8.0 fastmcp==3.2.0 mcp==1.26.0 \
+                starlette==1.3.1 && \
+              JACS_TEST_HUMAN_APPROVAL=1 PYTEST_XDIST_WORKERS=4 make test-python-parallel"
 
       - name: Verify sdist build on PR/push
         working-directory: jacspy
@@ -77,38 +97,42 @@ jobs:
             jacs-build-x86_64 \
             bash -c "\
               cd /workspace/jacspy && \
-              /opt/python/cp311-cp311/bin/python3.11 -m pip install maturin && \
+              /opt/python/cp311-cp311/bin/python3.11 -m pip install \
+                --disable-pip-version-check --only-binary=:all: maturin==1.5.0 && \
               /opt/python/cp311-cp311/bin/python3.11 -m maturin sdist --out dist-sdist-check"
 
   wheel-smoke-uv:
     name: Wheel smoke install (uv)
-    if: github.event_name == 'push'
     needs: test-jacs
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
 
       - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
-          toolchain: '1.93'
+          toolchain: '1.97'
 
       - name: Install libdbus (required by keyring crate on Linux)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install uv and maturin
-        run: python -m pip install uv maturin
+        run: >-
+          python -m pip install --disable-pip-version-check --only-binary=:all:
+          "uv==0.11.28" "maturin==1.5.0"
 
       - name: Build wheel
         working-directory: jacspy
-        run: UV_NO_SYNC=1 uv run maturin build --release --out dist
+        run: maturin build --locked --release --out dist
 
       - name: Smoke test wheel import in clean venv
         working-directory: jacspy
@@ -121,12 +145,14 @@ jobs:
           import jacs.simple
           print("wheel smoke imports ok")
           PY
+          /tmp/jacs-wheel-smoke/bin/python ../scripts/smoke/verify_human_approval.py \
+            ../binding-core/tests/fixtures/human_approved_document_v1.json
+          python ../scripts/check_native_crypto_linkage.py dist/*.whl
 
   # Job to build wheels for CI coverage (PyPI package name is jacs)
   # macOS wheels built by release-pypi.yml on tagged releases only (macOS = 10x minute multiplier).
   build-jacs-wheels:
     name: Build jacs wheels on ${{ matrix.os }}
-    if: github.event_name == 'push'
     needs: [test-jacs, wheel-smoke-uv]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -136,51 +162,75 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0 # Needed for cibuildwheel versioning
+          persist-credentials: false
 
       - name: Set up QEMU (Linux only)
         if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
         with:
           platforms: all 
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11' 
 
       - name: Set up Rust (macOS)
         if: runner.os == 'macOS'
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
-          toolchain: '1.93'
+          toolchain: '1.97'
           target: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel
+        run: >-
+          python -m pip install --disable-pip-version-check --only-binary=:all:
+          "cibuildwheel==4.1.0"
 
       - name: Build wheels
         run: cibuildwheel --output-dir wheelhouse jacspy
         env:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
-          CIBW_BUILD: "cp311-* cp312-* cp313-*"
+          CIBW_BUILD: "cp311-* cp312-* cp313-* cp314-*"
+          CIBW_MANYLINUX_X86_64_IMAGE: "quay.io/pypa/manylinux_2_28_x86_64@sha256:65140ef21cef92d0c13d001708afd7d304d7a154f7120d039df99dac708f3ffb"
+          CIBW_MANYLINUX_AARCH64_IMAGE: "quay.io/pypa/manylinux_2_28_aarch64@sha256:d2380d927972b39b86041530b86c02c4307c19605afb4fe5ddf89e54f81e3bb6"
           # macOS: set minimum deployment target so delocate doesn't reject the wheel
           CIBW_ENVIRONMENT_MACOS: 'MACOSX_DEPLOYMENT_TARGET=10.13'
           # Linux: install Rust toolchain and OpenSSL inside manylinux containers
           CIBW_BEFORE_ALL_LINUX: >-
-            if command -v yum &>/dev/null; then
-              yum install -y openssl-devel perl-IPC-Cmd;
-            elif command -v apk &>/dev/null; then
+            set -eux;
+            if command -v yum >/dev/null 2>&1; then
+              yum install -y openssl-devel perl-core perl-IPC-Cmd;
+            elif command -v apk >/dev/null 2>&1; then
               apk add --no-cache openssl-dev perl musl-dev;
-            fi &&
-            curl https://sh.rustup.rs -sSf | sh -s -- -y
-          CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH'
+            fi;
+            RUSTUP_VERSION=1.29.0;
+            RUST_VERSION=1.97.0;
+            if command -v apk >/dev/null 2>&1; then RUSTUP_LIBC=musl; else RUSTUP_LIBC=gnu; fi;
+            case "$(uname -m)-${RUSTUP_LIBC}" in
+              x86_64-gnu) RUSTUP_SHA256=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10; RUSTUP_ARCH=x86_64-unknown-linux-gnu ;;
+              aarch64-gnu) RUSTUP_SHA256=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792; RUSTUP_ARCH=aarch64-unknown-linux-gnu ;;
+              x86_64-musl) RUSTUP_SHA256=9cd3fda5fd293890e36ab271af6a786ee22084b5f6c2b83fd8323cec6f0992c1; RUSTUP_ARCH=x86_64-unknown-linux-musl ;;
+              aarch64-musl) RUSTUP_SHA256=88761caacddb92cd79b0b1f939f3990ba1997d701a38b3e8dd6746a562f2a759; RUSTUP_ARCH=aarch64-unknown-linux-musl ;;
+              *) echo "unsupported rustup platform: $(uname -m)-${RUSTUP_LIBC}" >&2; exit 1 ;;
+            esac;
+            rustup_init=/tmp/rustup-init;
+            curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --connect-timeout 15 --max-time 120 --output "$rustup_init" "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_ARCH}/rustup-init";
+            echo "${RUSTUP_SHA256}  ${rustup_init}" | sha256sum -c -;
+            chmod 0755 "$rustup_init";
+            "$rustup_init" -y --profile minimal --no-modify-path --default-toolchain "$RUST_VERSION";
+            rm -f "$rustup_init";
+            "$HOME/.cargo/bin/rustc" --version | grep -F "rustc ${RUST_VERSION} "
+          # RUSTUP_TOOLCHAIN keeps rustup from lazily installing the components
+          # listed in rust-toolchain.toml inside the container.
+          CIBW_ENVIRONMENT_LINUX: 'PATH=$HOME/.cargo/bin:$PATH RUSTUP_TOOLCHAIN=1.97.0'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-jacs-${{ matrix.os }}
           # Path is relative to GITHUB_WORKSPACE (repo root)

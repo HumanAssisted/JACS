@@ -18,6 +18,13 @@ jacs.config.json
 !jacs/jacs.config.json
 .DS_Store
 
+# Python test/tool caches
+**/__pycache__/
+*.py[cod]
+
+# JavaScript package-manager installs are reproducible from lockfiles.
+**/node_modules/
+
 # Runtime artifacts from tests
 var/
 documents/

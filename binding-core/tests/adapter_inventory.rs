@@ -48,7 +48,7 @@ fn test_adapter_inventory_python_has_expected_adapters() {
         .as_object()
         .expect("python should be an object");
 
-    let expected_adapters = ["mcp", "langchain", "crewai", "fastapi", "anthropic"];
+    let expected_adapters = ["mcp", "langchain", "fastapi", "anthropic"];
     for adapter in &expected_adapters {
         assert!(
             python.contains_key(*adapter),

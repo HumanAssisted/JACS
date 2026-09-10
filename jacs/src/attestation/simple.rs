@@ -119,8 +119,8 @@ pub fn create_from_json(
 ) -> Result<SignedDocument, JacsError> {
     use crate::attestation::types::*;
 
-    let params: serde_json::Value =
-        serde_json::from_str(params_json).map_err(|e| JacsError::Internal {
+    let params: serde_json::Value = jacs_core::strict_json::parse_strict_json(params_json)
+        .map_err(|e| JacsError::Internal {
             message: format!("Invalid JSON params: {}", e),
         })?;
 
@@ -196,8 +196,10 @@ pub fn lift_from_json(
     use crate::attestation::types::Claim;
 
     let claims: Vec<Claim> =
-        serde_json::from_str(claims_json).map_err(|e| JacsError::Internal {
-            message: format!("Invalid claims JSON: {}", e),
+        jacs_core::strict_json::deserialize_strict_json(claims_json).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Invalid claims JSON: {}", e),
+            }
         })?;
 
     lift(agent, signed_doc_json, &claims)
@@ -214,8 +216,8 @@ pub fn lift_from_json(
 /// # Returns
 /// A DSSE envelope JSON string containing the in-toto Statement.
 pub fn export_dsse(attestation_json: &str) -> Result<String, JacsError> {
-    let att_value: serde_json::Value =
-        serde_json::from_str(attestation_json).map_err(|e| JacsError::AttestationFailed {
+    let att_value: serde_json::Value = jacs_core::strict_json::parse_strict_json(attestation_json)
+        .map_err(|e| JacsError::AttestationFailed {
             message: format!("Invalid attestation JSON: {}", e),
         })?;
     let envelope = crate::attestation::dsse::export_dsse(&att_value).map_err(|e| {

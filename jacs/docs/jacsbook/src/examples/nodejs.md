@@ -1,5 +1,7 @@
 # Node.js Examples
 
+{{#include ../_snippets/node-registry-status.md}}
+
 This chapter provides practical Node.js examples using the `@hai.ai/jacs` package.
 
 ## Setup

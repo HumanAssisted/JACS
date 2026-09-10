@@ -11,6 +11,7 @@ const { expect } = require('chai');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { portableSignedDocument } = require('./helpers/signed-document');
 
 let clientModule;
 try {
@@ -475,6 +476,166 @@ describe('JacsClient', function () {
     );
   });
 
+  describe('legacy-v1 verification attribution', () => {
+    (available ? it : it.skip)('suppresses mutable legacy metadata on async and sync verification', async () => {
+      const client = new clientModule.JacsClient();
+      client.agent = {
+        verifyDocument: async () => true,
+        verifyDocumentSync: () => true,
+      };
+      const legacy = JSON.stringify({
+        content: { approved: true },
+        jacsSignature: {
+          agentID: 'attacker-selected-agent',
+          publicKeyHash: 'attacker-selected-key',
+          date: '2099-01-01T00:00:00Z',
+        },
+      });
+
+      for (const result of [await client.verify(legacy), client.verifySync(legacy)]) {
+        expect(result.valid).to.equal(true);
+        expect(result.signerId).to.equal('');
+        expect(result.timestamp).to.equal('');
+      }
+    });
+
+    (available ? it : it.skip)('suppresses mutable legacy metadata on async and sync ID lookup', async () => {
+      const legacy = JSON.stringify({
+        jacsSignature: {
+          agentID: 'attacker-selected-agent',
+          publicKeyHash: 'attacker-selected-key',
+          date: '2099-01-01T00:00:00Z',
+        },
+      });
+      const client = new clientModule.JacsClient();
+      client.agent = {
+        verifyDocumentById: async () => true,
+        verifyDocumentByIdSync: () => true,
+        getDocumentById: async () => legacy,
+        getDocumentByIdSync: () => legacy,
+      };
+
+      for (const result of [await client.verifyById('legacy:1'), client.verifyByIdSync('legacy:1')]) {
+        expect(result.valid).to.equal(true);
+        expect(result.signerId).to.equal('');
+        expect(result.timestamp).to.equal('');
+      }
+    });
+
+    (available ? it : it.skip)('never returns parsed provenance when verification fails', async () => {
+      const client = new clientModule.JacsClient();
+      client.agent = {
+        verifyDocument: async () => { throw new Error('invalid signature'); },
+        verifyDocumentSync: () => { throw new Error('invalid signature'); },
+      };
+      const tampered = JSON.stringify({
+        content: { approved: false },
+        jacsSignature: {
+          signatureContentVersion: '2',
+          agentID: 'unverified-agent',
+          date: '2099-01-01T00:00:00Z',
+        },
+      });
+
+      for (const result of [await client.verify(tampered), client.verifySync(tampered)]) {
+        expect(result.valid).to.equal(false);
+        expect(result.signerId).to.equal('');
+        expect(result.timestamp).to.equal('');
+      }
+    });
+  });
+
+  describe('native boolean verification contract', () => {
+    const forgedV2 = JSON.stringify(portableSignedDocument(
+      { approved: true },
+      {
+        agentId: 'forged-agent',
+        timestamp: '2099-01-01T00:00:00Z',
+      },
+    ));
+
+    for (const nativeResult of [false, 'true', 1, {}, null, undefined]) {
+      (available ? it : it.skip)(
+        `rejects direct and self verification result ${JSON.stringify(nativeResult)}`,
+        async () => {
+          const client = new clientModule.JacsClient();
+          client.info = { agentId: 'locally-loaded-agent' };
+          client.agent = {
+            verifyDocument: async () => nativeResult,
+            verifyDocumentSync: () => nativeResult,
+            verifyAgent: async () => nativeResult,
+            verifyAgentSync: () => nativeResult,
+          };
+
+          for (const result of [
+            await client.verify(forgedV2),
+            client.verifySync(forgedV2),
+            await client.verifySelf(),
+            client.verifySelfSync(),
+          ]) {
+            expect(result.valid).to.equal(false);
+            expect(result.signerId).to.equal('');
+            expect(result.timestamp).to.equal('');
+            expect(result.data).to.equal(undefined);
+          }
+        },
+      );
+    }
+
+    (available ? it : it.skip)('rejects false/nonboolean by-id results before loading parsed attribution', async () => {
+      for (const nativeResult of [false, 'true', 1, {}, null, undefined]) {
+        let loaded = false;
+        const client = new clientModule.JacsClient();
+        client.agent = {
+          verifyDocumentById: async () => nativeResult,
+          verifyDocumentByIdSync: () => nativeResult,
+          getDocumentById: async () => { loaded = true; return forgedV2; },
+          getDocumentByIdSync: () => { loaded = true; return forgedV2; },
+        };
+
+        for (const result of [
+          await client.verifyById('forged:1'),
+          client.verifyByIdSync('forged:1'),
+        ]) {
+          expect(result.valid).to.equal(false);
+          expect(result.signerId).to.equal('');
+          expect(result.timestamp).to.equal('');
+        }
+        expect(loaded).to.equal(false);
+      }
+    });
+
+    (available ? it : it.skip)('throws on false verification results in strict mode', async () => {
+      const client = new clientModule.JacsClient({ strict: true });
+      client.agent = {
+        verifyDocument: async () => false,
+        verifyDocumentSync: () => false,
+        verifyAgent: async () => false,
+        verifyAgentSync: () => false,
+      };
+
+      let error;
+      try {
+        await client.verify(forgedV2);
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/literal true|strict mode/i);
+      expect(() => client.verifySync(forgedV2)).to.throw(/literal true|strict mode/i);
+
+      error = undefined;
+      try {
+        await client.verifySelf();
+      } catch (err) {
+        error = err;
+      }
+      expect(error).to.be.an('error');
+      expect(error.message).to.match(/literal true|strict mode/i);
+      expect(() => client.verifySelfSync()).to.throw(/literal true|strict mode/i);
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Isolation
   // ---------------------------------------------------------------------------
@@ -599,7 +760,7 @@ describe('JacsClient', function () {
           expect(signed.documentId).to.be.a('string').and.not.empty;
 
           const status = client.checkAgreementSync(signed);
-          expect(status.complete).to.equal(true);
+          expect(status.complete).to.equal(false); // v1 inspection never reconstructs completion
           expect(status.pending).to.be.an('array').that.is.empty;
         } finally {
           process.chdir(originalCwd);
@@ -627,7 +788,7 @@ describe('JacsClient', function () {
 
           const signed = client.signAgreementSync(agreement);
           const status = client.checkAgreementSync(signed);
-          expect(status.complete).to.equal(true);
+          expect(status.complete).to.equal(false); // v1 inspection never reconstructs completion
         } finally {
           process.chdir(originalCwd);
         }

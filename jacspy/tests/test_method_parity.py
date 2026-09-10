@@ -12,7 +12,10 @@ It complements, not duplicates, test_parity.py.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -63,10 +66,20 @@ PYTHON_NAME_MAP = {
     "verify_self": "verify_self",
     "verify_json": "verify",
     "verify_with_key_json": "verify_with_key",
+    "verify_human_approved_document_json": "verify_human_approved_document",
     "verify_by_id_json": "verify_by_id",
     "sign_message_json": "sign_message",
     "sign_raw_bytes_base64": "sign_string",
     "sign_file_json": "sign_file",
+    "build_auth_header": "build_auth_header",
+    "build_request_auth_header": "build_request_auth_header",
+    "canonicalize_json": "canonicalize_json",
+    "sign_response": "sign_response",
+    "encode_verify_payload": "encode_verify_payload",
+    "decode_verify_payload": "decode_verify_payload",
+    "extract_document_id": "extract_document_id",
+    "prepare_signed_event_replay_json": "prepare_signed_event_replay",
+    "unwrap_signed_event": "unwrap_signed_event",
     "to_yaml": "to_yaml",
     "from_yaml": "from_yaml",
     "to_html": "to_html",
@@ -93,6 +106,28 @@ PYTHON_NAME_MAP = {
     "detect_agreement_v2_branch_conflict_json": "detect_agreement_v2_branch_conflict",
     "merge_agreement_v2_transcript_branches_json": "merge_agreement_v2_transcript_branches",
     "resolve_agreement_v2_branch_conflict_json": "resolve_agreement_v2_branch_conflict",
+    # ES256 compatibility key + ecosystem exports (P2 Tasks 002 / 004).
+    "add_compat_key_json": "add_compat_key",
+    "issue_compat_binding_json": "issue_compat_binding",
+    "export_compatibility_jwks_json": "export_compatibility_jwks",
+    "export_compatibility_key_binding_json": "export_compatibility_key_binding",
+    "export_ap2_mandate_json": "export_ap2_mandate",
+    "export_a2a_agent_card_json": "export_a2a_agent_card",
+    "export_agreement_v2_as_vc_json": "export_agreement_v2_as_vc",
+}
+
+# Feature-gated fixture groups are only present on SimpleAgent when the
+# native extension was compiled with the matching cargo feature. The default
+# maturin build (see pyproject.toml [tool.maturin] features) enables
+# `agreements` but not `a2a`. Detect each feature via a pre-existing gated
+# method so the presence check for NEW gated methods stays meaningful.
+FEATURE_BUILT = {
+    "a2a": hasattr(jacs.JacsAgent, "export_agent_card"),
+    "agreements": hasattr(SimpleAgent, "create_agreement_v2"),
+    # Dedicated feature-enabled behavioral coverage must fail if this sole
+    # gated method is absent; this inventory also supports minimal builds.
+    "human-approval": os.environ.get("JACS_TEST_HUMAN_APPROVAL") == "1"
+    or hasattr(SimpleAgent, "verify_human_approved_document"),
 }
 
 
@@ -115,9 +150,19 @@ def parity_methods(method_parity: dict) -> list[str]:
     return methods
 
 
+def built_parity_methods(method_parity: dict) -> list[str]:
+    """Return the contract for THIS build: gated groups whose cargo feature
+    was not compiled in (see FEATURE_BUILT) are excluded from presence checks."""
+    methods = list(method_parity["all_methods_flat"])
+    for feature, gated in method_parity.get("feature_gated_methods", {}).items():
+        if FEATURE_BUILT.get(feature, True):
+            methods.extend(gated)
+    return methods
+
+
 def test_python_method_parity_against_fixture(method_parity: dict):
     """All non-excluded methods from the fixture must exist on SimpleAgent."""
-    all_methods = parity_methods(method_parity)
+    all_methods = built_parity_methods(method_parity)
 
     missing = []
     for rust_name in all_methods:
@@ -134,6 +179,57 @@ def test_python_method_parity_against_fixture(method_parity: dict):
         + "\n\nIf a method was intentionally excluded, add it to EXCLUDED_FROM_PYTHON. "
         + "If it has a different name in Python, add it to PYTHON_NAME_MAP."
     )
+
+
+def test_public_simple_protocol_roundtrip(monkeypatch):
+    """Protocol helpers must be functional on the public SimpleAgent class."""
+    monkeypatch.delenv("JACS_REJECT_UNBOUND_AUTH_HEADER", raising=False)
+    agent, _ = SimpleAgent.ephemeral("ed25519")
+    legacy = agent.build_auth_header()
+    assert legacy.startswith("JACS ")
+    body = '{"include_test":false}'
+    header = agent.build_request_auth_header(
+        "POST", "https://hai.ai/api/v1/agents/hello", body, "hai.ai"
+    )
+    assert header.startswith("JACS v2.")
+
+    envelope = agent.sign_response('{"type":"connected"}')
+    parsed = json.loads(envelope)
+    signer_id = parsed["jacsSignature"]["agentID"]
+    verified = json.loads(
+        agent.unwrap_signed_event(
+            envelope, json.dumps({signer_id: agent.get_public_key_pem()})
+        )
+    )
+    assert verified["verified"] is True
+    assert verified["data"]["type"] == "connected"
+
+
+def test_request_auth_hashes_exact_binary_body_bytes():
+    agent, _ = SimpleAgent.ephemeral("ed25519")
+    body = b"\x00\xffbinary\x00body"
+    for bytes_like in (body, bytearray(body), memoryview(body)):
+        header = agent.build_request_auth_header(
+            "POST", "https://hai.ai/api/v1/jobs", bytes_like, "hai.ai"
+        )
+        claims_segment = header.removeprefix("JACS v2.").split(".", 1)[0]
+        claims = json.loads(
+            base64.urlsafe_b64decode(
+                claims_segment + "=" * (-len(claims_segment) % 4)
+            )
+        )
+        expected = base64.b64encode(hashlib.sha256(body).digest()).decode()
+        assert claims["contentDigest"] == f"sha-256=:{expected}:"
+
+    with pytest.raises(TypeError, match="contiguous"):
+        agent.build_request_auth_header(
+            "POST", "https://hai.ai/api/v1/jobs", memoryview(body)[::2], "hai.ai"
+        )
+
+    with pytest.raises(TypeError, match="str or a contiguous bytes-like object"):
+        agent.build_request_auth_header(
+            "POST", "https://hai.ai/api/v1/jobs", 123, "hai.ai"
+        )
 
 
 def test_python_exclusions_are_valid(method_parity: dict):

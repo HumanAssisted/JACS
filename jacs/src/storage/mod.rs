@@ -9,7 +9,7 @@
 //! |---------|------|-------------|-------------|
 //! | Filesystem | `fs` | (always) | Documents as JSON files on disk. Default. |
 //! | Memory | `memory` | (always) | In-memory store for testing. |
-//! | AWS S3 | `aws` | (always) | Object storage via `object_store` crate. |
+//! | AWS S3 | `aws` | `s3` | Object storage via `object_store` crate. |
 //! | SQLite (sync) | `rusqlite` | `sqlite` (default) | Local indexed storage via rusqlite. |
 //! | SQLite (async) | `sqlite` | `sqlx-sqlite` | Async indexed storage via sqlx + tokio. |
 //!
@@ -55,6 +55,7 @@
 //! ```
 
 // use futures_util::stream::stream::StreamExt;
+#[cfg(feature = "s3")]
 use crate::storage::jenv::get_required_env_var;
 #[cfg(target_arch = "wasm32")]
 use crate::time_utils;
@@ -64,12 +65,11 @@ use crate::time_utils;
 #[cfg(target_arch = "wasm32")]
 use futures_executor::block_on;
 use futures_util::StreamExt;
+#[cfg(feature = "s3")]
+use object_store::aws::{AmazonS3, AmazonS3Builder};
 use object_store::{
-    Error as ObjectStoreError, ObjectStore, PutPayload,
-    aws::{AmazonS3, AmazonS3Builder},
-    local::LocalFileSystem,
-    memory::InMemory,
-    path::Path as ObjectPath,
+    Error as ObjectStoreError, ObjectStore, ObjectStoreExt as _, PutPayload,
+    local::LocalFileSystem, memory::InMemory, path::Path as ObjectPath,
 };
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -277,6 +277,7 @@ where
 /// then routed to that backend through the [`ObjectStore`] trait.
 #[derive(Debug, Clone)]
 pub struct MultiStorage {
+    #[cfg(feature = "s3")]
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
     memory: Option<Arc<InMemory>>,
@@ -290,7 +291,9 @@ pub struct MultiStorage {
 
 /// Storage backend type selector for `MultiStorage`.
 ///
-/// Core variants (AWS, FS, Memory, WebLocal) are always available.
+/// FS, Memory, and WebLocal are always available. AWS construction requires
+/// the `s3` feature; keeping the enum variant available preserves config-file
+/// parsing and lets disabled builds return an actionable error.
 /// SQLite variants require their respective feature flags.
 ///
 /// PostgreSQL, SurrealDB, DuckDB, and Redb have been extracted to
@@ -349,7 +352,6 @@ impl MultiStorage {
 
     /// Create a new `MultiStorage` with an explicit base directory for filesystem storage.
     pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
-        let mut _s3;
         let mut _local;
         let mut _memory: Option<Arc<InMemory>>;
 
@@ -369,8 +371,19 @@ impl MultiStorage {
 
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
-        // Check AWS storage
+        #[cfg(not(feature = "s3"))]
         if default_storage == StorageType::AWS {
+            return Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(
+                    "AWS storage requires the `s3` feature",
+                )),
+            });
+        }
+
+        // Check AWS storage only when the cloud backend is compiled in.
+        #[cfg(feature = "s3")]
+        let s3 = if default_storage == StorageType::AWS {
             let bucket_name = get_required_env_var("JACS_ENABLE_AWS_BUCKET_NAME", true).expect(
                 "JACS_ENABLE_AWS_BUCKET_NAME must be set when JACS_ENABLE_AWS_STORAGE is set",
             );
@@ -382,11 +395,11 @@ impl MultiStorage {
                 .with_allow_http(allow_http)
                 .build()?;
             let tmps3 = Arc::new(s3);
-            _s3 = Some(tmps3.clone());
-            storages.push(tmps3);
+            storages.push(tmps3.clone());
+            Some(tmps3)
         } else {
-            _s3 = None;
-        }
+            None
+        };
 
         let is_fs = default_storage == StorageType::FS;
 
@@ -423,7 +436,7 @@ impl MultiStorage {
         };
 
         #[cfg(target_arch = "wasm32")]
-        if _local.is_none() && _s3.is_none() && web_local.is_none() {
+        if _local.is_none() && web_local.is_none() {
             return Err(ObjectStoreError::Generic {
                 store: "MultiStorage",
                 source: Box::new(std::io::Error::new(
@@ -434,7 +447,8 @@ impl MultiStorage {
         }
 
         Ok(Self {
-            aws: _s3,
+            #[cfg(feature = "s3")]
+            aws: s3,
             fs: _local,
             memory,
             #[cfg(target_arch = "wasm32")]
@@ -635,14 +649,27 @@ impl MultiStorage {
         };
 
         match selected {
-            StorageType::AWS => self
-                .aws
-                .clone()
-                .map(|a| a as Arc<dyn ObjectStore>)
-                .ok_or_else(|| ObjectStoreError::Generic {
-                    store: "MultiStorage",
-                    source: Box::new(std::io::Error::other("AWS storage not loaded")),
-                }),
+            StorageType::AWS => {
+                #[cfg(feature = "s3")]
+                {
+                    self.aws
+                        .clone()
+                        .map(|a| a as Arc<dyn ObjectStore>)
+                        .ok_or_else(|| ObjectStoreError::Generic {
+                            store: "MultiStorage",
+                            source: Box::new(std::io::Error::other("AWS storage not loaded")),
+                        })
+                }
+                #[cfg(not(feature = "s3"))]
+                {
+                    Err(ObjectStoreError::Generic {
+                        store: "MultiStorage",
+                        source: Box::new(std::io::Error::other(
+                            "AWS storage requires the `s3` feature",
+                        )),
+                    })
+                }
+            }
             StorageType::FS => self
                 .fs
                 .clone()
@@ -1088,6 +1115,17 @@ mod tests {
         let original = std::env::current_dir().expect("current cwd");
         std::env::set_current_dir(target).expect("set cwd");
         CwdGuard { original }
+    }
+
+    #[cfg(not(feature = "s3"))]
+    #[test]
+    fn aws_storage_requires_explicit_s3_feature() {
+        let error = MultiStorage::new("aws".to_string())
+            .expect_err("AWS storage must not activate cloud XML parsing in the default build");
+        assert!(
+            error.to_string().contains("requires the `s3` feature"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

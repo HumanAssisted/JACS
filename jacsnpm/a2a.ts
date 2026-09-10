@@ -7,7 +7,6 @@
  * Implements A2A protocol v0.4.0 (September 2025).
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   hashString,
   hashPublicKeyBase64,
@@ -16,6 +15,7 @@ import {
 import type { JacsClient } from './client.js';
 import type { Server } from 'http';
 import { warnDeprecated } from './deprecation.js';
+import { requirePortableV2SignedDocument } from './output-policy.js';
 
 // =============================================================================
 // Constants
@@ -260,7 +260,9 @@ export interface ArtifactVerificationResult {
   valid: boolean;
   status: VerificationStatus;
   /**
-   * Extracted payload returned by native verifyResponse() when available.
+   * @deprecated Canonical A2A verification exposes authenticated payload data
+   * through originalArtifact. Legacy verifyResponse() output is never
+   * projected into an A2A verification result.
    */
   verifiedPayload?: Record<string, unknown>;
   /**
@@ -299,6 +301,8 @@ export interface TrustAssessment {
   reason: string;
   policy?: string;
   agentId?: string | null;
+  /** True only when the verifying origin key was pinned during this assessment. */
+  firstContact: boolean;
 }
 
 /** Map binding-core's canonical trustAssessment to the wrapper's trust block. */
@@ -355,7 +359,7 @@ function normalizeVerificationStatus(
   valid: boolean,
   reason = '',
 ): VerificationStatus {
-  if (status === 'Verified' || status === 'SelfSigned') {
+  if (valid && (status === 'Verified' || status === 'SelfSigned')) {
     return status;
   }
   if (status && typeof status === 'object') {
@@ -393,6 +397,26 @@ function defineHiddenProperty<T extends object, K extends PropertyKey>(
   });
 }
 
+function stableJsonValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJsonValue(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJsonValue(item)}`)
+      .join(',')}}`;
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    throw new TypeError('A2A artifact must contain only finite JSON numbers');
+  }
+  const serialized = JSON.stringify(value);
+  if (typeof serialized !== 'string') {
+    throw new TypeError('A2A artifact must contain only JSON values');
+  }
+  return serialized;
+}
+
 // =============================================================================
 // Quickstart Options
 // =============================================================================
@@ -402,6 +426,11 @@ export interface A2AQuickstartOptions {
   name?: string;
   domain?: string;
   description?: string;
+  /**
+   * @deprecated Wrapper-supplied skills cannot be added after the native Agent
+   * Card is signed. Non-empty values fail immediately; persist skills through
+   * the native agent/card configuration before generating discovery documents.
+   */
   skills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
   trustPolicy?: TrustPolicy;
   algorithm?: string;
@@ -435,6 +464,7 @@ export class JACSA2AIntegration {
   client: JacsClient;
   trustPolicy: TrustPolicy;
   defaultUrl?: string | null;
+  /** Compatibility assertion only; cannot mutate the native signed Agent Card. */
   defaultSkills?: Array<{ id: string; name: string; description: string; tags: string[] }> | null;
 
   constructor(client: JacsClient, trustPolicy?: TrustPolicy) {
@@ -444,6 +474,13 @@ export class JACSA2AIntegration {
 
   static async quickstart(options: A2AQuickstartOptions = {}): Promise<JACSA2AIntegration> {
     const { url, name, domain, description, skills, trustPolicy, algorithm, configPath } = options;
+    if (skills != null && (!Array.isArray(skills) || skills.length > 0)) {
+      throw new Error(
+        'A2A quickstart skills are deprecated: wrapper-supplied skills cannot be added after '
+        + 'the native Agent Card is signed. Persist skills in the native agent/card workflow '
+        + 'before generating discovery documents.',
+      );
+    }
     let JacsClientCtor: typeof JacsClient;
     try {
       JacsClientCtor = require('./client').JacsClient;
@@ -469,7 +506,7 @@ export class JACSA2AIntegration {
 
     const integration = new JACSA2AIntegration(client, trustPolicy || DEFAULT_TRUST_POLICY);
     integration.defaultUrl = url || null;
-    integration.defaultSkills = skills || null;
+    integration.defaultSkills = null;
     return integration;
   }
 
@@ -500,7 +537,6 @@ export class JACSA2AIntegration {
 
     const card = this.exportAgentCard(agentData);
     const cardJson = JSON.parse(JSON.stringify(card));
-    const extensionJson = this.createExtensionDescriptor();
 
     if (this.defaultSkills && Array.isArray(this.defaultSkills)) {
       cardJson.skills = this.defaultSkills.map((s: any) => {
@@ -514,20 +550,50 @@ export class JACSA2AIntegration {
       });
     }
 
-    app.get('/.well-known/agent-card.json', (_req: any, res: any) => {
-      res.json(cardJson);
-    });
+    const documents = this.generateWellKnownDocuments(cardJson, '', '', agentData);
+    const nativeCard = documents['/.well-known/agent-card.json'];
+    if (
+      this.defaultSkills
+      && JSON.stringify(nativeCard.skills || []) !== JSON.stringify(cardJson.skills || [])
+    ) {
+      throw new Error(
+        "Cannot override A2A skills after the Agent Card is signed; configure the agent's skills before listen()",
+      );
+    }
+    const signedInterfaceUrl = (nativeCard.supportedInterfaces as Array<Record<string, unknown>> | undefined)
+      ?.[0]?.url;
+    if (this.defaultUrl) {
+      let requestedOrigin: string;
+      let signedOrigin: string;
+      try {
+        requestedOrigin = new URL(this.defaultUrl).origin;
+        signedOrigin = new URL(String(signedInterfaceUrl)).origin;
+      } catch (error) {
+        throw new Error(`Invalid configured or signed A2A public URL: ${String(error)}`);
+      }
+      if (requestedOrigin !== signedOrigin) {
+        throw new Error(
+          `Configured A2A public origin '${requestedOrigin}' does not match the signed Agent Card origin '${signedOrigin}'`,
+        );
+      }
+    }
 
-    app.get('/.well-known/jacs-extension.json', (_req: any, res: any) => {
-      res.json(extensionJson);
-    });
+    for (const [path, document] of Object.entries(documents)) {
+      app.get(path, (_req: any, res: any) => {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.json(document);
+      });
+    }
 
     const server = app.listen(port, () => {
       const address = server.address();
       const boundPort = typeof address === 'object' && address ? address.port : port;
       const requested = port === 0 ? ' (requested random port)' : '';
+      const publicOrigin = typeof signedInterfaceUrl === 'string'
+        ? new URL(signedInterfaceUrl).origin
+        : 'unavailable';
       console.log(
-        `Your agent is discoverable at http://localhost:${boundPort}/.well-known/agent-card.json${requested}`,
+        `A2A listener http://localhost:${boundPort}${requested}; signed public discovery origin ${publicOrigin}`,
       );
     });
 
@@ -624,8 +690,9 @@ export class JACSA2AIntegration {
    * Assess a remote agent's trust level based on the configured trust policy.
    *
    * - open: allows all agents
-   * - verified: requires JACS extension in the agent card
-   * - strict: requires the agent to be in the local JACS trust store
+   * - verified: requires native JWS/JWKS verification plus durable TOFU pinning
+   * - strict: additionally requires an explicitly trusted native root and its
+   *   valid compatibility binding for the exact ES256 card key
    */
   assessRemoteAgent(agentCardJson: string | Record<string, unknown>): TrustAssessment {
     const cardJson = typeof agentCardJson === 'string'
@@ -637,47 +704,135 @@ export class JACSA2AIntegration {
       const canonicalJson = nativeAssess.call((this.client as any)._agent, cardJson, this.trustPolicy);
       const canonical = JSON.parse(canonicalJson) as Record<string, unknown>;
       return {
-        allowed: canonical.allowed !== false,
+        allowed: canonical.allowed === true,
         trustLevel: legacyTrustLevel(canonical.trustLevel),
         jacsRegistered: canonical.jacsRegistered === true,
         inTrustStore: canonicalTrustLevel(canonical.trustLevel) === 'ExplicitlyTrusted',
         reason: String(canonical.reason ?? ''),
+        firstContact: canonical.firstContact === true,
       };
     }
     return this._legacyAssessRemoteAgent(card, this.trustPolicy);
   }
 
   /**
-   * Convenience method to add an A2A agent to the JACS trust store.
-   * Accepts a raw agent card JSON string or object.
+   * Explicitly trust the native JACS identity used by A2A strict mode.
+   *
+   * An Agent Card is self-advertised discovery metadata and is never enough
+   * to create native identity trust. Obtain the full self-signed native JACS
+   * agent document and its public key through an authenticated out-of-band
+   * channel. The native trust API verifies the document before persisting it.
    */
-  trustA2AAgent(agentCardJson: string | Record<string, unknown>): string {
-    const cardStr = typeof agentCardJson === 'string'
-      ? agentCardJson
-      : JSON.stringify(agentCardJson);
-    return this.client.trustAgent(cardStr);
+  trustA2AAgent(
+    agentDocumentJson: string | Record<string, unknown>,
+    publicKeyPem: string,
+  ): string {
+    if (typeof publicKeyPem !== 'string' || publicKeyPem.trim().length === 0) {
+      throw new Error('Cannot establish A2A identity trust without an explicit public key');
+    }
+    const documentString = typeof agentDocumentJson === 'string'
+      ? agentDocumentJson
+      : JSON.stringify(agentDocumentJson);
+    let document: Record<string, unknown>;
+    try {
+      document = JSON.parse(documentString) as Record<string, unknown>;
+    } catch (error) {
+      throw new Error(`Invalid native JACS agent document JSON: ${String(error)}`);
+    }
+    if (
+      !document
+      || typeof document !== 'object'
+      || !('jacsId' in document)
+      || !('jacsVersion' in document)
+      || !('jacsSignature' in document)
+    ) {
+      throw new Error(
+        'trustA2AAgent requires the full native JACS agent document, not an unauthenticated Agent Card',
+      );
+    }
+    const trustWithKey = (this.client as any).trustAgentWithKey;
+    if (typeof trustWithKey !== 'function') {
+      throw new Error(
+        'The configured JacsClient does not expose trustAgentWithKey; strict A2A trust cannot be established',
+      );
+    }
+    return trustWithKey.call(this.client, documentString, publicKeyPem);
   }
 
+  /**
+   * Sign through the native canonical A2A primitive and return the direct
+   * `a2a-*` document. Generic request-envelope fallback is never used. The
+   * returned portable-v2 metadata and parent chain must exactly match the
+   * requested artifact contract before any result is released.
+   */
   async signArtifact(
     artifact: Record<string, unknown>,
     artifactType: string,
     parentSignatures: Record<string, unknown>[] | null = null,
   ): Promise<Record<string, unknown>> {
-    const wrapped: Record<string, unknown> = {
-      jacsId: uuidv4(),
-      jacsVersion: uuidv4(),
-      jacsType: `a2a-${artifactType}`,
-      jacsLevel: 'artifact',
-      jacsVersionDate: new Date().toISOString(),
-      $schema: 'https://jacs.ai/schemas/header/v1/header.schema.json',
-      a2aArtifact: artifact,
-    };
-
-    if (parentSignatures) {
-      wrapped.jacsParentSignatures = parentSignatures;
+    if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+      throw new TypeError('A2A artifact must be a non-null JSON object');
+    }
+    if (typeof artifactType !== 'string' || artifactType.trim().length === 0) {
+      throw new TypeError('A2A artifact type must be a non-empty string');
+    }
+    if (parentSignatures != null && !Array.isArray(parentSignatures)) {
+      throw new TypeError('A2A parent signatures must be an array or null');
     }
 
-    return (this.client as any)._agent.signRequest(wrapped);
+    // Validate JSON compatibility before crossing the native boundary. This
+    // rejects cycles and values whose serialized meaning would differ.
+    stableJsonValue(artifact);
+    if (parentSignatures) stableJsonValue(parentSignatures);
+
+    const nativeAgent = (this.client as any)._agent;
+    const nativeSign = nativeAgent?.signArtifactSync;
+    if (typeof nativeSign !== 'function') {
+      throw new Error(
+        'Native signArtifactSync is required for canonical A2A artifact signing; '
+        + 'generic signRequest fallback is disabled',
+      );
+    }
+
+    let raw: unknown;
+    try {
+      raw = nativeSign.call(
+        nativeAgent,
+        JSON.stringify(artifact),
+        artifactType,
+        parentSignatures ? JSON.stringify(parentSignatures) : null,
+      );
+    } catch (error) {
+      throw new Error(`Native A2A signing failed: ${String(error)}`);
+    }
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+      throw new TypeError('Native A2A signing returned no canonical JSON document');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      throw new TypeError(`Native A2A signing returned invalid JSON: ${String(error)}`);
+    }
+    const signed = requirePortableV2SignedDocument(parsed, 'Native A2A signing');
+    if (signed.jacsType !== `a2a-${artifactType}`) {
+      throw new TypeError('Native A2A signing returned a mismatched canonical artifact type');
+    }
+    if (stableJsonValue(signed.a2aArtifact) !== stableJsonValue(artifact)) {
+      throw new TypeError('Native A2A signing returned a document that does not bind the artifact');
+    }
+    const returnedParents = signed.jacsParentSignatures;
+    const parentChainMatches = parentSignatures === null
+      ? returnedParents === undefined
+        || (Array.isArray(returnedParents) && returnedParents.length === 0)
+      : Array.isArray(returnedParents)
+        && stableJsonValue(returnedParents) === stableJsonValue(parentSignatures);
+    if (!parentChainMatches) {
+      throw new TypeError('Native A2A signing returned a mismatched parent chain');
+    }
+
+    return signed;
   }
 
   /** @deprecated Use signArtifact() instead. */
@@ -690,14 +845,23 @@ export class JACSA2AIntegration {
     return this.signArtifact(artifact, artifactType, parentSignatures);
   }
 
+  /**
+   * Verify artifact cryptography and its parent chain. Supply the real remote
+   * Agent Card to additionally enforce this integration's trust policy.
+   * Affirmative verification requires the native canonical
+   * verifyA2aArtifactSync contract. Legacy verifyResponse is never used as an
+   * A2A fallback and cannot project provenance or elevate trust.
+   */
   async verifyWrappedArtifact(
     wrappedArtifact: Record<string, unknown>,
     agentCard?: Record<string, unknown>,
   ): Promise<ArtifactVerificationResult> {
-    const options = {
-      policy: this.trustPolicy,
-      agentCard: agentCard ?? this._buildSyntheticAgentCard(wrappedArtifact),
-    };
+    // Cryptographic artifact validity is available without an Agent Card.
+    // Trust-policy assessment is a separate operation and requires the real,
+    // identity-bound remote card; never synthesize one from artifact claims.
+    const options = agentCard
+      ? { policy: this.trustPolicy, agentCard }
+      : { policy: this.trustPolicy };
     return this._verifyWrappedArtifactInternal(wrappedArtifact, new Set<string>(), options);
   }
 
@@ -731,69 +895,95 @@ export class JACSA2AIntegration {
     publicKeyB64: string,
     agentData: AgentData,
   ): Record<string, Record<string, unknown>> {
-    const nativeGenerate = (this.client as any)._agent?.generateWellKnownDocumentsSync;
-    if (typeof nativeGenerate === 'function') {
-      try {
-        const nativeJson = nativeGenerate.call((this.client as any)._agent);
-        const nativePairs = JSON.parse(nativeJson) as Array<{ path?: string; document?: Record<string, unknown> }>;
-        const documents: Record<string, Record<string, unknown>> = {};
-        for (const item of nativePairs) {
-          if (item && typeof item.path === 'string' && item.document && typeof item.document === 'object') {
-            documents[item.path] = item.document;
-          }
-        }
+    // These parameters remain for source compatibility only. Identity-bearing
+    // discovery documents must come from the native generator as one
+    // card/JWKS/binding unit; wrapper inputs can never replace signed fields.
+    void agentCard;
+    void jwsSignature;
+    void publicKeyB64;
+    void agentData;
 
-        const cardObj = JSON.parse(JSON.stringify(agentCard)) as Record<string, unknown>;
-        const nativeCard = documents['/.well-known/agent-card.json'];
-        if (nativeCard?.signatures && cardObj.signatures === undefined) {
-          cardObj.signatures = nativeCard.signatures;
-        }
-        if (jwsSignature) {
-          cardObj.signatures = [{ jws: jwsSignature }];
-        }
-        documents['/.well-known/agent-card.json'] = cardObj;
-        return documents;
-      } catch {
-        // Fall through to wrapper generation for mock clients and older bindings.
-      }
+    const nativeGenerate = (this.client as any)._agent?.generateWellKnownDocumentsSync;
+    if (typeof nativeGenerate !== 'function') {
+      throw new Error(
+        'Identity-bound A2A discovery requires the native JACS generator; '
+        + 'legacy wrapper-generated keys and signatures are not trusted',
+      );
+    }
+
+    let nativePairs: unknown;
+    try {
+      const nativeJson = nativeGenerate.call((this.client as any)._agent);
+      nativePairs = JSON.parse(nativeJson);
+    } catch (error) {
+      throw new Error(`Identity-bound A2A discovery generation failed: ${String(error)}`);
+    }
+    if (!Array.isArray(nativePairs)) {
+      throw new Error('Native A2A discovery result must be an array of path/document pairs');
     }
 
     const documents: Record<string, Record<string, unknown>> = {};
-    const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
-    const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
+    for (const item of nativePairs) {
+      if (
+        !item
+        || typeof item !== 'object'
+        || typeof (item as any).path !== 'string'
+        || !(item as any).document
+        || typeof (item as any).document !== 'object'
+        || Array.isArray((item as any).document)
+      ) {
+        throw new Error('Native A2A discovery returned a malformed path/document pair');
+      }
+      const path = (item as any).path as string;
+      if (Object.prototype.hasOwnProperty.call(documents, path)) {
+        throw new Error(`Native A2A discovery returned duplicate path '${path}'`);
+      }
+      documents[path] = (item as any).document as Record<string, unknown>;
+    }
 
-    const cardObj = JSON.parse(JSON.stringify(agentCard));
-    cardObj.signatures = [{ jws: jwsSignature }];
-    documents['/.well-known/agent-card.json'] = cardObj;
+    const requiredPaths = [
+      '/.well-known/agent-card.json',
+      '/.well-known/jwks.json',
+      '/.well-known/jacs-compat-binding.json',
+      '/.well-known/jacs-agent.json',
+      '/.well-known/jacs-pubkey.json',
+      '/.well-known/jacs-extension.json',
+    ];
+    const missing = requiredPaths.filter((path) => !Object.prototype.hasOwnProperty.call(documents, path));
+    if (missing.length > 0) {
+      throw new Error(`Native A2A discovery omitted identity-bound documents: ${missing.join(', ')}`);
+    }
 
-    documents['/.well-known/jwks.json'] = this._buildJwks(publicKeyB64, agentData);
+    const card = documents['/.well-known/agent-card.json'];
+    const metadata = card.metadata as Record<string, unknown> | undefined;
+    const signatures = card.signatures as Array<Record<string, unknown>> | undefined;
+    if (
+      !metadata
+      || metadata.jacsCompatBindingPath !== '/.well-known/jacs-compat-binding.json'
+      || !Array.isArray(signatures)
+      || signatures.length === 0
+      || typeof signatures[0]?.jws !== 'string'
+      || !signatures[0].jws
+      || signatures[0].keyId !== metadata.jacsCompatKid
+    ) {
+      throw new Error('Native A2A Agent Card is missing its bound ES256 signature metadata');
+    }
 
-    documents['/.well-known/jacs-agent.json'] = {
-      jacsVersion: '1.0',
-      agentId: agentData.jacsId,
-      agentVersion: agentData.jacsVersion,
-      agentType: agentData.jacsAgentType,
-      publicKeyHash: hashPublicKeyBase64(publicKeyB64),
-      keyAlgorithm,
-      capabilities: { signing: true, verification: true, postQuantum },
-      schemas: {
-        agent: 'https://jacs.ai/schemas/agent/v1/agent.schema.json',
-        header: 'https://jacs.ai/schemas/header/v1/header.schema.json',
-        signature: 'https://jacs.ai/schemas/components/signature/v1/signature.schema.json',
-      },
-      endpoints: { verify: '/jacs/verify', sign: '/jacs/sign', agent: '/jacs/agent' },
-    };
-
-    documents['/.well-known/jacs-pubkey.json'] = {
-      publicKey: publicKeyB64,
-      publicKeyHash: hashPublicKeyBase64(publicKeyB64),
-      algorithm: keyAlgorithm,
-      agentId: agentData.jacsId,
-      agentVersion: agentData.jacsVersion,
-      timestamp: new Date().toISOString(),
-    };
-
-    documents['/.well-known/jacs-extension.json'] = this.createExtensionDescriptor();
+    const jwks = documents['/.well-known/jwks.json'].keys as Array<Record<string, unknown>> | undefined;
+    if (
+      !Array.isArray(jwks)
+      || !jwks.some((key) => (
+        key?.kid === metadata.jacsCompatKid
+        && key.alg === 'ES256'
+        && key.use === 'sig'
+      ))
+    ) {
+      throw new Error("Native A2A JWKS does not contain the card's ES256 signing key");
+    }
+    const binding = documents['/.well-known/jacs-compat-binding.json'];
+    if (binding.jacsSha256 !== metadata.jacsCompatBindingHash) {
+      throw new Error('Native A2A compatibility binding hash does not match the Agent Card');
+    }
 
     return documents;
   }
@@ -809,38 +999,6 @@ export class JACSA2AIntegration {
     return extensions.some((ext) => ext && ext.uri === JACS_EXTENSION_URI);
   }
 
-  private _normalizeVerifyResponse(
-    rawVerificationResult: unknown,
-  ): {
-    valid: boolean;
-    verifiedPayload?: Record<string, unknown>;
-    verificationResult: boolean | Record<string, unknown>;
-  } {
-    if (typeof rawVerificationResult === 'boolean') {
-      return {
-        valid: rawVerificationResult,
-        verificationResult: rawVerificationResult,
-      };
-    }
-
-    if (rawVerificationResult && typeof rawVerificationResult === 'object') {
-      const rawObj = rawVerificationResult as Record<string, unknown>;
-      const payload = rawObj.payload;
-      return {
-        valid: true,
-        verifiedPayload: payload && typeof payload === 'object'
-          ? payload as Record<string, unknown>
-          : undefined,
-        verificationResult: rawObj,
-      };
-    }
-
-    return {
-      valid: false,
-      verificationResult: false,
-    };
-  }
-
   private _legacyAssessRemoteAgent(
     card: Record<string, unknown>,
     policy: TrustPolicy,
@@ -849,69 +1007,30 @@ export class JACSA2AIntegration {
     const agentId = typeof metadata?.jacsId === 'string' ? metadata.jacsId : null;
     const jacsRegistered = this._hasJacsExtension(card);
 
-    let inTrustStore = false;
-    const isTrusted = (this.client as any).isTrusted;
-    if (typeof isTrusted === 'function' && agentId) {
-      try {
-        inTrustStore = Boolean(isTrusted.call(this.client, agentId));
-      } catch {
-        inTrustStore = false;
-      }
-    }
-
-    const trustLevel = inTrustStore
-      ? 'trusted'
-      : jacsRegistered
-        ? 'jacs_registered'
-        : 'untrusted';
-
     let allowed: boolean;
     let reason: string;
     switch (policy) {
       case TRUST_POLICIES.OPEN:
         allowed = true;
-        reason = 'Open policy: all agents are allowed';
+        reason = 'Open policy: agent allowed without native cryptographic assessment; no identity assurance is claimed';
         break;
       case TRUST_POLICIES.STRICT:
-        allowed = inTrustStore;
-        reason = allowed
-          ? `Strict policy: agent '${agentId}' is in the local trust store.`
-          : agentId
-            ? `Strict policy: agent '${agentId}' is not in the local trust store.`
-            : 'Strict policy: remote agent is missing a jacsId.';
-        break;
       case TRUST_POLICIES.VERIFIED:
       default:
-        allowed = jacsRegistered;
-        reason = jacsRegistered
-          ? 'Verified policy: agent has JACS extension'
-          : 'Verified policy: agent does not declare JACS extension';
+        allowed = false;
+        reason = `${canonicalPolicyName(policy)} policy: native cryptographic assessment is unavailable; `
+          + 'an Agent Card extension or local trust-store name alone does not prove identity';
         break;
     }
 
     return {
       allowed,
-      trustLevel,
+      trustLevel: 'untrusted',
       jacsRegistered,
-      inTrustStore,
+      inTrustStore: false,
       reason,
+      firstContact: false,
     };
-  }
-
-  private _buildSyntheticAgentCard(
-    wrappedArtifact: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const signature = wrappedArtifact.jacsSignature as Record<string, unknown> | undefined;
-    const signerId = typeof signature?.agentID === 'string' ? signature.agentID : null;
-    const card: Record<string, unknown> = {
-      name: signerId || 'unknown',
-      capabilities: {},
-      metadata: { jacsId: signerId },
-    };
-    if (String(wrappedArtifact.jacsType || '').startsWith('a2a-')) {
-      (card.capabilities as Record<string, unknown>).extensions = [{ uri: JACS_EXTENSION_URI }];
-    }
-    return card;
   }
 
   private _buildCanonicalTrustAssessment(
@@ -926,6 +1045,7 @@ export class JACSA2AIntegration {
       reason: legacy.reason,
       policy: canonicalPolicyName(policy),
       agentId: legacy.agentId ?? null,
+      firstContact: legacy.firstContact === true,
     } as TrustAssessment;
     defineHiddenProperty(
       trustAssessment,
@@ -939,15 +1059,20 @@ export class JACSA2AIntegration {
     trustAssessment: Record<string, unknown>,
     fallbackPolicy: string,
   ): TrustAssessment {
+    const allowed = trustAssessment.allowed === true;
+    const reportedTrustLevel = canonicalTrustLevel(trustAssessment.trustLevel);
     const normalized = {
-      allowed: trustAssessment.allowed !== false,
-      trustLevel: canonicalTrustLevel(trustAssessment.trustLevel),
+      allowed,
+      // A denied or malformed assessment cannot simultaneously present a
+      // trusted identity in compatibility fields.
+      trustLevel: allowed ? reportedTrustLevel : 'Untrusted',
       jacsRegistered: trustAssessment.jacsRegistered === true,
       reason: String(trustAssessment.reason ?? ''),
       policy: canonicalPolicyName(String(trustAssessment.policy ?? fallbackPolicy)),
       agentId: typeof trustAssessment.agentId === 'string' || trustAssessment.agentId === null
         ? trustAssessment.agentId as string | null
         : null,
+      firstContact: trustAssessment.firstContact === true,
     } as TrustAssessment;
     defineHiddenProperty(
       normalized,
@@ -958,17 +1083,23 @@ export class JACSA2AIntegration {
   }
 
   private _normalizeParentVerificationResult(
-    parentResult: Record<string, unknown>,
+    parentResult: unknown,
     index: number,
   ): ParentVerificationResult {
-    const verified = parentResult.verified !== undefined
-      ? parentResult.verified !== false
-      : parentResult.valid !== false;
+    const canonicalParent = parentResult && typeof parentResult === 'object' && !Array.isArray(parentResult)
+      ? parentResult as Record<string, unknown>
+      : {};
+    // Parent-chain integrity is affirmative evidence, not a default. Missing,
+    // string, numeric, compatibility-alias, and status-contradictory values all
+    // fail closed.
+    const parentStatusIsVerified = canonicalParent.status === 'Verified'
+      || canonicalParent.status === 'SelfSigned';
+    const verified = canonicalParent.verified === true && parentStatusIsVerified;
     const normalized: ParentVerificationResult = {
-      index: Number.isInteger(parentResult.index) ? parentResult.index as number : index,
-      artifactId: String(parentResult.artifactId ?? ''),
-      signerId: String(parentResult.signerId ?? ''),
-      status: normalizeVerificationStatus(parentResult.status, verified),
+      index: Number.isInteger(canonicalParent.index) ? canonicalParent.index as number : index,
+      artifactId: String(canonicalParent.artifactId ?? ''),
+      signerId: String(canonicalParent.signerId ?? ''),
+      status: normalizeVerificationStatus(canonicalParent.status, verified),
       verified,
     };
     defineHiddenProperty(normalized, 'valid', normalized.verified);
@@ -980,35 +1111,69 @@ export class JACSA2AIntegration {
     canonical: Record<string, unknown>,
     fallbackPolicy: string,
   ): ArtifactVerificationResult {
-    const signature = wrappedArtifact.jacsSignature as Record<string, unknown> | undefined;
-    const payload = wrappedArtifact.jacs_payload as Record<string, unknown> | undefined;
+    const wrappedParents = Array.isArray(wrappedArtifact.jacsParentSignatures)
+      ? wrappedArtifact.jacsParentSignatures
+      : [];
     const parentResults = Array.isArray(canonical.parentVerificationResults)
       ? canonical.parentVerificationResults.map(
-        (parent, index) => this._normalizeParentVerificationResult(parent as Record<string, unknown>, index),
+        (parent, index) => this._normalizeParentVerificationResult(parent, index),
       )
       : [];
+    const parentSignaturesValid = canonical.parentSignaturesValid === true
+      && parentResults.length === wrappedParents.length
+      && parentResults.every((parent) => parent.verified === true);
+    const signerId = typeof canonical.signerId === 'string' ? canonical.signerId : '';
+    const signerVersion = typeof canonical.signerVersion === 'string' ? canonical.signerVersion : '';
+    const artifactType = typeof canonical.artifactType === 'string' ? canonical.artifactType : '';
+    const timestamp = typeof canonical.timestamp === 'string' ? canonical.timestamp : '';
+    const originalArtifact = canonical.originalArtifact
+      && typeof canonical.originalArtifact === 'object'
+      && !Array.isArray(canonical.originalArtifact)
+      ? canonical.originalArtifact as Record<string, unknown>
+      : {};
+    const canonicalProvenanceComplete = signerId.trim().length > 0
+      && signerVersion.trim().length > 0
+      && artifactType.trim().length > 0
+      && timestamp.trim().length > 0
+      && canonical.originalArtifact !== null
+      && typeof canonical.originalArtifact === 'object'
+      && !Array.isArray(canonical.originalArtifact);
+    const canonicalStatusIsVerified = canonical.status === 'Verified'
+      || canonical.status === 'SelfSigned';
+    const canonicalValid = canonical.valid === true
+      && canonicalStatusIsVerified
+      && canonicalProvenanceComplete;
+    const canonicalFailureReason = !canonicalProvenanceComplete
+      ? 'canonical native verification omitted authenticated provenance or originalArtifact'
+      : !canonicalStatusIsVerified
+        ? 'canonical native verification returned a success flag with a non-success status'
+        : 'signature verification failed';
     const result: ArtifactVerificationResult = {
-      valid: canonical.valid !== false,
-      status: normalizeVerificationStatus(canonical.status, canonical.valid !== false),
-      signerId: String(canonical.signerId ?? signature?.agentID ?? 'unknown'),
-      signerVersion: String(canonical.signerVersion ?? signature?.agentVersion ?? 'unknown'),
-      artifactType: String(canonical.artifactType ?? wrappedArtifact.jacsType ?? payload?.jacsType ?? 'unknown'),
-      timestamp: String(canonical.timestamp ?? wrappedArtifact.jacsVersionDate ?? ''),
-      originalArtifact: (
-        canonical.originalArtifact
-        ?? wrappedArtifact.a2aArtifact
-        ?? payload?.a2aArtifact
-        ?? {}
-      ) as Record<string, unknown>,
-      parentSignaturesValid: parentResults.every((parent) => parent.verified),
+      valid: canonicalValid,
+      status: normalizeVerificationStatus(canonical.status, canonicalValid, canonicalFailureReason),
+      signerId,
+      signerVersion,
+      artifactType,
+      timestamp,
+      originalArtifact,
+      parentSignaturesValid,
       parentVerificationResults: parentResults,
     };
 
-    if (canonical.parentSignaturesValid !== undefined) {
-      result.parentSignaturesValid = canonical.parentSignaturesValid !== false;
+    if (!parentSignaturesValid && canonical.valid === true) {
+      result.valid = false;
+      result.status = {
+        Invalid: {
+          reason: 'parent signature verification failed or returned incomplete canonical evidence',
+        },
+      };
     }
 
-    if (canonical.trustAssessment && typeof canonical.trustAssessment === 'object') {
+    if (
+      canonical.trustAssessment
+      && typeof canonical.trustAssessment === 'object'
+      && !Array.isArray(canonical.trustAssessment)
+    ) {
       result.trustAssessment = this._normalizeTrustAssessment(
         canonical.trustAssessment as Record<string, unknown>,
         fallbackPolicy,
@@ -1067,11 +1232,27 @@ export class JACSA2AIntegration {
       const verifyCanonical = nativeAgent?.verifyA2aArtifactSync;
       const verifyLegacy = nativeAgent?.verifyResponse;
 
-      let rawVerificationResult: boolean | Record<string, unknown> | undefined;
-      let verifiedPayload: Record<string, unknown> | undefined;
       let canonical: Record<string, unknown>;
+      let canonicalIsNative = false;
+      const requestedPolicy = options?.policy?.toLowerCase();
+      const requiresPolicyVerifier = requestedPolicy === TRUST_POLICIES.VERIFIED
+        || requestedPolicy === TRUST_POLICIES.STRICT;
 
-      if (options?.policy && options.agentCard && typeof verifyWithPolicy === 'function') {
+      if (requiresPolicyVerifier && typeof verifyWithPolicy !== 'function') {
+        const reason = `${canonicalPolicyName(options?.policy)} policy requires the canonical native `
+          + 'verifyA2aArtifactWithPolicySync() verifier; legacy verifyResponse() fallback is not trusted';
+        canonical = {
+          valid: false,
+          status: { Invalid: { reason } },
+          signerId: '',
+          signerVersion: '',
+          artifactType: '',
+          timestamp: '',
+          originalArtifact: {},
+          parentSignaturesValid: false,
+          parentVerificationResults: [],
+        };
+      } else if (options?.policy && options.agentCard && typeof verifyWithPolicy === 'function') {
         const canonicalJson = verifyWithPolicy.call(
           nativeAgent,
           wrappedJson,
@@ -1079,57 +1260,54 @@ export class JACSA2AIntegration {
           options.policy,
         );
         canonical = JSON.parse(canonicalJson) as Record<string, unknown>;
+        canonicalIsNative = true;
       } else if (typeof verifyCanonical === 'function') {
         const canonicalJson = verifyCanonical.call(nativeAgent, wrappedJson);
         canonical = JSON.parse(canonicalJson) as Record<string, unknown>;
+        canonicalIsNative = true;
       } else if (typeof verifyLegacy === 'function') {
-        const normalized = this._normalizeVerifyResponse(verifyLegacy.call(nativeAgent, wrappedJson));
-        rawVerificationResult = normalized.verificationResult;
-        verifiedPayload = normalized.verifiedPayload;
-        const signature = wrappedArtifact.jacsSignature as Record<string, unknown> | undefined;
-        const signerId = typeof signature?.agentID === 'string' ? signature.agentID : undefined;
-        const parentResults = Array.isArray(wrappedArtifact.jacsParentSignatures)
-          ? wrappedArtifact.jacsParentSignatures.map((parent, index) => {
-            const nested = this._verifyWrappedArtifactInternal(
-              parent as Record<string, unknown>,
-              visited,
-            );
-            return {
-              index,
-              artifactId: String((parent as Record<string, unknown>).jacsId ?? ''),
-              signerId: nested.signerId,
-              status: nested.status,
-              verified: nested.valid,
-            };
-          })
-          : [];
+        // Generic document verification has no canonical A2A output contract.
+        // Even literal true cannot authenticate parsed provenance fields or a
+        // parent chain, so never invoke verifyResponse() as an A2A fallback.
         canonical = {
-          valid: normalized.valid,
-          status: normalized.valid
-            ? signerId && signerId === (this.client as any).agentId
-              ? 'SelfSigned'
-              : 'Verified'
-            : 'Invalid',
-          signerId,
-          signerVersion: signature?.agentVersion,
-          artifactType: wrappedArtifact.jacsType,
-          timestamp: wrappedArtifact.jacsVersionDate,
-          originalArtifact: wrappedArtifact.a2aArtifact,
-          parentVerificationResults: parentResults,
-          parentSignaturesValid: parentResults.every((parent) => parent.verified !== false),
+          valid: false,
+          status: {
+            Invalid: {
+              reason: 'A2A verification requires the canonical native verifyA2aArtifactSync() '
+                + 'verifier; legacy verifyResponse() cannot establish A2A validity',
+            },
+          },
+          signerId: '',
+          signerVersion: '',
+          artifactType: '',
+          timestamp: '',
+          originalArtifact: {},
+          parentVerificationResults: [],
+          parentSignaturesValid: false,
         };
       } else {
         throw new Error(
           'A2A verification requires verifyA2aArtifactWithPolicySync(), '
-          + 'verifyA2aArtifactSync(), or verifyResponse() on client._agent.',
+          + 'or verifyA2aArtifactSync() on client._agent.',
         );
       }
 
-      if (options?.policy && options.agentCard && !canonical.trustAssessment) {
-        const trustAssessment = this._buildCanonicalTrustAssessment(
-          options.agentCard,
-          options.policy,
-        );
+      const hasCanonicalTrustAssessment = canonical.trustAssessment
+        && typeof canonical.trustAssessment === 'object'
+        && !Array.isArray(canonical.trustAssessment);
+      if (options?.policy && options.agentCard && !hasCanonicalTrustAssessment) {
+        const trustAssessment = canonicalIsNative
+          ? this._buildCanonicalTrustAssessment(options.agentCard, options.policy)
+          : {
+            allowed: false,
+            trustLevel: 'Untrusted' as const,
+            jacsRegistered: false,
+            reason: 'canonical native A2A verification is unavailable; '
+              + 'legacy verification cannot elevate trust',
+            policy: canonicalPolicyName(options.policy),
+            agentId: null,
+            firstContact: false,
+          };
         canonical = {
           ...canonical,
           trustLevel: canonicalTrustLevel(trustAssessment.trustLevel),
@@ -1143,8 +1321,7 @@ export class JACSA2AIntegration {
         options?.policy ?? this.trustPolicy,
       );
       return this._attachCompatibilityAliases(result, {
-        rawVerificationResult: rawVerificationResult ?? canonical,
-        verifiedPayload,
+        rawVerificationResult: canonical,
       });
     } finally {
       if (artifactId) {

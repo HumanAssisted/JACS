@@ -24,6 +24,7 @@ assert!(result.valid);
 |---------|---------|----------------|
 | `sqlite` | Yes | Sync SQLite storage backend (rusqlite) |
 | `sqlx-sqlite` | No | Async SQLite storage backend (sqlx + tokio) |
+| `s3` | No | AWS S3 storage; enables the cloud HTTP/XML dependency graph |
 | `a2a` | No | Agent-to-Agent protocol support |
 | `agreements` | No | Multi-agent agreement signing with quorum and timeouts |
 | `attestation` | No | Evidence-based attestation and DSSE export |
@@ -45,6 +46,7 @@ Storage guarantees:
 | Filesystem | built-in | (always available) |
 | SQLite (rusqlite) | built-in (`sqlite` feature) | `cargo add jacs --features sqlite` |
 | SQLite (sqlx) | built-in (`sqlx-sqlite` feature) | `cargo add jacs --features sqlx-sqlite` |
+| AWS S3 | built-in (`s3` feature) | `cargo add jacs --features s3` |
 | PostgreSQL | `jacs-postgresql` | `cargo add jacs-postgresql` |
 | DuckDB | `jacs-duckdb` | `cargo add jacs-duckdb` |
 | SurrealDB | `jacs-surrealdb` | `cargo add jacs-surrealdb` |
@@ -163,7 +165,6 @@ status = alice.check_agreement(signed)
 ```bash
 pip install jacs[langchain]    # LangChain / LangGraph
 pip install jacs[fastapi]      # FastAPI / Starlette
-pip install jacs[crewai]       # CrewAI
 pip install jacs[anthropic]    # Anthropic / Claude SDK
 pip install jacs[all]          # Everything
 ```
@@ -178,12 +179,6 @@ agent = create_agent(model="openai:gpt-4o", tools=tools, middleware=[jacs_signin
 ```python
 from jacs.adapters.fastapi import JacsMiddleware
 app.add_middleware(JacsMiddleware)
-```
-
-**CrewAI:**
-```python
-from jacs.adapters.crewai import jacs_guardrail
-task = Task(description="Analyze data", agent=my_agent, guardrail=jacs_guardrail())
 ```
 
 **Anthropic:**
@@ -225,6 +220,11 @@ make test    # Run all tests
 ```
 
 ## Node.js
+
+> npm serves `@hai.ai/jacs@0.10.1` at the 2026-07-09 distribution baseline,
+> while this checkout is source `0.12.0`. The examples below describe source
+> head; pin and inspect registry exports before using them against the npm
+> package.
 
 ```bash
 npm install @hai.ai/jacs
@@ -318,7 +318,7 @@ const signed = await client.signArtifact({ action: 'classify', input: 'hello' },
 ```typescript
 import { createTestClient } from '@hai.ai/jacs/testing';
 
-const client = await createTestClient('ring-Ed25519');
+const client = await createTestClient('ed25519');
 const signed = await client.signMessage({ hello: 'test' });
 const result = await client.verify(signed.raw);
 assert(result.valid);
@@ -327,10 +327,16 @@ assert(result.valid);
 ## Go
 
 ```bash
-go get github.com/HumanAssisted/JACS/jacsgo
+git clone https://github.com/HumanAssisted/JACS.git
+cd JACS
+make -C jacsgo build-rust
+cd jacsgo
+go test ./...
 ```
 
-Uses CGo to call the JACS Rust library via FFI. Requires a Rust toolchain to build from source.
+The review baseline has no version-matched native-library release, so `go get`
+alone cannot link. The source build uses CGo to call the JACS Rust library via
+FFI and requires a Rust toolchain.
 
 ### Quick start
 
@@ -370,7 +376,6 @@ cd jacsgo && make build
 | Integration | Import | Status |
 |-------------|--------|--------|
 | Python + LangChain | `from jacs.adapters.langchain import jacs_signing_middleware` | Experimental |
-| Python + CrewAI | `from jacs.adapters.crewai import jacs_guardrail` | Experimental |
 | Python + FastAPI | `from jacs.adapters.fastapi import JacsMiddleware` | Experimental |
 | Python + Anthropic SDK | `from jacs.adapters.anthropic import signed_tool` | Experimental |
 | Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | Experimental |

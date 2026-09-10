@@ -1,6 +1,7 @@
 name: Rust (jacs crate)
 
 on:
+  workflow_call:
   push:
     branches: ["main"]
     tags: ["v*"]
@@ -19,7 +20,9 @@ on:
       - "scripts/check-secure-io.sh"
       - "scripts/forbidden-deps.sh"
       - "scripts/forbidden-deps.test.sh"
+      - "scripts/smoke/**"
       - "jacs-core/**"
+      - "jacs-media/**"
       - ".github/workflows/rust.yml"
   pull_request:
     branches: ["main"]
@@ -38,7 +41,9 @@ on:
       - "scripts/check-secure-io.sh"
       - "scripts/forbidden-deps.sh"
       - "scripts/forbidden-deps.test.sh"
+      - "scripts/smoke/**"
       - "jacs-core/**"
+      - "jacs-media/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
     inputs:
@@ -49,6 +54,9 @@ on:
         type: boolean
   schedule:
     - cron: "0 9 * * 1"  # Weekly on Monday (was daily — saves ~150 min/month)
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,16 +76,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Forbidden-deps guard (wasm-portable crates)
         # Both jacs-core and jacs-wasm must stay free of native-only
@@ -91,12 +101,12 @@ jobs:
 
       - name: Security audit + license check (cargo-deny)
         run: |
-          cargo install cargo-deny --locked
+          cargo install cargo-deny --locked --version 0.19.0
           # Advisory ignores (with reason strings) live in deny.toml under
           # [advisories.ignore]. Single source of truth for both license and
           # advisory policy; reviewable in PRs.
-          cargo deny check advisories
-          cargo deny check licenses
+          cargo deny --all-features check advisories
+          cargo deny --all-features check licenses
 
       - name: Validate schema $id fields match file paths
         run: ./scripts/validate-schemas.sh
@@ -129,15 +139,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Run quick Rust test suite (core - ${{ matrix.shard }})
         run: make test-jacs-fast-${{ matrix.shard }}
@@ -152,21 +164,61 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install system dependencies (D-Bus for keychain support)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Run CLI integration tests
         run: make test-jacs-cli
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
+
+  # P2 NFR8: the committed stock verifier scripts (scripts/smoke/*.mjs)
+  # must keep verifying real CLI exports — a bit-rotted verifier script
+  # is invisible without this lane (deep-review Issue 018).
+  smoke-verifiers:
+    name: P2 smoke verifiers (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies (D-Bus for keychain support)
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
+        with:
+          toolchain: "1.97"
+
+      - name: Install Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Run exporters + stock verifier scripts
+        run: make smoke-verifiers
         env:
           JACS_KEYCHAIN_BACKEND: disabled
 
@@ -180,15 +232,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Run binding-core tests
         run: make test-jacs-binding-core
@@ -213,15 +267,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Run in-process backend crate tests
         run: |
@@ -238,15 +294,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Run jacs-postgresql tests
         run: cargo test -p jacs-postgresql --lib --tests --verbose
@@ -265,26 +323,28 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install system dependencies (D-Bus for keychain support)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Security audit (cargo-deny, Linux)
         if: runner.os == 'Linux'
         run: |
-          cargo install cargo-deny --locked
+          cargo install cargo-deny --locked --version 0.19.0
           # Same advisory ignores as the hygiene job; policy in deny.toml.
-          cargo deny check advisories
+          cargo deny --all-features check advisories
 
       - name: Run full jacs tests
         run: |
@@ -328,24 +388,26 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install system dependencies (D-Bus for keychain support)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Security audit (cargo-deny)
         run: |
-          cargo install cargo-deny --locked
+          cargo install cargo-deny --locked --version 0.19.0
           # Same advisory ignores as the hygiene job; policy in deny.toml.
-          cargo deny check advisories
+          cargo deny --all-features check advisories
 
       - name: Run nightly full Rust tests
         run: |

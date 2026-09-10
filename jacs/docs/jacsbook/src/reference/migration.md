@@ -1,5 +1,7 @@
 # Migration Guide
 
+{{#include ../_snippets/node-registry-status.md}}
+
 This guide covers migrating between JACS versions and common migration scenarios.
 
 ## Version Compatibility
@@ -343,25 +345,27 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 ### Ed25519 to Post-Quantum
 
-For increased security, you may want to migrate to post-quantum algorithms.
+Native JACS signing defaults to `pq2025` (ML-DSA-87 / FIPS-204). Explicit
+`ed25519` creation remains supported; agents using it continue to load and
+sign with the canonical `ring-Ed25519` label until they rotate.
 
-1. **Create New Agent with New Algorithm:**
-   ```json
-   {
-     "jacs_agent_key_algorithm": "pq2025"
-   }
-   ```
+**Key rotation is the designated migration path.** Every rotation
+resolves to `pq2025` — with or without an explicit algorithm argument —
+so rotating an Ed25519 agent converges it to a post-quantum root.
+Rotating to any other algorithm is a typed error.
 
+1. **Rotate Keys:**
    ```bash
-   jacs agent create --create-keys true -f new-agent.json
+   jacs agent rotate-keys
    ```
 
-2. **Update Configuration:**
-   ```json
-   {
-     "jacs_agent_key_algorithm": "pq2025",
-     "jacs_agent_id_and_version": "new-agent-id:new-version"
-   }
+2. **Re-issue the Compatibility Key Binding (if present):**
+
+   The ES256 compatibility key binding is signed by the native root, so
+   rotation supersedes it. Ecosystem exports fail with a "re-issue"
+   error until a new binding is signed by the current native root:
+   ```bash
+   jacs agent issue-compat-binding
    ```
 
 3. **Re-sign Critical Documents (Optional):**
@@ -544,6 +548,52 @@ If migrating from filesystem to include database storage:
    ```
 
 ## HTTP API Migration
+
+### Migrating unbound request credentials to JACS v2
+
+Legacy request credentials signed only signer ID, timestamp, and nonce. They
+did not authenticate the HTTP method, target, query, body, or receiving service,
+so a fresh credential could be transplanted to another request. Legacy builders
+remain available for compatibility and emit a WARN; migrate callers to v2.
+
+1. Serialize the final request body once.
+2. Build a v2 header from the actual method, absolute URL (including query),
+   those exact body bytes, and a non-empty service-specific audience.
+3. Send the body without reformatting it.
+4. On the server, resolve the expected signer to a trusted public key and
+   verify against the actual request context.
+5. Atomically consume the nonce. Use a shared store for multiple replicas and
+   retain it through `issued_at + max_age`; Rust callers should use
+   `request_auth_replay_ttl(&verified_claims, max_age)`.
+6. Reject legacy headers after every client is migrated.
+
+| API | Legacy | JACS v2 |
+|-----|--------|---------|
+| Rust | `protocol::build_auth_header(&mut agent)` | `SimpleAgent::build_request_auth_header(method, url, body, audience)` |
+| Python | `SimpleAgent.build_auth_header()` | `SimpleAgent.build_request_auth_header(method, url, body, audience)` |
+| Node.js | `JacsSimpleAgent.buildAuthHeader()` | `JacsSimpleAgent.buildRequestAuthHeader(method, url, body, audience)` |
+| Go `JacsAgent` | `BuildAuthHeader()` | `BuildRequestAuthHeader(method, url, body, audience)` |
+| Go `JacsSimpleAgent` | `BuildAuthHeader()` | `BuildRequestAuthHeader(method, url, body, audience)` |
+
+The APIs are additive: the legacy name takes no request context, while the
+request-bound name requires the request values and emits
+`JACS v2.<claims>.<signature>`. A header without that prefix is not the new
+contract.
+
+Legacy construction emits a structured WARN on every use. Strict deployments
+can set `JACS_REJECT_UNBOUND_AUTH_HEADER=true` after migrating callers. Verification
+policy should distinguish legacy and v2 explicitly, never silently fall back
+after a v2 verification failure.
+
+For signed responses, migrate payload-only or generic document verification to
+`sign_response` / `signResponse` and strict event unwrapping. The v2 response
+signature covers payload and all metadata. Unknown signers, plain events,
+legacy envelopes, and mutations are errors; do not catch the error and parse
+the untrusted payload anyway.
+
+Verification proves possession of the public key selected under your trust
+policy. It does not establish a real-world identity merely because the signed
+envelope contains a name, agent ID, domain, or timestamp.
 
 ### Adding JACS to Existing Express API
 

@@ -342,6 +342,11 @@ try {
 
 ### Testing Request/Response Signing
 
+The following tests the legacy generic document wrapper only. It is not an
+HTTP-authentication test because method, target, body bytes, audience, trusted
+key mapping, and atomic replay consumption are absent. New HTTP security tests
+must exercise `JACS v2` and independently mutate every bound request value.
+
 ```python
 def test_request_signing(test_agent):
     """Test signing a request payload."""
@@ -380,7 +385,10 @@ def mcp_server(test_agent):
     def echo(text: str) -> str:
         return f"Echo: {text}"
 
-    return JACSMCPServer(mcp)
+    return JACSMCPServer(
+        mcp,
+        allowed_peer_agent_ids=["TEST_CLIENT_AGENT_ID"],
+    )
 
 @pytest.mark.asyncio
 async def test_mcp_tool_call(mcp_server, test_agent):
@@ -441,6 +449,11 @@ describe('JACS Express Middleware', () => {
 ```
 
 ### Testing HTTP Endpoints
+
+> This historical example accepts a generic signed document. Do not treat it
+> as an authorization test. Production endpoint tests must verify the v2
+> request context against a trusted key and prove that a simultaneous replay is
+> accepted exactly once by the shared nonce store.
 
 ```python
 import pytest

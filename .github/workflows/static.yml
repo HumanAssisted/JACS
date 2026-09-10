@@ -9,11 +9,10 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Deny by default. The downloaded-and-verified documentation tool runs only in
+# the unprivileged build job; the deploy job receives Pages/OIDC authority but
+# never executes it.
+permissions: {}
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
@@ -22,27 +21,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - name: Install mdbook
+        env:
+          MDBOOK_VERSION: 0.4.52
+          # GitHub's release API digest for the exact Linux GNU asset.
+          MDBOOK_SHA256: c0b903f01dd8f4edc644372ad2b80b1fdddd12552d37b6a098657cbd8eddd768
         run: |
-          curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.37/mdbook-v0.4.37-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          sudo mv mdbook /usr/local/bin/
+          set -euo pipefail
+          archive="$RUNNER_TEMP/mdbook.tar.gz"
+          extract_dir="$RUNNER_TEMP/mdbook"
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            --tlsv1.2 --retry 3 --connect-timeout 15 --max-time 120 \
+            --output "$archive" \
+            "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${MDBOOK_SHA256}  ${archive}" | sha256sum -c -
+          mkdir -p "$extract_dir"
+          tar -xzf "$archive" -C "$extract_dir"
+          test -x "$extract_dir/mdbook"
+          sudo install -m 0755 "$extract_dir/mdbook" /usr/local/bin/mdbook
+          test "$(mdbook --version)" = "mdbook v${MDBOOK_VERSION}"
       - name: Build book
         run: mdbook build jacs/docs/jacsbook
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: './jacs/docs/jacsbook/book/'
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

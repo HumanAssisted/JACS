@@ -5,7 +5,7 @@ Tests verify:
 - JACSA2AIntegration accepts a JacsClient (not a config path)
 - from_config() factory creates a JacsClient internally
 - wrap_artifact_with_provenance calls client._agent.sign_request (B-1)
-- verify_wrapped_artifact calls client._agent.verify_response with JSON string (B-2)
+- verify_wrapped_artifact rejects legacy verify_response as an A2A verifier (B-2)
 - native public-key hashing replaces wrapper-local crypto for well-known docs
 - SUPPORTED_ALGORITHMS matches JACS crypto stack (B-6)
 - Extension descriptor algorithms match SUPPORTED_ALGORITHMS (B-6)
@@ -42,6 +42,49 @@ def _make_mock_client():
 def _make_integration(client=None):
     """Convenience: create a JACSA2AIntegration with an optional mock client."""
     return JACSA2AIntegration(client or _make_mock_client())
+
+
+def _native_well_known_pairs(
+    *,
+    agent_id: str = "a1",
+    algorithm: str = "ring-Ed25519",
+    public_key_b64: str = "cHVia2V5",
+) -> str:
+    """Return the native generator's six-document identity-bound unit."""
+    public_key_hash = hashlib.sha256(base64.b64decode(public_key_b64)).hexdigest()
+    compat_kid = "native-compat-kid"
+    binding_hash = "native-binding-hash"
+    documents = {
+        "/.well-known/agent-card.json": {
+            "name": "Native T",
+            "metadata": {
+                "jacsId": agent_id,
+                "jacsCompatKid": compat_kid,
+                "jacsCompatBindingHash": binding_hash,
+                "jacsCompatBindingPath": "/.well-known/jacs-compat-binding.json",
+            },
+            "signatures": [{"keyId": compat_kid, "jws": "native-es256-jws"}],
+        },
+        "/.well-known/jwks.json": {
+            "keys": [{"kid": compat_kid, "alg": "ES256", "use": "sig"}],
+        },
+        "/.well-known/jacs-compat-binding.json": {"jacsSha256": binding_hash},
+        "/.well-known/jacs-agent.json": {
+            "agentId": agent_id,
+            "publicKeyHash": public_key_hash,
+            "keyAlgorithm": algorithm,
+        },
+        "/.well-known/jacs-pubkey.json": {
+            "agentId": agent_id,
+            "publicKeyHash": public_key_hash,
+            "algorithm": algorithm,
+        },
+        "/.well-known/jacs-extension.json": {"uri": "urn:jacs:provenance-v1"},
+    }
+    return json.dumps([
+        {"path": path, "document": document}
+        for path, document in documents.items()
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +153,7 @@ class TestB1SignRequest:
         })
 
         a2a = JACSA2AIntegration(client)
-        result = a2a.wrap_artifact_with_provenance(
+        a2a.wrap_artifact_with_provenance(
             {"step": 2}, "workflow-step", [{"jacsId": "parent-1"}]
         )
 
@@ -121,13 +164,13 @@ class TestB1SignRequest:
 
 
 # ---------------------------------------------------------------------------
-# Test: B-2 — verify_response receives a JSON string
+# Test: B-2 — legacy generic verification cannot assert A2A validity
 # ---------------------------------------------------------------------------
 
 class TestB2VerifyResponse:
-    def test_verify_calls_verify_response_with_json_string(self):
+    def test_verify_does_not_call_legacy_verify_response(self):
         client = _make_mock_client()
-        client._agent.verify_response.return_value = {"payload": "ok"}
+        client._agent.verify_response.return_value = True
 
         a2a = JACSA2AIntegration(client)
         artifact = {
@@ -140,13 +183,13 @@ class TestB2VerifyResponse:
 
         result = a2a.verify_wrapped_artifact(artifact)
 
-        # verify_response must receive a string, not a dict
-        call_args = client._agent.verify_response.call_args[0]
-        assert isinstance(call_args[0], str)
-        assert json.loads(call_args[0]) == artifact
-
-        assert result["valid"] is True
-        assert result["signer_id"] == "ag-1"
+        client._agent.verify_response.assert_not_called()
+        assert result["valid"] is False
+        assert result["signer_id"] == ""
+        assert result["signer_version"] == ""
+        assert result["artifact_type"] == ""
+        assert result["timestamp"] == ""
+        assert result["original_artifact"] == {}
 
     def test_verify_returns_invalid_on_exception(self):
         client = _make_mock_client()
@@ -161,6 +204,7 @@ class TestB2VerifyResponse:
 
         result = a2a.verify_wrapped_artifact(artifact)
         assert result["valid"] is False
+        client._agent.verify_response.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -179,16 +223,19 @@ class TestEphemeralAdapterParity:
 # Test: native public-key hashing replaces wrapper-local crypto
 # ---------------------------------------------------------------------------
 
-class TestSha256Replacement:
+class TestNativeWellKnownDocuments:
     def test_hash_public_key_base64_matches_hashlib(self):
         public_key_bytes = b"hello world"
         public_key_b64 = base64.b64encode(public_key_bytes).decode("utf-8")
         expected = hashlib.sha256(public_key_bytes).hexdigest()
         assert _hash_public_key_base64(public_key_b64) == expected
 
-    def test_well_known_uses_sha256(self):
-        """generate_well_known_documents should hash decoded public-key bytes."""
+    def test_well_known_preserves_native_public_key_hash(self):
+        """The wrapper serves the native generator's authenticated key hash."""
         client = _make_mock_client()
+        client._agent.generate_well_known_documents.return_value = (
+            _native_well_known_pairs()
+        )
         a2a = JACSA2AIntegration(client)
 
         card = A2AAgentCard(
@@ -212,9 +259,13 @@ class TestSha256Replacement:
         expected_hash = hashlib.sha256(base64.b64decode("cHVia2V5")).hexdigest()
         assert docs["/.well-known/jacs-agent.json"]["publicKeyHash"] == expected_hash
         assert docs["/.well-known/jacs-pubkey.json"]["publicKeyHash"] == expected_hash
+        client._agent.generate_well_known_documents.assert_called_once_with()
 
-    def test_well_known_defaults_missing_key_algorithm_to_pq2025(self):
+    def test_well_known_uses_native_algorithm_when_compat_input_omits_it(self):
         client = _make_mock_client()
+        client._agent.generate_well_known_documents.return_value = (
+            _native_well_known_pairs(algorithm="pq2025")
+        )
         a2a = JACSA2AIntegration(client)
 
         card = A2AAgentCard(

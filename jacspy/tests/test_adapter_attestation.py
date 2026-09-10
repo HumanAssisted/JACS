@@ -11,8 +11,7 @@ suites.
 """
 
 import json
-import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,9 +20,27 @@ from jacs.client import JacsClient
 from conftest import TEST_ALGORITHM
 
 
+def _portable_v2_raw(agent_id="test-agent", **extra):
+    document = {
+        "jacsId": "document-id",
+        "jacsVersion": "version-id",
+        "jacsSignature": {
+            "agentID": agent_id,
+            "agentVersion": "agent-version",
+            "publicKeyHash": "key-hash",
+            "date": "2026-07-10T00:00:00Z",
+            "signature": "signature",
+            "signatureContentVersion": "jacs-signature-v2",
+        },
+        **extra,
+    }
+    return json.dumps(document)
+
+
 # --------------------------------------------------------------------------
 # Fixtures
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture
 def ephemeral_client():
@@ -60,6 +77,7 @@ def attest_adapter_with_claims(ephemeral_client):
 # BaseJacsAdapter attestation mode tests
 # --------------------------------------------------------------------------
 
+
 class TestBaseAdapterAttestMode:
     """Test that BaseJacsAdapter supports attest=True mode."""
 
@@ -88,24 +106,30 @@ class TestBaseAdapterAttestMode:
         # Plain signatures have jacsSignature
         assert "jacsSignature" in parsed or "jacsHash" in parsed
 
-    def test_attest_on_falls_back_to_signature_when_unavailable(self, attest_adapter):
-        """When attest=True but attestation is not available, fall back to plain signing."""
+    def test_attest_on_produces_attestation_or_fails_closed(self, attest_adapter):
+        """Attestation requests never silently downgrade to plain signing."""
         data = {"action": "approve", "amount": 42}
-        # The ephemeral client may not have attestation compiled in, but
-        # sign_output should still succeed by falling back to plain signing.
-        signed = attest_adapter.sign_output(data)
-        parsed = json.loads(signed)
-        assert "jacsSignature" in parsed or "jacsHash" in parsed
+        try:
+            signed = attest_adapter.sign_output(data)
+        except Exception as exc:
+            assert "attest" in str(exc).lower() or "feature" in str(exc).lower()
+        else:
+            parsed = json.loads(signed)
+            assert "jacsAttestation" in parsed
 
-    def test_attest_with_claims_still_produces_output(self, attest_adapter_with_claims):
-        """When default_claims are provided, sign_output still produces output."""
+    def test_attest_with_claims_never_silently_downgrades(
+        self, attest_adapter_with_claims
+    ):
         data = {"result": "success"}
-        signed = attest_adapter_with_claims.sign_output(data)
-        parsed = json.loads(signed)
-        assert "jacsSignature" in parsed or "jacsHash" in parsed
+        try:
+            signed = attest_adapter_with_claims.sign_output(data)
+        except Exception as exc:
+            assert "attest" in str(exc).lower() or "feature" in str(exc).lower()
+        else:
+            parsed = json.loads(signed)
+            assert "jacsAttestation" in parsed
 
-    def test_attest_passthrough_on_error(self, ephemeral_client):
-        """In permissive attest mode, errors fall through gracefully."""
+    def test_attest_signing_failure_fails_closed(self, ephemeral_client):
         adapter = BaseJacsAdapter(
             client=ephemeral_client,
             attest=True,
@@ -114,17 +138,16 @@ class TestBaseAdapterAttestMode:
         # Break the client
         ephemeral_client.reset()
         data = {"still": "works"}
-        result = adapter.sign_output_or_passthrough(data)
-        assert json.loads(result) == data
+        with pytest.raises(Exception):
+            adapter.sign_output_or_passthrough(data)
 
     def test_attest_with_mock_client(self):
         """When attestation succeeds on the client, sign_output returns it."""
         mock_client = MagicMock()
         mock_signed_doc = MagicMock()
-        mock_signed_doc.raw_json = json.dumps({
-            "jacsSignature": {"agentID": "test-agent"},
-            "jacsAttestation": {"claims": [{"name": "verified", "value": "true"}]},
-        })
+        mock_signed_doc.raw_json = _portable_v2_raw(
+            jacsAttestation={"claims": [{"name": "verified", "value": "true"}]}
+        )
         mock_client.create_attestation.return_value = mock_signed_doc
         mock_client.sign_message.return_value = mock_signed_doc
 
@@ -140,38 +163,71 @@ class TestBaseAdapterAttestMode:
         """When attest=False, sign_output uses sign_message, not create_attestation."""
         mock_client = MagicMock()
         mock_signed_doc = MagicMock()
-        mock_signed_doc.raw_json = json.dumps({
-            "jacsSignature": {"agentID": "test-agent"},
-        })
+        mock_signed_doc.raw_json = _portable_v2_raw()
         mock_client.sign_message.return_value = mock_signed_doc
 
         adapter = BaseJacsAdapter(client=mock_client, attest=False)
-        result = adapter.sign_output({"data": "test"})
+        adapter.sign_output({"data": "test"})
 
         mock_client.sign_message.assert_called_once()
         mock_client.create_attestation.assert_not_called()
 
-    def test_attest_fallback_on_attestation_error(self):
-        """When create_attestation raises, fall back to sign_message."""
+    def test_attest_failure_does_not_downgrade_by_default(self):
+        """Requested claims cannot silently disappear into a plain signature."""
         mock_client = MagicMock()
-        mock_client.create_attestation.side_effect = Exception("attestation not available")
-        mock_signed_doc = MagicMock()
-        mock_signed_doc.raw_json = json.dumps({"jacsSignature": {"agentID": "fallback"}})
-        mock_client.sign_message.return_value = mock_signed_doc
+        mock_client.create_attestation.side_effect = Exception(
+            "attestation not available"
+        )
 
         adapter = BaseJacsAdapter(client=mock_client, attest=True, strict=False)
-        result = adapter.sign_output({"data": "test"})
-        parsed = json.loads(result)
-        assert "jacsSignature" in parsed
+        with pytest.raises(Exception, match="attestation not available"):
+            adapter.sign_output({"data": "test"})
 
-        # Both should have been called: create_attestation first (failed), then sign_message
+        mock_client.create_attestation.assert_called_once()
+        mock_client.sign_message.assert_not_called()
+
+    def test_attest_plain_signature_fallback_requires_explicit_opt_in(self):
+        mock_client = MagicMock()
+        mock_client.create_attestation.side_effect = Exception(
+            "attestation not available"
+        )
+        mock_signed_doc = MagicMock()
+        mock_signed_doc.raw_json = _portable_v2_raw(agent_id="fallback")
+        mock_client.sign_message.return_value = mock_signed_doc
+
+        adapter = BaseJacsAdapter(
+            client=mock_client,
+            attest=True,
+            allow_plain_signature_fallback=True,
+        )
+        result = adapter.sign_output({"data": "test"})
+        assert "jacsSignature" in json.loads(result)
         mock_client.create_attestation.assert_called_once()
         mock_client.sign_message.assert_called_once()
+
+    def test_strict_overrides_plain_signature_fallback(self):
+        mock_client = MagicMock()
+        mock_client.create_attestation.side_effect = Exception(
+            "attestation not available"
+        )
+
+        adapter = BaseJacsAdapter(
+            client=mock_client,
+            attest=True,
+            strict=True,
+            allow_plain_signature_fallback=True,
+        )
+        assert adapter.allow_plain_signature_fallback is False
+        with pytest.raises(Exception, match="attestation not available"):
+            adapter.sign_output({"data": "test"})
+        mock_client.sign_message.assert_not_called()
 
     def test_attest_fallback_raises_in_strict(self):
         """In strict mode, attestation failure does NOT fall back to signing."""
         mock_client = MagicMock()
-        mock_client.create_attestation.side_effect = Exception("attestation not available")
+        mock_client.create_attestation.side_effect = Exception(
+            "attestation not available"
+        )
 
         adapter = BaseJacsAdapter(client=mock_client, attest=True, strict=True)
         with pytest.raises(Exception, match="attestation not available"):
@@ -181,6 +237,7 @@ class TestBaseAdapterAttestMode:
 # --------------------------------------------------------------------------
 # LangChain adapter attestation tests
 # --------------------------------------------------------------------------
+
 
 class TestLangchainAdapterAttest:
     """Test LangChain adapter with attest mode."""
@@ -203,7 +260,12 @@ class TestLangchainAdapterAttest:
             description="A dummy tool",
         )
         # Should not raise
-        wrapped = signed_tool(tool, client=ephemeral_client, attest=True)
+        wrapped = signed_tool(
+            tool,
+            client=ephemeral_client,
+            attest=True,
+            allow_plain_signature_fallback=True,
+        )
         result = wrapped.invoke({"query": "hello"})
         parsed = json.loads(result)
         assert "jacsSignature" in parsed or "jacsHash" in parsed
@@ -219,9 +281,7 @@ class TestLangchainAdapterAttest:
         """JacsSigningMiddleware accepts attest=True parameter."""
         from jacs.adapters.langchain import JacsSigningMiddleware
 
-        middleware = JacsSigningMiddleware(
-            client=ephemeral_client, attest=True
-        )
+        middleware = JacsSigningMiddleware(client=ephemeral_client, attest=True)
         assert middleware.adapter.attest is True
 
     def test_with_jacs_signing_accepts_attest(self, ephemeral_client):
@@ -245,6 +305,7 @@ class TestLangchainAdapterAttest:
 # --------------------------------------------------------------------------
 # FastAPI adapter attestation tests
 # --------------------------------------------------------------------------
+
 
 class TestFastapiAdapterAttest:
     """Test FastAPI adapter with attest mode."""
@@ -282,49 +343,6 @@ class TestFastapiAdapterAttest:
         assert callable(my_endpoint)
 
 
-# --------------------------------------------------------------------------
-# CrewAI adapter attestation tests
-# --------------------------------------------------------------------------
-
-class TestCrewaiAdapterAttest:
-    """Test CrewAI adapter with attest mode."""
-
-    def test_guardrail_accepts_attest(self, ephemeral_client):
-        """jacs_guardrail with attest=True produces output."""
-        from jacs.adapters.crewai import jacs_guardrail
-
-        guardrail = jacs_guardrail(client=ephemeral_client, attest=True)
-        assert callable(guardrail)
-
-        # Simulate a TaskOutput-like object
-        class FakeOutput:
-            raw = "This is the task output"
-
-        ok, result = guardrail(FakeOutput())
-        assert ok is True
-        parsed = json.loads(result)
-        assert "jacsSignature" in parsed or "jacsHash" in parsed
-
-    def test_signed_tool_wrapper_accepts_attest(self, ephemeral_client):
-        """JacsSignedTool accepts attest=True parameter."""
-        from jacs.adapters.crewai import JacsSignedTool
-
-        class FakeTool:
-            name = "test_tool"
-            description = "A test tool"
-            args_schema = None
-
-            def _run(self, **kwargs):
-                return "result"
-
-        wrapped = JacsSignedTool(FakeTool(), client=ephemeral_client, attest=True)
-        assert wrapped._adapter.attest is True
-
-
-# --------------------------------------------------------------------------
-# Anthropic adapter attestation tests
-# --------------------------------------------------------------------------
-
 class TestAnthropicAdapterAttest:
     """Test Anthropic adapter with attest mode."""
 
@@ -333,7 +351,11 @@ class TestAnthropicAdapterAttest:
         import asyncio
         from jacs.adapters.anthropic import JacsToolHook
 
-        hook = JacsToolHook(client=ephemeral_client, attest=True)
+        hook = JacsToolHook(
+            client=ephemeral_client,
+            attest=True,
+            allow_plain_signature_fallback=True,
+        )
         assert hook._adapter.attest is True
 
         result = asyncio.run(hook({"tool_response": "weather is sunny"}))
@@ -346,7 +368,11 @@ class TestAnthropicAdapterAttest:
         """signed_tool decorator with attest=True produces output."""
         from jacs.adapters.anthropic import signed_tool
 
-        @signed_tool(client=ephemeral_client, attest=True)
+        @signed_tool(
+            client=ephemeral_client,
+            attest=True,
+            allow_plain_signature_fallback=True,
+        )
         def get_weather(location: str) -> str:
             return f"Weather in {location}: sunny"
 

@@ -7,6 +7,7 @@
 
 const { expect } = require('chai');
 const sinon = require('sinon');
+const { signedResult } = require('./helpers/signed-document');
 
 // The compiled middleware — skip entire suite if not compiled yet.
 let expressModule;
@@ -67,12 +68,6 @@ function mockNext() {
 
 /** Create a stubbed JacsClient with configurable behavior. */
 function createMockClient(options = {}) {
-  const signedRaw = JSON.stringify({
-    jacsId: 'mock-doc-id:1',
-    jacsSignature: { agentID: 'mock-agent', date: '2025-01-01T00:00:00Z' },
-    content: options.signContent || { signed: true },
-  });
-
   const verifyResult = options.verifyResult || {
     valid: true,
     data: { message: 'hello' },
@@ -83,12 +78,14 @@ function createMockClient(options = {}) {
   };
 
   return {
-    signMessage: sinon.stub().resolves({
-      raw: signedRaw,
-      documentId: 'mock-doc-id:1',
-      agentId: 'mock-agent',
-      timestamp: '2025-01-01T00:00:00Z',
-    }),
+    signMessage: sinon.stub().resolves(signedResult(
+      options.signContent || { signed: true },
+      {
+        documentId: 'mock-doc-id',
+        agentId: 'mock-agent',
+        timestamp: '2025-01-01T00:00:00Z',
+      },
+    )),
     verify: sinon.stub().resolves(verifyResult),
     agentId: 'mock-agent',
   };
@@ -309,6 +306,31 @@ describe('JACS Express Middleware', function () {
       expect(res._jsonBody).to.have.property('error', 'JACS verification failed');
       expect(next.called).to.be.false;
     });
+
+    for (const malformedValid of ['false', 1, {}, null, undefined]) {
+      (available ? it : it.skip)(
+        `should reject non-boolean valid=${JSON.stringify(malformedValid)}`,
+        async () => {
+          const client = createMockClient({
+            verifyResult: {
+              valid: malformedValid,
+              data: { role: 'admin' },
+              errors: [],
+            },
+          });
+          const mw = expressModule.jacsMiddleware({ client });
+          const req = mockReq({ method: 'POST', body: '{"jacsSignature":{}}' });
+          const res = mockRes();
+          const next = mockNext();
+
+          await mw(req, res, next);
+
+          expect(res.statusCode).to.equal(401);
+          expect(req.jacsPayload).to.be.undefined;
+          expect(next.called).to.be.false;
+        },
+      );
+    }
 
     (available ? it : it.skip)('should return 401 when verify() throws', async () => {
       const client = createMockClient();
@@ -616,6 +638,93 @@ describe('JACS Express Middleware', function () {
 
       expect(client.signMessage.calledOnce).to.be.true;
       expect(client.signMessage.firstCall.args[0]).to.deep.equal({ status: 'ok' });
+    });
+
+    for (const scalar of ['plain text response', 42, true, null]) {
+      (available ? it : it.skip)(`should sign scalar JSON response ${JSON.stringify(scalar)}`, async () => {
+        const client = createMockClient();
+        const mw = expressModule.jacsMiddleware({ client, verify: false, sign: true });
+        const res = mockRes();
+
+        await mw(mockReq({ method: 'GET' }), res, mockNext());
+        res.json(scalar);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(client.signMessage.calledOnce).to.be.true;
+        expect(client.signMessage.firstCall.args[0]).to.equal(scalar);
+        expect(res._jsonBody).to.be.an('object').and.have.property('jacsSignature');
+      });
+    }
+
+    (available ? it : it.skip)('should withhold the original response when signing fails by default', async () => {
+      const client = createMockClient();
+      client.signMessage.rejects(new Error('private key unavailable'));
+      const mw = expressModule.jacsMiddleware({ client, verify: false, sign: true });
+      const res = mockRes();
+      const originalBody = { secret: 'unsigned output' };
+
+      await mw(mockReq({ method: 'GET' }), res, mockNext());
+      res.json(originalBody);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(res.statusCode).to.equal(500);
+      expect(res._jsonBody).to.not.equal(originalBody);
+      expect(String(res._body)).to.include('JACS response signing failed');
+    });
+
+    (available ? it : it.skip)('should permit unsigned output only with an explicit dangerous opt-in', async () => {
+      const client = createMockClient();
+      client.signMessage.rejects(new Error('private key unavailable'));
+      const mw = expressModule.jacsMiddleware({
+        client,
+        verify: false,
+        sign: true,
+        allowUnsignedOutput: true,
+      });
+      const res = mockRes();
+      const originalBody = { intentionally: 'unsigned' };
+
+      await mw(mockReq({ method: 'GET' }), res, mockNext());
+      res.json(originalBody);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(res.statusCode).to.equal(200);
+      expect(res._jsonBody).to.equal(originalBody);
+    });
+
+    (available ? it : it.skip)('should let strict mode override unsigned-output opt-in', async () => {
+      const client = createMockClient();
+      client.signMessage.rejects(new Error('private key unavailable'));
+      const mw = expressModule.jacsMiddleware({
+        client,
+        verify: false,
+        sign: true,
+        allowUnsignedOutput: true,
+        strict: true,
+      });
+      const res = mockRes();
+      const originalBody = { secret: 'unsigned output' };
+
+      await mw(mockReq({ method: 'GET' }), res, mockNext());
+      res.json(originalBody);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(res.statusCode).to.equal(500);
+      expect(res._jsonBody).to.not.equal(originalBody);
+    });
+
+    (available ? it : it.skip)('should fail closed when signing returns no portable raw document', async () => {
+      const client = createMockClient();
+      client.signMessage.resolves({ documentId: 'missing-raw' });
+      const mw = expressModule.jacsMiddleware({ client, verify: false, sign: true });
+      const res = mockRes();
+
+      await mw(mockReq({ method: 'GET' }), res, mockNext());
+      res.json({ secret: 'unsigned output' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(res.statusCode).to.equal(500);
+      expect(res._jsonBody).to.be.undefined;
     });
 
     (available ? it : it.skip)('should NOT override res.json when sign is false (default)', async () => {

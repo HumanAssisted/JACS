@@ -23,12 +23,16 @@ use jacs::validation::require_relative_path_safe;
 use jacs_binding_core::AgentWrapper;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability};
+use rmcp::model::{
+    CacheScope, Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
+};
 use rmcp::{ServerHandler, tool, tool_router};
 use sha2::{Digest, Sha256};
 
 use crate::tools::*;
 use std::sync::Arc;
+
+const TOOLS_LIST_CACHE_TTL_MS: u64 = 300_000;
 
 // =============================================================================
 // Helper Functions
@@ -67,45 +71,6 @@ fn is_key_rotation_allowed() -> bool {
     std::env::var("JACS_MCP_ALLOW_KEY_ROTATION")
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false)
-}
-
-/// Whether a caller-supplied `key_dir` override is allowed for the inline
-/// verify tools.
-///
-/// Disabled by default: an untrusted `key_dir` lets a caller load an arbitrary
-/// public key from a directory of their choosing, which the resolver consults
-/// ahead of the trust store — shadowing a trusted signer and forging
-/// provenance (verify-trust bypass). Requires explicit opt-in, and even then
-/// the directory is confined to the MCP base dir via the path policy.
-fn is_key_dir_override_allowed() -> bool {
-    std::env::var("JACS_MCP_ALLOW_KEY_DIR")
-        .map(|v| v.to_lowercase() == "true" || v == "1")
-        .unwrap_or(false)
-}
-
-/// Resolve a caller-supplied verify `key_dir` argument under the MCP threat
-/// model:
-/// - `None` → `Ok(None)`: use the server's configured key resolution.
-/// - `Some` while disabled (default) → `Err`: reject so an untrusted directory
-///   cannot shadow the trust store.
-/// - `Some` while enabled → confine to the MCP base dir via the path policy,
-///   so even an opted-in override cannot escape to an attacker-planted dir.
-fn resolve_key_dir_override(key_dir: Option<&str>) -> Result<Option<std::path::PathBuf>, String> {
-    match key_dir {
-        None => Ok(None),
-        Some(dir) => {
-            if !is_key_dir_override_allowed() {
-                return Err(
-                    "key_dir override is disabled. An untrusted key directory can shadow the \
-                     trust store and forge provenance. Set JACS_MCP_ALLOW_KEY_DIR=true to opt in."
-                        .to_string(),
-                );
-            }
-            crate::path_policy::resolve_input_path(dir)
-                .map(Some)
-                .map_err(|e| format!("PATH_POLICY_BLOCKED: {}", e))
-        }
-    }
 }
 
 fn validate_optional_relative_path(label: &str, path: Option<&String>) -> Result<(), String> {
@@ -169,7 +134,7 @@ fn extract_document_lookup_key(doc: &serde_json::Value) -> Option<String> {
 
 /// Parse a signed document JSON string and return its stable lookup key.
 fn extract_document_lookup_key_from_str(document_json: &str) -> Option<String> {
-    serde_json::from_str::<serde_json::Value>(document_json)
+    jacs::strict_json::parse_strict_json(document_json)
         .ok()
         .and_then(|v| extract_document_lookup_key(&v))
 }
@@ -181,7 +146,7 @@ fn value_string(doc: &serde_json::Value, field: &str) -> Option<String> {
 /// Extract verification validity from `verify_a2a_artifact` details JSON.
 /// Defaults to `false` on malformed/missing fields to avoid optimistic trust.
 fn extract_verify_a2a_valid(details_json: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(details_json)
+    jacs::strict_json::parse_strict_json(details_json)
         .ok()
         .and_then(|v| v.get("valid").and_then(|b| b.as_bool()))
         .unwrap_or(false)
@@ -200,10 +165,8 @@ pub struct JacsMcpServer {
     agent: Arc<AgentWrapper>,
     /// Unified document service resolved from the loaded agent config.
     document_service: Option<Arc<dyn DocumentService>>,
-    /// Optional `SimpleAgent` used by the inline-text and media tools
-    /// (PRD §4.1, §4.2). Loaded at server construction from `JACS_CONFIG`
-    /// when available; absent for unit-test constructors that only exercise
-    /// tool registration/metadata.
+    /// File helpers share the already-authorized agent, never a second
+    /// configuration load or private-key decryption.
     simple_agent: Option<Arc<jacs::simple::SimpleAgent>>,
     /// Tool router for MCP tool dispatch.
     tool_router: ToolRouter<Self>,
@@ -213,14 +176,40 @@ pub struct JacsMcpServer {
     untrust_allowed: bool,
     /// Runtime tool profile controlling which tools are registered.
     profile: crate::profile::Profile,
+    /// Present only after explicit, authenticated local configuration loading.
+    local_signing: Option<crate::local_signing::LocalSigningScope>,
 }
 
 #[allow(dead_code)]
 impl JacsMcpServer {
-    /// Create a new JACS MCP server with the given agent and default profile.
+    /// Construct the default MCP process without reading configuration or
+    /// loading/decrypting any private key. Only tools in the closed
+    /// verification-only inventory are dispatchable from this instance.
+    pub fn verification_only() -> Self {
+        let registration_allowed = false;
+        let untrust_allowed = false;
+        let profile = crate::profile::Profile::VerifyOnly;
+        tracing::info!(profile = %profile, "Tool profile active without a signing identity");
+        Self {
+            agent: Arc::new(AgentWrapper::new()),
+            document_service: None,
+            simple_agent: None,
+            tool_router: Self::tool_router(),
+            registration_allowed,
+            untrust_allowed,
+            profile,
+            local_signing: None,
+        }
+    }
+
+    /// Create a new JACS MCP server with the given agent and the safe
+    /// `verify-only`
+    /// profile.
     ///
-    /// The runtime profile is resolved from `JACS_MCP_PROFILE` env var,
-    /// defaulting to `Core`.
+    /// This embedding constructor is intentionally deterministic and does not
+    /// read process-global environment state. CLI hosts should resolve their
+    /// fallible CLI/environment boundary with [`crate::profile::Profile::resolve`]
+    /// and pass the result to [`Self::with_profile`].
     ///
     /// # Arguments
     ///
@@ -230,10 +219,8 @@ impl JacsMcpServer {
     ///
     /// * `JACS_MCP_ALLOW_REGISTRATION` - Set to "true" to enable the jacs_create_agent tool
     /// * `JACS_MCP_ALLOW_UNTRUST` - Set to "true" to enable the jacs_untrust_agent tool
-    /// * `JACS_MCP_PROFILE` - Set to "full" to expose all tools, defaults to "core"
     pub fn new(agent: AgentWrapper) -> Self {
-        let profile = crate::profile::Profile::resolve(None);
-        Self::with_profile(agent, profile)
+        Self::with_profile(agent, crate::profile::Profile::VerifyOnly)
     }
 
     /// Create a new JACS MCP server with an explicit runtime profile.
@@ -250,32 +237,8 @@ impl JacsMcpServer {
             }
         };
 
-        // PRD §4.1, §4.2: the inline-text and media tools call into `SimpleAgent`,
-        // a higher-level facade over the raw Agent. We materialise one here from
-        // the same config the AgentWrapper already loaded, so the new tools share
-        // the server's identity rather than spinning up an ephemeral throwaway.
-        let simple_agent = match Self::load_simple_agent_from_env() {
-            Ok(Some(sa)) => Some(Arc::new(sa)),
-            Ok(None) => None,
-            Err(err) => {
-                tracing::warn!(
-                    "SimpleAgent unavailable for inline-text / media tools: {}. \
-                     jacs_sign_text / jacs_verify_text / jacs_sign_image / \
-                     jacs_verify_image / jacs_extract_media_signature will return \
-                     a clear error envelope when called.",
-                    err
-                );
-                None
-            }
-        };
-
-        if registration_allowed {
-            tracing::info!("Agent creation is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
-        } else {
-            tracing::info!(
-                "Agent creation is DISABLED. Set JACS_MCP_ALLOW_REGISTRATION=true to enable."
-            );
-        }
+        // An embedding profile name alone never selects a signer or file root.
+        let simple_agent = None;
 
         tracing::info!(profile = %profile, "Tool profile active");
 
@@ -287,33 +250,28 @@ impl JacsMcpServer {
             registration_allowed,
             untrust_allowed,
             profile,
+            local_signing: None,
         }
     }
 
-    /// Try to load a `SimpleAgent` from the `JACS_CONFIG` env var.
-    ///
-    /// Returns `Ok(None)` if `JACS_CONFIG` isn't set (tests that exercise
-    /// only tool metadata don't need an agent). Returns `Err(_)` when the
-    /// env var is set but loading fails — propagated to the caller for
-    /// logging.
-    fn load_simple_agent_from_env() -> anyhow::Result<Option<jacs::simple::SimpleAgent>> {
-        let cfg_path = match std::env::var("JACS_CONFIG") {
-            Ok(p) => p,
-            Err(_) => return Ok(None),
-        };
-        let resolved = if std::path::Path::new(&cfg_path).is_absolute() {
-            std::path::PathBuf::from(&cfg_path)
-        } else {
-            std::env::current_dir()?.join(&cfg_path)
-        };
-        if !resolved.exists() {
-            return Ok(None);
+    /// Authorize a fixed local JSON/Agreement signer from an existing signed
+    /// config. This grants the MCP client agent signing, never human approval.
+    /// Documents persist under `<config directory>/documents`; no tool may
+    /// select another key, config, storage backend or arbitrary output path.
+    pub fn local_signing_from_config(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self> {
+        let (agent, scope) = crate::local_signing::LocalSigningScope::load(path.as_ref())?;
+        let mut server = Self::with_profile(agent, crate::profile::Profile::LocalSign);
+        if scope.files.is_some() {
+            server.simple_agent = Some(Arc::new(jacs::simple::SimpleAgent::from_shared_agent(
+                server.agent.inner_arc(),
+                None,
+                false,
+            )));
         }
-        let agent = jacs::simple::SimpleAgent::load(Some(&resolved.to_string_lossy()), None)
-            .map_err(|e| {
-                anyhow::anyhow!("SimpleAgent::load({}) failed: {}", resolved.display(), e)
-            })?;
-        Ok(Some(agent))
+        server.registration_allowed = false;
+        server.untrust_allowed = false;
+        server.local_signing = Some(scope);
+        Ok(server)
     }
 
     /// Get the list of all compiled-in tools (ignores runtime profile).
@@ -327,12 +285,107 @@ impl JacsMcpServer {
     ///
     /// This is what should be advertised to MCP clients.
     pub fn active_tools(&self) -> Vec<Tool> {
-        self.profile.tools()
+        if let Some(scope) = &self.local_signing {
+            crate::tools::all_tools()
+                .into_iter()
+                .filter(|tool| scope.allows_tool(tool.name.as_ref()))
+                .collect()
+        } else {
+            self.profile.tools()
+        }
+    }
+
+    /// The same closed scope applies to direct embedding calls, not just the
+    /// JSON-RPC router. No body, secret, or credential is logged on rejection.
+    fn local_signing_denial(&self, tool: &str, params: &impl serde::Serialize) -> Option<String> {
+        let authorization = (|| -> anyhow::Result<()> {
+            let scope = self.local_signing.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("Start local-sign with an existing signed config")
+            })?;
+            let agent_arc = self.agent.inner_arc();
+            let agent = agent_arc
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Local signer lock unavailable"))?;
+            scope.authorize(tool, &agent)?;
+            anyhow::ensure!(
+                serde_json::to_vec(params)?.len() <= crate::local_signing::MAX_ARGUMENT_BYTES,
+                "Local signing arguments exceed the 1 MiB limit"
+            );
+            Ok(())
+        })();
+        authorization.err().map(|error| {
+            tracing::warn!(event = "mcp_local_signing_denied", tool, reason = %error,
+                "Local MCP operation rejected before signing");
+            inject_meta(
+                &serde_json::json!({
+                    "success": false, "valid": false, "error": "LOCAL_SIGNING_NOT_AUTHORIZED",
+                    "message": error.to_string()
+                })
+                .to_string(),
+                None,
+            )
+        })
+    }
+
+    fn file_policy(&self) -> Result<&crate::path_policy::LocalFilePolicy, jacs::JacsError> {
+        self.local_signing
+            .as_ref()
+            .and_then(|scope| scope.files.as_ref())
+            .ok_or_else(|| {
+                jacs::JacsError::ValidationError(
+                    "MCP file tools require an explicit content directory at startup".into(),
+                )
+            })
+    }
+
+    fn resolve_file_path(
+        &self,
+        raw: &str,
+        kind: crate::path_policy::PathKind,
+    ) -> Result<std::path::PathBuf, jacs::JacsError> {
+        self.file_policy()?.resolve(raw, kind)
+    }
+
+    fn check_file_backup(&self, raw: &str) -> Result<(), jacs::JacsError> {
+        self.file_policy()?.check_backup(raw)
+    }
+
+    fn resolve_key_dir_override(
+        &self,
+        raw: Option<&str>,
+    ) -> Result<Option<std::path::PathBuf>, String> {
+        self.file_policy().map_err(|e| e.to_string())?.key_dir(raw)
     }
 
     /// Get a reference to the active runtime profile.
     pub fn profile(&self) -> &crate::profile::Profile {
         &self.profile
+    }
+
+    /// Build initialization instructions from the exact active tool inventory.
+    ///
+    /// Keeping this derived from [`Self::active_tools`] prevents a core-profile
+    /// server from advertising advanced tools that it will reject at dispatch.
+    fn active_instructions(&self) -> String {
+        let mut names: Vec<String> = self
+            .active_tools()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect();
+        names.sort();
+
+        let tool_list = names
+            .iter()
+            .map(|name| format!("- {name}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        format!(
+            "JACS MCP profile '{}' exposes {} authorized tools. The default is verification-only. Local signing uses the explicitly configured agent and does not prove per-action human approval. File tools, when listed, accept relative paths only within the operator-selected content directory. In-place signing keeps original plaintext in sibling .bak files by default; these backups may be refreshed. Only call tools listed below; use tools/list for their current schemas and descriptions.\n\nActive tools:\n{}",
+            self.profile.as_str(),
+            names.len(),
+            tool_list
+        )
     }
 
     fn with_agent<T>(
@@ -374,6 +427,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<CreateAgentProgrammaticParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_create_agent", &params) {
+            return denied;
+        }
         // Require explicit opt-in for agent creation (same gate as registration)
         if !self.registration_allowed {
             let result = CreateAgentProgrammaticResult {
@@ -445,7 +501,7 @@ impl JacsMcpServer {
         ) {
             Ok(info_json) => {
                 // Parse the info JSON to extract agent_id
-                let agent_id = serde_json::from_str::<serde_json::Value>(&info_json)
+                let agent_id = jacs::strict_json::parse_strict_json(&info_json)
                     .ok()
                     .and_then(|v| v.get("agent_id").and_then(|a| a.as_str()).map(String::from));
 
@@ -481,6 +537,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ReencryptKeyParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_reencrypt_key", &params) {
+            return denied;
+        }
         if !inline_secrets_allowed() {
             let result = ReencryptKeyResult {
                 success: false,
@@ -524,6 +583,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<key::RotateKeysParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_rotate_keys", &params) {
+            return denied;
+        }
         // SECURITY: rotation re-keys the agent identity and invalidates every
         // remote that pinned the old key. Default-deny so a prompt-injected
         // client cannot force it; require explicit operator opt-in.
@@ -551,7 +613,8 @@ impl JacsMcpServer {
 
         let result = match self.agent.rotate_keys(params.algorithm.as_deref()) {
             Ok(json_str) => {
-                let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
+                let parsed: serde_json::Value =
+                    jacs::strict_json::parse_strict_json(&json_str).unwrap_or_default();
                 key::RotateKeysResult {
                     success: true,
                     jacs_id: parsed["jacs_id"].as_str().map(String::from),
@@ -584,6 +647,9 @@ impl JacsMcpServer {
         description = "Search across all signed documents using the unified search interface."
     )]
     pub async fn jacs_search(&self, Parameters(params): Parameters<SearchParams>) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_search", &params) {
+            return denied;
+        }
         let Some(service) = self.document_service.as_ref() else {
             let result = SearchResult {
                 success: false,
@@ -692,6 +758,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<CreateAgreementParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_create_agreement", &params) {
+            return denied;
+        }
         // Create the base document first
         let signed_doc = match self.agent.create_document(
             &params.document,
@@ -763,22 +832,25 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<SignAgreementParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_sign_agreement", &params) {
+            return denied;
+        }
         let result = match self
             .agent
             .sign_agreement(&params.signed_agreement, params.agreement_fieldname)
         {
             Ok(signed_string) => {
                 // Count signatures
-                let sig_count =
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&signed_string) {
-                        v.get("jacsAgreement")
-                            .and_then(|a| a.get("signatures"))
-                            .and_then(|s| s.as_array())
-                            .map(|arr| arr.len())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
+                let sig_count = if let Ok(v) = jacs::strict_json::parse_strict_json(&signed_string)
+                {
+                    v.get("jacsAgreement")
+                        .and_then(|a| a.get("signatures"))
+                        .and_then(|s| s.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
 
                 SignAgreementResult {
                     success: true,
@@ -800,51 +872,41 @@ impl JacsMcpServer {
         inject_meta(&serialized, None)
     }
 
-    /// Check the status of an agreement.
+    /// Inspect legacy v1 signature mathematics and claimed status metadata.
     ///
-    /// Returns whether quorum is met, which agents have signed, whether the
-    /// agreement has expired, and how many more signatures are needed.
+    /// Claimed participants, quorum, timeout, and completion policy are not
+    /// authenticated by the v1 proof, so this endpoint always returns
+    /// `complete=false` and `policy_accepted=false`.
     #[tool(
         name = "jacs_check_agreement",
-        description = "Check agreement status: who has signed, whether quorum is met, \
-                       whether it has expired, and who still needs to sign."
+        description = "Inspect present signatures and claimed status metadata on a legacy \
+                       Agreement v1 document. V1 policy is unauthenticated, so this tool \
+                       never reports agreement completion or policy acceptance."
     )]
     pub async fn jacs_check_agreement(
         &self,
         Parameters(params): Parameters<CheckAgreementParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_check_agreement", &params) {
+            return denied;
+        }
         let fieldname = params
             .agreement_fieldname
             .unwrap_or_else(|| "jacsAgreement".to_string());
 
-        if let Err(e) = self
+        let inspection = match self
             .agent
             .check_agreement(&params.signed_agreement, Some(fieldname.clone()))
         {
-            let result = CheckAgreementResult {
-                success: false,
-                complete: false,
-                total_agents: 0,
-                signatures_collected: 0,
-                signatures_required: 0,
-                quorum_met: false,
-                expired: false,
-                signed_by: None,
-                unsigned: None,
-                timeout: None,
-                error: Some(format!("Failed to check agreement: {}", e)),
-            };
-            return serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|e| format!("Error: {}", e));
-        }
-
-        // Parse the verified agreement to extract status details.
-        let doc: serde_json::Value = match serde_json::from_str(&params.signed_agreement) {
-            Ok(v) => v,
+            Ok(report) => report,
             Err(e) => {
                 let result = CheckAgreementResult {
+                    mathematical_checks_valid: false,
                     success: false,
                     complete: false,
+                    policy_authenticated: false,
+                    policy_accepted: false,
+                    overall_scope: "legacy_v1_present_signature_inspection".to_string(),
                     total_agents: 0,
                     signatures_collected: 0,
                     signatures_required: 0,
@@ -853,19 +915,91 @@ impl JacsMcpServer {
                     signed_by: None,
                     unsigned: None,
                     timeout: None,
-                    error: Some(format!("Failed to parse agreement JSON: {}", e)),
+                    error: Some(format!("Failed to check agreement: {}", e)),
+                    warnings: Some(vec![
+                        "Agreement v1 cannot produce an actionable or complete verdict".to_string(),
+                    ]),
                 };
                 return serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
             }
         };
 
+        let mathematical_checks_valid = match jacs::strict_json::parse_strict_json(&inspection) {
+            Ok(report) => report
+                .get("mathematical_checks_valid")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false),
+            Err(e) => {
+                let result = CheckAgreementResult {
+                    mathematical_checks_valid: false,
+                    success: false,
+                    complete: false,
+                    policy_authenticated: false,
+                    policy_accepted: false,
+                    overall_scope: "legacy_v1_present_signature_inspection".to_string(),
+                    total_agents: 0,
+                    signatures_collected: 0,
+                    signatures_required: 0,
+                    quorum_met: false,
+                    expired: false,
+                    signed_by: None,
+                    unsigned: None,
+                    timeout: None,
+                    error: Some(format!(
+                        "Legacy agreement inspector returned an invalid report: {}",
+                        e
+                    )),
+                    warnings: Some(vec![
+                        "Agreement v1 cannot produce an actionable or complete verdict".to_string(),
+                    ]),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Parse the verified agreement to extract status details.
+        let doc: serde_json::Value =
+            match jacs::strict_json::parse_strict_json(&params.signed_agreement) {
+                Ok(v) => v,
+                Err(e) => {
+                    let result = CheckAgreementResult {
+                        mathematical_checks_valid: false,
+                        success: false,
+                        complete: false,
+                        policy_authenticated: false,
+                        policy_accepted: false,
+                        overall_scope: "legacy_v1_present_signature_inspection".to_string(),
+                        total_agents: 0,
+                        signatures_collected: 0,
+                        signatures_required: 0,
+                        quorum_met: false,
+                        expired: false,
+                        signed_by: None,
+                        unsigned: None,
+                        timeout: None,
+                        error: Some(format!("Failed to parse agreement JSON: {}", e)),
+                        warnings: Some(vec![
+                            "Agreement v1 cannot produce an actionable or complete verdict"
+                                .to_string(),
+                        ]),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
+
         let agreement = match doc.get(&fieldname) {
             Some(a) => a,
             None => {
                 let result = CheckAgreementResult {
+                    mathematical_checks_valid: false,
                     success: false,
                     complete: false,
+                    policy_authenticated: false,
+                    policy_accepted: false,
+                    overall_scope: "legacy_v1_present_signature_inspection".to_string(),
                     total_agents: 0,
                     signatures_collected: 0,
                     signatures_required: 0,
@@ -875,6 +1009,9 @@ impl JacsMcpServer {
                     unsigned: None,
                     timeout: None,
                     error: Some(format!("No '{}' field found in document", fieldname)),
+                    warnings: Some(vec![
+                        "Agreement v1 cannot produce an actionable or complete verdict".to_string(),
+                    ]),
                 };
                 return serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
@@ -935,20 +1072,29 @@ impl JacsMcpServer {
             .map(|deadline| chrono::Utc::now() > deadline)
             .unwrap_or(false);
 
-        let complete = quorum_met && !expired;
-
         let result = CheckAgreementResult {
-            success: true,
-            complete,
+            mathematical_checks_valid,
+            success: mathematical_checks_valid,
+            complete: false,
+            policy_authenticated: false,
+            policy_accepted: false,
+            overall_scope: "legacy_v1_present_signature_inspection".to_string(),
             total_agents: agent_ids.len(),
             signatures_collected: signed_by.len(),
             signatures_required: quorum,
-            quorum_met,
+            // `quorum` is part of the unsigned v1 sidecar. Keep the claimed
+            // counts above as migration diagnostics, but never promote the
+            // derived comparison to an authenticated quorum decision.
+            quorum_met: false,
             expired,
             signed_by: Some(signed_by),
             unsigned: Some(unsigned),
             timeout: timeout_str,
             error: None,
+            warnings: Some(vec![format!(
+                "Agreement v1 policy is unauthenticated; claimed quorum comparison was {} and cannot authorize an action",
+                quorum_met
+            )]),
         };
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
@@ -963,6 +1109,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<CreateAgreementV2Params>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_create_agreement_v2", &params) {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1010,6 +1159,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ApplyAgreementV2Params>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_apply_agreement_v2", &params) {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1060,6 +1212,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<SignAgreementV2Params>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_sign_agreement_v2", &params) {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1086,15 +1241,18 @@ impl JacsMcpServer {
         }
     }
 
-    /// Verify agreement v2 hash, status, transcript, and signature invariants.
+    /// Inspect exact Agreement v2 bytes and mathematical signature coverage.
     #[tool(
         name = "jacs_verify_agreement_v2",
-        description = "Verify a standalone JACS agreement v2 document."
+        description = "Inspect exact standalone JACS agreement v2 bytes. Returns consent-signature coverage only; v2 cannot authenticate role, quorum, lineage, notary status, or policy acceptance."
     )]
     pub async fn jacs_verify_agreement_v2(
         &self,
         Parameters(params): Parameters<VerifyAgreementV2Params>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_verify_agreement_v2", &params) {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1103,59 +1261,36 @@ impl JacsMcpServer {
         #[cfg(feature = "agreement-tools")]
         {
             // Extract the agreement id once for any failure log (fail soft to "unknown").
-            let agreement_id = serde_json::from_str::<serde_json::Value>(&params.agreement)
+            let agreement_id = jacs::strict_json::parse_strict_json(&params.agreement)
                 .ok()
                 .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
                 .unwrap_or_else(|| "unknown".to_string());
 
-            let result = match self.agent.verify_agreement_v2_json(&params.agreement) {
-                Ok(report_json) => match serde_json::from_str::<serde_json::Value>(&report_json) {
-                    Ok(report_value) => {
-                        // Fail closed: a report missing `valid` is treated as invalid.
-                        let valid = report_value
-                            .get("valid")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        if !valid {
-                            let errors = report_value
-                                .get("errors")
-                                .map(|e| e.to_string())
-                                .unwrap_or_default();
-                            tracing::warn!(
-                                event = "agreement_v2_verify_invalid",
-                                agreement_id = %agreement_id,
-                                errors = %errors,
-                                "agreement v2 verification failed"
-                            );
-                        }
-                        VerifyAgreementV2Result {
-                            success: true,
-                            valid,
-                            result: Some(report_value),
-                            error: None,
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            event = "agreement_v2_verify_invalid",
-                            agreement_id = %agreement_id,
-                            error = %e,
-                            "agreement v2 verification report failed to parse"
-                        );
-                        VerifyAgreementV2Result {
-                            success: false,
-                            valid: false,
-                            result: None,
-                            error: Some(format!("Failed to parse agreement v2 report: {}", e)),
-                        }
-                    }
+            let result = match self.with_agent_mut(|agent| {
+                jacs::agreements::v2::inspect_with_agent(agent, &params.agreement)
+            }) {
+                Ok(report) => match serde_json::to_value(report) {
+                    Ok(report_value) => VerifyAgreementV2Result {
+                        success: true,
+                        // Compatibility field is deliberately fail-closed:
+                        // inspect `result.cryptographicResult` for math only.
+                        valid: false,
+                        result: Some(report_value),
+                        error: None,
+                    },
+                    Err(e) => VerifyAgreementV2Result {
+                        success: false,
+                        valid: false,
+                        result: None,
+                        error: Some(format!("Failed to serialize agreement v2 coverage: {e}")),
+                    },
                 },
                 Err(e) => {
                     tracing::warn!(
-                        event = "agreement_v2_verify_invalid",
+                        event = "agreement_v2_inspection_failed",
                         agreement_id = %agreement_id,
                         error = %e,
-                        "agreement v2 verification failed"
+                        "agreement v2 coverage inspection failed"
                     );
                     VerifyAgreementV2Result {
                         success: false,
@@ -1180,6 +1315,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<DetectAgreementV2BranchConflictParams>,
     ) -> String {
+        if let Some(denied) =
+            self.local_signing_denial("jacs_detect_agreement_v2_branch_conflict", &params)
+        {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1194,7 +1334,7 @@ impl JacsMcpServer {
             ) {
                 Ok(analysis_json) => AgreementV2ValueResult {
                     success: true,
-                    result: serde_json::from_str(&analysis_json).ok(),
+                    result: jacs::strict_json::parse_strict_json(&analysis_json).ok(),
                     error: None,
                 },
                 Err(e) => AgreementV2ValueResult {
@@ -1218,6 +1358,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MergeAgreementV2TranscriptBranchesParams>,
     ) -> String {
+        if let Some(denied) =
+            self.local_signing_denial("jacs_merge_agreement_v2_transcript_branches", &params)
+        {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1256,6 +1401,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ResolveAgreementV2BranchConflictParams>,
     ) -> String {
+        if let Some(denied) =
+            self.local_signing_denial("jacs_resolve_agreement_v2_branch_conflict", &params)
+        {
+            return denied;
+        }
         #[cfg(not(feature = "agreement-tools"))]
         {
             let _ = params;
@@ -1315,34 +1465,37 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<SignDocumentParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_sign_document", &params) {
+            return denied;
+        }
         // Validate content is valid JSON
-        let content_value: serde_json::Value = match serde_json::from_str(&params.content) {
-            Ok(v) => v,
-            Err(e) => {
-                let result = SignDocumentResult {
-                    success: false,
-                    signed_document: None,
-                    content_hash: None,
-                    jacs_document_id: None,
-                    message: "Content is not valid JSON".to_string(),
-                    error: Some(e.to_string()),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
-        };
+        let content_value: serde_json::Value =
+            match jacs::strict_json::parse_strict_json(&params.content) {
+                Ok(v) => v,
+                Err(e) => {
+                    let result = SignDocumentResult {
+                        success: false,
+                        signed_document: None,
+                        content_hash: None,
+                        jacs_document_id: None,
+                        message: "Content is not valid JSON".to_string(),
+                        error: Some(e.to_string()),
+                    };
+                    return serde_json::to_string_pretty(&result)
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+            };
 
-        // Wrap content in a JACS-compatible envelope if it doesn't already have jacsType
-        let doc_to_sign = if content_value.get("jacsType").is_some() {
-            params.content.clone()
-        } else {
-            let wrapper = serde_json::json!({
-                "jacsType": "document",
-                "jacsLevel": "raw",
-                "content": content_value,
-            });
-            wrapper.to_string()
-        };
+        // The local MCP grant is content provenance, not authority to mint
+        // caller-selected identity/config/protocol documents. Preserve every
+        // supplied field as nested content; JACS owns the outer envelope.
+        let doc_to_sign = serde_json::json!({
+            "jacsType": "document",
+            "jacsLevel": "raw",
+            "content": content_value,
+            "contentType": params.content_type.as_deref().unwrap_or("application/json"),
+        })
+        .to_string();
 
         // Sign via create_document (no_save=true)
         match self
@@ -1364,7 +1517,9 @@ impl JacsMcpServer {
                     signed_document: Some(signed_doc_string),
                     content_hash: Some(hash),
                     jacs_document_id: doc_id,
-                    message: "Document signed successfully".to_string(),
+                    message:
+                        "Content signed by the configured local agent; this is not human approval"
+                            .to_string(),
                     error: None,
                 };
                 let serialized = serde_json::to_string_pretty(&result)
@@ -1390,7 +1545,7 @@ impl JacsMcpServer {
     /// Verify a signed JACS document given its full JSON string.
     #[tool(
         name = "jacs_verify_document",
-        description = "Verify a signed JACS document's hash and cryptographic signature."
+        description = "Verify exact submitted JACS document bytes with a caller-selected raw public key and algorithm. Integrity only; does not establish identity or authorization."
     )]
     pub async fn jacs_verify_document(
         &self,
@@ -1408,11 +1563,21 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        // Try verify_signature first (works for both self-signed and external docs)
-        match self.agent.verify_signature(&params.document, None) {
-            Ok(valid) => {
+        // Verification-only MCP never loads a signing identity. The caller
+        // selects exact public bytes and the reduced verifier checks those
+        // submitted document bytes directly without storage or key discovery.
+        let verification = jacs::verification::NonSigningVerifier::new().and_then(|verifier| {
+            verifier.verify_with_key(
+                &params.document,
+                &params.public_key,
+                &params.algorithm,
+                None,
+            )
+        });
+        match verification {
+            Ok(report) => {
                 // Try to extract signer ID from the document
-                let signer_id = serde_json::from_str::<serde_json::Value>(&params.document)
+                let signer_id = jacs::strict_json::parse_strict_json(&params.document)
                     .ok()
                     .and_then(|v| {
                         v.get("jacsSignature")
@@ -1423,14 +1588,14 @@ impl JacsMcpServer {
 
                 let result = VerifyDocumentResult {
                     success: true,
-                    valid,
+                    valid: report.integrity_valid,
                     signer_id,
-                    message: if valid {
+                    message: if report.integrity_valid {
                         "Document verified successfully".to_string()
                     } else {
                         "Document signature verification failed".to_string()
                     },
-                    error: None,
+                    error: (!report.errors.is_empty()).then(|| report.errors.join("; ")),
                 };
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
@@ -1460,6 +1625,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<WrapA2aArtifactParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_wrap_a2a_artifact", &params) {
+            return denied;
+        }
         if params.artifact_json.is_empty() {
             let result = WrapA2aArtifactResult {
                 success: false,
@@ -1511,6 +1679,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<VerifyA2aArtifactParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_verify_a2a_artifact", &params) {
+            return denied;
+        }
         if params.wrapped_artifact.is_empty() {
             let result = VerifyA2aArtifactResult {
                 success: false,
@@ -1561,6 +1732,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<AssessA2aAgentParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_assess_a2a_agent", &params) {
+            return denied;
+        }
         if params.agent_card_json.is_empty() {
             let result = AssessA2aAgentResult {
                 success: false,
@@ -1585,7 +1759,7 @@ impl JacsMcpServer {
             Ok(assessment_json) => {
                 // Parse the assessment to extract fields for our result type
                 let assessment: serde_json::Value =
-                    serde_json::from_str(&assessment_json).unwrap_or_default();
+                    jacs::strict_json::parse_strict_json(&assessment_json).unwrap_or_default();
                 let allowed = assessment
                     .get("allowed")
                     .and_then(|v| v.as_bool())
@@ -1654,6 +1828,9 @@ impl JacsMcpServer {
         &self,
         Parameters(_params): Parameters<ExportAgentCardParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_export_agent_card", &_params) {
+            return denied;
+        }
         match self.agent.export_agent_card() {
             Ok(card_json) => {
                 let result = ExportAgentCardResult {
@@ -1676,23 +1853,27 @@ impl JacsMcpServer {
         }
     }
 
-    /// Generate all .well-known documents for A2A discovery.
+    /// Generate the stable, identity-bound .well-known documents for A2A discovery.
     #[tool(
         name = "jacs_generate_well_known",
-        description = "Generate .well-known documents for A2A agent discovery."
+        description = "Generate stable ES256-signed A2A discovery documents together with the native-root-signed compatibility binding."
     )]
     pub async fn jacs_generate_well_known(
         &self,
         Parameters(params): Parameters<GenerateWellKnownParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_generate_well_known", &params) {
+            return denied;
+        }
         match self
             .agent
             .generate_well_known_documents(params.a2a_algorithm.as_deref())
         {
             Ok(docs_json) => {
                 // Parse to count documents
-                let count = serde_json::from_str::<Vec<serde_json::Value>>(&docs_json)
-                    .map(|v| v.len())
+                let count = jacs::strict_json::parse_strict_json(&docs_json)
+                    .ok()
+                    .and_then(|value| value.as_array().map(Vec::len))
                     .unwrap_or(0);
                 let result = GenerateWellKnownResult {
                     success: true,
@@ -1725,6 +1906,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<W3cOriginParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_w3c_export_did", &params) {
+            return denied;
+        }
         let result = match self.with_agent(|agent| {
             jacs::w3c::export_did_identifier_with_options(
                 agent,
@@ -1758,6 +1942,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<W3cOriginParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_w3c_export_did_document", &params) {
+            return denied;
+        }
         let result = match self.with_agent(|agent| {
             jacs::w3c::export_did_document(
                 agent,
@@ -1791,6 +1978,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<W3cOriginParams>,
     ) -> String {
+        if let Some(denied) =
+            self.local_signing_denial("jacs_w3c_export_agent_description", &params)
+        {
+            return denied;
+        }
         let result = match self.with_agent(|agent| {
             jacs::w3c::export_agent_description(
                 agent,
@@ -1824,6 +2016,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<W3cOriginParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_w3c_generate_well_known", &params) {
+            return denied;
+        }
         let result = match self.with_agent(|agent| {
             jacs::w3c::generate_w3c_well_known_documents(
                 agent,
@@ -1866,6 +2061,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<W3cSignRequestParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_w3c_sign_request", &params) {
+            return denied;
+        }
         let result = match self.with_agent_mut(|agent| {
             jacs::w3c::build_request_proof(
                 agent,
@@ -1904,6 +2102,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<W3cVerifyRequestParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_w3c_verify_request", &params) {
+            return denied;
+        }
         let verifier = jacs::get_empty_agent();
         let result = match jacs::w3c::verify_request_proof_for_request(
             &verifier,
@@ -1949,10 +2150,13 @@ impl JacsMcpServer {
         &self,
         Parameters(_params): Parameters<ExportAgentParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_export_agent", &_params) {
+            return denied;
+        }
         match self.agent.get_agent_json() {
             Ok(agent_json) => {
                 // Try to extract the agent ID from the JSON
-                let agent_id = serde_json::from_str::<serde_json::Value>(&agent_json)
+                let agent_id = jacs::strict_json::parse_strict_json(&agent_json)
                     .ok()
                     .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from));
                 let result = ExportAgentResult {
@@ -1993,6 +2197,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<TrustAgentParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_trust_agent", &params) {
+            return denied;
+        }
         if params.agent_json.is_empty() {
             let result = TrustAgentResult {
                 success: false,
@@ -2041,6 +2248,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<UntrustAgentParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_untrust_agent", &params) {
+            return denied;
+        }
         // Security check: Untrusting must be explicitly enabled
         if !self.untrust_allowed {
             let result = UntrustAgentResult {
@@ -2098,6 +2308,9 @@ impl JacsMcpServer {
         &self,
         Parameters(_params): Parameters<ListTrustedAgentsParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_list_trusted_agents", &_params) {
+            return denied;
+        }
         match jacs_binding_core::list_trusted_agents() {
             Ok(agent_ids) => {
                 let count = agent_ids.len();
@@ -2129,6 +2342,9 @@ impl JacsMcpServer {
         description = "Check whether a specific agent is in the local trust store."
     )]
     pub async fn jacs_is_trusted(&self, Parameters(params): Parameters<IsTrustedParams>) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_is_trusted", &params) {
+            return denied;
+        }
         if params.agent_id.is_empty() {
             let result = IsTrustedResult {
                 success: false,
@@ -2163,6 +2379,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<GetTrustedAgentParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_get_trusted_agent", &params) {
+            return denied;
+        }
         if params.agent_id.is_empty() {
             let result = GetTrustedAgentResult {
                 success: false,
@@ -2214,6 +2433,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<AttestCreateParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_attest_create", &params) {
+            return denied;
+        }
         #[cfg(feature = "attestation")]
         {
             match self.agent.create_attestation(&params.params_json) {
@@ -2250,6 +2472,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<AttestVerifyParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_attest_verify", &params) {
+            return denied;
+        }
         #[cfg(feature = "attestation")]
         {
             let result = if params.full {
@@ -2294,6 +2519,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<AttestLiftParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_attest_lift", &params) {
+            return denied;
+        }
         #[cfg(feature = "attestation")]
         {
             match self
@@ -2330,6 +2558,9 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<AttestExportDsseParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_attest_export_dsse", &params) {
+            return denied;
+        }
         #[cfg(feature = "attestation")]
         {
             match self.agent.export_attestation_dsse(&params.attestation_json) {
@@ -2361,23 +2592,29 @@ impl JacsMcpServer {
         description = "Sign a text/markdown file in place with an inline JACS signature block."
     )]
     pub async fn jacs_sign_text(&self, Parameters(params): Parameters<SignTextParams>) -> String {
-        // PRD §4.2.6: every wave-3 file-path handler MUST run through the
-        // six-layer path policy (base-dir confinement, absolute/traversal
-        // rejection, leaf-symlink rejection, output-overwrite policy, backup
-        // placement). `require_relative_path_safe` alone covers only
-        // structural checks — it lets a bare relative name escape the
-        // configured `JACS_MCP_BASE_DIR` because resolution then falls back
-        // to the server CWD. See R-003.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return inline_text_error_envelope(
-                    &params.file_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        if let Some(denied) = self.local_signing_denial("jacs_sign_text", &params) {
+            return denied;
+        }
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return inline_text_error_envelope(
+                        &params.file_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
+        if !params.no_backup.unwrap_or(false)
+            && let Err(error) = self.check_file_backup(&params.file_path)
+        {
+            return inline_text_error_envelope(
+                &params.file_path,
+                "Backup path validation failed",
+                format!("PATH_POLICY_BLOCKED: {error}"),
+            );
+        }
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2457,17 +2694,21 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<VerifyTextParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_verify_text", &params) {
+            return denied;
+        }
         // PRD §4.2.6 / R-003: full six-layer path policy.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return verify_text_error_envelope(
-                    &params.file_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return verify_text_error_envelope(
+                        &params.file_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2484,7 +2725,7 @@ impl JacsMcpServer {
         // SECURITY (verify-trust bypass): a caller-supplied key_dir is consulted
         // ahead of the trust store and would let an attacker shadow a trusted
         // signer's key. Default-deny; confine to the base dir when opted in.
-        let key_dir = match resolve_key_dir_override(params.key_dir.as_deref()) {
+        let key_dir = match self.resolve_key_dir_override(params.key_dir.as_deref()) {
             Ok(k) => k,
             Err(e) => {
                 return verify_text_error_envelope(
@@ -2571,26 +2812,31 @@ impl JacsMcpServer {
         description = "Sign a PNG/JPEG/WebP image by embedding a JACS signature in format-native metadata. Robust mode (PNG/JPEG only) additionally embeds into the LSB channel."
     )]
     pub async fn jacs_sign_image(&self, Parameters(params): Parameters<SignImageParams>) -> String {
-        // PRD §4.2.6 / R-003: input must exist inside base_dir; output must
-        // either be inside base_dir and not already exist, OR be allowed via
-        // JACS_MCP_OVERWRITE_OK=1 / refuse_overwrite=false (in-place sign).
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.input_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return sign_image_error_envelope(
-                    &params.output_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        if let Some(denied) = self.local_signing_denial("jacs_sign_image", &params) {
+            return denied;
+        }
+        // In-place signing is an explicit write. Distinct existing outputs
+        // additionally require the operator's captured overwrite permission;
+        // the caller's refuse_overwrite flag cannot grant that permission.
+        let resolved_input =
+            match self.resolve_file_path(&params.input_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return sign_image_error_envelope(
+                        &params.output_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
         // For output, use resolve_output_path when it differs from input (a
         // distinct write target is governed by overwrite policy). When equal,
         // the operation is in-place and resolve_input_path applies.
         let resolved_output = if params.input_path == params.output_path {
             resolved_input.clone()
         } else {
-            match crate::path_policy::resolve_output_path(&params.output_path) {
+            match self.resolve_file_path(&params.output_path, crate::path_policy::PathKind::Output)
+            {
                 Ok(p) => p.to_string_lossy().into_owned(),
                 Err(e) => {
                     return sign_image_error_envelope(
@@ -2601,6 +2847,16 @@ impl JacsMcpServer {
                 }
             }
         };
+        if (params.input_path == params.output_path
+            || std::path::Path::new(&resolved_output).exists())
+            && let Err(error) = self.check_file_backup(&params.output_path)
+        {
+            return sign_image_error_envelope(
+                &params.output_path,
+                "Backup path validation failed",
+                format!("PATH_POLICY_BLOCKED: {error}"),
+            );
+        }
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2665,17 +2921,21 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<VerifyImageParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_verify_image", &params) {
+            return denied;
+        }
         // PRD §4.2.6 / R-003.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return verify_image_error_envelope(
-                    &params.file_path,
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return verify_image_error_envelope(
+                        &params.file_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -2691,7 +2951,7 @@ impl JacsMcpServer {
         let strict = params.strict.unwrap_or(false);
         // SECURITY (verify-trust bypass): see jacs_verify_text. Default-deny a
         // caller-supplied key_dir; confine to the base dir when opted in.
-        let key_dir = match resolve_key_dir_override(params.key_dir.as_deref()) {
+        let key_dir = match self.resolve_key_dir_override(params.key_dir.as_deref()) {
             Ok(k) => k,
             Err(e) => {
                 return verify_image_error_envelope(
@@ -2790,16 +3050,20 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ExtractMediaSignatureParams>,
     ) -> String {
+        if let Some(denied) = self.local_signing_denial("jacs_extract_media_signature", &params) {
+            return denied;
+        }
         // PRD §4.2.6 / R-003.
-        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(e) => {
-                return extract_media_error_envelope(
-                    "Path validation failed",
-                    format!("PATH_POLICY_BLOCKED: {}", e),
-                );
-            }
-        };
+        let resolved_input =
+            match self.resolve_file_path(&params.file_path, crate::path_policy::PathKind::Input) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return extract_media_error_envelope(
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            };
 
         let raw = params.raw_payload.unwrap_or(false);
         // R-011: scan_robust opt-in for the extract verb (parity with verify).
@@ -2944,58 +3208,14 @@ impl ServerHandler for JacsMcpServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
         let mut capabilities = ServerCapabilities::default();
-        capabilities.tools = Some(ToolsCapability {
-            list_changed: Some(false),
-        });
+        let mut tools = ToolsCapability::default();
+        tools.list_changed = Some(false);
+        capabilities.tools = Some(tools);
         info.capabilities = capabilities;
         info.server_info = Implementation::new("jacs-mcp", env!("CARGO_PKG_VERSION"))
             .with_title("JACS MCP Server")
             .with_website_url("https://humanassisted.github.io/JACS/");
-        info.instructions = Some(
-            "This MCP server provides data provenance and cryptographic signing for \
-                 signed documents, agreements, A2A artifacts, agents, and configuration. \
-                 \
-                 Document signing: jacs_sign_document (sign JSON content), \
-                 jacs_verify_document (verify a signed JACS document). \
-                 \
-                 \
-                 Agent management: jacs_create_agent (create new agent with keys), \
-                 jacs_reencrypt_key (rotate private key password). \
-                 \
-                 A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), \
-                 jacs_verify_a2a_artifact (verify wrapped artifact), \
-                 jacs_assess_a2a_agent (assess remote agent trust level). \
-                 \
-                 A2A discovery: jacs_export_agent_card (export Agent Card), \
-                 jacs_generate_well_known (generate .well-known documents), \
-                 jacs_export_agent (export full agent JSON). \
-                 \
-                 W3C interop: jacs_w3c_export_did (export did:wba identifier), \
-                 jacs_w3c_export_did_document (export DID document), \
-                 jacs_w3c_export_agent_description (export agent description), \
-                 jacs_w3c_generate_well_known (generate W3C discovery documents), \
-                 jacs_w3c_sign_request (create request-bound DID proof), \
-                 jacs_w3c_verify_request (verify request-bound DID proof). \
-                 \
-                 Trust store: jacs_trust_agent (add agent to trust store), \
-                 jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), \
-                 jacs_list_trusted_agents (list all trusted agent IDs), \
-                 jacs_is_trusted (check if agent is trusted), \
-                 jacs_get_trusted_agent (get trusted agent JSON). \
-                 \
-                 Attestation: jacs_attest_create (create signed attestation with claims), \
-                 jacs_attest_verify (verify attestation, optionally with evidence checks), \
-                 jacs_attest_lift (lift signed document into attestation), \
-                 jacs_attest_export_dsse (export attestation as DSSE envelope). \
-                 \
-                 Search: jacs_search (unified search across all signed documents). \
-                 \
-                 Inline text and media: jacs_sign_text (sign a markdown/text file in place), \
-                 jacs_verify_text (verify inline JACS signatures), jacs_sign_image \
-                 (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image \
-                 (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
-                .to_string(),
-        );
+        info.instructions = Some(self.active_instructions());
         info
     }
 
@@ -3008,11 +3228,11 @@ impl ServerHandler for JacsMcpServer {
         _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::ListToolsResult, rmcp::model::ErrorData> {
-        Ok(rmcp::model::ListToolsResult {
-            tools: self.active_tools(),
-            meta: None,
-            next_cursor: None,
-        })
+        Ok(
+            rmcp::model::ListToolsResult::with_all_items(self.active_tools())
+                .with_ttl_ms(TOOLS_LIST_CACHE_TTL_MS)
+                .with_cache_scope(CacheScope::Public),
+        )
     }
 
     /// Dispatch a tool call, but only if the tool is in the active profile.
@@ -3023,15 +3243,14 @@ impl ServerHandler for JacsMcpServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<rmcp::model::CallToolResult, rmcp::model::ErrorData> {
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::model::ErrorData> {
         // Check that the requested tool is in the active profile.
         let active = self.active_tools();
         let tool_allowed = active.iter().any(|t| t.name == request.name);
         if !tool_allowed {
             return Err(rmcp::model::ErrorData::invalid_params(
                 format!(
-                    "Tool '{}' is not available in the '{}' profile. \
-                     Use --profile full or set JACS_MCP_PROFILE=full to access all tools.",
+                    "Tool '{}' is not available in the '{}' profile. Local JSON/Agreement signing requires an explicitly loaded signed config; key/trust administration and file tools are outside that scope.",
                     request.name,
                     self.profile().as_str(),
                 ),
@@ -3049,12 +3268,12 @@ mod tests {
 
     #[test]
     fn test_tools_list_matches_compiled_features() {
-        let tools = JacsMcpServer::tools();
-        let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
+        let available_tools = JacsMcpServer::tools();
+        let names: Vec<&str> = available_tools.iter().map(|t| &*t.name).collect();
 
         // Total should match the compiled-in tool count
         assert_eq!(
-            tools.len(),
+            available_tools.len(),
             crate::tools::total_tool_count(),
             "tools() count should match total_tool_count()"
         );
@@ -3177,54 +3396,6 @@ mod tests {
         }
     }
 
-    // SECURITY (#2): a caller-supplied key_dir is rejected by default (it would
-    // shadow the trust store); None passes through; an opted-in value is still
-    // confined to the base dir by the path policy.
-    #[test]
-    #[serial_test::serial(mcp_env_gates)]
-    fn test_resolve_key_dir_override_none_passes_through() {
-        // SAFETY: serial-guarded env mutation.
-        unsafe {
-            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
-        }
-        assert!(matches!(resolve_key_dir_override(None), Ok(None)));
-    }
-
-    #[test]
-    #[serial_test::serial(mcp_env_gates)]
-    fn test_resolve_key_dir_override_disabled_by_default() {
-        // SAFETY: serial-guarded env mutation.
-        unsafe {
-            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
-        }
-        let err = resolve_key_dir_override(Some("attacker_keys")).unwrap_err();
-        assert!(
-            err.contains("disabled"),
-            "expected disabled message, got: {}",
-            err
-        );
-    }
-
-    #[test]
-    #[serial_test::serial(mcp_env_gates)]
-    fn test_resolve_key_dir_override_rejects_absolute_when_enabled() {
-        // SAFETY: serial-guarded env mutation.
-        unsafe {
-            std::env::set_var("JACS_MCP_ALLOW_KEY_DIR", "true");
-        }
-        // Even when opted in, an absolute path escaping the base dir is blocked
-        // by the path policy (structural absolute-path rejection).
-        let err = resolve_key_dir_override(Some("/tmp/evil_keys")).unwrap_err();
-        unsafe {
-            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
-        }
-        assert!(
-            err.contains("PATH_POLICY_BLOCKED") || err.to_lowercase().contains("rejected"),
-            "expected path-policy rejection, got: {}",
-            err
-        );
-    }
-
     #[test]
     fn test_create_agreement_params_schema() {
         let schema = schemars::schema_for!(CreateAgreementParams);
@@ -3256,8 +3427,11 @@ mod tests {
     #[test]
     fn test_tool_list_includes_agreement_tools() {
         // Verify the 3 agreement tools are registered when agreement-tools is enabled
-        let tools = JacsMcpServer::tools();
-        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        let compiled_tools = JacsMcpServer::tools();
+        let names: Vec<&str> = compiled_tools
+            .iter()
+            .map(|tool| tool.name.as_ref())
+            .collect();
         assert!(
             names.contains(&"jacs_create_agreement"),
             "Missing jacs_create_agreement"

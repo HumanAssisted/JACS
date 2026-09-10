@@ -75,7 +75,7 @@ pub struct SignAgreementResult {
     pub error: Option<String>,
 }
 
-/// Parameters for checking agreement status.
+/// Parameters for inspecting legacy Agreement v1 signatures and claimed status metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CheckAgreementParams {
     #[schemars(description = "The agreement JSON to check status of")]
@@ -84,11 +84,20 @@ pub struct CheckAgreementParams {
     pub agreement_fieldname: Option<String>,
 }
 
-/// Result of checking an agreement's status.
+/// Non-actionable result of inspecting a legacy Agreement v1 artifact.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CheckAgreementResult {
+    /// Whether the legacy v1 signature checks that were actually run passed.
+    /// This is not an authorization or agreement-completion decision.
+    pub mathematical_checks_valid: bool,
     pub success: bool,
+    /// Always false for legacy Agreement v1.
     pub complete: bool,
+    /// Always false for legacy Agreement v1 because its policy sidecar is not signed.
+    pub policy_authenticated: bool,
+    /// Always false for legacy Agreement v1.
+    pub policy_accepted: bool,
+    pub overall_scope: String,
     pub total_agents: usize,
     pub signatures_collected: usize,
     pub signatures_required: usize,
@@ -102,6 +111,8 @@ pub struct CheckAgreementResult {
     pub timeout: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
 }
 
 // =============================================================================
@@ -136,7 +147,7 @@ pub struct ApplyAgreementV2Params {
             {\"type\":\"appendTranscript\",\"entry\":{\"jacsId\":\"...\",\"jacsVersion\":\"...\", \
             \"jacsSha256\":\"...\"}}, {\"type\":\"updateTerms\",\"terms\":\"...\"}, \
             {\"type\":\"setStatus\",\"status\":\"proposed\"}, {\"type\":\"addLink\",\"link\": \
-            {\"jacsId\":\"...\",\"jacsVersion\":\"...\"}}, plus setParties/setPolicy/setOwners. \
+            {\"jacsId\":\"...\",\"jacsVersion\":\"...\"}}, plus setParties/setSignaturePolicy/setOwners. \
             Emits a successor version."
     )]
     pub mutation: serde_json::Value,
@@ -150,9 +161,8 @@ pub struct SignAgreementV2Params {
     )]
     pub agreement: String,
     #[schemars(
-        description = "Signature role this agent signs as. One of: \"signer\" (a consenting \
-            party), \"witness\" (attests it observed the signing), or \"notary\" (an authority \
-            that certifies the agreement). Defaults to \"signer\"."
+        description = "Claimed signature role metadata: \"signer\", \"witness\", or \"notary\". \
+            Defaults to \"signer\". V2 party proofs do not authenticate this role or notary authority."
     )]
     pub role: Option<String>,
 }
@@ -160,10 +170,10 @@ pub struct SignAgreementV2Params {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VerifyAgreementV2Params {
     #[schemars(
-        description = "The full agreement v2 document JSON to verify. The verifier recomputes the \
-            agreement and transcript hashes, checks quorum/role/witness/notary requirements, and \
-            validates each agreement signature. Read the top-level `valid` field of the result \
-            (NOT `success`) to decide whether to trust the agreement."
+        description = "The full agreement v2 document JSON to inspect without rewriting its bytes. \
+            `success` means inspection ran; top-level `valid` remains false. Read \
+            `result.cryptographicResult` for mathematical signature coverage, not authorization. \
+            V2 party proofs do not authenticate role, quorum, lineage, or notary status."
     )]
     pub agreement: String,
 }
@@ -246,10 +256,10 @@ pub struct AgreementV2ValueResult {
 
 /// Result envelope for `jacs_verify_agreement_v2`.
 ///
-/// `success` means the verify operation EXECUTED (input parsed, verification ran).
-/// `valid` is the cryptographic/structural verdict and is the authoritative
-/// answer to "should this agreement be trusted". A caller must never read
-/// `success: true` and assume the agreement is good — `valid` carries that.
+/// `success` means inspection executed. The compatibility `valid` field remains
+/// false: v2 inspection cannot grant policy acceptance. Mathematical signature
+/// coverage is reported by `result.cryptographicResult`; role, quorum, lineage,
+/// and notary authority are explicitly unauthenticated by v2 party proofs.
 /// On an execution/parse failure, `success` is false and `valid` is false.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VerifyAgreementV2Result {

@@ -6,16 +6,20 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createJACSTransportProxy } from '../mcp.js';
+import { createJACSTransportProxyAsync } from '../mcp.js';
 import { z } from 'zod';
 
 const SERVER_CONFIG_PATH = "./jacs.server.config.json";
+const EXPECTED_CLIENT_AGENT_ID = process.env.JACS_EXPECTED_MCP_CLIENT_AGENT_ID;
 
 async function main() {
   // ALL SERVER LOGS MUST GO TO STDERR (NOT STDOUT)
   console.error("JACS STDIO MCP Server starting...");
   
   try {
+    if (!EXPECTED_CLIENT_AGENT_ID) {
+      throw new Error('Set JACS_EXPECTED_MCP_CLIENT_AGENT_ID to the client jacsSignature.agentID');
+    }
     // Disable JACS debugging to prevent stdout contamination
     process.env.JACS_MCP_DEBUG = "false";
     
@@ -24,10 +28,11 @@ async function main() {
     console.error("StdioServerTransport created");
     
     // Wrap with JACS encryption
-    const secureTransport = createJACSTransportProxy(
+    const secureTransport = await createJACSTransportProxyAsync(
       baseTransport,
-      SERVER_CONFIG_PATH, 
-      "server"
+      SERVER_CONFIG_PATH,
+      "server",
+      { expectedPeerAgentId: EXPECTED_CLIENT_AGENT_ID },
     );
     console.error("JACS transport proxy created");
     

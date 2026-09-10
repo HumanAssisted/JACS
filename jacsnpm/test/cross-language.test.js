@@ -39,8 +39,10 @@ const WORKSPACE_ROOT = path.resolve(__dirname, '../..');
 const FIXTURES_DIR = path.join(WORKSPACE_ROOT, 'jacs', 'tests', 'fixtures', 'cross-language');
 const UPDATE_FIXTURES = /^(1|true|yes)$/i.test(process.env.UPDATE_CROSS_LANG_FIXTURES || '');
 const IAT_SKEW_ENV_VAR = 'JACS_MAX_IAT_SKEW_SECONDS';
+const ALLOW_LEGACY_ENV_VAR = 'JACS_ALLOW_LEGACY_SIGNATURE_CONTENT';
 let STANDALONE_CACHE_DIR = null;
 let previousIatSkewEnv = undefined;
+let previousAllowLegacyEnv = undefined;
 
 // Relative path from CWD to standalone key cache dir (required by standalone verifier).
 function fixturesRelPath() {
@@ -83,6 +85,11 @@ function readFixture(prefix) {
     signed: fs.readFileSync(signedPath, 'utf8'),
     metadata: JSON.parse(fs.readFileSync(metadataPath, 'utf8')),
   };
+}
+
+function isLegacyV1(signed) {
+  const signature = JSON.parse(signed).jacsSignature || {};
+  return !Object.prototype.hasOwnProperty.call(signature, 'signatureContentVersion');
 }
 
 function writeFixtureIfEnabled(outputPath, content) {
@@ -160,7 +167,9 @@ describe('Cross-language verification', function () {
     // Cross-language fixtures are committed snapshots; disable iat skew checks
     // for compatibility verification against older fixture timestamps.
     previousIatSkewEnv = process.env[IAT_SKEW_ENV_VAR];
+    previousAllowLegacyEnv = process.env[ALLOW_LEGACY_ENV_VAR];
     process.env[IAT_SKEW_ENV_VAR] = '0';
+    delete process.env[ALLOW_LEGACY_ENV_VAR];
     STANDALONE_CACHE_DIR = buildStandaloneKeyCache();
     console.log(`  Standalone key cache: ${STANDALONE_CACHE_DIR}`);
   });
@@ -175,6 +184,11 @@ describe('Cross-language verification', function () {
     } else {
       process.env[IAT_SKEW_ENV_VAR] = previousIatSkewEnv;
     }
+    if (previousAllowLegacyEnv === undefined) {
+      delete process.env[ALLOW_LEGACY_ENV_VAR];
+    } else {
+      process.env[ALLOW_LEGACY_ENV_VAR] = previousAllowLegacyEnv;
+    }
   });
 
   // ---------------------------------------------------------------------------
@@ -186,7 +200,7 @@ describe('Cross-language verification', function () {
       const hasFixture = fixturesDirExists && fixtureExists(algo.prefix);
 
       (available && hasFixture ? it : it.skip)(
-        'should verify a Rust-signed document with verifyStandalone',
+        'should enforce secure legacy policy with verifyStandalone',
         () => {
           const { signed, metadata } = readFixture(algo.prefix);
           expect(hasCacheEntryFor(algo.prefix)).to.equal(
@@ -197,11 +211,42 @@ describe('Cross-language verification', function () {
           const result = simple.verifyStandalone(signed, standaloneOpts());
 
           expect(result).to.be.an('object');
-          expect(result.valid).to.equal(true, `Failed to verify ${algo.name} document`);
-          expect(result.signerId).to.equal(
-            metadata.agent_id,
-            `Signer ID should match metadata for ${algo.name}`,
-          );
+          if (isLegacyV1(signed)) {
+            expect(result.valid).to.equal(false, 'Legacy v1 must be denied by default');
+            expect(result.signerId).to.equal('');
+          } else {
+            expect(result.valid).to.equal(true, `Failed to verify ${algo.name} document`);
+            expect(result.signerId).to.equal(
+              metadata.agent_id,
+              `Signer ID should match metadata for ${algo.name}`,
+            );
+          }
+        },
+      );
+
+      (available && hasFixture ? it : it.skip)(
+        'should require explicit compatibility for legacy v1 and suppress its metadata',
+        function () {
+          const { signed } = readFixture(algo.prefix);
+          if (!isLegacyV1(signed)) {
+            this.skip();
+          }
+
+          const previous = process.env[ALLOW_LEGACY_ENV_VAR];
+          process.env[ALLOW_LEGACY_ENV_VAR] = 'true';
+          try {
+            const result = simple.verifyStandalone(signed, standaloneOpts());
+            expect(result.valid).to.equal(true);
+            expect(result.signerId).to.equal('');
+            expect(result.timestamp).to.equal('');
+            expect(result.agentVersion ?? '').to.equal('');
+          } finally {
+            if (previous === undefined) {
+              delete process.env[ALLOW_LEGACY_ENV_VAR];
+            } else {
+              process.env[ALLOW_LEGACY_ENV_VAR] = previous;
+            }
+          }
         },
       );
 
@@ -219,13 +264,13 @@ describe('Cross-language verification', function () {
       );
 
       (available && hasFixture ? it : it.skip)(
-        'should extract correct signer metadata',
+        'should return signer metadata only when it is authenticated by v2',
         () => {
           const { signed, metadata } = readFixture(algo.prefix);
 
           const result = simple.verifyStandalone(signed, standaloneOpts());
 
-          expect(result.signerId).to.equal(metadata.agent_id);
+          expect(result.signerId).to.equal(isLegacyV1(signed) ? '' : metadata.agent_id);
           const doc = JSON.parse(signed);
           expect(doc.jacsSignature).to.have.property('signingAlgorithm');
           expect(doc.jacsSignature.signingAlgorithm).to.equal(metadata.signing_algorithm);
@@ -279,7 +324,8 @@ describe('Cross-language verification', function () {
         expect(countersigned).to.have.property('documentId').that.is.a('string').and.not.empty;
         expect(countersigned.agentId).to.equal(client.agentId);
 
-        // Verify structure of the countersigned document
+        // Verify that explicit Ed25519 selection is preserved in the
+        // countersignature rather than silently substituted.
         const doc = JSON.parse(countersigned.raw);
         expect(doc).to.have.property('jacsSignature');
         expect(doc.jacsSignature.agentID).to.equal(client.agentId);
@@ -338,7 +384,7 @@ describe('Cross-language verification', function () {
       const hasFixture = fixturesDirExists && fixtureExists(pf.prefix);
 
       (available && hasFixture ? it : it.skip)(
-        'should verify a Python-signed document with verifyStandalone',
+        'should enforce the secure default for the Python-signed document version',
         () => {
           const { signed, metadata } = readFixture(pf.prefix);
           expect(hasCacheEntryFor(pf.prefix)).to.equal(
@@ -347,9 +393,40 @@ describe('Cross-language verification', function () {
           );
 
           const result = simple.verifyStandalone(signed, standaloneOpts());
+          if (isLegacyV1(signed)) {
+            expect(result.valid).to.equal(false);
+            expect(result.signerId).to.equal('');
+          } else {
+            expect(result.valid).to.equal(true);
+            expect(result.signerId).to.equal(metadata.agent_id);
+          }
+        },
+      );
 
-          expect(result.valid).to.equal(true, `Failed to verify ${pf.name} document`);
-          expect(result.signerId).to.equal(metadata.agent_id);
+      (available && hasFixture ? it : it.skip)(
+        'should suppress metadata only for an explicitly enabled legacy fixture',
+        () => {
+          const { signed, metadata } = readFixture(pf.prefix);
+          if (!isLegacyV1(signed)) {
+            const result = simple.verifyStandalone(signed, standaloneOpts());
+            expect(result.valid).to.equal(true);
+            expect(result.signerId).to.equal(metadata.agent_id);
+            return;
+          }
+          const previous = process.env[ALLOW_LEGACY_ENV_VAR];
+          process.env[ALLOW_LEGACY_ENV_VAR] = 'true';
+          try {
+            const result = simple.verifyStandalone(signed, standaloneOpts());
+            expect(result.valid).to.equal(true, `Failed to verify ${pf.name} payload`);
+            expect(result.signerId).to.equal('');
+            expect(result.timestamp).to.equal('');
+          } finally {
+            if (previous === undefined) {
+              delete process.env[ALLOW_LEGACY_ENV_VAR];
+            } else {
+              process.env[ALLOW_LEGACY_ENV_VAR] = previous;
+            }
+          }
         },
       );
 
@@ -374,12 +451,24 @@ describe('Cross-language verification', function () {
       );
 
       (available && hasFixture ? it : it.skip)(
-        'should confirm Python fixture was generated by python',
+        'should confirm Python fixture label, wire algorithm, and key size agree',
         () => {
-          const { metadata } = readFixture(pf.prefix);
+          const { signed, metadata } = readFixture(pf.prefix);
+          const doc = JSON.parse(signed);
+          const expectedWire = pf.prefix === 'python_pq2025' ? 'pq2025' : 'ring-Ed25519';
+          const publicKeySize = fs.statSync(
+            path.join(FIXTURES_DIR, `${pf.prefix}_public_key.pem`),
+          ).size;
 
           expect(metadata.generated_by).to.equal('python');
           expect(metadata).to.have.property('original_fixture');
+          expect(metadata.signing_algorithm).to.equal(expectedWire);
+          expect(doc.jacsSignature.signingAlgorithm).to.equal(expectedWire);
+          if (expectedWire === 'pq2025') {
+            expect(publicKeySize).to.equal(2592);
+          } else {
+            expect(publicKeySize).to.be.lessThan(512);
+          }
         },
       );
     });
@@ -402,9 +491,29 @@ describe('Cross-language verification', function () {
           'Missing standalone key cache entry for fixture python_ed25519',
         );
 
-        // Verify the Python doc first
-        const verifyResult = simple.verifyStandalone(pythonSigned, standaloneOpts());
-        expect(verifyResult.valid).to.equal(true, 'Python fixture should verify');
+        // Verify the Python doc first. Only historical v1 fixtures need the
+        // explicit compatibility switch; regenerated v2 fixtures authenticate
+        // and return their signer metadata normally.
+        let verifyResult;
+        if (isLegacyV1(pythonSigned)) {
+          const previous = process.env[ALLOW_LEGACY_ENV_VAR];
+          process.env[ALLOW_LEGACY_ENV_VAR] = 'true';
+          try {
+            verifyResult = simple.verifyStandalone(pythonSigned, standaloneOpts());
+          } finally {
+            if (previous === undefined) {
+              delete process.env[ALLOW_LEGACY_ENV_VAR];
+            } else {
+              process.env[ALLOW_LEGACY_ENV_VAR] = previous;
+            }
+          }
+        } else {
+          verifyResult = simple.verifyStandalone(pythonSigned, standaloneOpts());
+        }
+        expect(verifyResult.valid).to.equal(true, 'Python fixture payload should verify');
+        expect(verifyResult.signerId).to.equal(
+          isLegacyV1(pythonSigned) ? '' : pyMeta.agent_id,
+        );
 
         // Countersign with a Node ephemeral agent
         const client = await clientModule.JacsClient.ephemeral('ring-Ed25519');

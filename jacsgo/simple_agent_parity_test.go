@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -48,11 +49,15 @@ func canonicalTempDir(t *testing.T) string {
 
 // parityFixtures holds the deserialized parity_inputs.json.
 type parityFixtures struct {
-	SignMessageInputs  []signMessageInput  `json:"sign_message_inputs"`
-	SignRawBytesInputs []signRawBytesInput `json:"sign_raw_bytes_inputs"`
-	ExpectedSignedDoc  expectedSignedDoc   `json:"expected_signed_document_fields"`
-	ExpectedVerifyRes  expectedVerifyRes   `json:"expected_verification_result_fields"`
-	Algorithms         []string            `json:"algorithms"`
+	SignMessageInputs            []signMessageInput            `json:"sign_message_inputs"`
+	SignRawBytesInputs           []signRawBytesInput           `json:"sign_raw_bytes_inputs"`
+	CanonicalizationVectors      []canonicalizationVector      `json:"canonicalization_vectors"`
+	CanonicalizationRejections   []canonicalizationRejection   `json:"canonicalization_rejections"`
+	CanonicalizationEquivalences []canonicalizationEquivalence `json:"canonicalization_equivalences"`
+	ExpectedSignedDoc            expectedSignedDoc             `json:"expected_signed_document_fields"`
+	ExpectedVerifyRes            expectedVerifyRes             `json:"expected_verification_result_fields"`
+	ResponseV2Contract           responseV2Contract            `json:"response_v2_generic_verification"`
+	Algorithms                   []string                      `json:"algorithms"`
 }
 
 type signMessageInput struct {
@@ -65,6 +70,24 @@ type signRawBytesInput struct {
 	DataBase64 string `json:"data_base64"`
 }
 
+type canonicalizationVector struct {
+	Name     string      `json:"name"`
+	Data     interface{} `json:"data"`
+	Expected string      `json:"expected"`
+}
+
+type canonicalizationRejection struct {
+	Name           string `json:"name"`
+	Input          string `json:"input"`
+	MessagePattern string `json:"message_pattern"`
+}
+
+type canonicalizationEquivalence struct {
+	Name     string   `json:"name"`
+	Inputs   []string `json:"inputs"`
+	Expected string   `json:"expected"`
+}
+
 type expectedSignedDoc struct {
 	RequiredTopLevel        []string `json:"required_top_level"`
 	RequiredSignatureFields []string `json:"required_signature_fields"`
@@ -73,6 +96,27 @@ type expectedSignedDoc struct {
 type expectedVerifyRes struct {
 	Required []string `json:"required"`
 	Optional []string `json:"optional"`
+}
+
+type responseV2Contract struct {
+	Algorithm               string                `json:"algorithm"`
+	SignatureContentVersion string                `json:"signature_content_version"`
+	Payload                 interface{}           `json:"payload"`
+	TamperCases             []responseTamperCase  `json:"tamper_cases"`
+	InvalidResult           responseInvalidResult `json:"invalid_result"`
+}
+
+type responseTamperCase struct {
+	Name        string      `json:"name"`
+	Pointer     string      `json:"pointer"`
+	Replacement interface{} `json:"replacement"`
+}
+
+type responseInvalidResult struct {
+	Valid     bool        `json:"valid"`
+	Data      interface{} `json:"data"`
+	SignerID  string      `json:"signer_id"`
+	Timestamp string      `json:"timestamp"`
 }
 
 // loadParityFixtures reads and parses the shared fixture file.
@@ -123,6 +167,52 @@ func skipIfLibraryMissing(t *testing.T) {
 	libPath := filepath.Join(buildDir, libName)
 	if _, err := os.Stat(libPath); os.IsNotExist(err) {
 		t.Skipf("CGo library not found at %s; build the Rust library first", libPath)
+	}
+}
+
+func TestParityRFC8785Canonicalization(t *testing.T) {
+	skipIfLibraryMissing(t)
+	fixtures := loadParityFixtures(t)
+	agent := newEphemeralAgent(t, "ed25519")
+
+	for _, vector := range fixtures.CanonicalizationVectors {
+		t.Run(vector.Name, func(t *testing.T) {
+			input, err := json.Marshal(vector.Data)
+			if err != nil {
+				t.Fatalf("marshal input: %v", err)
+			}
+			actual, err := agent.CanonicalizeJSON(string(input))
+			if err != nil {
+				t.Fatalf("CanonicalizeJSON: %v", err)
+			}
+			if actual != vector.Expected {
+				t.Fatalf("RFC 8785 drift: got %q, want %q", actual, vector.Expected)
+			}
+		})
+	}
+
+	for _, vector := range fixtures.CanonicalizationRejections {
+		t.Run(vector.Name, func(t *testing.T) {
+			if actual, err := agent.CanonicalizeJSON(vector.Input); err == nil {
+				t.Fatalf("unsafe integer canonicalized successfully: %s", actual)
+			} else if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(vector.MessagePattern)) {
+				t.Fatalf("unexpected canonicalization error: %v", err)
+			}
+		})
+	}
+
+	for _, vector := range fixtures.CanonicalizationEquivalences {
+		t.Run(vector.Name, func(t *testing.T) {
+			for _, input := range vector.Inputs {
+				actual, err := agent.CanonicalizeJSON(input)
+				if err != nil {
+					t.Fatalf("CanonicalizeJSON: %v", err)
+				}
+				if actual != vector.Expected {
+					t.Fatalf("RFC 8785 equivalence drift: got %q, want %q", actual, vector.Expected)
+				}
+			}
+		})
 	}
 }
 
@@ -580,6 +670,101 @@ func TestParityVerifyWithKey(t *testing.T) {
 	}
 }
 
+func TestParityGenericVerifyWithKeyAcceptsOnlyBoundResponseV2(t *testing.T) {
+	skipIfLibraryMissing(t)
+	contract := loadParityFixtures(t).ResponseV2Contract
+	agent := newEphemeralAgent(t, contract.Algorithm)
+
+	keyB64, err := agent.GetPublicKeyBase64()
+	if err != nil {
+		t.Fatalf("GetPublicKeyBase64 failed: %v", err)
+	}
+	payloadJSON, err := json.Marshal(contract.Payload)
+	if err != nil {
+		t.Fatalf("marshal response payload: %v", err)
+	}
+	signed, err := agent.SignResponse(string(payloadJSON))
+	if err != nil {
+		t.Fatalf("SignResponse failed: %v", err)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal([]byte(signed), &envelope); err != nil {
+		t.Fatalf("unmarshal response envelope: %v", err)
+	}
+	signature, ok := envelope["jacsSignature"].(map[string]interface{})
+	if !ok {
+		t.Fatal("response envelope has no jacsSignature object")
+	}
+	if signature["signatureContentVersion"] != contract.SignatureContentVersion {
+		t.Fatalf(
+			"signature content version = %v; want %s",
+			signature["signatureContentVersion"],
+			contract.SignatureContentVersion,
+		)
+	}
+
+	verified, err := agent.VerifyWithKey(signed, keyB64)
+	if err != nil {
+		t.Fatalf("generic VerifyWithKey rejected response-v2: %v", err)
+	}
+	if !verified.Valid {
+		t.Fatalf("response-v2 should verify: %v", verified.Errors)
+	}
+	if !reflect.DeepEqual(verified.Data, contract.Payload) {
+		t.Fatalf("verified data = %#v; want %#v", verified.Data, contract.Payload)
+	}
+	if verified.SignerID == "" {
+		t.Fatal("valid response must include authenticated signer provenance")
+	}
+
+	for _, tamper := range contract.TamperCases {
+		t.Run(tamper.Name, func(t *testing.T) {
+			attackedBytes, err := json.Marshal(envelope)
+			if err != nil {
+				t.Fatalf("clone response envelope: %v", err)
+			}
+			var attacked map[string]interface{}
+			if err := json.Unmarshal(attackedBytes, &attacked); err != nil {
+				t.Fatalf("unmarshal cloned response envelope: %v", err)
+			}
+			parts := strings.Split(strings.TrimPrefix(tamper.Pointer, "/"), "/")
+			target := attacked
+			for _, part := range parts[:len(parts)-1] {
+				child, ok := target[part].(map[string]interface{})
+				if !ok {
+					t.Fatalf("fixture pointer does not name an object: %s", tamper.Pointer)
+				}
+				target = child
+			}
+			target[parts[len(parts)-1]] = tamper.Replacement
+			attackedJSON, err := json.Marshal(attacked)
+			if err != nil {
+				t.Fatalf("marshal tampered response: %v", err)
+			}
+
+			rejected, err := agent.VerifyWithKey(string(attackedJSON), keyB64)
+			if err != nil {
+				t.Fatalf("tampered response must return a redacted invalid result: %v", err)
+			}
+			if rejected.Valid != contract.InvalidResult.Valid {
+				t.Fatalf("valid = %v; want %v", rejected.Valid, contract.InvalidResult.Valid)
+			}
+			if !reflect.DeepEqual(rejected.Data, contract.InvalidResult.Data) {
+				t.Fatalf("data was released: %#v", rejected.Data)
+			}
+			if rejected.SignerID != contract.InvalidResult.SignerID {
+				t.Fatalf("signer provenance was released: %q", rejected.SignerID)
+			}
+			if rejected.Timestamp != contract.InvalidResult.Timestamp {
+				t.Fatalf("timestamp provenance was released: %q", rejected.Timestamp)
+			}
+			if len(rejected.Errors) == 0 {
+				t.Fatal("invalid response must explain the verification failure")
+			}
+		})
+	}
+}
+
 // =============================================================================
 // 9. Cross-algorithm structure consistency
 // =============================================================================
@@ -751,6 +936,44 @@ func TestParityEphemeralAgentInfo(t *testing.T) {
 			}
 			if agentID == "" {
 				t.Error("ephemeral agent should have a non-empty agent ID")
+			}
+
+			expectedAlgorithm := "pq2025"
+			expectedKeySize := 2592
+			if algo == "ed25519" || algo == "ring-Ed25519" {
+				expectedAlgorithm = "ring-Ed25519"
+				expectedKeySize = 32
+			}
+			if info.Algorithm != expectedAlgorithm {
+				t.Fatalf("requested %q, metadata algorithm = %q; want %q", algo, info.Algorithm, expectedAlgorithm)
+			}
+
+			keyB64, err := agent.GetPublicKeyBase64()
+			if err != nil {
+				t.Fatalf("GetPublicKeyBase64 failed: %v", err)
+			}
+			key, err := base64.StdEncoding.DecodeString(keyB64)
+			if err != nil {
+				t.Fatalf("public key is not base64: %v", err)
+			}
+			if len(key) != expectedKeySize {
+				t.Fatalf("%s public key length = %d; want %d", expectedAlgorithm, len(key), expectedKeySize)
+			}
+
+			signed, err := agent.SignMessage(map[string]interface{}{"algorithm": algo})
+			if err != nil {
+				t.Fatalf("SignMessage failed: %v", err)
+			}
+			var document map[string]interface{}
+			if err := json.Unmarshal([]byte(signed.Raw), &document); err != nil {
+				t.Fatalf("signed document is not JSON: %v", err)
+			}
+			signature, ok := document["jacsSignature"].(map[string]interface{})
+			if !ok {
+				t.Fatal("signed document has no jacsSignature object")
+			}
+			if signature["signingAlgorithm"] != expectedAlgorithm {
+				t.Fatalf("signature algorithm = %v; want %s", signature["signingAlgorithm"], expectedAlgorithm)
 			}
 		})
 	}

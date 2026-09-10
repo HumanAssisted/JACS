@@ -1,14 +1,14 @@
 class Jacs < Formula
   desc "JSON Agent Communication Standard command-line interface"
   homepage "https://github.com/HumanAssisted/JACS"
-  url "https://crates.io/api/v1/crates/jacs/__JACS_VERSION__/download"
+  url "https://static.crates.io/crates/jacs-cli/jacs-cli-__JACS_VERSION__.crate"
   sha256 "__JACS_SHA256__"
   license "Apache-2.0"
 
   depends_on "rust" => :build
 
   def install
-    system "cargo", "install", *std_cargo_args(path: "."), "--features", "cli"
+    system "cargo", "install", *std_cargo_args(path: ".")
   end
 
   test do

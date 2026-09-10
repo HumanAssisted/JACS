@@ -30,7 +30,7 @@ fn golden_three_party_agreement_with_notary_counter_sign() {
     let current = ctx.current.clone();
 
     let report = verify_with_agent(&mut ctx.agent_a, &current.to_string()).expect("verify final");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.signer_count, 2);
     assert_eq!(report.notary_count, 1);
     assert_eq!(report.expected_status, "final");
@@ -91,7 +91,7 @@ fn golden_three_party_agreement_with_notary_counter_sign() {
         .value;
     let tampered_report =
         verify_with_agent(&mut ctx.agent_a, &tampered.to_string()).expect("verify tampered");
-    assert!(!tampered_report.valid);
+    assert!(!tampered_report.mathematical_checks_valid);
     assert!(
         tampered_report
             .errors
@@ -127,7 +127,7 @@ fn post_final_transcript_append_preserves_prior_signature_validity() {
     let report = verify_with_agent(&mut ctx.agent_a, &updated.to_string())
         .expect("verify post-final append");
     assert!(
-        report.valid,
+        report.mathematical_checks_valid,
         "post-final transcript append must preserve prior signature validity: {:?}",
         report.errors
     );
@@ -183,7 +183,7 @@ fn accepts_agreement_within_resource_limits() {
     let report =
         verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string()).expect("verify agreement");
 
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn moderate_transcript_prefix_hashes_match_full_hash() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify signed full transcript");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.recomputed_transcript_hash, expected_transcript_hash);
 }
 
@@ -272,7 +272,7 @@ fn verifier_rejects_successor_signed_by_non_controller() {
     let report = verify_with_agent(&mut ctx.agent_a, &unauthorized.to_string())
         .expect("verify unauthorized successor");
     assert!(
-        !report.valid,
+        !report.mathematical_checks_valid,
         "verifier must reject materialized versions authored by non-controllers"
     );
     assert!(
@@ -299,7 +299,7 @@ fn all_previous_versions_tampering_is_detected() {
     let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
         .expect("verify tampered allPreviousVersions");
 
-    assert!(!report.valid);
+    assert!(!report.mathematical_checks_valid);
     assert!(
         report
             .errors
@@ -327,7 +327,7 @@ fn final_document_verifies_without_local_version_archive() {
         .expect("verify final without archived prior versions");
 
     assert!(
-        report.valid,
+        report.mathematical_checks_valid,
         "current agreement verification should not require local archived prior versions: {:?}",
         report.errors
     );
@@ -341,7 +341,7 @@ fn legitimate_single_version_agreement_chain_fully_verified() {
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify single-version agreement");
 
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert!(report.chain_fully_verified);
     assert_eq!(report.verified_chain_depth, 0);
 }
@@ -363,7 +363,7 @@ fn verify_reports_incomplete_chain_when_prior_version_missing() {
         .expect("verify final without archived prior versions");
 
     // Design decision: archive-free verification is valid but reports an incomplete chain.
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert!(!report.chain_fully_verified);
     assert!(
         report
@@ -456,7 +456,7 @@ fn simple_two_party_all_quorum_finalizes_without_transcript_or_notary() {
     );
     let report =
         verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string()).expect("verify simple final");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.signer_count, 2);
     assert_eq!(report.witness_count, 0);
     assert_eq!(report.notary_count, 0);
@@ -504,7 +504,7 @@ fn majority_quorum_finalizes_after_two_of_three_signers() {
     assert_eq!(ctx.current["status"], json!("final"));
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify majority final");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.signer_count, 2);
 }
 
@@ -559,7 +559,7 @@ fn witness_and_notary_requirements_are_separate_from_signer_quorum() {
     assert_eq!(ctx.current["status"], json!("final"));
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify witness/notary final");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.signer_count, 2);
     assert_eq!(report.witness_count, 1);
     assert_eq!(report.notary_count, 1);
@@ -583,7 +583,7 @@ fn timeout_and_expires_at_stop_new_signatures() {
         .value;
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify timed-out agreement");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.expected_status, "expired");
     assert!(
         sign_with_agent(
@@ -658,7 +658,7 @@ fn final_agreement_remains_valid_after_expires_at() {
     assert_eq!(ctx.current["status"], json!("final"));
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify final agreement");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.expected_status, "final");
 }
 
@@ -840,7 +840,7 @@ fn owners_are_soft_claims_not_authority_or_consent() {
     );
     let report =
         verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string()).expect("verify owners");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 
     let duplicate_owners = apply_with_agent(
         &mut ctx.agent_a,
@@ -1186,7 +1186,7 @@ fn link_append_keeps_consent_hash_and_final_signatures_valid() {
     assert_eq!(ctx.current["status"], json!("final"));
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify final with link");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -1201,7 +1201,7 @@ fn transcript_reorder_and_substitution_are_detected() {
     });
     let reordered_report = verify_with_agent(&mut ctx.agent_a, &reordered.to_string())
         .expect("verify reordered transcript");
-    assert!(!reordered_report.valid);
+    assert!(!reordered_report.mathematical_checks_valid);
 
     let replacement = signed_message_ref(&mut ctx.agent_a, "Replacement message.");
     let substituted = manual_successor(&mut ctx.hai, &ctx.current, |value| {
@@ -1211,7 +1211,7 @@ fn transcript_reorder_and_substitution_are_detected() {
     });
     let substituted_report = verify_with_agent(&mut ctx.agent_a, &substituted.to_string())
         .expect("verify substituted transcript");
-    assert!(!substituted_report.valid);
+    assert!(!substituted_report.mathematical_checks_valid);
 }
 
 #[test]
@@ -1229,7 +1229,7 @@ fn party_tampering_invalidates_existing_consent_signatures() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
         .expect("verify party-tampered agreement");
-    assert!(!report.valid);
+    assert!(!report.mathematical_checks_valid);
     assert!(
         report
             .errors
@@ -1294,7 +1294,7 @@ fn transplanted_signature_from_other_agreement_is_rejected() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &b_with_transplant.to_string())
         .expect("verify transplanted signature");
-    assert!(!report.valid, "{:?}", report.errors);
+    assert!(!report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.signer_count, 0);
     assert!(!report.errors.is_empty());
 }
@@ -1366,7 +1366,7 @@ fn transcript_only_branches_are_detected_and_auto_merged() {
 
     let report =
         verify_with_agent(&mut ctx.agent_a, &merged.to_string()).expect("verify merged branch");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -1394,7 +1394,7 @@ fn merge_link_binds_content_hash() {
 
     let report =
         verify_with_agent(&mut ctx.hai, &merged.to_string()).expect("verify merged branch");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -1419,7 +1419,7 @@ fn merge_link_content_mismatch_is_rejected() {
     let report =
         verify_with_agent(&mut ctx.hai, &tampered.to_string()).expect("verify tampered merge link");
 
-    assert!(!report.valid, "{:?}", report.errors);
+    assert!(!report.mathematical_checks_valid, "{:?}", report.errors);
     assert!(
         report
             .errors
@@ -1660,7 +1660,7 @@ fn transcript_branch_merge_deduplicates_same_addition() {
     );
     let report =
         verify_with_agent(&mut ctx.agent_a, &merged.to_string()).expect("verify deduped merge");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -1758,7 +1758,7 @@ fn verifier_rejects_materialized_duplicate_signatures() {
     let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
         .expect("verify duplicate signature tamper");
 
-    assert!(!report.valid);
+    assert!(!report.mathematical_checks_valid);
     assert!(
         report
             .errors
@@ -1779,7 +1779,7 @@ fn consent_hash_tampering_is_reported_and_blocks_signing() {
 
     let report =
         verify_with_agent(&mut ctx.agent_a, &tampered.to_string()).expect("verify tampered hash");
-    assert!(!report.valid);
+    assert!(!report.mathematical_checks_valid);
     assert!(
         report
             .errors
@@ -1873,7 +1873,7 @@ fn links_are_slim_jacs_id_and_version_refs() {
     );
     let report =
         verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string()).expect("verify slim link");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -1892,7 +1892,7 @@ fn terminal_lifecycle_status_blocks_further_signatures() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify disputed agreement");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
     assert_eq!(report.expected_status, "disputed");
     assert!(
         sign_with_agent(
@@ -1977,7 +1977,7 @@ fn resolved_conflict_successor_rebases_on_chosen_branch() {
     );
     let report =
         verify_with_agent(&mut ctx.agent_a, &resolved.to_string()).expect("verify resolved branch");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -2017,7 +2017,7 @@ fn human_and_org_agent_types_can_sign_directly() {
     assert_eq!(signed_by_org["status"], json!("final"));
     let report =
         verify_with_agent(&mut human, &signed_by_org.to_string()).expect("verify human/org");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -2052,7 +2052,7 @@ fn party_agent_version_is_enforced_for_signing_and_verification() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
         .expect("verify version-pinned partial");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 
     let tampered = manual_successor(&mut ctx.agent_a, &ctx.current, |value| {
         value["parties"][0]["agentVersion"] = json!(Uuid::new_v4().to_string());
@@ -2060,7 +2060,7 @@ fn party_agent_version_is_enforced_for_signing_and_verification() {
     });
     let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
         .expect("verify version mismatch");
-    assert!(!report.valid);
+    assert!(!report.mathematical_checks_valid);
     assert!(
         report
             .errors
@@ -2154,7 +2154,7 @@ fn rotated_agent_must_match_pinned_party_version() {
         .value;
     let report = verify_with_agent(&mut signer, &current.to_string())
         .expect("verify rotated signer partial");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 }
 
 #[test]
@@ -2333,7 +2333,7 @@ fn agreement_signature_role_tampering_is_detected() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
         .expect("verify role-tampered signature");
-    assert!(!report.valid);
+    assert!(!report.mathematical_checks_valid);
     assert!(
         report
             .errors
@@ -2419,7 +2419,10 @@ fn merge_rejects_branch_carrying_forged_agreement_signature() {
     // Sanity: a direct verify of the forged base reports invalid carried signature.
     let base_report =
         verify_with_agent(&mut ctx.agent_a, &forged_base.to_string()).expect("verify forged base");
-    assert!(!base_report.valid, "forged base should not verify");
+    assert!(
+        !base_report.mathematical_checks_valid,
+        "forged base should not verify"
+    );
 
     let left_entry = signed_message_ref(&mut ctx.agent_a, "Left branch note over forged base.");
     let left = apply_with_agent(
@@ -2542,7 +2545,7 @@ fn verify_does_not_persist_unstored_agreement() {
 
     let report = verify_with_agent(&mut ctx.agent_a, &unstored.to_string())
         .expect("verify unstored agreement");
-    assert!(report.valid, "{:?}", report.errors);
+    assert!(report.mathematical_checks_valid, "{:?}", report.errors);
 
     let keys_after = ctx.agent_a.get_document_keys();
     assert!(
@@ -2879,7 +2882,10 @@ fn generated_ed25519_agent(name: &str) -> Agent {
 }
 
 fn generated_ed25519_agent_with_type(name: &str, agent_type: &str) -> Agent {
-    let mut agent = Agent::ephemeral("ring-Ed25519").expect("create ephemeral Ed25519 agent");
+    // Fixture hatch preserves historical Ed25519 signer shape for
+    // mixed-algorithm agreement coverage.
+    let mut agent =
+        Agent::ephemeral_legacy_ed25519_for_fixtures().expect("create ephemeral Ed25519 agent");
     let agent_json = jacs::create_minimal_blank_agent(
         agent_type.to_string(),
         Some(name.to_string()),
@@ -3250,7 +3256,10 @@ fn agreement_v2_invalid_verification_emits_warn() {
     let events = b8_capture_logs(|| {
         let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
             .expect("verify returns a report");
-        assert!(!report.valid, "tampered agreement must verify invalid");
+        assert!(
+            !report.mathematical_checks_valid,
+            "tampered agreement must verify invalid"
+        );
     });
 
     let verified_events = b8_events_named(&events, "agreement_v2_verified");
@@ -3266,7 +3275,10 @@ fn agreement_v2_invalid_verification_emits_warn() {
                     .collect::<Vec<_>>()
             )
         });
-    assert_eq!(b8_field(warn_event, "valid"), Some("false"));
+    assert_eq!(
+        b8_field(warn_event, "mathematical_checks_valid"),
+        Some("false")
+    );
     assert_eq!(
         b8_field(warn_event, "document_id"),
         Some(agreement_id.as_str())

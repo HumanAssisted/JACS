@@ -220,7 +220,7 @@ class TestTriggerableErrorKinds:
 
     @pytest.fixture(autouse=True)
     def agent(self):
-        self.agent, _agent_json = _SA.ephemeral("ed25519")
+        self.agent, _agent_json = _SA.ephemeral("pq2025")
 
     def test_sign_message_handles_raw_strings(self):
         """Python sign_message wraps non-JSON raw strings -- should succeed, not throw.
@@ -254,3 +254,14 @@ class TestTriggerableErrorKinds:
         raw = signed["raw"]
         with pytest.raises(Exception, match=r"(?i)invalid.*base64|base64"):
             self.agent.verify_with_key(raw, "!!!notbase64!!!")
+
+
+@pytest.mark.skipif(not _NATIVE_AVAILABLE, reason="native jacs module not built")
+def test_removed_algorithm_exposes_shared_portable_error_category():
+    with open(FIXTURE_PATH) as fixture_file:
+        contract = json.load(fixture_file)["portable_error_contract"]
+    removed = contract["removed_algorithm"]
+
+    with pytest.raises(RuntimeError) as error:
+        _SA.ephemeral(removed["input"])
+    assert f"{contract['message_prefix']}{removed['kind']}" in str(error.value)

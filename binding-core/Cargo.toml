@@ -1,8 +1,8 @@
 [package]
 name = "jacs-binding-core"
-version = "0.11.3"
+version = "0.12.0"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 description = "Shared core logic for JACS language bindings (Python, Node.js, etc.)"
 readme = "../README.md"
@@ -16,11 +16,14 @@ default = []
 a2a = ["jacs/a2a"]
 agreements = ["jacs/agreements"]
 attestation = ["jacs/attestation"]
+human-approval = ["jacs/human-approval"]
+human-approval-vendored = ["human-approval", "jacs/human-approval-vendored"]
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []
 
 [dependencies]
-jacs = { version = "0.11.3", path = "../jacs" }
+jacs = { version = "0.12.0", path = "../jacs" }
+jacs-core = { version = "0.12.0", path = "../jacs-core" }
 serde_json = "1.0"
 base64 = "0.22.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -32,3 +35,10 @@ reqwest = { version = "0.13.2", default-features = false, features = ["blocking"
 tempfile = "3"
 base64 = "0.22.1"
 serial_test = "3"
+p256 = { version = "0.13", features = ["ecdsa"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"] }
+
+[[example]]
+name = "generate_human_approval_fixture"
+required-features = ["human-approval"]

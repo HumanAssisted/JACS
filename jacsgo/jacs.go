@@ -2,8 +2,12 @@ package jacs
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/build
-#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
-#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,-rpath,${SRCDIR}/build
+#cgo darwin LDFLAGS: -L${SRCDIR}/build -ljacsgo
+#cgo linux LDFLAGS: -L${SRCDIR}/build -ljacsgo -Wl,--enable-new-dtags -Wl,-rpath,$ORIGIN
+
+// Package-wide CGo flags live here. Build-time source paths are never embedded
+// as runtime search paths; deployed executables carry the library beside them.
+// Darwin's native library ID is @loader_path/libjacsgo.dylib, so no RPATH is needed.
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -53,9 +57,11 @@ char* jacs_verify_document_standalone(const char* signed_document, const char* k
 */
 import "C"
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"unsafe"
 )
@@ -100,11 +106,20 @@ type Config struct {
 // Each JacsAgent instance has independent state, allowing multiple agents to
 // be used concurrently in the same process. This is the recommended API.
 
-// JacsAgent represents a JACS agent instance with independent state.
-// Multiple JacsAgent instances can be used concurrently.
-type JacsAgent struct {
+// jacsAgentState owns one native handle and the lock that protects its
+// lifetime. It is heap allocated so value copies of JacsAgent retain the same
+// ownership state instead of duplicating a raw handle and mutex.
+type jacsAgentState struct {
+	noCopy noCopy
 	mu     sync.RWMutex
 	handle C.JacsAgentHandle
+}
+
+// JacsAgent represents a JACS agent instance with independent state.
+// Multiple JacsAgent instances can be used concurrently. A JacsAgent value is
+// safe to copy: all copies share one native handle, lock, and closed state.
+type JacsAgent struct {
+	*jacsAgentState
 }
 
 // NewJacsAgent creates a new JacsAgent instance.
@@ -114,12 +129,16 @@ func NewJacsAgent() (*JacsAgent, error) {
 	if handle == nil {
 		return nil, errors.New("failed to create JacsAgent")
 	}
-	return &JacsAgent{handle: handle}, nil
+	return &JacsAgent{jacsAgentState: &jacsAgentState{handle: handle}}, nil
 }
 
 // Close releases the resources associated with this JacsAgent.
-// After Close, the JacsAgent must not be used.
+// Closing any value copy closes all copies. Close is safe to call repeatedly
+// and concurrently.
 func (a *JacsAgent) Close() {
+	if a == nil || a.jacsAgentState == nil {
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.handle != nil {
@@ -593,8 +612,10 @@ func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error)
 // Protocol API - auth headers, canonicalization, signing, verification links
 // ============================================================================
 
-// BuildAuthHeader builds an Authorization header value for this agent.
-// Returns the header value string (e.g. for use in HTTP Authorization headers).
+// BuildAuthHeader reaches the legacy unbound authorization migration path.
+// It remains available for compatibility and emits a WARN. Strict deployments
+// can reject it with JACS_REJECT_UNBOUND_AUTH_HEADER=true. New code should call
+// BuildRequestAuthHeader with the actual request context.
 func (a *JacsAgent) BuildAuthHeader() (string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -603,6 +624,39 @@ func (a *JacsAgent) BuildAuthHeader() (string, error) {
 	}
 
 	return goStringResult(C.jacs_agent_build_auth_header(a.handle), errors.New("failed to build auth header"))
+}
+
+// BuildRequestAuthHeader builds a request-bound JACS v2 Authorization header.
+// body must contain the exact bytes that will be sent; use nil for no body.
+func (a *JacsAgent) BuildRequestAuthHeader(method, requestURL string, body []byte, audience string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return "", errAgentClosed
+	}
+
+	cMethod, freeMethod := cString(method)
+	defer freeMethod()
+	cURL, freeURL := cString(requestURL)
+	defer freeURL()
+	cAudience, freeAudience := cString(audience)
+	defer freeAudience()
+
+	var bodyPointer *C.uint8_t
+	if len(body) > 0 {
+		bodyPointer = (*C.uint8_t)(unsafe.Pointer(&body[0]))
+	}
+	return goStringResult(
+		C.jacs_agent_build_request_auth_header(
+			a.handle,
+			cMethod,
+			cURL,
+			bodyPointer,
+			C.size_t(len(body)),
+			cAudience,
+		),
+		errors.New("failed to build request-bound auth header"),
+	)
 }
 
 // CanonicalizeJson canonicalizes a JSON string using RFC 8785 (JCS).
@@ -665,8 +719,10 @@ func (a *JacsAgent) DecodeVerifyPayload(encoded string) (string, error) {
 	return goStringResult(C.jacs_agent_decode_verify_payload(a.handle, cEncoded), errors.New("failed to decode verify payload"))
 }
 
-// ExtractDocumentId extracts the document ID from a JACS-signed document.
-// Checks jacsDocumentId, document_id, id in priority order.
+// ExtractDocumentId inspects an unverified document ID. It checks
+// jacsDocumentId, document_id, and id in priority order. The result is
+// attacker-controlled until the document is separately verified and must not
+// drive authorization, key lookup, replay, or trust decisions.
 func (a *JacsAgent) ExtractDocumentId(document string) (string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -698,6 +754,66 @@ func (a *JacsAgent) UnwrapSignedEvent(eventJson, serverKeysJson string) (string,
 	defer freeKeys()
 
 	return goStringResult(C.jacs_agent_unwrap_signed_event(a.handle, cEvent, cKeys), errors.New("failed to unwrap signed event"))
+}
+
+// PrepareSignedEventReplay verifies signed-event cryptography and freshness
+// without consuming replay state or returning payload data.
+func (a *JacsAgent) PrepareSignedEventReplay(eventJSON, serverKeysJSON string, maxAgeSeconds uint64) (*SignedEventReplayPreparation, error) {
+	if a == nil || a.jacsAgentState == nil {
+		return nil, errAgentClosed
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.handle == nil {
+		return nil, errAgentClosed
+	}
+	cEvent, freeEvent := cString(eventJSON)
+	defer freeEvent()
+	cKeys, freeKeys := cString(serverKeysJSON)
+	defer freeKeys()
+	// Keep the native call and thread-local error retrieval on the same OS
+	// thread. CGo does not otherwise promise affinity across consecutive calls.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result := C.jacs_agent_prepare_signed_event_replay(
+		a.handle,
+		cEvent,
+		cKeys,
+		C.uint64_t(maxAgeSeconds),
+	)
+	if result == nil {
+		return nil, simpleLastError("failed to prepare signed event replay")
+	}
+	defer C.jacs_free_string(result)
+	return decodeSignedEventReplayPreparation(C.GoString(result))
+}
+
+// UnwrapSignedEventWithReplayStore verifies an event and releases its payload
+// only after the application-owned shared store atomically accepts first use.
+func (a *JacsAgent) UnwrapSignedEventWithReplayStore(
+	ctx context.Context,
+	eventJSON string,
+	serverKeysJSON string,
+	store SharedReplayStore,
+	options *SignedEventReplayOptions,
+) (*VerifiedSignedEvent, error) {
+	if a == nil || a.jacsAgentState == nil {
+		return nil, errAgentClosed
+	}
+	a.mu.RLock()
+	closed := a.handle == nil
+	a.mu.RUnlock()
+	if closed {
+		return nil, errAgentClosed
+	}
+	return unwrapSignedEventWithReplayStore(
+		ctx,
+		eventJSON,
+		serverKeysJSON,
+		store,
+		options,
+		a.PrepareSignedEventReplay,
+	)
 }
 
 // Helper function to get error messages for JacsAgent methods
@@ -1279,13 +1395,19 @@ func VerifyDocumentStandalone(signedDocument, keyResolution, dataDirectory, keyD
 	defer C.jacs_free_string(result)
 	resultStr := C.GoString(result)
 	var out struct {
-		Valid    bool   `json:"valid"`
-		SignerID string `json:"signer_id"`
+		Valid                 bool   `json:"valid"`
+		SignerID              string `json:"signer_id"`
+		IdentityBound         bool   `json:"identity_bound"`
+		IdentityBindingStatus string `json:"identity_binding_status"`
+		PolicyAccepted        bool   `json:"policy_accepted"`
 	}
 	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
 		return nil, fmt.Errorf("parse standalone result: %w", err)
 	}
-	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID}, nil
+	if !out.Valid || out.IdentityBindingStatus != "locally_enrolled" {
+		out.IdentityBindingStatus = "unavailable"
+	}
+	return &VerificationResult{Valid: out.Valid, SignerID: out.SignerID, IdentityBound: out.Valid && out.IdentityBindingStatus == "locally_enrolled", IdentityBindingStatus: out.IdentityBindingStatus, PolicyAccepted: out.PolicyAccepted}, nil
 }
 
 // RunAudit calls the jacs_audit FFI function and returns the JSON result string.

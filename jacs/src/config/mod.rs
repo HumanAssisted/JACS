@@ -268,6 +268,7 @@ Environment Variables Supported:
 - JACS_ALLOW_REGISTRY
 - JACS_ALLOW_REMOTE_SCHEMA_FETCH
 - JACS_ALLOW_JWKS_FETCH
+- JACS_ALLOW_PRIVATE_JWKS (loopback-only development override; also requires JWKS network access)
 - JACS_ALLOW_AGENT_CARD_FETCH
 
 Usage:
@@ -345,6 +346,11 @@ pub struct Config {
     /// Not serialized — this is runtime-only metadata.
     #[serde(skip)]
     config_dir: Option<std::path::PathBuf>,
+    /// Exact config file path used to create this value. Runtime-only so
+    /// callers such as `Agent::from_config` can preserve bounded crash
+    /// recovery without guessing a filename from `config_dir`.
+    #[serde(skip)]
+    source_path: Option<std::path::PathBuf>,
     /// Whether this config was loaded from a signed JACS document.
     #[serde(skip)]
     pub is_signed: bool,
@@ -393,6 +399,7 @@ impl std::fmt::Debug for Config {
                 &self.jacs_database_url.as_ref().map(|_| "[REDACTED]"),
             )
             .field("is_signed", &self.is_signed)
+            .field("source_path", &self.source_path)
             .field("raw_json", &self.raw_json.as_ref().map(|_| "[omitted]"))
             .finish_non_exhaustive()
     }
@@ -490,6 +497,7 @@ impl Default for Config {
             observability: None,
             jacs_database_url: None,
             config_dir: None,
+            source_path: None,
             is_signed: false,
             raw_json: None,
         }
@@ -652,6 +660,7 @@ impl ConfigBuilder {
             raw_json: None,
             jacs_database_url: None,
             config_dir: None,
+            source_path: None,
         }
     }
 }
@@ -715,6 +724,7 @@ impl Config {
             observability: None,
             jacs_database_url: None,
             config_dir: None,
+            source_path: None,
             is_signed: false,
             raw_json: None,
         }
@@ -769,6 +779,28 @@ impl Config {
         self.config_dir.as_deref()
     }
 
+    /// Resolve a configured filesystem path relative to the config file.
+    ///
+    /// Absolute paths are preserved. Relative paths are anchored to
+    /// [`Config::config_dir`], or to the process working directory for
+    /// programmatic/environment-only configurations that have no config file.
+    pub fn resolve_config_relative_path(
+        &self,
+        configured_path: impl AsRef<std::path::Path>,
+    ) -> Result<std::path::PathBuf, JacsError> {
+        let configured_path = configured_path.as_ref();
+        if configured_path.is_absolute() {
+            return Ok(configured_path.to_path_buf());
+        }
+
+        let config_dir = match self.config_dir() {
+            Some(path) if path.is_absolute() => path.to_path_buf(),
+            Some(path) => std::env::current_dir()?.join(path),
+            None => std::env::current_dir()?,
+        };
+        Ok(config_dir.join(configured_path))
+    }
+
     /// Sets the config directory explicitly.
     ///
     /// Normally set automatically by `Config::from_file()`. Use this when
@@ -776,6 +808,51 @@ impl Config {
     /// to resolve storage paths relative to a specific directory.
     pub fn set_config_dir(&mut self, dir: Option<std::path::PathBuf>) {
         self.config_dir = dir;
+    }
+
+    /// Override only the runtime filesystem locations while preserving the
+    /// authenticated on-disk config bytes in `raw_json`.
+    ///
+    /// Trust-boundary integrations may use this after loading an authoritative
+    /// signed config to relocate read-only secret material into a private
+    /// workspace. The authenticated [`Self::raw_json`] bytes are deliberately
+    /// left unchanged; callers must not use this as a general config-editing
+    /// surface.
+    pub fn set_runtime_filesystem_directories(
+        &mut self,
+        data_directory: &str,
+        key_directory: &str,
+    ) -> Result<(), JacsError> {
+        for (field, value) in [
+            ("jacs_data_directory", data_directory),
+            ("jacs_key_directory", key_directory),
+        ] {
+            let path = std::path::Path::new(value);
+            if !path.is_absolute()
+                || value.contains('\0')
+                || path
+                    .components()
+                    .any(|component| matches!(component, std::path::Component::ParentDir))
+            {
+                return Err(JacsError::ConfigError(format!(
+                    "Runtime {field} must be an absolute path without parent traversal"
+                )));
+            }
+        }
+        self.jacs_data_directory = Some(data_directory.to_string());
+        self.jacs_key_directory = Some(key_directory.to_string());
+        Ok(())
+    }
+
+    /// Return the exact file path this configuration was read from.
+    pub fn source_path(&self) -> Option<&std::path::Path> {
+        self.source_path.as_deref()
+    }
+
+    /// Preserve or clear the runtime-only source path during trusted internal
+    /// config transformations.
+    pub(crate) fn set_source_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.source_path = path;
     }
 
     fn replace_if_some<T>(target: &mut Option<T>, incoming: Option<T>) {
@@ -830,6 +907,7 @@ impl Config {
             observability,
             jacs_database_url,
             config_dir,
+            source_path,
             is_signed,
             raw_json,
         } = other;
@@ -861,10 +939,11 @@ impl Config {
         Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
         // config_dir from the incoming config takes precedence if set
         Self::replace_if_some(&mut self.config_dir, config_dir);
+        Self::replace_if_some(&mut self.source_path, source_path);
 
-        // Preserve signed-config metadata from the file config.
-        // These fields are set by Config::from_file and must survive merge
-        // so that warn_if_config_tampered can detect tampering.
+        // Preserve signed-config provenance from the file config. These fields
+        // must survive merge so Agent preflight authenticates the original
+        // persisted bytes before using any effective settings.
         if is_signed {
             self.is_signed = true;
         }
@@ -952,6 +1031,7 @@ impl Config {
             observability: None,
             jacs_database_url: None,
             config_dir: None,
+            source_path: None,
             is_signed: false,
             raw_json: None,
         }
@@ -1009,6 +1089,12 @@ impl Config {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .map(std::path::PathBuf::from);
+        let source_path = std::path::Path::new(path);
+        config.source_path = Some(if source_path.is_absolute() {
+            source_path.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(source_path)
+        });
 
         config.is_signed = validated_value.get("jacsSignature").is_some();
         config.raw_json = Some(validated_value);
@@ -1337,20 +1423,9 @@ pub fn validate_config(config_json: &str) -> Result<Value, JacsError> {
         .build(&jacsconfigschema_result)
         .map_err(|e| JacsError::ConfigError(format!("Failed to compile config schema: {}", e)))?;
 
-    let instance: Value = serde_json::from_str(config_json).map_err(|e| {
-        // Provide detailed JSON parse error with line/column
-        let category = match e.classify() {
-            serde_json::error::Category::Io => "IO error",
-            serde_json::error::Category::Syntax => "syntax error",
-            serde_json::error::Category::Data => "data type error",
-            serde_json::error::Category::Eof => "unexpected end of file",
-        };
+    let instance: Value = jacs_core::strict_json::parse_strict_json(config_json).map_err(|e| {
         let err_msg = format!(
-            "Config JSON parse error at line {}, column {}: {} - {}. \
-            Ensure the config file contains valid JSON syntax (check for missing commas, quotes, or brackets).",
-            e.line(),
-            e.column(),
-            category,
+            "Config JSON parse error: {}. Ensure the config file contains valid, unambiguous JSON syntax (check for duplicate keys, missing commas, quotes, or brackets).",
             e
         );
         error!("{}", err_msg);
@@ -1695,6 +1770,7 @@ mod tests {
             observability: None,
             jacs_database_url: None,
             config_dir: None,
+            source_path: None,
             is_signed: false,
             raw_json: None,
         };
@@ -1776,6 +1852,7 @@ mod tests {
             observability: None,
             jacs_database_url: None,
             config_dir: None,
+            source_path: None,
             is_signed: false,
             raw_json: None,
         };
@@ -1921,6 +1998,29 @@ mod tests {
         );
 
         clear_jacs_env_vars();
+    }
+
+    #[test]
+    fn test_resolve_config_relative_path_uses_config_dir() {
+        let root = tempfile::TempDir::new().expect("temp root");
+        let project = root.path().join("project");
+        let mut config = Config::with_defaults();
+        config.set_config_dir(Some(project.clone()));
+
+        assert_eq!(
+            config
+                .resolve_config_relative_path("./keys")
+                .expect("resolve relative path"),
+            project.join("./keys")
+        );
+
+        let absolute = root.path().join("absolute-keys");
+        assert_eq!(
+            config
+                .resolve_config_relative_path(&absolute)
+                .expect("preserve absolute path"),
+            absolute
+        );
     }
 
     #[test]

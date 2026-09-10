@@ -108,7 +108,13 @@ pub trait Agreement {
         document_key: &str,
         agreement_fieldname: Option<String>,
     ) -> Result<JACSDocument, JacsError>;
-    /// given a document, check all agreement signatures
+    /// Inspect the signatures present on a legacy Agreement v1 document.
+    ///
+    /// Agreement v1 does not authenticate its participant, quorum, role,
+    /// question, context, timeout, or algorithm-policy sidecar. A successful
+    /// return therefore reports signature mathematics only and always carries
+    /// `complete=false`, `policy_authenticated=false`, and
+    /// `policy_accepted=false`.
     fn check_agreement(
         &self,
         document_key: &str,
@@ -866,15 +872,40 @@ impl Agreement for Agent {
                     Some(agents_signature),
                 )?;
             }
-            if let Some(q) = quorum {
-                return Ok(format!(
-                    "Quorum met: {}/{} signatures verified (required: {})",
-                    signed_count,
-                    all_agents.len(),
-                    q
-                ));
-            }
-            return Ok("All signatures passed".to_string());
+            let claimed_signers = all_agents
+                .iter()
+                .map(|agent_id| {
+                    let signed = !unsigned.contains(agent_id);
+                    json!({
+                        "agentId": agent_id,
+                        "agent_id": agent_id,
+                        "signed": signed
+                    })
+                })
+                .collect::<Vec<Value>>();
+
+            // Agreement v1 signs the top-level terms, but not the agreement
+            // sidecar used above for participant/quorum/policy checks. Keep
+            // those checks for migration diagnostics, while making the only
+            // successful public result explicitly non-actionable. In
+            // particular, an empty or reduced claimed signer list can never
+            // become `complete` merely because all *present* signatures pass.
+            return Ok(json!({
+                "profile": "jacs-agreement-v1-inspection-v1",
+                "mathematical_checks_valid": true,
+                "present_signature_count": signatures_array.len(),
+                "verified_signature_count": signatures_array.len(),
+                "complete": false,
+                "policy_authenticated": false,
+                "policy_accepted": false,
+                "overall_scope": "legacy_v1_present_signature_inspection",
+                "signers": claimed_signers,
+                "pending": unsigned,
+                "warnings": [
+                    "Agreement v1 does not authenticate participant, role, quorum, question, context, timeout, or algorithm policy; this is signature inspection only and cannot authorize an action"
+                ]
+            })
+            .to_string());
         }
         Err("Agreement verification failed: document has no agreement".into())
     }

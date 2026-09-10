@@ -3,7 +3,7 @@
  *
  * Validates:
  * - jacsA2AMiddleware factory returns Express router
- * - All 5 .well-known endpoints served correctly
+ * - All 6 identity-bound .well-known endpoints served correctly
  * - CORS headers on all responses
  * - CORS preflight (OPTIONS) support
  * - Document caching (same object on repeated requests)
@@ -19,6 +19,7 @@ const {
   buildWellKnownDocuments,
   CORS_HEADERS,
 } = require('../src/a2a-server');
+const { configureNativeGenerator } = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient for testing (no real JACS agent required).
@@ -28,6 +29,13 @@ function createMockClient(overrides = {}) {
     signRequest: sinon.stub(),
     verifyResponse: sinon.stub(),
   };
+  configureNativeGenerator(mockAgent, {
+    agentId: overrides.agentId || 'test-agent-id',
+    name: overrides.name || 'test-agent',
+    skills: overrides.skills || [],
+    interfaceUrl: overrides.interfaceUrl,
+    keyAlgorithm: overrides.keyAlgorithm,
+  });
   return {
     _agent: mockAgent,
     agentId: overrides.agentId || 'test-agent-id',
@@ -116,17 +124,18 @@ describe('A2A Express Middleware - [2.3.2]', function () {
   // 2. buildWellKnownDocuments helper
   // -------------------------------------------------------------------------
   describe('buildWellKnownDocuments', () => {
-    it('should return all 5 well-known document paths', () => {
+    it('should return all 6 identity-bound well-known document paths', () => {
       const client = createMockClient();
       const docs = buildWellKnownDocuments(client);
 
       const paths = Object.keys(docs);
       expect(paths).to.include('/.well-known/agent-card.json');
       expect(paths).to.include('/.well-known/jwks.json');
+      expect(paths).to.include('/.well-known/jacs-compat-binding.json');
       expect(paths).to.include('/.well-known/jacs-agent.json');
       expect(paths).to.include('/.well-known/jacs-pubkey.json');
       expect(paths).to.include('/.well-known/jacs-extension.json');
-      expect(paths).to.have.length(5);
+      expect(paths).to.have.length(6);
     });
 
     it('should use client agentId and name in agent card', () => {
@@ -139,12 +148,11 @@ describe('A2A Express Middleware - [2.3.2]', function () {
     });
 
     it('should apply custom skills when provided', () => {
-      const client = createMockClient();
-      const docs = buildWellKnownDocuments(client, {
-        skills: [
-          { id: 'summarize', name: 'Summarize', description: 'Summarize text', tags: ['nlp'] },
-        ],
-      });
+      const skills = [
+        { id: 'summarize', name: 'Summarize', description: 'Summarize text', tags: ['nlp'] },
+      ];
+      const client = createMockClient({ skills });
+      const docs = buildWellKnownDocuments(client, { skills });
       const card = docs['/.well-known/agent-card.json'];
 
       expect(card.skills).to.have.length(1);
@@ -153,7 +161,10 @@ describe('A2A Express Middleware - [2.3.2]', function () {
     });
 
     it('should set url as jacsAgentDomain when provided', () => {
-      const client = createMockClient({ agentId: 'agent-1' });
+      const client = createMockClient({
+        agentId: 'agent-1',
+        interfaceUrl: 'https://my-agent.example.com/agent',
+      });
       const docs = buildWellKnownDocuments(client, { url: 'my-agent.example.com' });
       const card = docs['/.well-known/agent-card.json'];
 
@@ -168,11 +179,16 @@ describe('A2A Express Middleware - [2.3.2]', function () {
     let testServer;
 
     before(async () => {
-      const client = createMockClient({ agentId: 'server-agent', name: 'Server Agent' });
+      const skills = [
+        { id: 'code-review', name: 'Code Review', description: 'Review code', tags: ['dev'] },
+      ];
+      const client = createMockClient({
+        agentId: 'server-agent',
+        name: 'Server Agent',
+        skills,
+      });
       testServer = await startTestServer(client, {
-        skills: [
-          { id: 'code-review', name: 'Code Review', description: 'Review code', tags: ['dev'] },
-        ],
+        skills,
       });
     });
 

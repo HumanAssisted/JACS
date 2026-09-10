@@ -47,6 +47,14 @@ For persistent agents, a config file needs only two fields (plus `$schema`):
 
 All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` storage). Override only what you need.
 
+## Signed-config integrity
+
+Persistent agent configs are verified before JACS applies any config-controlled key path, storage backend, database URL, or network setting. A bad hash, signature, signer/identity mismatch, algorithm mismatch, unsafe key path, or invalid rotation journal stops the load; JACS does not continue with the tampered settings.
+
+An unsigned file may be used as a template while creating a new identity. Loading an existing identity from an unsigned file is rejected by default. For a one-time, audited legacy migration only, set `JACS_ALLOW_UNSIGNED_AGENT_CONFIG=true`, load and immediately re-sign the config, then remove the variable. This compatibility path emits a `security_outcome` WARN event and increments `jacs_security_outcomes_total` with `source="config"`, `outcome="unverified"`, and `policy="permissive"`.
+
+Config signatures prove integrity relative to the locally resolved signing key. They do not by themselves prove a real-world identity; deployments that need that guarantee must also pin or independently trust the agent key and protect the config/key directories from replacement.
+
 ## Complete Example Configuration
 
 ```json
@@ -110,6 +118,8 @@ All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` sto
 ## Observability Configuration
 
 JACS supports comprehensive observability through configurable logging, metrics, and tracing. All observability features are optional and can be configured in the `jacs.config.json` file.
+
+For the P2 compatibility/export WARN events and their `jacs_*_total` Prometheus counters (what to alert on and the likely fix), see [Failure Modes](../advanced/failure-modes.md#p2-compatibility-and-export-failures).
 
 ### Logs Configuration
 
@@ -370,7 +380,7 @@ All other JACS settings are **configuration file fields** that have sensible def
 
 - `jacs_data_directory` - Where agent/document data is stored (default: `./jacs_data`)
 - `jacs_key_directory` - Where cryptographic keys are stored (default: `./jacs_keys`)
-- `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `pq2025`)
+- `jacs_agent_key_algorithm` - The agent's native signing algorithm (default: `pq2025`). New creation honors `pq2025`, `ed25519`, or the legacy input alias `ring-Ed25519`, then records the canonical value actually minted (`pq2025` or `ring-Ed25519`). Rotation preserves this value unless an Ed25519 identity explicitly upgrades to `pq2025`; PQ-to-Ed25519 downgrade is rejected.
 - `jacs_default_storage` - Storage backend (default: `fs`)
 - `jacs_keychain_backend` - OS keychain backend for password storage (default: `"auto"`). See below.
 - `jacs_use_security` / `JACS_ENABLE_FILESYSTEM_QUARANTINE` - Enable filesystem quarantine of executable files (default: `false`). The env var `JACS_USE_SECURITY` is deprecated; use `JACS_ENABLE_FILESYSTEM_QUARANTINE` instead.
@@ -414,7 +424,7 @@ The `jacs_default_storage` field determines where JACS stores agent data, docume
 |---------|-------|-------------|----------|
 | **Filesystem** | `"fs"` | Signed JSON documents on local disk | Default, development, single-node deployments |
 | **Local Indexed SQLite** | `"rusqlite"` | Signed documents in SQLite with FTS search | Local search, bindings, MCP |
-| **AWS S3** | `"aws"` | Amazon S3 object storage | Remote object storage |
+| **AWS S3** | `"aws"` | Amazon S3 object storage (requires the Rust `s3` feature) | Remote object storage |
 | **Memory** | `"memory"` | In-memory object storage (non-persistent) | Testing, temporary data |
 | **Web Local** | `"local"` | Browser local storage (WASM only) | Web applications |
 
@@ -449,6 +459,16 @@ For local indexed document search in JACS core, use `"rusqlite"`. Additional dat
 **Best for:** Local full-text search, MCP/binding document operations, single-machine deployments that want indexed reads
 
 #### AWS S3 Storage (`"aws"`)
+
+AWS support is not compiled into the default JACS build. Enable it explicitly:
+
+```bash
+cargo add jacs --features s3
+```
+
+Without that feature, selecting `"aws"` fails with an actionable configuration
+error instead of silently activating the cloud dependency stack.
+
 ```json
 {
   "jacs_default_storage": "aws"
@@ -500,6 +520,9 @@ For local indexed document search in JACS core, use `"rusqlite"`. Additional dat
 ```
 
 **Production Setup (AWS S3)**
+
+Build the application with `jacs`'s `s3` feature before selecting this backend.
+
 ```json
 {
   "jacs_default_storage": "aws"

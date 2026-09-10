@@ -1,15 +1,28 @@
 # HTTP Server
 
-JACS provides middleware and utilities for building HTTP servers with cryptographic request/response signing. This enables secure communication between JACS agents over HTTP.
+{{#include ../_snippets/node-registry-status.md}}
+
+JACS provides middleware and utilities for carrying signed documents over
+HTTP. The legacy middleware on this page is an artifact-integrity layer, not a
+complete HTTP authentication protocol.
+
+> **Security boundary:** `signRequest()` / `verifyResponse()` do not bind the
+> actual method, absolute URL, query, exact body bytes, or service audience. Do
+> not use them alone to authorize an endpoint. Source `0.12.0` clients use
+> `JacsSimpleAgent.buildRequestAuthHeader(method, url, body, audience)` for a `JACS v2`
+> credential. Servers verify the same request context with a trusted key and
+> atomically consume its nonce. Signed events use `signResponse()` on
+> `JacsSimpleAgent` and fail-closed `unwrapSignedEvent()` with pinned server
+> keys. See [Security](../advanced/security.md#request-bound-http-authorization).
 
 ## Overview
 
 JACS HTTP integration provides:
 
-- **Request signing**: Sign outgoing HTTP requests with your agent's key
-- **Request verification**: Verify incoming requests were signed by a valid agent
-- **Response signing**: Automatically sign responses before sending
-- **Response verification**: Verify server responses on the client side
+- **Artifact signing**: Carry generic signed JACS documents in request bodies
+- **Artifact verification**: Verify those document signatures and hashes
+- **Request-bound auth**: Build a separate `JACS v2` Authorization header
+- **Strict events**: Verify the complete v2 response envelope with pinned keys
 - **Framework middleware**: Ready-to-use middleware for Express and Koa
 
 ## Core Concepts
@@ -19,18 +32,19 @@ JACS HTTP integration provides:
 ```
 Client                          Server
   |                               |
-  |-- signRequest(payload) -----> |
-  |                               |-- verifyResponse() --> payload
+  |-- Authorization: JACS v2 ---> |-- verify method/URL/body/audience
+  |-- exact body bytes ---------> |-- atomically consume nonce
   |                               |-- process payload
-  |                               |-- signResponse(result)
-  |<-- verifyResponse(result) ---|
+  |                               |-- JacsSimpleAgent.signResponse(result)
+  |<-- v2 signed envelope -------|
+  |-- unwrapSignedEvent(envelope, pinnedKeys)
   |
 ```
 
-All messages are cryptographically signed, ensuring:
-- Message integrity (no tampering)
-- Agent identity (verified sender)
-- Non-repudiation (proof of origin)
+Successful verification proves possession of the private key corresponding to
+the key selected by the verifier and integrity of the signed scope. It does not
+independently establish a person, organization, domain, or other real-world
+identity; that association comes from configured trust.
 
 ## HTTP Client
 
@@ -282,6 +296,9 @@ app.listen(PORT, () => {
 
 Sign an object as a JACS request.
 
+This is a generic signed document, not a request-bound HTTP credential. Use
+`JacsSimpleAgent.buildAuthHeader(...)` for authorization.
+
 ```javascript
 const signedRequest = await jacs.signRequest({
   method: 'getData',
@@ -294,6 +311,9 @@ const signedRequest = await jacs.signRequest({
 
 Verify a JACS-signed response and extract the payload.
 
+This is legacy generic-document verification, not strict v2 event unwrapping.
+Use `JacsSimpleAgent.unwrapSignedEvent(...)` with pinned server keys.
+
 ```javascript
 const result = await jacs.verifyResponse(jacsResponseString);
 // Returns: { payload: {...}, jacsId: '...', ... }
@@ -304,6 +324,10 @@ const payload = result.payload;
 ### jacs.signResponse(payload)
 
 Sign an object as a JACS response.
+
+For the fully bound `2.0.0` response envelope, call the instance method on
+`JacsSimpleAgent`; verify it with `unwrapSignedEvent()` rather than parsing data
+after an error.
 
 ```javascript
 const signedResponse = await jacs.signResponse({

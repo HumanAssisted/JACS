@@ -212,6 +212,8 @@ pub struct Schema {
     agreementschema: Validator,
     #[cfg(feature = "attestation")]
     pub attestationschema: Validator,
+    /// used to validate ES256 compatibility-key binding documents (P2)
+    pub compatbindingschema: Validator,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -224,7 +226,7 @@ impl Schema {
         default_schema_name: &str,
         invalid_json_prefix: &str,
     ) -> Result<Value, JacsError> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
+        let instance: serde_json::Value = match jacs_core::strict_json::parse_strict_json(json) {
             Ok(value) => {
                 debug!("validate json {:?}", value);
                 value
@@ -491,6 +493,10 @@ impl Schema {
         #[cfg(feature = "attestation")]
         let attestation_path = "schemas/attestation/v1/attestation.schema.json".to_string();
 
+        let compat_binding_path =
+            "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json"
+                .to_string();
+
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, JacsError> {
             DEFAULT_SCHEMA_STRINGS
@@ -507,6 +513,8 @@ impl Schema {
         #[cfg(feature = "attestation")]
         let attestationdata = get_schema(&attestation_path)?;
 
+        let compatbindingdata = get_schema(&compat_binding_path)?;
+
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
         let agreementschema_result: Value = serde_json::from_str(agreementdata)?;
@@ -515,6 +523,8 @@ impl Schema {
 
         #[cfg(feature = "attestation")]
         let attestationschema_result: Value = serde_json::from_str(attestationdata)?;
+
+        let compatbindingschema_result: Value = serde_json::from_str(compatbindingdata)?;
 
         let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
         let headerschema = build_validator(&headerchema_result, &header_path)?;
@@ -525,6 +535,9 @@ impl Schema {
         #[cfg(feature = "attestation")]
         let attestationschema = build_validator(&attestationschema_result, &attestation_path)?;
 
+        let compatbindingschema =
+            build_validator(&compatbindingschema_result, &compat_binding_path)?;
+
         Ok(Self {
             headerschema,
             headerversion: headerversion.to_string(),
@@ -534,7 +547,26 @@ impl Schema {
             agreementschema,
             #[cfg(feature = "attestation")]
             attestationschema,
+            compatbindingschema,
         })
+    }
+
+    /// Validate an ES256 compatibility-key binding document (P2 Task 003).
+    pub fn validate_compat_binding(&self, json: &str) -> Result<Value, JacsError> {
+        let value: Value = jacs_core::strict_json::parse_strict_json(json)
+            .map_err(|e| JacsError::SchemaError(format!("binding JSON parse failed: {e}")))?;
+        match self.compatbindingschema.validate(&value) {
+            Ok(_) => Ok(value),
+            Err(error) => {
+                let error_message = format_schema_validation_error(
+                    &error,
+                    "compatibility-key-binding.schema.json",
+                    &value,
+                );
+                error!("{}", error_message);
+                Err(JacsError::SchemaError(error_message))
+            }
+        }
     }
 
     /// basic check this conforms to a schema
@@ -627,7 +659,8 @@ impl Schema {
     /// document is reeturned
     pub fn create(&self, json: &str) -> Result<Value, JacsError> {
         // create json string
-        let mut instance: serde_json::Value = match serde_json::from_str(json) {
+        let mut instance: serde_json::Value = match jacs_core::strict_json::parse_strict_json(json)
+        {
             Ok(value) => {
                 debug!("validate json {:?}", value);
                 value
@@ -652,11 +685,11 @@ impl Schema {
         let original_version = version.clone();
         let versioncreated = time_utils::now_rfc3339();
 
-        instance["jacsId"] = json!(format!("{}", id));
-        instance["jacsVersion"] = json!(format!("{}", version));
-        instance["jacsVersionDate"] = json!(format!("{}", versioncreated));
-        instance["jacsOriginalVersion"] = json!(format!("{}", original_version));
-        instance["jacsOriginalDate"] = json!(format!("{}", versioncreated));
+        instance["jacsId"] = json!(id.to_string());
+        instance["jacsVersion"] = json!(version.to_string());
+        instance["jacsVersionDate"] = json!(versioncreated.to_string());
+        instance["jacsOriginalVersion"] = json!(original_version.to_string());
+        instance["jacsOriginalDate"] = json!(versioncreated.to_string());
         instance["jacsLevel"] = json!(
             instance
                 .get_str("jacsLevel")
@@ -664,7 +697,7 @@ impl Schema {
         );
         // if no schema is present insert standard header version
         if instance.get_str("$schema").is_none() {
-            instance["$schema"] = json!(format!("{}", self.get_header_schema_url()));
+            instance["$schema"] = json!(self.get_header_schema_url().to_string());
         }
 
         // if no type is present look for $schema and extract the name
@@ -724,6 +757,37 @@ mod tests {
         assert!(
             err.to_string().contains("Invalid JSON for agent"),
             "expected agent-specific parse error"
+        );
+    }
+
+    #[test]
+    fn create_rejects_duplicate_json_object_keys_at_every_depth() {
+        let schema = build_schema();
+
+        for input in [
+            r#"{"content":"trusted","content":"attacker"}"#,
+            r#"{"nested":{"role":"reader","role":"admin"}}"#,
+            r#"{"agentID":"trusted","agent\u0049D":"attacker"}"#,
+        ] {
+            let err = schema
+                .create(input)
+                .expect_err("ambiguous JSON must be rejected before document creation");
+            assert!(
+                err.to_string().contains("duplicate JSON object key"),
+                "unexpected error for {input}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_header_rejects_nested_duplicate_json_object_keys() {
+        let schema = build_schema();
+        let err = schema
+            .validate_header(r#"{"outer":{"nonce":"one","nonce":"two"}}"#)
+            .expect_err("ambiguous JSON must be rejected before schema validation");
+        assert!(
+            err.to_string().contains("duplicate JSON object key"),
+            "unexpected error: {err}"
         );
     }
 }

@@ -5,6 +5,8 @@
 # 2. The merged `pkg/package.json` carries `name: "@jacs/wasm"`, the
 #    right `version`, the `exports` map (including `./worker`), and
 #    `files` listing the expected artifacts.
+# 3. The finalized npm package contains the full Apache-2.0 license text and
+#    an exact copy of the repository's generated third-party notices.
 #
 # Run: `bash jacs-wasm/scripts/tests/finalize-pkg.test.sh`. Exit 0 = pass.
 
@@ -49,6 +51,8 @@ cp -r "${JACS_WASM_DIR}/worker" "${SANDBOX}/worker"
 [[ -f "${JACS_WASM_DIR}/README.md" ]] && cp "${JACS_WASM_DIR}/README.md" "${SANDBOX}/README.md" || true
 cp "${JACS_WASM_DIR}/scripts/finalize-pkg.sh" "${SANDBOX}/scripts/finalize-pkg.sh"
 cp -r "${WORK_DIR}/pkg" "${SANDBOX}/pkg"
+cp "${JACS_WASM_DIR}/../LICENSE-APACHE" "${WORK_DIR}/LICENSE-APACHE"
+cp "${JACS_WASM_DIR}/../THIRD-PARTY-NOTICES" "${WORK_DIR}/THIRD-PARTY-NOTICES"
 
 bash "${SANDBOX}/scripts/finalize-pkg.sh" >"${WORK_DIR}/finalize.log" 2>&1 \
     || { echo "FAIL: finalize-pkg.sh exited non-zero"; cat "${WORK_DIR}/finalize.log"; exit 1; }
@@ -95,7 +99,8 @@ expect(pkg.get("types") == "index.d.ts",
 files = pkg.get("files", [])
 for required in ["jacs_wasm.js", "jacs_wasm.d.ts", "jacs_wasm_bg.wasm",
                  "index.js", "index.d.ts",
-                 "worker/index.js", "worker/index.d.ts"]:
+                 "worker/index.js", "worker/index.d.ts", "LICENSE",
+                 "THIRD-PARTY-NOTICES"]:
     expect(required in files, f"files missing {required!r}; got {files}")
 
 exports = pkg.get("exports", {})
@@ -120,5 +125,25 @@ if errors:
     sys.exit(1)
 print("OK: pkg/package.json matches template + Cargo version")
 PY
+
+LICENSE_FILE="${SANDBOX}/pkg/LICENSE"
+if [[ ! -s "${LICENSE_FILE}" ]]; then
+    echo "ASSERTION FAILED: finalized package is missing a non-empty LICENSE" >&2
+    exit 1
+fi
+if ! grep -q 'Apache License' "${LICENSE_FILE}" || ! grep -q 'Version 2.0' "${LICENSE_FILE}"; then
+    echo "ASSERTION FAILED: finalized LICENSE is not the Apache-2.0 text" >&2
+    exit 1
+fi
+
+NOTICES_FILE="${SANDBOX}/pkg/THIRD-PARTY-NOTICES"
+if [[ ! -s "${NOTICES_FILE}" ]]; then
+    echo "ASSERTION FAILED: finalized package is missing non-empty THIRD-PARTY-NOTICES" >&2
+    exit 1
+fi
+if ! cmp -s "${WORK_DIR}/THIRD-PARTY-NOTICES" "${NOTICES_FILE}"; then
+    echo "ASSERTION FAILED: finalized THIRD-PARTY-NOTICES is not an exact repository copy" >&2
+    exit 1
+fi
 
 echo "finalize-pkg.test: PASS"

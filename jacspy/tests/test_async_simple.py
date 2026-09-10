@@ -212,7 +212,7 @@ class TestAsyncAgreement:
         status = await async_simple.check_agreement(signed)
 
         assert isinstance(status, AgreementStatus)
-        assert status.complete is True
+        assert status.complete is False  # v1 inspection never reconstructs completion
 
 
 # Test sync utility functions

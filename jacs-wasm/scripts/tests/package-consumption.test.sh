@@ -10,7 +10,7 @@
 # release-wasm.yml.
 #
 # Requires: node + npm in $PATH, and a finalized `jacs-wasm/pkg/`
-# directory (`wasm-pack build --target web --release jacs-wasm` +
+# directory (`cd jacs-wasm && wasm-pack build --target web --release .` +
 # `jacs-wasm/scripts/finalize-pkg.sh`). The script will fail loudly if
 # the prerequisites are missing.
 
@@ -75,6 +75,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // `exports` map for this verification to work.
 const pkgPath = path.join(__dirname, "node_modules", "@jacs", "wasm", "package.json");
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+const licensePath = path.join(path.dirname(pkgPath), "LICENSE");
 
 const errors = [];
 function expect(cond, msg) {
@@ -99,6 +100,12 @@ expect(pkg.exports && pkg.exports["./worker"] && pkg.exports["./worker"].import 
 // unwrapped module can still opt in by subpath.
 expect(pkg.exports && pkg.exports["./pkg/*"],
   `exports['./pkg/*'] missing (raw wasm-bindgen escape hatch)`);
+expect(fs.existsSync(licensePath), "installed package is missing LICENSE");
+if (fs.existsSync(licensePath)) {
+  const license = fs.readFileSync(licensePath, "utf8");
+  expect(license.includes("Apache License") && license.includes("Version 2.0"),
+    "installed LICENSE is not the Apache-2.0 text");
+}
 
 // Resolve the root specifier — must land at the wrapper, not the raw
 // wasm-bindgen module. `import.meta.resolve` honours the `exports` map,

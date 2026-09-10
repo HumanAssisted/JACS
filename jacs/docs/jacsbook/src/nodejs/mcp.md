@@ -1,5 +1,7 @@
 # MCP Integration (Node.js)
 
+{{#include ../_snippets/node-registry-status.md}}
+
 Node has two MCP stories:
 
 1. **Wrap an MCP transport** with signing and verification
@@ -73,7 +75,7 @@ The registered tool set includes:
 
 - document signing and verification
 - agreement helpers
-- audit and agent-info helpers
+- agent-info helpers
 - trust-store helpers
 - setup and registry helper stubs
 

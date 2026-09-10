@@ -28,6 +28,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.jacsMiddleware = jacsMiddleware;
 const auth_replay_js_1 = require("./auth-replay.js");
+const output_policy_js_1 = require("./output-policy.js");
 // =============================================================================
 // Internal helpers
 // =============================================================================
@@ -64,6 +65,7 @@ async function resolveClient(options) {
 function jacsMiddleware(options = {}) {
     const shouldVerify = options.verify !== false;
     const shouldSign = options.sign === true;
+    const unsignedOutputAllowed = (0, output_policy_js_1.allowUnsignedOutput)(options.allowUnsignedOutput, options.strict);
     const isOptional = options.optional === true;
     const enableA2A = options.a2a === true;
     const authReplay = (0, auth_replay_js_1.normalizeAuthReplayOptions)(options.authReplay);
@@ -146,7 +148,7 @@ function jacsMiddleware(options = {}) {
             if (rawBody) {
                 try {
                     const result = await client.verify(rawBody);
-                    if (result.valid) {
+                    if (result.valid === true) {
                         req.jacsPayload = result.data;
                         if (authReplay.enabled) {
                             const replayError = (0, auth_replay_js_1.checkAuthReplay)(rawBody, result, replayCache, authReplay);
@@ -184,15 +186,28 @@ function jacsMiddleware(options = {}) {
         if (shouldSign) {
             const originalJson = res.json.bind(res);
             res.json = function jacsSignedJson(body) {
-                // Fire-and-forget async signing, then send via original json.
+                // Express response methods are synchronous, so signing finishes in the
+                // background while the original body remains withheld.
                 client
                     .signMessage(body)
                     .then((signed) => {
-                    originalJson(signed.raw);
+                    const raw = (0, output_policy_js_1.requireSignedRaw)(signed, 'JACS Express response signing');
+                    // res.json() must receive the document object. Passing raw directly
+                    // would double-encode it as a JSON string on the wire.
+                    originalJson(JSON.parse(raw));
                 })
-                    .catch(() => {
-                    // Signing failed — send unsigned to avoid hanging response.
-                    originalJson(body);
+                    .catch((error) => {
+                    console.error('[jacs/express] response signing failed; unsigned output withheld:', error);
+                    if (unsignedOutputAllowed) {
+                        originalJson(body);
+                        return;
+                    }
+                    if (!res.headersSent) {
+                        res.status(500).type('text/plain').send('JACS response signing failed');
+                    }
+                    else if (typeof res.destroy === 'function') {
+                        res.destroy(error instanceof Error ? error : new Error(String(error)));
+                    }
                 });
                 return res;
             };

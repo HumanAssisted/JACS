@@ -18,6 +18,30 @@ Cryptographic algorithms evolve. Key rotation enables:
 - Transition to post-quantum cryptography when needed
 - Algorithm upgrades without breaking existing signatures
 
+### Migrating Ed25519 Agents to pq2025
+
+**Rotation always resolves to `pq2025`** — it is the designated migration path
+for Ed25519 agents:
+
+```bash
+jacs agent rotate-keys
+```
+
+- An Ed25519 agent that rotates (with or without an `--algorithm`
+  argument) gets a `pq2025` root; the config is stamped `pq2025`; the
+  transition proof is signed by the old Ed25519 key, so the migration is
+  cryptographically authorized by the previous root.
+- Rotating **to** Ed25519 (or any non-PQ algorithm) is a typed error.
+- Until it rotates, an Ed25519 agent keeps signing normally with Ed25519.
+- Documents signed by the old Ed25519 key remain verifiable after migration
+  (see Cross-Algorithm Verification in the Algorithm Selection Guide).
+- Rotation supersedes the ES256 **compatibility key binding**: the binding
+  is signed by the native root, so after rotation ecosystem exports fail
+  with a "re-issue" error until `jacs agent issue-compat-binding` runs
+  under the new native root.
+- Rotation applies to the **native root** only — rotating the ES256
+  compatibility key itself is out of scope in P2.
+
 ### Compliance Requirements
 
 Many security standards require periodic key rotation:
@@ -177,7 +201,11 @@ The transition message is signed with the **old** private key before it is archi
 - The old and new keys are cryptographically linked
 - An attacker cannot forge a rotation without the old private key
 
-You can verify a transition proof programmatically using `Agent::verify_transition_proof()`.
+`Agent::verify_transition_proof()` validates the detached old-key signature.
+Registries and directories must use
+`Agent::verify_transition_proof_for_rotation(proof, expected_agent_id, old_key, new_key)`
+instead. That stricter API also binds the proof to the expected stable identity
+and exact candidate new key, preventing proof transplantation.
 
 ### Crash Recovery
 
@@ -194,7 +222,8 @@ For manual recovery: `jacs agent repair`
 
 ### Cross-Algorithm Rotation
 
-You can change the signing algorithm during rotation:
+Rotation is a one-way migration to `pq2025`, not an arbitrary algorithm
+selector. An Ed25519 root can migrate to post-quantum signing:
 
 ```bash
 # Rotate from Ed25519 to post-quantum
@@ -389,6 +418,7 @@ After rotation:
 - [ ] Update DNS records
 - [ ] Securely delete old private key
 - [ ] Test signing with new key
+- [ ] Re-issue the compatibility key binding (`jacs agent issue-compat-binding`) if the agent has an ES256 compatibility key — ecosystem exports fail until the new native root signs a fresh binding
 
 ## See Also
 

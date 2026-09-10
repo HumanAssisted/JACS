@@ -5,13 +5,18 @@ on:
     tags: ["v*", "cli/v*", "crate/v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   macos-brew-install:
     runs-on: macos-latest
     env:
       HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Build local JACS formula from current checkout
         run: |

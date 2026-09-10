@@ -1,0 +1,25 @@
+# Reviewed 2026-07-09. Exact historical fingerprints only; never allowlist a
+# whole path or detector rule. These private-key bytes remain intentionally in
+# the current tree as deterministic test fixtures under
+# jacs/tests/fixtures/keys/agent-{one,two}.private.pem. They are public test
+# material and must never be used as trusted credentials. The fingerprints
+# below suppress only their original historical findings.
+84378541f6b6ab878604210b251dbae4fb015f20:jacs-mcp/README.md:generic-api-key:9
+0a5106987fd95aac4d6858905fe1c74d85663320:jacs/src/simple/core.rs:generic-api-key:703
+64d1171736a9342ab3ce68586bc39131d5a48fda:examples/keys/agent_two_private.pem:private-key:1
+64d1171736a9342ab3ce68586bc39131d5a48fda:examples/keys/agent_one_private.pem:private-key:1
+
+# Reviewed 2026-09-09 (gitleaks 8.30.1, first full-history run on the 0.12.0
+# branch). Exact historical fingerprints only; each is a false positive of the
+# generic-api-key detector, not credential material:
+# - human_approved_document_v1.json:50 is a WebAuthn `authenticatorData` value
+#   (public authenticator output inside a test fixture).
+# - agreement_v3_security.rs:93/303/394 match the struct name
+#   `AgreementVerificationKeyV3` in `let key = ...` test setup.
+# - jacs-mcp/README.md:9 at 37c24879 is prose describing ES256 JWKS exports;
+#   the same line is already allowlisted under its earlier commit above.
+65adab2641738455af775a4f44dbf621f93b0340:binding-core/tests/fixtures/human_approved_document_v1.json:generic-api-key:50
+8571632f92997d58fd2fdcdeba619ac2da875ce3:jacs-core/tests/agreement_v3_security.rs:generic-api-key:93
+8571632f92997d58fd2fdcdeba619ac2da875ce3:jacs-core/tests/agreement_v3_security.rs:generic-api-key:303
+8571632f92997d58fd2fdcdeba619ac2da875ce3:jacs-core/tests/agreement_v3_security.rs:generic-api-key:394
+37c24879cc51d0f1df0eae75648b460cd1557f5c:jacs-mcp/README.md:generic-api-key:9

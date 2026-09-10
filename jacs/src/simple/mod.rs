@@ -62,6 +62,7 @@ pub mod core;
 pub mod diagnostics;
 pub mod types;
 pub mod w3c;
+pub use crate::keystore::compat::CompatKeyInfo;
 pub use core::SimpleAgent;
 pub use core::build_loaded_agent_info;
 pub use diagnostics::diagnostics;
@@ -119,6 +120,8 @@ mod tests {
             key_directory: "./keys".to_string(),
             domain: String::new(),
             dns_record: String::new(),
+            ecosystem_kid: String::new(),
+            ecosystem_algorithm: String::new(),
         };
 
         let json = serde_json::to_string(&info).unwrap();
@@ -158,6 +161,7 @@ mod tests {
     #[test]
     fn test_verification_result_serialization() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: true,
             data: json!({"test": "data"}),
             signer_id: "agent-123".to_string(),
@@ -170,6 +174,25 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":true"));
         assert!(json.contains("agent-123"));
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["identity_binding_status"], "unavailable");
+        assert_eq!(parsed["identity_bound"], false);
+        assert_eq!(parsed["policy_accepted"], false);
+        let mut legacy = parsed;
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("identity_binding_status");
+        legacy["identity_bound"] = serde_json::json!(true);
+        let restored: VerificationResult = serde_json::from_value(legacy).unwrap();
+        assert_eq!(
+            restored.identity_binding_status,
+            crate::trust::IdentityBindingStatus::Unavailable
+        );
+        assert_eq!(
+            serde_json::to_value(restored).unwrap()["identity_bound"],
+            false
+        );
     }
 
     #[test]
@@ -242,6 +265,7 @@ mod tests {
     #[test]
     fn test_verification_result_with_errors() {
         let result = VerificationResult {
+            identity_binding_status: Default::default(),
             valid: false,
             data: json!(null),
             signer_id: "".to_string(),
@@ -307,7 +331,7 @@ mod tests {
             "pq2025",
         );
         let simple = SimpleAgent {
-            agent: Mutex::new(agent),
+            agent: std::sync::Arc::new(Mutex::new(agent)),
             config_path: None,
             strict: false,
         };
@@ -319,6 +343,118 @@ mod tests {
         assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
     }
 
+    #[test]
+    fn shared_agent_view_uses_the_same_identity_and_lock_without_loading_config() {
+        let (agent, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let view = SimpleAgent::from_shared_agent(
+            std::sync::Arc::clone(&agent.agent),
+            Some("/missing/never-loaded.config.json".into()),
+            true,
+        );
+        assert!(std::sync::Arc::ptr_eq(&agent.agent, &view.agent));
+        assert_eq!(agent.get_agent_id().unwrap(), view.get_agent_id().unwrap());
+        assert_eq!(
+            agent.get_public_key().unwrap(),
+            view.get_public_key().unwrap()
+        );
+        assert!(view.is_strict());
+        let signed = view
+            .sign_message(&serde_json::json!({"shared":true}))
+            .unwrap();
+        assert!(agent.verify(&signed.raw).unwrap().valid);
+    }
+
+    #[test]
+    fn shared_media_key_claim_and_signature_remain_atomic_during_rotation() {
+        let (agent, info) = fresh_ephemeral();
+        let view = SimpleAgent::from_shared_agent(std::sync::Arc::clone(&agent.agent), None, false);
+        let old_key = agent.get_public_key().unwrap();
+        let mut image_bytes = Vec::new();
+        image::RgbImage::from_pixel(2, 2, image::Rgb([5, 10, 15]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut image_bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let (claim_ready, wait_for_claim) = std::sync::mpsc::channel();
+        let (rotation_checked, wait_for_rotation) = std::sync::mpsc::channel();
+        let rotation = std::thread::spawn(move || {
+            wait_for_claim
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            // Real rotation and provider replacement acquire this same mutex.
+            // Neither may change the key between claim selection and signing.
+            let blocked = matches!(
+                view.agent.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            );
+            rotation_checked.send(blocked).unwrap();
+            advanced::rotate(&view, None).unwrap()
+        });
+        let signed = agent
+            .sign_message_with_current_key(|key| {
+                let claim = crate::media_signing::build_media_claim_v1(
+                    &image_bytes,
+                    jacs_media::MediaFormat::Png,
+                    false,
+                    &crate::media_signing::media_public_key_hash(key),
+                )?
+                .to_value()?;
+                claim_ready.send(()).unwrap();
+                assert!(
+                    wait_for_rotation
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .unwrap()
+                );
+                Ok(claim)
+            })
+            .unwrap();
+        let rotated = rotation.join().unwrap();
+        let document: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
+        assert_eq!(
+            document["content"]["publicKeyHash"],
+            crate::media_signing::media_public_key_hash(&old_key)
+        );
+        assert_eq!(document["jacsSignature"]["agentVersion"], info.version);
+        assert_ne!(
+            document["jacsSignature"]["agentVersion"],
+            rotated.new_version
+        );
+        assert!(
+            agent
+                .verify_with_key(&signed.raw, old_key.clone())
+                .unwrap()
+                .valid
+        );
+        assert_ne!(agent.get_public_key().unwrap(), old_key);
+
+        // The ordinary file handler then uses the rotated key and returns
+        // the signer in its signed envelope, not a later identity lookup.
+        let root = tempfile::tempdir().unwrap();
+        let input = root.path().join("input.png");
+        let output = root.path().join("signed.png");
+        std::fs::write(&input, image_bytes).unwrap();
+        let result = advanced::sign_image(
+            &agent,
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            SignImageOptions::default(),
+        )
+        .unwrap();
+        let verified = advanced::verify_image(
+            &agent,
+            output.to_str().unwrap(),
+            VerifyImageOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(verified.status, MediaVerifyStatus::Valid);
+        assert_eq!(
+            verified.signer_id.as_deref(),
+            Some(result.signer_id.as_str())
+        );
+    }
+
+    #[cfg(feature = "pq-tests")]
     fn assert_public_key_pem_for_algorithm(requested_algorithm: &str, expected_algorithm: &str) {
         let (agent, info) =
             SimpleAgent::ephemeral(Some(requested_algorithm)).expect("create ephemeral agent");
@@ -338,19 +474,20 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_agent_get_public_key_pem_for_ed25519() {
-        assert_public_key_pem_for_algorithm("ed25519", "ring-Ed25519");
-    }
-
-    #[test]
-    fn test_simple_agent_ed25519_ephemeral_signs() {
+    fn test_simple_agent_ed25519_creation_request_is_honored_without_substitution() {
         let (agent, info) =
-            SimpleAgent::ephemeral(Some("ed25519")).expect("Ed25519 ephemeral should be supported");
-        assert!(info.algorithm.contains("Ed25519"));
+            SimpleAgent::ephemeral(Some("ed25519")).expect("supported Ed25519 creation");
+        assert_eq!(info.algorithm, "ring-Ed25519");
+        let public_key = agent.get_public_key().expect("public key");
+        assert_eq!(
+            public_key.len(),
+            crate::crypt::constants::ED25519_PUBLIC_KEY_SIZE
+        );
         let signed = agent
-            .sign_message(&serde_json::json!({"ok": true}))
-            .unwrap();
-        assert!(agent.verify(&signed.raw).unwrap().valid);
+            .sign_message(&serde_json::json!({"algorithm": "ed25519"}))
+            .expect("sign");
+        let value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+        assert_eq!(value["jacsSignature"]["signingAlgorithm"], "ring-Ed25519");
     }
 
     #[test]
@@ -404,7 +541,7 @@ mod tests {
         // Create a dummy SimpleAgent for testing verify() pre-check
         // The pre-check happens before agent lock, so we need a valid agent struct
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -425,7 +562,7 @@ mod tests {
     #[test]
     fn test_verify_uuid_like_input_returns_helpful_error() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -446,7 +583,7 @@ mod tests {
     #[test]
     fn test_verify_empty_string_returns_error() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -478,7 +615,7 @@ mod tests {
     #[test]
     fn test_get_setup_instructions_requires_loaded_agent() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -533,7 +670,7 @@ mod tests {
     #[test]
     fn test_simple_agent_is_strict_accessor() {
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: true,
@@ -541,7 +678,7 @@ mod tests {
         assert!(agent.is_strict());
 
         let agent2 = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: false,
@@ -554,7 +691,7 @@ mod tests {
         // Strict mode shouldn't change behavior for malformed input — it should
         // still return Err(DocumentMalformed), not SignatureVerificationFailed
         let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
+            agent: std::sync::Arc::new(Mutex::new(crate::get_empty_agent())),
             config_path: None,
 
             strict: true,
@@ -591,9 +728,14 @@ mod tests {
         assert!(result.valid);
     }
 
+    fn fast_ephemeral_fixture() -> (SimpleAgent, AgentInfo) {
+        SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+            .expect("create grandfathered Ed25519 fixture")
+    }
+
     #[test]
     fn test_simple_ephemeral_sign_and_verify() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let msg = serde_json::json!({"hello": "world"});
         let signed = agent.sign_message(&msg).unwrap();
         assert!(!signed.raw.is_empty());
@@ -608,8 +750,7 @@ mod tests {
 
     #[test]
     fn test_verify_by_id_uses_loaded_agent_storage_backend() {
-        let (agent, _info) =
-            SimpleAgent::ephemeral(Some("ed25519")).expect("create ephemeral agent");
+        let (agent, _info) = fast_ephemeral_fixture();
         let signed = agent
             .sign_message(&json!({"hello": "verify-by-id"}))
             .expect("sign message");
@@ -635,7 +776,7 @@ mod tests {
         let temp = std::env::temp_dir().join("jacs_simple_ephemeral_no_files");
         let _ = std::fs::remove_dir_all(&temp);
         std::fs::create_dir_all(&temp).unwrap();
-        let (_agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (_agent, _info) = fast_ephemeral_fixture();
         let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
         assert!(entries.is_empty());
         let _ = std::fs::remove_dir_all(&temp);
@@ -648,7 +789,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let card = crate::a2a::simple::export_agent_card(&agent).unwrap();
         assert!(!card.name.is_empty());
         assert!(!card.protocol_versions.is_empty());
@@ -660,7 +801,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let artifact = r#"{"text": "hello from A2A"}"#;
 
         let wrapped = crate::a2a::simple::wrap_artifact(&agent, artifact, "message", None).unwrap();
@@ -681,7 +822,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_sign_artifact_alias() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let artifact = r#"{"data": "test"}"#;
 
         // sign_artifact should produce the same structure as wrap_a2a_artifact
@@ -700,7 +841,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_signatures() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
 
         // Create a first artifact
         let first =
@@ -722,7 +863,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let result = crate::a2a::simple::wrap_artifact(&agent, "not json", "artifact", None);
         assert!(result.is_err());
         match result {
@@ -736,7 +877,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_verify_a2a_artifact_invalid_json() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let result = crate::a2a::simple::verify_artifact(&agent, "not json");
         assert!(result.is_err());
         match result {
@@ -765,7 +906,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_has_jacs_extension() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = fast_ephemeral_fixture();
         let card = crate::a2a::simple::export_agent_card(&agent).unwrap();
 
         let extensions = card.capabilities.extensions.unwrap();
@@ -777,14 +918,12 @@ mod tests {
     /// Created once, reused across parallel tests that don't mutate agent state.
     fn shared_ephemeral() -> &'static (SimpleAgent, AgentInfo) {
         static AGENT: std::sync::OnceLock<(SimpleAgent, AgentInfo)> = std::sync::OnceLock::new();
-        AGENT.get_or_init(|| {
-            SimpleAgent::ephemeral(Some("ed25519")).expect("shared ephemeral agent")
-        })
+        AGENT.get_or_init(fast_ephemeral_fixture)
     }
 
     /// Create a fresh ephemeral agent for tests that mutate (rotate/update).
     fn fresh_ephemeral() -> (SimpleAgent, AgentInfo) {
-        SimpleAgent::ephemeral(Some("ed25519")).expect("fresh ephemeral agent")
+        fast_ephemeral_fixture()
     }
 
     #[test]
@@ -811,6 +950,16 @@ mod tests {
             result.errors
         );
         assert!(!result.signer_id.is_empty());
+        let value: Value = serde_json::from_str(&signed.raw).unwrap();
+        let document_key = format!(
+            "{}:{}",
+            value["jacsId"].as_str().unwrap(),
+            value["jacsVersion"].as_str().unwrap()
+        );
+        assert!(
+            agent_b.verify_by_id(&document_key).is_err(),
+            "verification must not import the document"
+        );
     }
 
     #[test]
@@ -833,6 +982,89 @@ mod tests {
 
         assert!(!result.valid, "verification with wrong key should fail");
         assert!(!result.errors.is_empty(), "should have verification errors");
+        assert!(result.data.is_null());
+        assert!(result.signer_id.is_empty());
+        assert!(result.timestamp.is_empty());
+        assert!(result.attachments.is_empty());
+    }
+
+    #[test]
+    fn verify_with_key_accepts_bound_response_envelopes() {
+        let (signer, signer_info) = fresh_ephemeral();
+        let payload = json!({"response": {"decision": "allow"}});
+        let envelope = signer
+            .sign_response(&payload)
+            .expect("sign_response should succeed");
+        let encoded = serde_json::to_string(&envelope).expect("serialize response envelope");
+        let public_key = signer
+            .get_public_key()
+            .expect("response signer should expose its public key");
+
+        let (verifier, _) = fresh_ephemeral();
+        let result = verifier
+            .verify_with_key(&encoded, public_key)
+            .expect("generic explicit-key verification should dispatch response-v2");
+
+        assert!(
+            result.valid,
+            "bound response should verify: {:?}",
+            result.errors
+        );
+        assert_eq!(result.data, payload);
+        assert_eq!(
+            result.signer_id,
+            format!("{}:{}", signer_info.agent_id, signer_info.version)
+        );
+        assert!(!result.timestamp.is_empty());
+    }
+
+    #[test]
+    fn verify_accepts_own_bound_response_envelope() {
+        let (signer, _) = fresh_ephemeral();
+        let payload = json!({"response": {"decision": "allow"}});
+        let envelope = signer
+            .sign_response(&payload)
+            .expect("sign_response should succeed");
+        let encoded = serde_json::to_string(&envelope).expect("serialize response envelope");
+
+        let result = signer
+            .verify(&encoded)
+            .expect("same-agent verification should dispatch response-v2");
+
+        assert!(
+            result.valid,
+            "bound response should verify: {:?}",
+            result.errors
+        );
+        assert_eq!(result.data, payload);
+    }
+
+    #[test]
+    fn verify_with_key_rejects_tampered_response_without_releasing_data() {
+        let (signer, _) = fresh_ephemeral();
+        let payload = json!({"response": {"decision": "allow"}});
+        let mut envelope = signer
+            .sign_response(&payload)
+            .expect("sign_response should succeed");
+        envelope["metadata"]["document_id"] = json!(uuid::Uuid::new_v4().to_string());
+        let encoded = serde_json::to_string(&envelope).expect("serialize tampered response");
+        let public_key = signer
+            .get_public_key()
+            .expect("response signer should expose its public key");
+
+        let (verifier, _) = fresh_ephemeral();
+        let result = verifier
+            .verify_with_key(&encoded, public_key)
+            .expect("non-strict verification should return a typed invalid result");
+
+        assert!(!result.valid);
+        assert_eq!(
+            result.data,
+            Value::Null,
+            "unverified payload must stay hidden"
+        );
+        assert!(result.signer_id.is_empty());
+        assert!(!result.errors.is_empty());
     }
 
     // =========================================================================
@@ -880,7 +1112,8 @@ mod tests {
             .config_path("./jacs.config.json")
             .build();
 
-        let (agent, info) = SimpleAgent::create_with_params(params).expect("create test agent");
+        let (agent, info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
+            .expect("create test agent");
 
         // Set env vars so key operations work
         unsafe {
@@ -918,6 +1151,50 @@ mod tests {
             "loaded agent should verify documents after CWD change: {:?}",
             result.errors
         );
+    }
+
+    #[test]
+    #[serial(jacs_env, cwd_env)]
+    fn test_load_file_only_ignores_ambient_path_overrides() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) =
+            create_persistent_test_agent("load-file-only-env-isolation");
+        let config_path = tmp
+            .path()
+            .canonicalize()
+            .expect("canonical temp directory")
+            .join("jacs.config.json");
+        let signed = agent
+            .sign_message(&json!({"load": "file-only"}))
+            .expect("sign before reload");
+        drop(agent);
+        drop(guard);
+
+        let bogus_keys = tmp.path().join("ambient-attacker-keys");
+        unsafe {
+            std::env::set_var("JACS_KEY_DIRECTORY", &bogus_keys);
+        }
+
+        let runtime_data = config_path.parent().unwrap().join("jacs_data");
+        let runtime_keys = config_path.parent().unwrap().join("jacs_keys");
+        let loaded = SimpleAgent::load_file_only_with_runtime_directories(
+            Some(config_path.to_string_lossy().as_ref()),
+            runtime_data.to_string_lossy().as_ref(),
+            runtime_keys.to_string_lossy().as_ref(),
+            Some(true),
+        )
+        .expect("file-only relocated load must ignore ambient JACS path overrides");
+        let verification = loaded
+            .verify(&signed.raw)
+            .expect("verify reloaded document");
+        assert!(verification.valid, "{:?}", verification.errors);
+
+        unsafe {
+            std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
+        }
     }
 
     #[test]
@@ -1025,11 +1302,17 @@ mod tests {
                 .expect("parse config json");
         config_value["jacs_key_directory"] =
             serde_json::Value::String(tmp_root.join("jacs_keys").to_string_lossy().to_string());
+        let signed_config = agent
+            .agent
+            .lock()
+            .expect("agent lock")
+            .update_config(&config_value)
+            .expect("re-sign mixed-directory config");
         std::fs::write(
             &config_path,
-            serde_json::to_string_pretty(&config_value).expect("serialize config"),
+            serde_json::to_string_pretty(&signed_config).expect("serialize config"),
         )
-        .expect("write updated config");
+        .expect("write updated signed config");
 
         let signed = agent
             .sign_message(&json!({"mixed": "dirs"}))
@@ -1064,7 +1347,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (_agent, _info, tmp, guard) = create_persistent_test_agent("reject-parent-dir-test");
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("reject-parent-dir-test");
         let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
         let config_path = tmp_root.join("jacs.config.json");
 
@@ -1073,11 +1356,17 @@ mod tests {
                 .expect("parse config json");
         config_value["jacs_data_directory"] =
             serde_json::Value::String("../outside-data".to_string());
+        let signed_config = agent
+            .agent
+            .lock()
+            .expect("agent lock")
+            .update_config(&config_value)
+            .expect("re-sign parent-directory rejection config");
         std::fs::write(
             &config_path,
-            serde_json::to_string_pretty(&config_value).expect("serialize config"),
+            serde_json::to_string_pretty(&signed_config).expect("serialize config"),
         )
-        .expect("write updated config");
+        .expect("write updated signed config");
         drop(guard);
 
         unsafe {
@@ -1213,7 +1502,7 @@ mod tests {
     #[test]
     fn test_rotate_ephemeral_agent() {
         // Ephemeral agents should support rotation (no filesystem involved)
-        let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, info) = fast_ephemeral_fixture();
         let original_version = info.version.clone();
 
         let result = advanced::rotate(&agent, None).expect("ephemeral rotation should succeed");
@@ -1668,7 +1957,7 @@ mod tests {
         use crate::attestation::types::*;
 
         fn ephemeral_agent() -> SimpleAgent {
-            let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+            let (agent, _info) = fast_ephemeral_fixture();
             agent
         }
 

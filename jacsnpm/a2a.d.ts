@@ -134,7 +134,9 @@ export interface ArtifactVerificationResult {
     valid: boolean;
     status: VerificationStatus;
     /**
-     * Extracted payload returned by native verifyResponse() when available.
+     * @deprecated Canonical A2A verification exposes authenticated payload data
+     * through originalArtifact. Legacy verifyResponse() output is never
+     * projected into an A2A verification result.
      */
     verifiedPayload?: Record<string, unknown>;
     /**
@@ -162,12 +164,19 @@ export interface TrustAssessment {
     reason: string;
     policy?: string;
     agentId?: string | null;
+    /** True only when the verifying origin key was pinned during this assessment. */
+    firstContact: boolean;
 }
 export interface A2AQuickstartOptions {
     url?: string;
     name?: string;
     domain?: string;
     description?: string;
+    /**
+     * @deprecated Wrapper-supplied skills cannot be added after the native Agent
+     * Card is signed. Non-empty values fail immediately; persist skills through
+     * the native agent/card configuration before generating discovery documents.
+     */
     skills?: Array<{
         id: string;
         name: string;
@@ -202,6 +211,7 @@ export declare class JACSA2AIntegration {
     client: JacsClient;
     trustPolicy: TrustPolicy;
     defaultUrl?: string | null;
+    /** Compatibility assertion only; cannot mutate the native signed Agent Card. */
     defaultSkills?: Array<{
         id: string;
         name: string;
@@ -222,25 +232,41 @@ export declare class JACSA2AIntegration {
      * Assess a remote agent's trust level based on the configured trust policy.
      *
      * - open: allows all agents
-     * - verified: requires JACS extension in the agent card
-     * - strict: requires the agent to be in the local JACS trust store
+     * - verified: requires native JWS/JWKS verification plus durable TOFU pinning
+     * - strict: additionally requires an explicitly trusted native root and its
+     *   valid compatibility binding for the exact ES256 card key
      */
     assessRemoteAgent(agentCardJson: string | Record<string, unknown>): TrustAssessment;
     /**
-     * Convenience method to add an A2A agent to the JACS trust store.
-     * Accepts a raw agent card JSON string or object.
+     * Explicitly trust the native JACS identity used by A2A strict mode.
+     *
+     * An Agent Card is self-advertised discovery metadata and is never enough
+     * to create native identity trust. Obtain the full self-signed native JACS
+     * agent document and its public key through an authenticated out-of-band
+     * channel. The native trust API verifies the document before persisting it.
      */
-    trustA2AAgent(agentCardJson: string | Record<string, unknown>): string;
+    trustA2AAgent(agentDocumentJson: string | Record<string, unknown>, publicKeyPem: string): string;
+    /**
+     * Sign through the native canonical A2A primitive and return the direct
+     * `a2a-*` document. Generic request-envelope fallback is never used. The
+     * returned portable-v2 metadata and parent chain must exactly match the
+     * requested artifact contract before any result is released.
+     */
     signArtifact(artifact: Record<string, unknown>, artifactType: string, parentSignatures?: Record<string, unknown>[] | null): Promise<Record<string, unknown>>;
     /** @deprecated Use signArtifact() instead. */
     wrapArtifactWithProvenance(artifact: Record<string, unknown>, artifactType: string, parentSignatures?: Record<string, unknown>[] | null): Promise<Record<string, unknown>>;
+    /**
+     * Verify artifact cryptography and its parent chain. Supply the real remote
+     * Agent Card to additionally enforce this integration's trust policy.
+     * Affirmative verification requires the native canonical
+     * verifyA2aArtifactSync contract. Legacy verifyResponse is never used as an
+     * A2A fallback and cannot project provenance or elevate trust.
+     */
     verifyWrappedArtifact(wrappedArtifact: Record<string, unknown>, agentCard?: Record<string, unknown>): Promise<ArtifactVerificationResult>;
     createChainOfCustody(artifacts: Record<string, unknown>[]): Record<string, unknown>;
     generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData): Record<string, Record<string, unknown>>;
     private _hasJacsExtension;
-    private _normalizeVerifyResponse;
     private _legacyAssessRemoteAgent;
-    private _buildSyntheticAgentCard;
     private _buildCanonicalTrustAssessment;
     private _normalizeTrustAssessment;
     private _normalizeParentVerificationResult;

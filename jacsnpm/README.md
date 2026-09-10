@@ -2,16 +2,49 @@
 
 Cryptographic identity, signing, and verification for AI agents from Node.js.
 
+> **Registry status (observed 2026-07-11):** npm still serves
+> `@hai.ai/jacs@0.10.1`. This README describes source `0.12.0`; Agreement v2 and
+> other newer methods are unavailable from the current registry package. Pin a
+> version and inspect its exported methods until a coordinated release closes
+> the gap.
+
 ```bash
 npm install @hai.ai/jacs
 ```
 
 Prebuilt native bindings are included. A normal install does not require compiling Rust.
 
-> **Building for the browser?** Use [`@jacs/wasm`](https://www.npmjs.com/package/@jacs/wasm)
-> instead. `jacsnpm` ships a `.node` native module that does not load in a
-> browser context; `@jacs/wasm` is the WebAssembly build with the same
-> JACS protocol surface (sign / verify / agreements / localStorage).
+### Install-time CLI download
+
+The npm `postinstall` script makes an optional network request to the matching
+`cli/vX.Y.Z` GitHub Release. It validates `sha256sums.txt` (with a validated
+per-asset checksum fallback) before downloading the archive, bounds redirects,
+time, bytes, members, and extraction expansion, and installs only a regular
+executable. Remote HTTPS downloads cannot redirect into local HTTP services.
+
+The executable is cached by the exact package version and release platform at
+`$XDG_CACHE_HOME/jacs/bin/<version>/<platform>/` (or the platform cache-home
+equivalent), not inside `node_modules`. Shared package stores therefore cannot
+silently reuse a macOS, Windows, Linux, or older-version binary. Linux musl is
+rejected because no musl CLI asset is published. Unsafe cache symlinks,
+permissions, and pre-existing executable paths fail closed. Library APIs remain
+usable if the platform or network is unsupported; the warning is written to
+stderr.
+
+Use `npm install --ignore-scripts` when install-time network access is not
+allowed. In that mode no CLI is downloaded. Check the optional binary with:
+
+```bash
+npx jacs-cli --diagnose
+```
+
+For a standalone CLI, use `cargo install jacs-cli`.
+
+> **Building for the browser?** Use the source-built
+> [`@jacs/wasm`](../jacs-wasm/README.md) package instead. It is not yet
+> published on npm. `@hai.ai/jacs` ships a `.node` native module that does not
+> load in a browser context; `@jacs/wasm` is the WebAssembly build with the
+> browser protocol surface (sign / verify / agreements / localStorage).
 
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
@@ -42,6 +75,86 @@ All operations are async by default. Sync variants are available with a `Sync` s
 | `signAgreementV2(doc, role)` | Sign as `signer`, `witness`, or `notary` |
 | `verifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
 | `audit()` | Run a security audit |
+
+## Public human-approved document verification
+
+`npm run build` and the native release profile enable `human-approval-vendored`:
+the existing WebAuthn verifier with OpenSSL compiled into the native module,
+without a separate OpenSSL installation. This configures new builds; it does
+not claim that an older published package has the method. Release gates check
+the installed artifact and reject external OpenSSL linkage. Browser WASM does
+not provide this verifier.
+
+Rust defaults remain unchanged. `npm run build:slim` (and `build:debug`) retains
+the feature-off custom build. `human-approval` alone remains available for
+custom builds intentionally using a system OpenSSL installation.
+
+```javascript
+const { JacsSimpleAgent } = require('@hai.ai/jacs');
+
+if (!JacsSimpleAgent.verifyHumanApprovedDocument) {
+  throw new Error('This native build requires the human-approval feature');
+}
+const report = JSON.parse(JacsSimpleAgent.verifyHumanApprovedDocument(
+  bundleJson, expectedJson, authorityJson, provenanceJson,
+));
+```
+
+This static method needs no agent, signing key, configuration, or network
+lookup. All four arguments are JSON strings. Read stored public evidence into
+`bundleJson`; select the expected human/action/credential and the two public
+key pins from your application's trusted state, not from the bundle. The
+complete report is returned as JSON. Success confirms retained proof and
+document integrity, **not** permission to execute now: `current` remains
+`not_evaluated`. Live authorization, revocation and one-use checks stay with
+the relying application. Feature-enabled tests require
+`JACS_TEST_HUMAN_APPROVAL=1 npx mocha test/human-approved-document.test.js`.
+
+## Request authentication and signed events
+
+Use the instance-based `JacsSimpleAgent` for the transport protocol helpers.
+Its methods are synchronous; the JSON strings and body string below are the
+exact values passed to the native binding:
+
+```javascript
+const { JacsSimpleAgent } = require('@hai.ai/jacs');
+
+const agent = JacsSimpleAgent.ephemeral('ed25519');
+const body = '{"action":"approve"}';
+const authorization = agent.buildRequestAuthHeader(
+  'POST',
+  'https://api.example.com/v1/jobs?mode=strict',
+  body,
+  'jobs-api',
+);
+if (!authorization.startsWith('JACS v2.')) throw new Error('unexpected auth version');
+
+const envelope = agent.signResponse(JSON.stringify({ decision: 'allow' }));
+const signerId = JSON.parse(envelope).jacsSignature.agentID;
+const serverKeys = JSON.stringify({ [signerId]: agent.getPublicKeyPem() });
+const verified = JSON.parse(agent.unwrapSignedEvent(envelope, serverKeys));
+if (!verified.verified || verified.data.decision !== 'allow') {
+  throw new Error('response verification failed');
+}
+```
+
+`buildRequestAuthHeader()` accepts `Buffer`, `Uint8Array`, or a string (encoded as
+UTF-8), and binds the exact body bytes with method, absolute URL including
+query, audience, signer/key, issue time, and nonce. Do not stringify or
+otherwise transform the request body again afterward. `signResponse()` emits a
+`2.0.0` envelope whose `jacs-response-v2` signature covers the payload and all
+metadata. `unwrapSignedEvent()` is fail-closed: it throws for plain events,
+legacy payload-only envelopes, unknown signers, and any mutation.
+
+The `serverKeys` object must come from the application's configured trust
+policy. A valid signature proves possession of the corresponding private key;
+it does not independently establish a person's, organization's, or domain's
+real-world identity.
+
+The old no-argument `buildAuthHeader()` remains available for source
+compatibility and emits a WARN because it does not bind the request. Migrate
+both peers to `JACS v2`; strict deployments can reject the legacy method with
+`JACS_REJECT_UNBOUND_AUTH_HEADER=true`.
 
 ## Text and image provenance
 
@@ -118,6 +231,88 @@ The older `createAgreement()` / `signAgreement()` / `checkAgreement()` methods r
 ## Framework adapters
 
 Adapters for Vercel AI SDK, Express, Koa, LangChain.js, and MCP are available. Framework dependencies are optional peer dependencies.
+
+Signing adapters fail closed: if signing is enabled and the signer fails or
+returns no portable `raw` document, the original output is withheld. Express
+and Koa sign JSON scalar responses as well as objects. LangChain rejects
+unexpected tool-output shapes instead of silently returning them. The MCP
+transport signs JSON-RPC error responses as well as successful responses.
+
+Vercel AI generation provenance includes `signedDocument`, the full portable
+JACS document binding `{ output, metadata }`. Streaming output is buffered up
+to 1 MiB by default and is released only after signing succeeds; configure
+`maxBufferedStreamBytes` (maximum 16 MiB) for a different bounded limit.
+With `a2a: true`, `providerMetadata.jacs.a2a.signedDocument` separately binds
+the exact emitted `agentCard`, and is constructed before buffered output is
+released. That card is the signer's cryptographic self-assertion; configured
+trust and real-world identity still require independent verification.
+
+The escape hatches `allowUnsignedOutput: true`, MCP's
+`allowUnsignedFallback: true`, and Vercel's `allowPostHocStreaming: true` are
+dangerous compatibility options. They must be literal booleans; `strict: true`
+overrides unsigned-output opt-ins, and post-hoc streaming additionally requires
+`allowUnsignedOutput: true`.
+MCP transports normally deliver parsed JSON-RPC objects. Signed traffic therefore
+uses the schema-valid reserved `notifications/jacs/signed` carrier (wire version
+`1`) whose `params.envelope` contains the portable JACS document. The receiver
+strictly validates the carrier, verifies the envelope, and schema-validates the
+recovered JSON-RPC payload before dispatch. Ordinary parsed objects fail closed
+unless `allowUnsignedFallback: true` is explicitly enabled.
+
+MCP signature validity alone proves possession of some resolvable signing key;
+it does not identify the intended endpoint. Configure the peer's exact stable
+`jacsSignature.agentID` on both sides. An optional public-key-hash pin binds one
+key version more tightly:
+
+```typescript
+import { JacsAgent } from '@hai.ai/jacs';
+import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
+
+const localAgent = new JacsAgent();
+await localAgent.load('./jacs.config.json');
+const secureTransport = createJACSTransportProxy(
+  baseTransport,
+  localAgent,
+  'client',
+  {
+    expectedPeerAgentId: '4d177fb9-84e0-421c-a52f-e33dca51e720',
+    expectedPeerPublicKeyHash: '<exact hash obtained out of band>',
+  },
+);
+```
+
+Use `allowedPeerAgentIds: [...]` for an intentional multi-peer transport. With
+neither option, authenticated input is rejected before `onmessage`.
+`dangerouslyAllowAnyValidSigner: true` is a literal-only migration escape hatch:
+it accepts any cryptographically valid signer known to JACS and therefore
+provides proof of key possession, not MCP endpoint authentication. It cannot be
+combined with an identity policy. Signed-carrier failures never fall through to
+the unsigned compatibility path.
+
+Every outbound JSON-RPC request is assigned a cryptographically random wire ID.
+The proxy restores the caller's local ID only for the matching response and
+consumes the mapping once; unknown, expired, replayed, or cross-session response
+IDs fail closed. Pending correlations are bounded and cleared when the transport
+closes.
+
+`JACSA2AIntegration.quickstart({ skills })` retains its source-compatible type
+but non-empty wrapper-supplied skills now fail immediately. Agent Card skills
+are identity-bearing signed data; persist them through the native agent/card
+configuration before generating or serving discovery documents.
+
+`signArtifact()` uses the native canonical A2A signer and returns the direct
+`a2a-*` document; it never wraps the result in a generic `jacs_payload` header
+or falls back to `signRequest()`. It rejects incomplete or legacy-v1 signature
+metadata and requires the returned parent chain to exactly match the caller's
+ordered input; when no parents were requested, only an absent or empty chain is
+accepted. `verifyWrappedArtifact(artifact)` proves the
+artifact signature and parent chain. Pass the real identity-bound Agent Card as
+the second argument when trust-policy assessment is also required; JACS never
+synthesizes an Agent Card from unauthenticated artifact claims. Affirmative A2A
+verification requires the native `verifyA2aArtifactSync()` contract. The
+generic `verifyResponse()` method is never used as an A2A fallback: even a
+literal `true` yields a stable invalid result with blank provenance and cannot
+elevate trust.
 
 ## Instance-based API
 

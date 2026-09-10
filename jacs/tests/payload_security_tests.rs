@@ -76,7 +76,8 @@ fn verify_payload_env_override_can_be_strict() {
         .verify_payload(signed, None)
         .expect_err("strict 1-second env replay window should reject old payload");
     assert!(
-        err.to_string().contains("Signature too old"),
+        matches!(err, jacs::error::JacsError::ValidationError(_))
+            && err.to_string().contains("too old"),
         "unexpected error: {}",
         err
     );

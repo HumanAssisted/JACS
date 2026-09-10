@@ -119,3 +119,60 @@ fn resolve_schema_allows_paths_within_allowed_directory() {
         inside_rel
     );
 }
+
+// =========================================================================
+// P2 Task 001 — the native algorithm schema wall (jacs schema copy).
+//
+// ES256 (in any spelling) is never a valid native `jacsSignature`
+// algorithm; `signingAlgorithm` stays OPTIONAL so legacy documents that
+// omit it still validate. The jacs-core copy of the schema is pinned by
+// the equivalent test in jacs-core/tests/schema.rs.
+// =========================================================================
+
+fn base_signature(algorithm: Option<&str>) -> serde_json::Value {
+    let mut sig = serde_json::json!({
+        "agentID": "8c8a1b90-0000-4000-8000-000000000001",
+        "agentVersion": "8c8a1b90-0000-4000-8000-000000000002",
+        "date": "2026-06-28T00:00:00Z",
+        "iat": 1782600000u64,
+        "jti": "p2-task001-nonce",
+        "signature": "AAAA",
+        "publicKeyHash": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "fields": ["jacsId"]
+    });
+    if let Some(a) = algorithm {
+        sig["signingAlgorithm"] = serde_json::json!(a);
+    }
+    sig
+}
+
+#[test]
+fn native_signature_schema_rejects_ring_es256() {
+    let schema = jacs::schema::Schema::new("v1", "v1", "v1").expect("schema init");
+
+    // Native algorithms validate.
+    schema
+        .validate_signature(&base_signature(Some("pq2025")))
+        .expect("pq2025 signature validates");
+    schema
+        .validate_signature(&base_signature(Some("ring-Ed25519")))
+        .expect("ring-Ed25519 signature validates");
+
+    // Every ES256 spelling is rejected by the enum wall.
+    for bad in ["ring-ES256", "ES256", "es256"] {
+        assert!(
+            schema
+                .validate_signature(&base_signature(Some(bad)))
+                .is_err(),
+            "'{bad}' must never validate as a native signingAlgorithm"
+        );
+    }
+}
+
+#[test]
+fn legacy_signature_without_signing_algorithm_still_validates() {
+    let schema = jacs::schema::Schema::new("v1", "v1", "v1").expect("schema init");
+    schema
+        .validate_signature(&base_signature(None))
+        .expect("legacy signature without signingAlgorithm must still validate");
+}

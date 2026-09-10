@@ -98,21 +98,25 @@ fn get_extra_allowed_domains() -> &'static Vec<String> {
     })
 }
 
+fn schema_allowed_domains() -> Vec<String> {
+    DEFAULT_ALLOWED_SCHEMA_DOMAINS
+        .iter()
+        .map(|domain| (*domain).to_string())
+        .chain(get_extra_allowed_domains().iter().cloned())
+        .collect()
+}
+
 fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
     // Parse the URL to extract the host
     let parsed = url::Url::parse(url)
-        .map_err(|e| JacsError::SchemaError(format!("Invalid URL '{}': {}", url, e)))?;
+        .map_err(|e| JacsError::SchemaError(format!("Invalid remote schema URL: {}", e)))?;
 
     let host = parsed
         .host_str()
-        .ok_or_else(|| JacsError::SchemaError(format!("URL '{}' has no host", url)))?;
+        .ok_or_else(|| JacsError::SchemaError("Remote schema URL has no host".to_string()))?;
 
     // Build the list of allowed domains from defaults + cached env var
-    let extra = get_extra_allowed_domains();
-    let mut allowed_domains: Vec<&str> = DEFAULT_ALLOWED_SCHEMA_DOMAINS.to_vec();
-    for domain in extra {
-        allowed_domains.push(domain.as_str());
-    }
+    let allowed_domains = schema_allowed_domains();
 
     // Check if the host matches any allowed domain
     let host_lower = host.to_lowercase();
@@ -125,10 +129,10 @@ fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
     }
 
     Err(JacsError::SchemaError(format!(
-        "Remote schema URL '{}' is not from an allowed domain. \
+        "Remote schema host '{}' is not an allowed domain. \
         Allowed domains: {:?}. \
         To add additional domains, set JACS_SCHEMA_ALLOWED_DOMAINS environment variable (comma-separated).",
-        url, allowed_domains
+        host, allowed_domains
     )))
 }
 
@@ -426,25 +430,33 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, JacsError> {
     is_schema_url_allowed(url)?;
     ensure_network_access(NetworkCapability::RemoteSchemaFetch)?;
 
-    let accept_invalid = should_accept_invalid_certs();
-    let client = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(accept_invalid)
-        .build()
-        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
+    let policy = crate::secure_fetch::SecureFetchPolicy::new(
+        "remote schema",
+        1024 * 1024,
+        &["application/json", "application/schema+json"],
+    )
+    .redirect_scope(crate::secure_fetch::RedirectScope::AllowedHosts(
+        schema_allowed_domains(),
+    ))
+    .allow_exact_loopback(crate::secure_fetch::is_exact_textual_loopback_endpoint(url))
+    .accept_invalid_certs(should_accept_invalid_certs());
+    let response =
+        crate::secure_fetch::secure_get(url, "application/schema+json, application/json", &policy)
+            .map_err(|e| {
+                JacsError::NetworkError(format!("Failed to fetch remote schema: {}", e))
+            })?;
 
-    let response = client.get(url).send().map_err(|e| {
-        JacsError::NetworkError(format!("Failed to fetch schema from {}: {}", url, e))
-    })?;
-
-    if response.status().is_success() {
-        let schema_value: Value = response.json().map_err(|e| {
-            JacsError::SchemaError(format!("Failed to parse schema JSON from {}: {}", url, e))
-        })?;
+    if response.status.is_success() {
+        let body = response.body;
+        let schema_value: Value =
+            jacs_core::strict_json::parse_strict_json_slice(&body).map_err(|e| {
+                JacsError::SchemaError(format!("Failed to parse remote schema JSON: {}", e))
+            })?;
         Ok(Arc::new(schema_value))
     } else {
         Err(JacsError::SchemaError(format!(
-            "Failed to get schema from URL {}",
-            url
+            "Remote schema endpoint returned status {}",
+            response.status
         )))
     }
 }
@@ -452,11 +464,10 @@ fn get_remote_schema(url: &str) -> Result<Arc<Value>, JacsError> {
 /// Disabled version of remote schema fetching for WASM targets.
 /// Always returns an error indicating remote schemas are not supported.
 #[cfg(target_arch = "wasm32")]
-fn get_remote_schema(url: &str) -> Result<Arc<Value>, JacsError> {
-    Err(JacsError::SchemaError(format!(
-        "Remote URL schemas disabled in WASM: {}",
-        url
-    )))
+fn get_remote_schema(_url: &str) -> Result<Arc<Value>, JacsError> {
+    Err(JacsError::SchemaError(
+        "Remote URL schemas are disabled in WASM".to_string(),
+    ))
 }
 
 /// Build a normalized absolute path for access checks.
@@ -588,7 +599,11 @@ pub fn resolve_schema_with_config(
     rawpath: &str,
     config: Option<&crate::config::Config>,
 ) -> Result<Arc<Value>, JacsError> {
-    debug!("Entering resolve_schema function with path: {}", rawpath);
+    let is_remote = rawpath.starts_with("http://") || rawpath.starts_with("https://");
+    debug!(
+        schema_source = if is_remote { "remote" } else { "local" },
+        "Resolving schema"
+    );
     let embedded_alias = rawpath.strip_prefix('/');
     let cache_key = schema_cache_key(
         DEFAULT_SCHEMA_STRINGS
@@ -613,8 +628,8 @@ pub fn resolve_schema_with_config(
     {
         let schema_value: Value = serde_json::from_str(schema_json)?;
         Arc::new(schema_value)
-    } else if rawpath.starts_with("http://") || rawpath.starts_with("https://") {
-        debug!("Attempting to fetch schema from URL: {}", rawpath);
+    } else if is_remote {
+        debug!("Attempting to fetch allowlisted remote schema");
         if rawpath.starts_with("https://hai.ai") {
             let relative_path = rawpath.trim_start_matches("https://hai.ai/");
             if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(relative_path) {
@@ -622,9 +637,7 @@ pub fn resolve_schema_with_config(
                 Arc::new(schema_value)
             } else {
                 return Err(JacsError::SchemaError(format!(
-                    "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
-                    rawpath,
-                    relative_path,
+                    "Remote HAI schema path was not found in embedded schemas. Available schemas: {:?}",
                     DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
                 )));
             }
@@ -655,7 +668,7 @@ pub fn resolve_schema_with_config(
                     checked_path, e
                 ))
             })?;
-            let schema_value: Value = serde_json::from_str(&schema_json)?;
+            let schema_value: Value = jacs_core::strict_json::parse_strict_json(&schema_json)?;
             Arc::new(schema_value)
         } else {
             return Err(JacsError::FileNotFound { path: checked_path });

@@ -40,16 +40,8 @@ impl PublicAgentProjection {
         let public_key = agent.get_public_key()?;
         let public_key_base64 = base64_encode(&public_key);
         let public_key_hash = hash_public_key(&public_key);
-        let key_algorithm = agent
-            .get_key_algorithm()
-            .cloned()
-            .or_else(|| {
-                agent
-                    .config
-                    .as_ref()
-                    .and_then(|config| config.jacs_agent_key_algorithm().clone())
-            })
-            .unwrap_or_else(|| "unknown".to_string());
+        let key_algorithm =
+            crate::protocol::configured_agent_signing_algorithm(agent, "public agent projection")?;
 
         let name = value
             .get_str("jacsName")
@@ -113,7 +105,8 @@ mod tests {
 
     #[test]
     fn projection_extracts_public_agent_metadata() {
-        let mut agent = Agent::ephemeral("ring-Ed25519").expect("ephemeral agent");
+        // Fixture path pins the historical ring-Ed25519 projection shape.
+        let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures().expect("ephemeral agent");
         let agent_doc = json!({
             "jacsAgentType": "ai",
             "name": "projection-test",

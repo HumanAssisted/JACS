@@ -7,6 +7,7 @@ use ::jacs as jacs_core;
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult, SimpleAgentWrapper};
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyMemoryView};
 use pyo3::wrap_pyfunction;
 
 // Declare the module so it's recognized at the crate root
@@ -38,10 +39,11 @@ pyo3::create_exception!(jacs, MissingSignatureError, PyException);
 /// exception so callers can branch on type instead of message text. Other
 /// kinds map to `PyRuntimeError` to preserve the existing behaviour.
 fn to_py_err(e: BindingCoreError) -> PyErr {
+    let message = e.portable_message();
     if matches!(e.kind, jacs_binding_core::ErrorKind::MissingSignature) {
-        PyErr::new::<MissingSignatureError, _>(e.message)
+        PyErr::new::<MissingSignatureError, _>(message)
     } else {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.message)
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(message)
     }
 }
 
@@ -65,6 +67,39 @@ impl<T> ToPyResult<T> for BindingResult<T> {
     fn to_py(self) -> PyResult<T> {
         self.map_err(to_py_err)
     }
+}
+
+fn binding_result_to_py<T>(result: BindingResult<T>, context: &str) -> PyResult<T> {
+    result
+        .map_err(|error| BindingCoreError::new(error.kind, format!("{context}: {}", error.message)))
+        .to_py()
+}
+
+fn auth_body_bytes(body: Option<&Bound<'_, PyAny>>) -> PyResult<Option<Vec<u8>>> {
+    let Some(body) = body else {
+        return Ok(None);
+    };
+    if let Ok(text) = body.extract::<String>() {
+        return Ok(Some(text.into_bytes()));
+    }
+    if let Ok(bytes) = body.cast::<PyBytes>() {
+        return Ok(Some(bytes.as_bytes().to_vec()));
+    }
+
+    let view = PyMemoryView::from(body).map_err(|_| {
+        pyo3::exceptions::PyTypeError::new_err(
+            "request body must be str or a contiguous bytes-like object",
+        )
+    })?;
+    if !view.getattr("c_contiguous")?.extract::<bool>()? {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "request body bytes-like object must be C-contiguous",
+        ));
+    }
+
+    let copied = view.call_method0("tobytes")?;
+    let bytes = copied.cast::<PyBytes>()?;
+    Ok(Some(bytes.as_bytes().to_vec()))
 }
 
 // =============================================================================
@@ -374,12 +409,13 @@ impl JacsAgent {
 
     /// Rotate the agent's cryptographic keys.
     ///
-    /// Generates a new keypair, archives the old keys, creates a new agent version,
-    /// and re-signs the config file. Optionally changes the signing algorithm.
+    /// Generates a new pq2025 keypair, archives the old keys, creates a new agent
+    /// version, and re-signs the config file. The current algorithm is
+    /// preserved unless an Ed25519 agent explicitly upgrades to pq2025.
     ///
     /// Args:
-    ///     algorithm: Optional new algorithm ("ring-Ed25519", "pq2025").
-    ///               If None, keeps the current algorithm.
+    ///     algorithm: Optional rotation target. Omit it or pass "pq2025";
+    ///               Ed25519 and unknown targets are rejected.
     ///
     /// Returns:
     ///     JSON string containing the RotationResult (old_version, new_version,
@@ -454,7 +490,8 @@ impl JacsAgent {
         self.inner.export_agent_card().to_py()
     }
 
-    /// Generate the native .well-known A2A document set for the loaded agent.
+    /// Generate the stable, native-root-bound ES256 .well-known A2A document set.
+    /// Omit `a2a_algorithm` or pass `ES256`; obsolete choices are rejected.
     #[cfg(feature = "a2a")]
     #[pyo3(signature = (a2a_algorithm=None))]
     fn generate_well_known_documents(&self, a2a_algorithm: Option<&str>) -> PyResult<String> {
@@ -619,13 +656,29 @@ impl JacsAgent {
     // HAI SDK Protocol Methods
     // =========================================================================
 
-    /// Build an Authorization header value for this agent.
+    /// Build the legacy unbound Authorization header value for this agent.
     ///
-    /// Returns:
-    ///     The header value string (e.g. "JACS ...")
+    /// Retained for source compatibility. New integrations should call
+    /// `build_request_auth_header` with the exact request context.
     #[pyo3(name = "build_auth_header")]
     fn py_build_auth_header(&self) -> PyResult<String> {
         self.inner.build_auth_header().to_py()
+    }
+
+    /// Build a request-bound JACS v2 Authorization header.
+    #[pyo3(name = "build_request_auth_header")]
+    #[pyo3(signature = (method, url, body=None, audience="hai.ai"))]
+    fn py_build_request_auth_header(
+        &self,
+        method: &str,
+        url: &str,
+        body: Option<&Bound<'_, PyAny>>,
+        audience: &str,
+    ) -> PyResult<String> {
+        let body = auth_body_bytes(body)?.unwrap_or_default();
+        self.inner
+            .build_request_auth_header(method, url, &body, audience)
+            .to_py()
     }
 
     /// Canonicalize a JSON string using RFC 8785 (JCS).
@@ -677,7 +730,7 @@ impl JacsAgent {
         self.inner.decode_verify_payload(encoded).to_py()
     }
 
-    /// Extract the document ID from a JACS-signed document.
+    /// Inspect a document ID without verifying the document.
     ///
     /// Checks jacsDocumentId, document_id, id in priority order.
     ///
@@ -685,10 +738,33 @@ impl JacsAgent {
     ///     document: JSON string of the signed document
     ///
     /// Returns:
-    ///     The document ID string
+    ///     The unverified, attacker-controlled document ID string. Do not use
+    ///     it for authorization or trust before verifying the document.
     #[pyo3(name = "extract_document_id")]
     fn py_extract_document_id(&self, document: &str) -> PyResult<String> {
         self.inner.extract_document_id(document).to_py()
+    }
+
+    /// Verify signed-event cryptography and freshness without consuming replay
+    /// state or returning payload data.
+    #[pyo3(name = "prepare_signed_event_replay")]
+    fn py_prepare_signed_event_replay(
+        &self,
+        py: Python<'_>,
+        event_json: &str,
+        server_keys_json: &str,
+        max_age_seconds: u64,
+    ) -> PyResult<String> {
+        let event_json = event_json.to_string();
+        let server_keys_json = server_keys_json.to_string();
+        py.detach(|| {
+            jacs_binding_core::prepare_signed_event_replay_binding_json(
+                &event_json,
+                &server_keys_json,
+                max_age_seconds,
+            )
+        })
+        .to_py()
     }
 
     /// Unwrap and verify a signed event against server public keys.
@@ -808,6 +884,7 @@ fn parse_json_value(json_str: &str, label: &str) -> PyResult<serde_json::Value> 
     })
 }
 
+#[cfg(feature = "agreements")]
 fn py_json_arg_to_string(py: Python, value: Py<PyAny>, label: &str) -> PyResult<String> {
     let bound = value.bind(py);
     if let Ok(raw_json) = bound.extract::<String>() {
@@ -823,7 +900,7 @@ fn py_json_arg_to_string(py: Python, value: Py<PyAny>, label: &str) -> PyResult<
     })
 }
 
-#[cfg(feature = "agreements")]
+#[cfg(any(feature = "agreements", feature = "human-approval"))]
 fn wrapper_json_to_py_preserve_kind(
     py: Python,
     result: BindingResult<String>,
@@ -923,43 +1000,70 @@ fn verification_result_json_to_pydict(
     Ok(dict.into())
 }
 
-fn simple_agent_with_info<E: std::fmt::Display>(
+fn simple_agent_with_info(
     py: Python,
-    result: Result<(SimpleAgentWrapper, String), E>,
+    result: BindingResult<(SimpleAgentWrapper, String)>,
     context: &str,
     keys: &[&str],
 ) -> PyResult<(SimpleAgent, Py<PyAny>)> {
-    let (wrapper, info_json) = map_py_runtime_result(result, context)?;
+    let (wrapper, info_json) = binding_result_to_py(result, context)?;
     let dict = agent_info_json_to_pydict(py, &info_json, keys)?;
     Ok((SimpleAgent { inner: wrapper }, dict))
 }
 
 impl SimpleAgent {
-    fn signed_document_result<E: std::fmt::Display>(
+    fn signed_document_result(
         &self,
         py: Python,
-        result: Result<String, E>,
+        result: BindingResult<String>,
         context: &str,
     ) -> PyResult<Py<PyAny>> {
-        let signed_raw = map_py_runtime_result(result, context)?;
+        let signed_raw = binding_result_to_py(result, context)?;
         signed_document_json_to_pydict(py, &signed_raw)
     }
 
-    fn verification_result<E: std::fmt::Display>(
+    fn verification_result(
         &self,
         py: Python,
-        result: Result<String, E>,
+        result: BindingResult<String>,
         context: &str,
         include_data: bool,
         include_attachments: bool,
     ) -> PyResult<Py<PyAny>> {
-        let result_json = map_py_runtime_result(result, context)?;
+        let result_json = binding_result_to_py(result, context)?;
         verification_result_json_to_pydict(py, &result_json, include_data, include_attachments)
     }
 }
 
 #[pymethods]
 impl SimpleAgent {
+    /// Verify retained public human-approval evidence and JACS provenance.
+    ///
+    /// No agent, private key, configuration or network lookup is needed. All
+    /// four arguments are JSON strings. Select expected intent and the two
+    /// public-key pins independently of the submitted bundle. The complete
+    /// report is returned as a dict; current execution authority is not
+    /// evaluated and must not be inferred from successful verification.
+    #[cfg(feature = "human-approval")]
+    #[staticmethod]
+    fn verify_human_approved_document(
+        py: Python,
+        bundle_json: &str,
+        expected_json: &str,
+        authority_json: &str,
+        provenance_json: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let result = py.detach(|| {
+            SimpleAgentWrapper::verify_human_approved_document_json(
+                bundle_json,
+                expected_json,
+                authority_json,
+                provenance_json,
+            )
+        });
+        wrapper_json_to_py_preserve_kind(py, result, "human-approved document verification report")
+    }
+
     /// Create a new JACS agent with cryptographic keys.
     ///
     /// Args:
@@ -1240,6 +1344,97 @@ impl SimpleAgent {
         )
     }
 
+    /// Build the legacy unbound JACS Authorization header.
+    fn build_auth_header(&self) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.build_auth_header(),
+            "Failed to build legacy auth header",
+        )
+    }
+
+    /// Build a request-bound JACS v2 Authorization header.
+    #[pyo3(signature = (method, url, body=None, audience="hai.ai"))]
+    fn build_request_auth_header(
+        &self,
+        method: &str,
+        url: &str,
+        body: Option<&Bound<'_, PyAny>>,
+        audience: &str,
+    ) -> PyResult<String> {
+        let body = auth_body_bytes(body)?.unwrap_or_default();
+        map_py_runtime_result(
+            self.inner
+                .build_request_auth_header(method, url, &body, audience),
+            "Failed to build request auth header",
+        )
+    }
+
+    /// Canonicalize strict JSON according to RFC 8785.
+    fn canonicalize_json(&self, json_string: &str) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.canonicalize_json(json_string),
+            "Failed to canonicalize JSON",
+        )
+    }
+
+    /// Sign a fully bound JACS v2 response envelope.
+    fn sign_response(&self, payload_json: &str) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.sign_response(payload_json),
+            "Failed to sign response",
+        )
+    }
+
+    fn encode_verify_payload(&self, document: &str) -> String {
+        self.inner.encode_verify_payload(document)
+    }
+
+    fn decode_verify_payload(&self, encoded: &str) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.decode_verify_payload(encoded),
+            "Failed to decode verification payload",
+        )
+    }
+
+    /// Inspect an attacker-controlled document ID without verification.
+    fn extract_document_id(&self, document: &str) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.extract_document_id(document),
+            "Failed to extract document ID",
+        )
+    }
+
+    /// Verify signed-event cryptography and freshness without consuming replay
+    /// state or returning payload data.
+    fn prepare_signed_event_replay(
+        &self,
+        py: Python<'_>,
+        event_json: &str,
+        server_keys_json: &str,
+        max_age_seconds: u64,
+    ) -> PyResult<String> {
+        let event_json = event_json.to_string();
+        let server_keys_json = server_keys_json.to_string();
+        let inner = &self.inner;
+        map_py_runtime_result(
+            py.detach(|| {
+                inner.prepare_signed_event_replay_json(
+                    &event_json,
+                    &server_keys_json,
+                    max_age_seconds,
+                )
+            }),
+            "Failed to prepare signed event replay",
+        )
+    }
+
+    fn unwrap_signed_event(&self, event_json: &str, server_keys_json: &str) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.unwrap_signed_event(event_json, server_keys_json),
+            "Failed to unwrap signed event",
+        )
+    }
+
     /// Export the current agent's identity JSON for P2P exchange.
     ///
     /// Returns:
@@ -1494,12 +1689,13 @@ impl SimpleAgent {
 
     /// Rotate the agent's cryptographic keys.
     ///
-    /// Generates a new keypair, archives the old keys, creates a new agent version,
-    /// and re-signs the config file. Optionally changes the signing algorithm.
+    /// Generates a new pq2025 keypair, archives the old keys, creates a new agent
+    /// version, and re-signs the config file. The current algorithm is
+    /// preserved unless an Ed25519 agent explicitly upgrades to pq2025.
     ///
     /// Args:
-    ///     algorithm: Optional new algorithm ("ring-Ed25519", "pq2025").
-    ///               If None, keeps the current algorithm.
+    ///     algorithm: Optional rotation target. Omit it or pass "pq2025";
+    ///               Ed25519 and unknown targets are rejected.
     ///
     /// Returns:
     ///     JSON string containing the RotationResult
@@ -1537,6 +1733,115 @@ impl SimpleAgent {
                 e
             ))
         })
+    }
+
+    // =========================================================================
+    // ES256 compatibility key + ecosystem exports (P2 Tasks 002 / 004)
+    // =========================================================================
+
+    /// Add the ES256 `ecosystem_signing` compatibility key to an EXISTING
+    /// agent (explicit P2 migration; new agents mint the key at creation
+    /// unless they opt out).
+    ///
+    /// Returns:
+    ///     JSON string of CompatKeyInfo (role, algorithm, kid, key paths)
+    fn add_compat_key(&self) -> PyResult<String> {
+        self.inner.add_compat_key_json().to_py()
+    }
+
+    /// Issue (or re-issue) the native-root-signed compatibility key binding.
+    /// Content scopes (`ap2-mandate`, `agreement-vc`) are never auto-issued:
+    /// they require this explicit grant. This is also the re-issue path
+    /// after `rotate_keys`.
+    ///
+    /// Args:
+    ///     scopes: Optional list of scope strings (e.g.
+    ///         ["jwks", "did", "ap2-mandate"]). None grants the default
+    ///         identity scopes (jwks, did, a2a-agent-card,
+    ///         w3c-agent-identity). Unknown scopes are rejected.
+    ///     expires_at: Optional RFC 3339 expiry timestamp; invalid values
+    ///         are rejected at issuance.
+    ///
+    /// Returns:
+    ///     JSON string of the signed binding document
+    #[pyo3(signature = (scopes=None, expires_at=None))]
+    fn issue_compat_binding(
+        &self,
+        scopes: Option<Vec<String>>,
+        expires_at: Option<&str>,
+    ) -> PyResult<String> {
+        let scopes_json = match scopes {
+            Some(list) => serde_json::to_string(&list).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to serialize scopes: {}",
+                    e
+                ))
+            })?,
+            None => String::new(),
+        };
+        self.inner
+            .issue_compat_binding_json(&scopes_json, expires_at)
+            .to_py()
+    }
+
+    /// Export the agent's compatibility JWKS (ES256 public key only — native
+    /// root material is never published here). Auto-issues the default identity
+    /// binding on first use.
+    ///
+    /// Returns:
+    ///     JSON string of the JWKS document
+    fn export_compatibility_jwks(&self) -> PyResult<String> {
+        self.inner.export_compatibility_jwks_json().to_py()
+    }
+
+    /// Export the native-root-signed compatibility key binding document, so
+    /// relying parties can trace the ES256 key back to the agent's native root.
+    ///
+    /// Returns:
+    ///     JSON string of the verified binding document
+    fn export_compatibility_key_binding(&self) -> PyResult<String> {
+        self.inner.export_compatibility_key_binding_json().to_py()
+    }
+
+    /// Export the AP2 merchant-authorization mandate for a UCP checkout as
+    /// a detached ES256 JWS. Requires the explicit `ap2-mandate` binding
+    /// scope — content exports never auto-issue a binding.
+    ///
+    /// Args:
+    ///     checkout_json: JSON string of the UCP checkout to authorize
+    ///
+    /// Returns:
+    ///     JSON string of the AP2 mandate export
+    fn export_ap2_mandate(&self, checkout_json: &str) -> PyResult<String> {
+        self.inner.export_ap2_mandate_json(checkout_json).to_py()
+    }
+
+    /// Export the A2A agent card signed with the ES256 compatibility key
+    /// (typ "JOSE", binding referenced by content hash).
+    ///
+    /// Returns:
+    ///     JSON string of the signed A2A agent card
+    #[cfg(feature = "a2a")]
+    fn export_a2a_agent_card(&self) -> PyResult<String> {
+        self.inner.export_a2a_agent_card_json().to_py()
+    }
+
+    /// Export an Agreement-v2 JSON document as a Verifiable Credential with
+    /// an `ecdsa-jcs-2019` Data Integrity proof. Requires the explicit
+    /// `agreement-vc` binding scope — content exports never auto-issue a
+    /// binding.
+    ///
+    /// Args:
+    ///     agreement_json: JSON string of the agreement document
+    ///
+    /// Returns:
+    ///     JSON string of the Verifiable Credential
+    #[cfg(feature = "agreements")]
+    fn export_agreement_v2_as_vc(&self, py: Python, agreement_json: &str) -> PyResult<String> {
+        let agreement_json = agreement_json.to_string();
+        let inner = &self.inner;
+        let result = py.detach(|| inner.export_agreement_v2_as_vc_json(&agreement_json));
+        result.to_py()
     }
 
     // =========================================================================
@@ -1944,6 +2249,12 @@ fn verify_document_standalone(
     .to_py()?;
     let dict = pyo3::types::PyDict::new(py);
     dict.set_item("valid", r.valid)?;
+    dict.set_item("identity_bound", r.identity_bound())?;
+    dict.set_item(
+        "identity_binding_status",
+        r.identity_binding_status.to_string(),
+    )?;
+    dict.set_item("policy_accepted", r.policy_accepted())?;
     dict.set_item("signer_id", r.signer_id)?;
     dict.set_item("timestamp", r.timestamp)?;
     dict.set_item("agent_version", r.agent_version)?;

@@ -1,5 +1,7 @@
 # Koa Middleware
 
+{{#include ../_snippets/node-registry-status.md}}
+
 **Sign it. Prove it.** -- in your Koa app.
 
 JACS provides `jacsKoaMiddleware` for Koa with the same design as the [Express middleware](express.md) -- verify incoming signed bodies, optionally auto-sign responses.

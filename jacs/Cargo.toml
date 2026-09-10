@@ -1,8 +1,8 @@
 [package]
 name = "jacs"
-version = "0.11.3"
+version = "0.12.0"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 
 include = [
@@ -13,17 +13,24 @@ include = [
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/agreement/v2/agreement.schema.json",
+    "schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json",
     "schemas/components/component/v1/component.schema.json",
     "jacs.config.schema.json",
     "examples/*.json",
+    "examples/a2a_agent_example.rs",
+    "examples/a2a_complete_example.rs",
+    "examples/a2a_simple_example.rs",
     "Cargo.toml",
     "README.md",
     "LICENSE",
     "LICENSE-APACHE",
+    "THIRD-PARTY-NOTICES",
     "build.rs",
     "CHANGELOG.md",
     "basic-schemas.png",
     "benches/sign_and_check_sig.rs",
+    "benches/agreement_benchmarks.rs",
+    "benches/attestation_benchmarks.rs",
     "schemas/attestation/v1/attestation.schema.json",
 ]
 description = "JACS JSON AI Communication Standard"
@@ -82,19 +89,20 @@ hkdf = "0.12"
 zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 serde_yaml_ng = "0.10"
-jacs-media = { version = "0.11.3", path = "../jacs-media" }
-jacs-core = { version = "0.11.3", path = "../jacs-core" }
+jacs-media = { version = "0.12.0", path = "../jacs-media" }
+jacs-core = { version = "0.12.0", path = "../jacs-core" }
 tempfile = "3"
 
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
-tracing-opentelemetry = { version = "0.31", optional = true }
-opentelemetry = { version = "0.30.0", optional = true }
-opentelemetry-otlp = { version = "0.30.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
-opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "experimental_metrics_custom_reader"], optional = true }
-opentelemetry-appender-tracing = { version = "0.30.1", optional = true }
+tracing-opentelemetry = { version = "0.33", optional = true }
+opentelemetry = { version = "0.32.0", optional = true }
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
+# 0.32.1 floor: <= 0.32.0 has unbounded memory allocation in W3C Baggage propagation (GHSA-w9wp-h8wv-79jx)
+opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio", "experimental_metrics_custom_reader"], optional = true }
+opentelemetry-appender-tracing = { version = "0.32.0", optional = true }
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
 
 # opentelemetry-prometheus = "0.29.1"
@@ -134,13 +142,27 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"], optional = true }
+# Feature-unify the existing WebAuthn backend for self-contained SDK artifacts.
+# This is not a second cryptographic backend or a core default dependency.
+openssl = { version = "0.10.81", default-features = false, optional = true }
 ring = "0.17.9"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 walkdir = "2.5.0"
-object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "http"] }
+object_store = { version ="0.14.1", default-features = false, features = ["fs"] }
 # Post-quantum 2025 standards (ML-DSA and ML-KEM)
 fips203 = "0.4.3"
 fips204 = "0.4.6"
+# ES256 (ECDSA P-256) ecosystem compatibility keys (P2 Task 002). Narrow
+# RustCrypto stack per the PRD buy/build note: never used for native JACS
+# signing, and `ring` stays out of portable core paths.
+p256 = { version = "0.13", features = ["pkcs8", "pem"] }
+# base58btc for Multikey (publicKeyMultibase) encoding of the ES256 key —
+# already in the tree transitively.
+bs58 = "0.5"
+# rand_core 0.6 (with OsRng) for p256 keygen — the workspace `rand` is 0.9,
+# whose rng traits p256 0.13 does not accept.
+rand_core = { version = "0.6", features = ["getrandom"] }
 # SQLite storage via sqlx (optional). PostgreSQL has been extracted to jacs-postgresql.
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
 # rusqlite (sync SQLite bindings, optional -- lightweight alternative to sqlx SQLite)
@@ -170,6 +192,11 @@ web-sys = { version = "0.3", features = ["Storage", "Window"] }
 [features]
 default = ["sqlite"]
 
+# Native-only mapped human approval; portable core evidence remains dependency-free.
+human-approval = ["dep:webauthn-rs"]
+# Native distribution profile: compile the same locked OpenSSL into the artifact.
+human-approval-vendored = ["human-approval", "dep:openssl", "openssl/vendored"]
+
 # Lightweight sync SQLite backend (rusqlite, no tokio needed) — the default.
 sqlite = ["dep:rusqlite"]
 
@@ -196,8 +223,12 @@ conflict = []
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []
 
+# AWS S3 storage is opt-in so the default signing library does not ship cloud
+# XML parsers or TLS stacks that it does not use.
+s3 = ["object_store/aws"]
+
 # S3 conformance tests (require Docker/MinIO). Omit for fast test runs.
-s3-tests = []
+s3-tests = ["s3"]
 
 # OS keychain integration for password storage (macOS Keychain, Linux Secret Service)
 keychain = ["dep:keyring"]

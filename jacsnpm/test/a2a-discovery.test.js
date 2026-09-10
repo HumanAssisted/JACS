@@ -15,13 +15,22 @@ const sinon = require('sinon');
 const { discoverAgent, discoverAndAssess, hasJacsExtension } = require('../src/a2a-discovery');
 const { jacsA2AMiddleware } = require('../src/a2a-server');
 const { JACS_EXTENSION_URI } = require('../src/a2a');
+const { configureNativeGenerator } = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient for the a2a-server middleware.
  */
 function createMockClient(overrides = {}) {
+  const agent = configureNativeGenerator(
+    { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
+    {
+      agentId: overrides.agentId || 'discovery-test-agent',
+      name: overrides.name || 'Discovery Test Agent',
+      skills: overrides.skills || [],
+    },
+  );
   return {
-    _agent: { signRequest: sinon.stub(), verifyResponse: sinon.stub() },
+    _agent: agent,
     agentId: overrides.agentId || 'discovery-test-agent',
     name: overrides.name || 'Discovery Test Agent',
   };
@@ -50,10 +59,17 @@ describe('A2A Discovery Client - [2.3.3]', function () {
 
   before(async () => {
     process.env.JACS_ALLOW_AGENT_CARD_FETCH = 'true';
-    const client = createMockClient({ agentId: 'jacs-agent-1', name: 'JACS Agent' });
+    const skills = [
+      { id: 'verify', name: 'Verify', description: 'Verify documents', tags: ['crypto'] },
+    ];
+    const client = createMockClient({
+      agentId: 'jacs-agent-1',
+      name: 'JACS Agent',
+      skills,
+    });
     const app = express();
     app.use(jacsA2AMiddleware(client, {
-      skills: [{ id: 'verify', name: 'Verify', description: 'Verify documents', tags: ['crypto'] }],
+      skills,
     }));
     jacsServer = await startServer(app);
   });
@@ -109,7 +125,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         expect.fail('Should have thrown');
       } catch (err) {
         expect(err.message).to.include('404');
-        expect(err.message).to.include('agent-card.json');
+        expect(err.message).to.match(/A2A Agent Card|agent-card\.json/i);
       }
     });
   });
@@ -137,8 +153,8 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         await discoverAgent(`http://localhost:${htmlServer.port}`);
         expect.fail('Should have thrown');
       } catch (err) {
-        expect(err.message).to.include('not JSON');
-        expect(err.message).to.include('text/html');
+        expect(err.message).to.match(/content.?type|mime|JSON/i);
+        expect(err.message).to.match(/Identity-safe Agent Card|allowed/i);
       }
     });
   });
@@ -181,7 +197,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         await discoverAgent(`http://localhost:${badJsonServer.port}`);
         expect.fail('Should have thrown');
       } catch (err) {
-        expect(err.message).to.include('not valid JSON');
+        expect(err.message).to.match(/not valid (?:strict )?JSON/i);
       }
     });
   });
@@ -224,7 +240,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
   // 7. discoverAndAssess - JACS agent
   // -------------------------------------------------------------------------
   describe('discoverAndAssess()', () => {
-    it('should return jacs_registered for a JACS agent', async () => {
+    it('fails closed without a native cryptographic assessor', async () => {
       const result = await discoverAndAssess(`http://localhost:${jacsServer.port}`, {
         policy: 'verified',
       });
@@ -232,8 +248,8 @@ describe('A2A Discovery Client - [2.3.3]', function () {
       expect(result.card).to.be.an('object');
       expect(result.card.name).to.equal('JACS Agent');
       expect(result.jacsRegistered).to.be.true;
-      expect(result.trustLevel).to.equal('jacs_registered');
-      expect(result.allowed).to.equal(true);
+      expect(result.trustLevel).to.equal('untrusted');
+      expect(result.allowed).to.equal(false);
       expect(result.inTrustStore).to.equal(false);
     });
   });
@@ -301,14 +317,14 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         client,
       });
 
-      expect(client.isTrusted.called).to.equal(true);
+      expect(client.isTrusted.called).to.equal(false);
       expect(result.jacsRegistered).to.equal(true);
       expect(result.inTrustStore).to.equal(false);
-      expect(result.trustLevel).to.equal('jacs_registered');
+      expect(result.trustLevel).to.equal('untrusted');
       expect(result.allowed).to.equal(false);
     });
 
-    it('should allow a trusted agent under strict policy', async () => {
+    it('does not accept a trust-store boolean without native binding verification', async () => {
       const client = {
         isTrusted: sinon.stub().returns(true),
       };
@@ -318,11 +334,11 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         client,
       });
 
-      expect(client.isTrusted.called).to.equal(true);
+      expect(client.isTrusted.called).to.equal(false);
       expect(result.jacsRegistered).to.equal(true);
-      expect(result.inTrustStore).to.equal(true);
-      expect(result.trustLevel).to.equal('trusted');
-      expect(result.allowed).to.equal(true);
+      expect(result.inTrustStore).to.equal(false);
+      expect(result.trustLevel).to.equal('untrusted');
+      expect(result.allowed).to.equal(false);
     });
 
     it('should throw on invalid trust policy', async () => {

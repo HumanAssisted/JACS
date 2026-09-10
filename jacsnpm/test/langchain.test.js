@@ -9,6 +9,7 @@
 const { expect } = require('chai');
 const sinon = require('sinon');
 const Module = require('module');
+const { signedResult } = require('./helpers/signed-document');
 
 // ---------------------------------------------------------------------------
 // Mock LangChain classes
@@ -115,12 +116,11 @@ try {
 
 function createMockClient(overrides) {
   return {
-    signMessage: sinon.stub().resolves({
-      raw: '{"jacsId":"doc-1:1","jacsSignature":{"agentID":"agent-a","date":"2025-01-01T00:00:00Z"},"content":"signed-content"}',
+    signMessage: sinon.stub().resolves(signedResult('signed-content', {
       documentId: 'doc-1:1',
       agentId: 'agent-a',
       timestamp: '2025-01-01T00:00:00Z',
-    }),
+    })),
     verify: sinon.stub().resolves({
       valid: true,
       signerId: 'agent-b',
@@ -133,18 +133,18 @@ function createMockClient(overrides) {
       signerId: 'agent-a',
       errors: [],
     }),
-    createAgreement: sinon.stub().resolves({
-      raw: '{"jacsId":"agr-1:1","jacsAgreement":{}}',
+    createAgreement: sinon.stub().resolves(signedResult({ agreement: 'created' }, {
       documentId: 'agr-1:1',
       agentId: 'agent-a',
       timestamp: '2025-01-01T00:00:00Z',
-    }),
-    signAgreement: sinon.stub().resolves({
-      raw: '{"jacsId":"agr-1:2","jacsAgreement":{}}',
+      documentFields: { jacsAgreement: {} },
+    })),
+    signAgreement: sinon.stub().resolves(signedResult({ agreement: 'signed' }, {
       documentId: 'agr-1:2',
       agentId: 'agent-a',
       timestamp: '2025-01-01T00:00:00Z',
-    }),
+      documentFields: { jacsAgreement: {} },
+    })),
     checkAgreement: sinon.stub().resolves({
       complete: false,
       signedCount: 1,
@@ -174,6 +174,17 @@ function createMockTool(overrides) {
     invoke: sinon.stub().resolves('search result'),
     ...overrides,
   };
+}
+
+async function expectRejected(promise, pattern) {
+  let error;
+  try {
+    await promise;
+  } catch (err) {
+    error = err;
+  }
+  expect(error).to.be.an('error');
+  expect(error.message).to.match(pattern);
 }
 
 // ---------------------------------------------------------------------------
@@ -254,18 +265,25 @@ describe('LangChain.js Adapter', function () {
       expect(signArg.result).to.equal('{"data":[1,2,3]}');
     });
 
-    (available ? it : it.skip)('should pass through unsigned result on signing failure (permissive mode)', async () => {
+    (available ? it : it.skip)('should fail closed on signing failure by default', async () => {
       const client = createMockClient({
         signMessage: sinon.stub().rejects(new Error('Key expired')),
       });
       const tool = createMockTool();
+      const wrapped = adapterModule.signedTool(tool, { client, strict: false });
 
+      await expectRejected(wrapped.invoke({ query: 'test' }), /Key expired/);
+    });
+
+    (available ? it : it.skip)('should pass through unsigned result only after explicit dangerous opt-in', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().rejects(new Error('Key expired')),
+      });
+      const tool = createMockTool();
       const consoleStub = sinon.stub(console, 'error');
       try {
-        const wrapped = adapterModule.signedTool(tool, { client, strict: false });
-        const result = await wrapped.invoke({ query: 'test' });
-
-        expect(result).to.equal('search result');
+        const wrapped = adapterModule.signedTool(tool, { client, allowUnsignedOutput: true });
+        expect(await wrapped.invoke({ query: 'test' })).to.equal('search result');
         expect(consoleStub.calledWithMatch('[jacs/langchain] signing failed:')).to.be.true;
       } finally {
         consoleStub.restore();
@@ -286,6 +304,39 @@ describe('LangChain.js Adapter', function () {
       } catch (err) {
         expect(err.message).to.equal('Key expired');
       }
+    });
+
+    (available ? it : it.skip)('should let strict mode override unsigned-output opt-in', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().rejects(new Error('strict override')),
+      });
+      const wrapped = adapterModule.signedTool(createMockTool(), {
+        client,
+        strict: true,
+        allowUnsignedOutput: true,
+      });
+
+      await expectRejected(wrapped.invoke({}), /strict override/);
+    });
+
+    (available ? it : it.skip)('should reject missing signed raw output', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().resolves({ documentId: 'missing-raw' }),
+      });
+      const wrapped = adapterModule.signedTool(createMockTool(), { client });
+
+      await expectRejected(wrapped.invoke({}), /portable signed document/i);
+    });
+
+    (available ? it : it.skip)('should reject unexpected unserializable tool output by default', async () => {
+      const cyclic = {};
+      cyclic.self = cyclic;
+      const wrapped = adapterModule.signedTool(
+        createMockTool({ invoke: sinon.stub().resolves(cyclic) }),
+        { client: createMockClient() },
+      );
+
+      await expectRejected(wrapped.invoke({}), /serialize|circular/i);
     });
 
     (available ? it : it.skip)('should use default name when tool has no name', () => {
@@ -356,20 +407,27 @@ describe('LangChain.js Adapter', function () {
       expect(signArg.content).to.equal('{"key":"value"}');
     });
 
-    (available ? it : it.skip)('should pass through result unchanged when content is undefined', async () => {
+    (available ? it : it.skip)('should reject an unexpected result shape by default', async () => {
       const client = createMockClient();
       const wrapFn = adapterModule.jacsWrapToolCall({ client });
 
       const rawResult = { someOtherField: 'data' };
       const runnable = { invoke: sinon.stub().resolves(rawResult) };
 
-      const result = await wrapFn({}, runnable);
-
-      expect(result).to.equal(rawResult);
+      await expectRejected(wrapFn({}, runnable), /ToolMessage.*content/i);
       expect(client.signMessage.called).to.be.false;
     });
 
-    (available ? it : it.skip)('should pass through on signing failure in permissive mode', async () => {
+    (available ? it : it.skip)('should return an unexpected result only after explicit dangerous opt-in', async () => {
+      const client = createMockClient();
+      const wrapFn = adapterModule.jacsWrapToolCall({ client, allowUnsignedOutput: true });
+      const rawResult = { someOtherField: 'data' };
+
+      expect(await wrapFn({}, { invoke: sinon.stub().resolves(rawResult) })).to.equal(rawResult);
+      expect(client.signMessage.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should fail closed on signing failure by default', async () => {
       const client = createMockClient({
         signMessage: sinon.stub().rejects(new Error('Transient error')),
       });
@@ -382,11 +440,23 @@ describe('LangChain.js Adapter', function () {
       });
       const runnable = { invoke: sinon.stub().resolves(toolMessage) };
 
+      await expectRejected(wrapFn({ name: 'tool_a' }, runnable), /Transient error/);
+    });
+
+    (available ? it : it.skip)('should pass through on signing failure only after explicit dangerous opt-in', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().rejects(new Error('Transient error')),
+      });
+      const wrapFn = adapterModule.jacsWrapToolCall({ client, allowUnsignedOutput: true });
+      const toolMessage = new MockToolMessage({
+        content: 'output', tool_call_id: 'call-3', name: 'tool_a',
+      });
       const consoleStub = sinon.stub(console, 'error');
       try {
-        const result = await wrapFn({ name: 'tool_a' }, runnable);
-
-        expect(result).to.equal(toolMessage);
+        expect(await wrapFn(
+          { name: 'tool_a' },
+          { invoke: sinon.stub().resolves(toolMessage) },
+        )).to.equal(toolMessage);
         expect(consoleStub.calledWithMatch('[jacs/langchain] signing failed:')).to.be.true;
       } finally {
         consoleStub.restore();
@@ -519,6 +589,22 @@ describe('LangChain.js Adapter', function () {
       expect(client.signMessage.firstCall.args[0]).to.deep.equal({ action: 'approve' });
       expect(parsed).to.have.property('documentId', 'doc-1:1');
       expect(parsed).to.have.property('agentId', 'agent-a');
+    });
+
+    (available ? it : it.skip)('jacs_sign tool should not report success without portable raw output', async () => {
+      const client = createMockClient({
+        signMessage: sinon.stub().resolves({
+          documentId: 'doc-missing:1', agentId: 'agent-a', timestamp: '2025-01-01T00:00:00Z',
+        }),
+      });
+      const signTool = adapterModule.createJacsTools({ client })
+        .find((tool) => tool.name === 'jacs_sign');
+
+      const parsed = JSON.parse(await signTool.invoke({ data: '{"action":"approve"}' }));
+
+      expect(parsed).to.have.property('fallback', 'signing failed');
+      expect(parsed).to.have.property('error').and.match(/portable signed document/i);
+      expect(parsed).to.not.have.property('documentId');
     });
 
     (available ? it : it.skip)('jacs_verify tool should call client.verify', async () => {

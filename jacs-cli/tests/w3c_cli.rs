@@ -225,3 +225,42 @@ fn w3c_cli_generates_discovery_and_verifies_request_bound_proof() {
             "Request body digest does not match proof contentDigest",
         ));
 }
+
+/// The DID origin defaults to the domain given at creation: `quickstart
+/// --domain example.com` followed by `w3c did-document` WITHOUT `--origin`
+/// yields a `did:wba:example.com:...` identifier.
+#[test]
+fn w3c_did_document_defaults_to_quickstart_domain() {
+    let dir = TempDir::new().expect("tempdir");
+    cmd()
+        .current_dir(dir.path())
+        .args([
+            "quickstart",
+            "--name",
+            "w3c-domain-agent",
+            "--domain",
+            "example.com",
+        ])
+        .assert()
+        .success();
+
+    let did_document = stdout_json(
+        cmd()
+            .current_dir(dir.path())
+            .args(["w3c", "did-document"])
+            .assert(),
+    );
+    let id = did_document["id"].as_str().expect("did id");
+    assert!(
+        id.starts_with("did:wba:example.com:agent:"),
+        "DID must embed the quickstart domain without --origin, got {id}"
+    );
+
+    // The stamped domain must not break offline verification (the DNS TXT
+    // record emitted at creation is not published).
+    cmd()
+        .current_dir(dir.path())
+        .args(["agent", "verify"])
+        .assert()
+        .success();
+}

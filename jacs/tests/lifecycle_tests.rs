@@ -35,9 +35,13 @@ fn get_original_home() -> &'static str {
 fn setup_trust_test_env() -> TempDir {
     let _ = get_original_home();
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    // Canonicalize so the trust store never sits under a symlinked parent
+    // (macOS `$TMPDIR` lives below `/var -> /private/var`), which the secure
+    // reader rejects.
+    let home = temp_dir.path().canonicalize().expect("canonical temp home");
     // SAFETY: These tests run serially via #[serial] attribute
     unsafe {
-        env::set_var("HOME", temp_dir.path());
+        env::set_var("HOME", &home);
     }
     temp_dir
 }

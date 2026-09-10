@@ -9,8 +9,8 @@ This test complements (does not duplicate) the MCP contract drift test
 or behavioral adapter tests. It validates API surface existence only.
 
 NOTE: Some adapter tests are skipped when optional dependencies are not
-installed (e.g., langchain, crewai). In CI, install with `pip install
-jacs[all]` to test all 5 adapters. The test_skip_count_guard test below
+installed (e.g., langchain). In CI, install with `pip install
+jacs[all]` to test all 4 adapters. The test_skip_count_guard test below
 warns if too many adapters are skipped.
 """
 
@@ -51,16 +51,16 @@ def python_adapters(adapter_inventory: dict) -> dict:
 
 
 def test_python_adapter_count(python_adapters: dict):
-    """Python should have exactly 5 adapters."""
-    assert len(python_adapters) == 5, (
-        f"Expected 5 Python adapters, found {len(python_adapters)}. "
+    """Python should have exactly 4 adapters."""
+    assert len(python_adapters) == 4, (
+        f"Expected 4 Python adapters, found {len(python_adapters)}. "
         f"Adapters: {list(python_adapters.keys())}"
     )
 
 
 @pytest.mark.parametrize(
     "adapter_name",
-    ["mcp", "langchain", "crewai", "fastapi", "anthropic"],
+    ["mcp", "langchain", "fastapi", "anthropic"],
 )
 def test_python_adapter_module_importable(
     python_adapters: dict, adapter_name: str
@@ -81,7 +81,7 @@ def test_python_adapter_module_importable(
 
 @pytest.mark.parametrize(
     "adapter_name",
-    ["mcp", "langchain", "crewai", "fastapi", "anthropic"],
+    ["mcp", "langchain", "fastapi", "anthropic"],
 )
 def test_python_adapter_public_functions_exist(
     python_adapters: dict, adapter_name: str
@@ -94,7 +94,7 @@ def test_python_adapter_public_functions_exist(
     try:
         mod = importlib.import_module(module_name)
     except ImportError as e:
-        # Framework dependency not installed (e.g., langchain, crewai).
+        # Framework dependency not installed (e.g., langchain).
         # Skip rather than fail -- the module importability test above
         # already verifies the module file exists.
         pytest.skip(

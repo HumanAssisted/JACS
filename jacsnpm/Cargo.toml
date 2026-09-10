@@ -1,8 +1,9 @@
 [package]
 name = "jacsnpm"
-version = "0.11.3"
+version = "0.12.0"
+publish = false
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 license = "Apache-2.0"
 
@@ -26,10 +27,12 @@ napi = { version = "2.16.17", features = ["async"] }
 napi-derive = "2.16.13"
 
 [features]
-default = ["attestation", "agreements"]
+default = ["a2a", "attestation", "agreements"]
 a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 agreements = ["jacs-binding-core/agreements"]
+human-approval = ["jacs-binding-core/human-approval"]
+human-approval-vendored = ["human-approval", "jacs-binding-core/human-approval-vendored"]
 
 [build-dependencies]
 napi-build = "2.1.6"

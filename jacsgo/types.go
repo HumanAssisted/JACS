@@ -12,6 +12,24 @@ type AgentInfo struct {
 	PublicKeyPath string `json:"public_key_path"`
 	// ConfigPath is the path to the configuration file.
 	ConfigPath string `json:"config_path"`
+	// Version is the current agent document version.
+	Version string `json:"version"`
+	// Algorithm is the canonical native signing algorithm actually in use.
+	Algorithm string `json:"algorithm"`
+	// PrivateKeyPath is the path to the encrypted private key file.
+	PrivateKeyPath string `json:"private_key_path"`
+	// DataDirectory is the agent's configured data directory.
+	DataDirectory string `json:"data_directory"`
+	// KeyDirectory is the agent's configured key directory.
+	KeyDirectory string `json:"key_directory"`
+	// Domain is the configured discovery domain, when present.
+	Domain string `json:"domain"`
+	// DNSRecord is the generated DNS discovery record, when present.
+	DNSRecord string `json:"dns_record"`
+	// EcosystemKID identifies the optional ES256 compatibility key.
+	EcosystemKID string `json:"ecosystem_kid"`
+	// EcosystemAlgorithm is the optional compatibility-key algorithm.
+	EcosystemAlgorithm string `json:"ecosystem_algorithm"`
 }
 
 // SignedDocument represents a signed JACS document.
@@ -32,8 +50,14 @@ type VerificationResult struct {
 	Valid bool `json:"valid"`
 	// Data is the original data that was signed.
 	Data interface{} `json:"data"`
-	// SignerID is the ID of the agent that signed the document.
+	// SignerID is the signed identity claim, not independent identity authority.
 	SignerID string `json:"signer_id"`
+	// IdentityBound requires independently enrolled local identity evidence.
+	IdentityBound bool `json:"identity_bound"`
+	// IdentityBindingStatus is unavailable or locally_enrolled, not Current policy.
+	IdentityBindingStatus string `json:"identity_binding_status"`
+	// PolicyAccepted is false unless a separate authenticated policy evaluated it.
+	PolicyAccepted bool `json:"policy_accepted"`
 	// SignerName is the name of the signer (if available in trust store).
 	SignerName string `json:"signer_name,omitempty"`
 	// Timestamp is the ISO 8601 timestamp of when the document was signed.
@@ -42,6 +66,22 @@ type VerificationResult struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 	// Errors contains error messages if verification failed.
 	Errors []string `json:"errors,omitempty"`
+}
+
+// UnmarshalJSON derives binding from its captured status; older results without
+// that status remain unavailable. Decoding a result does not establish trust.
+func (r *VerificationResult) UnmarshalJSON(data []byte) error {
+	type resultFields VerificationResult
+	var decoded resultFields
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if !decoded.Valid || decoded.IdentityBindingStatus != "locally_enrolled" {
+		decoded.IdentityBindingStatus = "unavailable"
+	}
+	decoded.IdentityBound = decoded.Valid && decoded.IdentityBindingStatus == "locally_enrolled"
+	*r = VerificationResult(decoded)
+	return nil
 }
 
 // AgreementV2Role is a named role accepted by
@@ -63,9 +103,14 @@ const (
 func (r AgreementV2Role) String() string { return string(r) }
 
 // AgreementV2VerificationReport is returned by
-// [JacsSimpleAgent.VerifyAgreementV2].
+// [JacsSimpleAgent.VerifyAgreementV2]. Agreement v2 inspection is not an
+// authorization decision: Valid and PolicyAccepted remain false even when
+// MathematicalChecksValid is true.
 type AgreementV2VerificationReport struct {
 	Valid                    bool     `json:"valid"`
+	MathematicalChecksValid  bool     `json:"mathematicalChecksValid"`
+	PolicyAccepted           bool     `json:"policyAccepted"`
+	OverallScope             string   `json:"overallScope"`
 	Status                   string   `json:"status"`
 	ExpectedStatus           string   `json:"expectedStatus"`
 	RecomputedAgreementHash  string   `json:"recomputedAgreementHash"`
@@ -74,6 +119,9 @@ type AgreementV2VerificationReport struct {
 	WitnessCount             int      `json:"witnessCount"`
 	NotaryCount              int      `json:"notaryCount"`
 	Errors                   []string `json:"errors,omitempty"`
+	VerifiedChainDepth       int      `json:"verifiedChainDepth"`
+	ChainFullyVerified       bool     `json:"chainFullyVerified"`
+	Notes                    []string `json:"notes"`
 }
 
 // AgreementV2MergeAnalysis is returned by

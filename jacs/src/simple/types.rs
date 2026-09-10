@@ -47,6 +47,15 @@ pub struct AgentInfo {
     /// DNS TXT record to publish (if domain was configured).
     #[serde(default)]
     pub dns_record: String,
+    /// RFC 7638 thumbprint of the ES256 ecosystem compatibility key
+    /// (empty when the agent has no compat key, e.g. `--no-compat-key`
+    /// or a pre-P2 agent that has not run `add-compat-key`).
+    #[serde(default)]
+    pub ecosystem_kid: String,
+    /// Algorithm of the ecosystem compatibility key (`"ES256"` when
+    /// present; empty otherwise).
+    #[serde(default)]
+    pub ecosystem_algorithm: String,
 }
 
 /// A signed JACS document.
@@ -87,14 +96,17 @@ impl SignedDocument {
     }
 }
 
-/// Result of verifying a signed document.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Cryptographic integrity result; it does not establish identity authorization.
+#[derive(Debug, Clone, Deserialize)]
 pub struct VerificationResult {
     /// Whether the signature is valid.
     pub valid: bool,
-    /// The original data that was signed (extracted from the document).
+    /// Local explicit enrollment evidence, not Current/purpose authorization.
+    #[serde(default)]
+    pub identity_binding_status: crate::trust::IdentityBindingStatus,
+    /// The original data on successful integrity verification; null on failure.
     pub data: Value,
-    /// ID of the agent that signed the document.
+    /// Signed agent-ID claim, not an independently authorized identity.
     pub signer_id: String,
     /// Name of the signer (if available in trust store).
     pub signer_name: Option<String>,
@@ -104,6 +116,29 @@ pub struct VerificationResult {
     pub attachments: Vec<Attachment>,
     /// Error messages if verification failed.
     pub errors: Vec<String>,
+}
+
+impl Serialize for VerificationResult {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut result = serializer.serialize_struct("VerificationResult", 10)?;
+        result.serialize_field("valid", &self.valid)?;
+        result.serialize_field("identity_binding_status", &self.identity_binding_status)?;
+        result.serialize_field(
+            "identity_bound",
+            &(self.valid
+                && self.identity_binding_status
+                    == crate::trust::IdentityBindingStatus::LocallyEnrolled),
+        )?;
+        result.serialize_field("data", &self.data)?;
+        result.serialize_field("signer_id", &self.signer_id)?;
+        result.serialize_field("signer_name", &self.signer_name)?;
+        result.serialize_field("timestamp", &self.timestamp)?;
+        result.serialize_field("attachments", &self.attachments)?;
+        result.serialize_field("errors", &self.errors)?;
+        result.serialize_field("policy_accepted", &false)?;
+        result.end()
+    }
 }
 
 impl VerificationResult {
@@ -122,6 +157,7 @@ impl VerificationResult {
     #[must_use]
     pub fn failure(error: String) -> Self {
         Self {
+            identity_binding_status: Default::default(),
             valid: false,
             data: json!(null),
             signer_id: String::new(),
@@ -146,6 +182,7 @@ impl VerificationResult {
     #[must_use]
     pub fn success(data: Value, signer_id: String, timestamp: String) -> Self {
         Self {
+            identity_binding_status: Default::default(),
             valid: true,
             data,
             signer_id,
@@ -303,6 +340,12 @@ pub struct CreateAgentParams {
     /// ```
     #[serde(skip)]
     pub storage: Option<MultiStorage>,
+    /// Skip creating the ES256 ecosystem compatibility key at creation
+    /// time (minimal / air-gapped agents). Default: false — new agents
+    /// get the compat key eagerly. Existing agents NEVER mint keys on
+    /// load; they use explicit `add_compat_key` migration.
+    #[serde(default)]
+    pub no_compat_key: bool,
 }
 
 fn default_algorithm() -> String {
@@ -338,6 +381,7 @@ impl Default for CreateAgentParams {
             domain: String::new(),
             default_storage: default_storage(),
             storage: None,
+            no_compat_key: false,
         }
     }
 }
@@ -403,6 +447,11 @@ impl CreateAgentParamsBuilder {
     /// testing or custom storage configurations.
     pub fn storage(mut self, storage: MultiStorage) -> Self {
         self.params.storage = Some(storage);
+        self
+    }
+    /// Skip the eager ES256 ecosystem compatibility key at creation time.
+    pub fn no_compat_key(mut self, skip: bool) -> Self {
+        self.params.no_compat_key = skip;
         self
     }
     /// Build the `CreateAgentParams`. Name is required.

@@ -84,9 +84,7 @@ class TestSignedToolAsync:
         async def async_weather(location: str) -> str:
             return f"Weather in {location}: rainy"
 
-        result = asyncio.run(
-            async_weather("London")
-        )
+        result = asyncio.run(async_weather("London"))
         assert isinstance(result, str)
         parsed = json.loads(result)
         assert "jacsSignature" in parsed or "jacsHash" in parsed
@@ -123,8 +121,8 @@ class TestSignedToolModes:
         with pytest.raises(Exception):
             my_tool()
 
-    def test_permissive_passes_through(self):
-        """In permissive mode, signing failure returns original value."""
+    def test_default_fails_closed(self):
+        """Signing failure raises even when strict is not requested."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         @signed_tool(client=client, strict=False)
@@ -132,20 +130,35 @@ class TestSignedToolModes:
             return "raw data"
 
         client.reset()
-        result = my_tool()
-        assert result == "raw data"
+        with pytest.raises(Exception):
+            my_tool()
 
-    def test_permissive_dict_passes_through(self):
-        """In permissive mode, dict is JSON-serialized on failure."""
+    def test_unsigned_passthrough_requires_explicit_opt_in(self):
+        """The compatibility option explicitly permits unsigned output."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
-        @signed_tool(client=client, strict=False)
+        @signed_tool(client=client, allow_unsigned_output=True)
         def my_tool() -> dict:
             return {"key": "val"}
 
         client.reset()
         result = my_tool()
         assert json.loads(result) == {"key": "val"}
+
+    def test_strict_overrides_unsigned_opt_in(self):
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+
+        @signed_tool(
+            client=client,
+            strict=True,
+            allow_unsigned_output=True,
+        )
+        def my_tool() -> str:
+            return "raw data"
+
+        client.reset()
+        with pytest.raises(Exception):
+            my_tool()
 
 
 # ------------------------------------------------------------------
@@ -161,9 +174,7 @@ class TestJacsToolHook:
         hook = JacsToolHook(client=ephemeral_client)
         input_data = {"tool_response": "The answer is 42"}
 
-        result = asyncio.run(
-            hook(input_data)
-        )
+        result = asyncio.run(hook(input_data))
 
         assert "hookSpecificOutput" in result
         output = result["hookSpecificOutput"]
@@ -175,9 +186,7 @@ class TestJacsToolHook:
     def test_returns_hook_output_format(self, ephemeral_client):
         """Hook returns the expected envelope structure."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.run(
-            hook({"tool_response": "test"})
-        )
+        result = asyncio.run(hook({"tool_response": "test"}))
 
         assert set(result.keys()) == {"hookSpecificOutput"}
         assert set(result["hookSpecificOutput"].keys()) == {
@@ -188,9 +197,7 @@ class TestJacsToolHook:
     def test_handles_empty_tool_response(self, ephemeral_client):
         """Hook handles empty tool_response gracefully."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.run(
-            hook({"tool_response": ""})
-        )
+        result = asyncio.run(hook({"tool_response": ""}))
 
         assert "hookSpecificOutput" in result
         # Should still produce a signed result (empty string signed)
@@ -199,9 +206,7 @@ class TestJacsToolHook:
     def test_handles_missing_tool_response(self, ephemeral_client):
         """Hook handles missing tool_response key."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.run(
-            hook({})
-        )
+        result = asyncio.run(hook({}))
 
         assert "hookSpecificOutput" in result
         assert isinstance(result["hookSpecificOutput"]["toolResult"], str)
@@ -231,18 +236,21 @@ class TestJacsToolHook:
         client.reset()
 
         with pytest.raises(Exception):
-            asyncio.run(
-                hook({"tool_response": "data"})
-            )
+            asyncio.run(hook({"tool_response": "data"}))
 
-    def test_permissive_passes_through(self):
-        """Hook in permissive mode passes through on failure."""
+    def test_default_fails_closed(self):
+        """Hook does not expose unsigned tool output by default."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         hook = JacsToolHook(client=client, strict=False)
         client.reset()
 
-        result = asyncio.run(
-            hook({"tool_response": "raw output"})
-        )
+        with pytest.raises(Exception):
+            asyncio.run(hook({"tool_response": "raw output"}))
 
+    def test_unsigned_passthrough_requires_explicit_opt_in(self):
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        hook = JacsToolHook(client=client, allow_unsigned_output=True)
+        client.reset()
+
+        result = asyncio.run(hook({"tool_response": "raw output"}))
         assert result["hookSpecificOutput"]["toolResult"] == "raw output"

@@ -21,17 +21,35 @@ This installs the `jacs` binary with the CLI and stdio MCP server built in.
 export JACS_PRIVATE_KEY_PASSWORD='your-password'
 
 jacs quickstart --name my-agent --domain example.com
-jacs document create -f mydata.json
-jacs verify signed-document.json
+jacs document create -f mydata.json --output signed-document.json
+jacs verify jacs_data/signed-document.json
 ```
+
+New agents default to post-quantum `pq2025` (ML-DSA-87); pass
+`--algorithm ed25519` when explicitly required. Persistent agents also get
+an ES256 ecosystem compatibility key (role `ecosystem_signing`) for
+W3C/JWKS/A2A interop — skip it with `--no-compat-key` on `init` or
+`agent create`, and add it to a pre-existing agent with
+`jacs agent add-compat-key`.
+
+Ecosystem exports are gated by a native-root-signed binding:
+`jacs agent issue-compat-binding --scopes ...` grants scopes (content
+scopes like `ap2-mandate` and `agreement-vc` are never auto-issued).
+`jacs ap2 export-mandate --input <JSON, path, or - for stdin>` emits an
+AP2 merchant-authorization mandate as a detached ES256 JWS, and
+`jacs agreement-v2 export-vc --agreement <...>` emits an Agreement-v2
+document as a W3C Verifiable Credential with an `ecdsa-jcs-2019` Data
+Integrity proof. Both verify with stock tooling classically; native-root
+trust additionally requires the binding
+(`jacs agent export-compat-binding`).
 
 ## Provenance commands
 
 ### JSON and files
 
 ```bash
-jacs document create -f mydata.json
-jacs verify signed-document.json
+jacs document create -f mydata.json --output signed-document.json
+jacs verify jacs_data/signed-document.json
 ```
 
 ### Markdown and text
@@ -95,13 +113,34 @@ The W3C view is additive: `jacsId` remains the canonical JACS document identity,
 
 For an executable end-to-end example that exports discovery artifacts, signs a request-bound DID proof, and verifies both success and failure cases, run `examples/w3c_did_interop.sh` from the repository root.
 
+### A2A discovery server
+
+```bash
+# Local development: the exact listener origin is signed into the Agent Card.
+jacs a2a serve --host 127.0.0.1 --port 8080
+
+# Production: bind behind a TLS reverse proxy and sign its public origin.
+jacs a2a serve \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --origin https://agent.example.com
+```
+
+The Agent Card's signed `supportedInterfaces[0].url` determines where verifiers
+resolve `/.well-known/jwks.json` and
+`/.well-known/jacs-compat-binding.json`. Without `--origin`, the built-in
+plaintext server advertises only an exact loopback `http://HOST:PORT` origin.
+Non-loopback listeners fail closed unless an explicit HTTPS origin is supplied;
+use that form when TLS terminates at a reverse proxy.
+
 ## MCP server
 
 ```bash
 jacs mcp
 ```
 
-The MCP server uses stdio transport only. It runs as a subprocess of your MCP client, holds the private key locally, and opens no HTTP port.
+The MCP server uses stdio transport only. Its default verification-only process
+does not load a private key and opens no HTTP port.
 
 Configure in your MCP client:
 
@@ -116,13 +155,34 @@ Configure in your MCP client:
 }
 ```
 
+The default `verify-only` profile exposes only exact-byte document integrity
+verification with a caller-supplied public key and algorithm. An explicitly
+supplied config is public-only and never loads/decrypts a signing key. The closed profile names are `verify-only`,
+`local-sign`, `trust-admin`, and compatibility-only `legacy-core`. When
+`--profile` is absent, `JACS_MCP_PROFILE` is consulted before falling back to
+`verify-only`; explicit CLI selection wins, and unknown values fail startup.
+A profile name alone does not load a signer. Use the existing signed config
+and normal keychain/password source explicitly:
+
+```bash
+jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+`JACS_CONFIG` can supply the path instead. This grants only offline local-agent
+JSON/Agreement signing, with documents persisted below the config directory.
+It is not per-action human approval. File text/image and administrative tools
+are not granted by that command. Selecting `JACS_MCP_BASE_DIR` at startup adds
+only the five scoped text/image tools, using the same loaded signer; it does
+not enable administration. File signing can keep plaintext `.bak` copies; see
+the [MCP scope](../jacs-mcp/README.md#explicit-local-signing).
+
 For headless/server environments:
 
 ```bash
 export JACS_CONFIG=/srv/my-project/jacs.config.json
 export JACS_PASSWORD_FILE=/run/secrets/jacs-password
 export JACS_KEYCHAIN_BACKEND=disabled
-jacs mcp
+jacs mcp --profile local-sign
 ```
 
 ## Links
@@ -133,4 +193,4 @@ jacs mcp
 - [MCP Integration](https://humanassisted.github.io/JACS/integrations/mcp.html)
 - [JACS on crates.io](https://crates.io/crates/jacs-cli)
 
-v0.11.3 | [Apache-2.0](../LICENSE-APACHE)
+v0.12.0 | [Apache-2.0](../LICENSE-APACHE)

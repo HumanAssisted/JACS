@@ -288,6 +288,7 @@ Reference this group by using
 | [jacsRegistered](#jacsregistered) | `boolean` | Required | cannot be null | [A2A Verification Result](a2a-verification-result-definitions-trustassessment-properties-jacsregistered.md "https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment/properties/jacsRegistered") |
 | [agentId](#agentid)               | `string`  | Required | can be null    | [A2A Verification Result](a2a-verification-result-definitions-trustassessment-properties-agentid.md "https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment/properties/agentId")               |
 | [policy](#policy)                 | `string`  | Required | cannot be null | [A2A Verification Result](a2a-verification-result-definitions-trustassessment-properties-policy.md "https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment/properties/policy")                 |
+| [firstContact](#firstcontact)     | `boolean` | Required | cannot be null | [A2A Verification Result](a2a-verification-result-definitions-trustassessment-properties-firstcontact.md "https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment/properties/firstContact")     |
 
 ### allowed
 
@@ -416,6 +417,24 @@ Trust policy controlling which remote agents are allowed to interact.
 | `"Open"`     |             |
 | `"Verified"` |             |
 | `"Strict"`   |             |
+
+### firstContact
+
+Whether this assessment durably pinned the verifying key on first contact. True indicates origin/key continuity only, not established real-world or native JACS identity.
+
+`firstContact`
+
+* is required
+
+* Type: `boolean`
+
+* cannot be null
+
+* defined in: [A2A Verification Result](a2a-verification-result-definitions-trustassessment-properties-firstcontact.md "https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment/properties/firstContact")
+
+#### firstContact Type
+
+`boolean`
 
 ## Definitions group A2ATrustPolicy
 

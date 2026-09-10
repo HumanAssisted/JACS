@@ -69,8 +69,8 @@ fn assert_same_path(actual: &Value, expected: &Path) {
 fn create_ephemeral_wrapper() -> AgentWrapper {
     let wrapper = AgentWrapper::new();
     wrapper
-        .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed");
+        .ephemeral(Some("pq2025"))
+        .expect("ephemeral(pq2025) should succeed");
     wrapper
 }
 
@@ -87,7 +87,7 @@ fn test_load_with_info_returns_canonical_metadata() {
     let params = jacs::simple::CreateAgentParams::builder()
         .name("binding-agent-wrapper")
         .password("TestP@ss123!#")
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
@@ -132,7 +132,7 @@ fn test_load_with_info_prefers_wrapper_password_and_restores_process_env() {
     let params = jacs::simple::CreateAgentParams::builder()
         .name("binding-password-store")
         .password("CorrectP@ss123!#")
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
@@ -184,7 +184,7 @@ fn create_ephemeral_wrapper_pq() -> AgentWrapper {
 fn test_create_agent_via_wrapper_valid_json() {
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
-        .ephemeral(Some("ed25519"))
+        .ephemeral(Some("pq2025"))
         .expect("ephemeral should succeed");
 
     // The returned string should be valid JSON with agent info
@@ -218,18 +218,326 @@ fn test_create_agent_pq2025() {
     );
 }
 
+// =============================================================================
+// New-agent creation and key rotation preserve explicit supported algorithm
+// selection. Rotation may upgrade Ed25519 to pq2025 but never downgrade.
+// =============================================================================
+
 #[test]
-fn test_create_agent_ed25519_alias_succeeds() {
+fn new_public_agent_creation_honors_ed25519_algorithm_selection() {
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
         .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed");
+        .expect("supported Ed25519 creation");
+    let info: Value = serde_json::from_str(&info_json).expect("agent info");
+    assert_eq!(info["algorithm"], "ring-Ed25519");
+    let exported: Value =
+        serde_json::from_str(&wrapper.get_agent_json().expect("agent JSON")).expect("JSON");
+    assert_eq!(
+        exported["jacsSignature"]["signingAlgorithm"],
+        "ring-Ed25519"
+    );
+}
+
+#[test]
+fn new_public_agent_creation_rejects_es256_algorithm_selection() {
+    // ES256 is an ecosystem compatibility key, never a native signing
+    // algorithm — creation requests are a typed error.
+    let wrapper = AgentWrapper::new();
+    for bad in ["es256", "ES256", "ring-ES256"] {
+        let err = wrapper
+            .ephemeral(Some(bad))
+            .expect_err("es256 creation must be rejected");
+        assert!(
+            err.to_string().contains("pq2025"),
+            "error should steer to pq2025, got: {err}"
+        );
+    }
+}
+
+fn create_persistent_wrapper_for_rotation(
+    name: &str,
+    algorithm: &str,
+) -> (AgentWrapper, tempfile::TempDir, CwdGuard) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+    let config_path = tmp_path.join("jacs.config.json");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name(name)
+        .password("TestP@ss123!#")
+        .data_directory(tmp_path.join("jacs_data").to_str().unwrap())
+        .key_directory(tmp_path.join("jacs_keys").to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .domain("rotation-wall.example.com")
+        .algorithm(algorithm)
+        .build();
+    let (_agent, _info) =
+        jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
+
+    let guard = CwdGuard::change_to(&tmp_path);
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+    }
+    let wrapper = AgentWrapper::new();
+    wrapper
+        .load_with_info(config_path.to_string_lossy().to_string())
+        .expect("load should succeed");
+    (wrapper, tmp, guard)
+}
+
+#[test]
+#[serial]
+fn create_with_params_returns_pq_root_and_compatibility_key_metadata() {
+    // P2 Task 002: creation via params JSON eagerly mints the ES256
+    // compat key and surfaces its metadata through AgentInfo.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-key",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+    })
+    .to_string();
+
+    let (_wrapper, info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with params");
     let info: Value = serde_json::from_str(&info_json).unwrap();
     assert!(
-        info["algorithm"].as_str().unwrap_or("").contains("Ed25519"),
-        "ed25519 alias should select ring-Ed25519, got: {}",
-        info["algorithm"]
+        info["algorithm"].as_str().unwrap_or("").contains("pq2025"),
+        "native root is pq2025"
     );
+    assert_eq!(info["ecosystem_algorithm"], "ES256");
+    assert!(
+        !info["ecosystem_kid"].as_str().unwrap_or("").is_empty(),
+        "compat kid surfaces through the binding info"
+    );
+}
+
+#[test]
+#[serial]
+fn add_compat_key_json_migrates_existing_agent() {
+    // P2 Task 002: a pre-P2-style agent (created with the opt-out) gains
+    // the compat key only through the explicit migration method.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-migrate",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+        "no_compat_key": true,
+    })
+    .to_string();
+
+    let (wrapper, info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with opt-out");
+    let info: Value = serde_json::from_str(&info_json).unwrap();
+    assert!(
+        info["ecosystem_kid"].as_str().unwrap_or("").is_empty(),
+        "opt-out agent starts without a compat key"
+    );
+
+    let compat_json = wrapper
+        .add_compat_key_json()
+        .expect("explicit migration succeeds");
+    let compat: Value = serde_json::from_str(&compat_json).unwrap();
+    assert_eq!(compat["role"], "ecosystem_signing");
+    assert_eq!(compat["algorithm"], "ES256");
+
+    let err = wrapper
+        .add_compat_key_json()
+        .expect_err("duplicate migration is a typed error");
+    assert!(err.to_string().contains("already") || err.to_string().contains("exists"));
+    // PRD §9.7: the duplicate guard is a validation failure on existing
+    // kinds — never KeyNotFound (the key exists) and never a new variant.
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::Validation,
+        "duplicate compat key must map to Validation, got {:?}",
+        err.kind
+    );
+}
+
+#[test]
+#[serial]
+fn export_compatibility_jwks_missing_key_maps_to_key_not_found() {
+    // PRD §9.7 (Issue 012): a missing ES256 compatibility key surfaces as
+    // ErrorKind::KeyNotFound across the binding surface, so Python/Node/Go
+    // callers can distinguish "run add-compat-key" from bad input.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-missing-key",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+        "no_compat_key": true,
+    })
+    .to_string();
+
+    let (wrapper, _info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with opt-out");
+
+    let err = wrapper
+        .export_compatibility_jwks_json()
+        .expect_err("agent without compat key cannot export JWKS");
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::KeyNotFound,
+        "missing compat key must map to KeyNotFound, got {:?}: {}",
+        err.kind,
+        err
+    );
+    assert!(
+        err.to_string().contains("add-compat-key") || err.to_string().contains("add_compat_key"),
+        "error should steer to the explicit migration command, got: {err}"
+    );
+}
+
+#[test]
+#[serial]
+fn issue_compat_binding_json_grants_content_scope_for_ap2_export() {
+    // P2 Task 003 / deep-review Issue 003: the binding grant surface is
+    // exposed through the wrapper so Python/Node/Go can satisfy the
+    // content-scope gate without shelling out to the CLI. This is the
+    // wrapper-level happy path for a content export: grant `ap2-mandate`
+    // explicitly (the native root signs the binding), then the AP2 export SUCCEEDS.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let tmp_path = tmp.path().canonicalize().unwrap();
+
+    let params_json = serde_json::json!({
+        "name": "binding-compat-grant",
+        "password": "TestP@ss123!#",
+        "data_directory": tmp_path.join("jacs_data").to_str().unwrap(),
+        "key_directory": tmp_path.join("jacs_keys").to_str().unwrap(),
+        "config_path": tmp_path.join("jacs.config.json").to_str().unwrap(),
+    })
+    .to_string();
+
+    let (wrapper, _info_json) =
+        jacs_binding_core::SimpleAgentWrapper::create_with_params(&params_json)
+            .expect("create with eagerly minted compat key");
+
+    // An unknown scope in the array is a Validation failure on existing
+    // kinds (PRD §9.7 / NG10 — never a new ErrorKind variant).
+    let err = wrapper
+        .issue_compat_binding_json(r#"["jwks","not-a-scope"]"#, None)
+        .expect_err("unknown scope is a typed error");
+    assert_eq!(
+        err.kind,
+        jacs_binding_core::ErrorKind::Validation,
+        "unknown scope must map to Validation, got {:?}: {}",
+        err.kind,
+        err
+    );
+
+    // Explicit grant including the ap2-mandate content scope.
+    let binding_json = wrapper
+        .issue_compat_binding_json(
+            r#"["jwks","did","a2a-agent-card","w3c-agent-identity","ap2-mandate"]"#,
+            None,
+        )
+        .expect("explicit content-scope grant succeeds");
+    let binding: Value = serde_json::from_str(&binding_json).unwrap();
+    let scopes = binding["compatibilityKeyBinding"]["scope"]
+        .as_array()
+        .expect("binding document carries the granted scopes");
+    assert!(
+        scopes.iter().any(|s| s == "ap2-mandate"),
+        "granted binding must include ap2-mandate, got {scopes:?}"
+    );
+
+    // The content export now succeeds through the wrapper — the scope
+    // gate is satisfied without touching the CLI.
+    let checkout = r#"{"id":"c1","currency":"USD","line_items":[{"id":"li1"}],"totals":[{"type":"total","amount":100}]}"#;
+    let mandate_json = wrapper
+        .export_ap2_mandate_json(checkout)
+        .expect("AP2 mandate export succeeds after the explicit grant");
+    let mandate: Value = serde_json::from_str(&mandate_json).unwrap();
+    assert_eq!(mandate["format"], "ap2-mandate");
+    let detached = mandate["detachedJws"]
+        .as_str()
+        .expect("export carries the detached JWS");
+    let parts: Vec<&str> = detached.split('.').collect();
+    assert_eq!(parts.len(), 3, "detached compact serialization");
+    assert!(parts[1].is_empty(), "payload segment must be detached");
+}
+
+#[test]
+#[serial]
+fn pq_rotate_keys_rejects_ed25519_downgrade() {
+    let (wrapper, _tmp, _guard) =
+        create_persistent_wrapper_for_rotation("rotate-wall-reject", "pq2025");
+    for bad in ["ring-Ed25519", "ed25519"] {
+        let err = wrapper
+            .rotate_keys(Some(bad))
+            .expect_err("PQ to Ed25519 downgrade must be a typed error");
+        assert!(
+            err.to_string().contains("downgrade"),
+            "rotation error should identify the downgrade, got: {err}"
+        );
+    }
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+}
+
+#[test]
+#[serial]
+fn pq_rotate_keys_preserve_pq2025_by_default() {
+    let (wrapper, _tmp, _guard) =
+        create_persistent_wrapper_for_rotation("rotate-wall-default", "pq2025");
+    let result_json = wrapper
+        .rotate_keys(None)
+        .expect("no-argument rotation preserves pq2025");
+    let result: Value = serde_json::from_str(&result_json).expect("rotation result JSON");
+    assert!(
+        result.get("new_version").is_some(),
+        "rotation result should carry new_version"
+    );
+    // The config on disk remains aligned with the current PQ key.
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read config"))
+            .expect("parse config");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("pq2025"),
+        "rotation must preserve the config algorithm"
+    );
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+}
+
+#[test]
+#[serial]
+fn ed25519_rotate_keys_allow_same_algorithm_replacement() {
+    let (wrapper, _tmp, _guard) =
+        create_persistent_wrapper_for_rotation("rotate-wall-ed25519", "ed25519");
+    wrapper
+        .rotate_keys(Some("ed25519"))
+        .expect("explicit Ed25519 replacement should remain supported");
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string("./jacs.config.json").expect("read config"))
+            .expect("parse config");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("ring-Ed25519")
+    );
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
 }
 
 // =============================================================================
@@ -369,7 +677,7 @@ fn test_get_agent_id_non_empty() {
 fn test_get_agent_id_consistent_with_ephemeral_info() {
     let wrapper = AgentWrapper::new();
     let info_json = wrapper
-        .ephemeral(Some("ed25519"))
+        .ephemeral(Some("pq2025"))
         .expect("ephemeral should succeed");
 
     let info: Value = serde_json::from_str(&info_json).unwrap();
@@ -381,6 +689,33 @@ fn test_get_agent_id_consistent_with_ephemeral_info() {
         info_agent_id, wrapper_agent_id,
         "agent_id from ephemeral info should match get_agent_id()"
     );
+}
+
+#[test]
+fn legacy_v1_binding_check_never_reconstructs_completion() {
+    let wrapper = create_ephemeral_wrapper();
+    let agent_id = wrapper.get_agent_id().expect("ephemeral agent id");
+    let agreement = wrapper
+        .create_agreement(
+            r#"{"proposal":"ordinary review"}"#,
+            vec![agent_id],
+            Some("Approve this proposal?".to_string()),
+            Some("Binding contract test".to_string()),
+            None,
+        )
+        .expect("create legacy agreement");
+    let signed = wrapper
+        .sign_agreement(&agreement, None)
+        .expect("sign legacy agreement");
+    let report_json = wrapper
+        .check_agreement(&signed, None)
+        .expect("inspect legacy agreement");
+    let report: Value = serde_json::from_str(&report_json).expect("closed inspection report");
+
+    assert_eq!(report["mathematical_checks_valid"], true);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["policy_authenticated"], false);
+    assert_eq!(report["policy_accepted"], false);
 }
 
 // =============================================================================
@@ -434,14 +769,14 @@ fn test_diagnostics_standalone_returns_valid_json() {
 // =============================================================================
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_ed25519_alias() {
+fn test_full_roundtrip_create_sign_verify_pq2025() {
     let wrapper = create_ephemeral_wrapper();
 
     // Sign a document
     let content = json!({
         "jacsType": "document",
         "jacsLevel": "raw",
-        "content": {"roundtrip": "ed25519", "step": 1}
+        "content": {"roundtrip": "pq2025", "step": 1}
     });
 
     let signed = wrapper
@@ -456,14 +791,14 @@ fn test_full_roundtrip_create_sign_verify_ed25519_alias() {
 }
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_ed25519() {
+fn test_full_roundtrip_create_sign_verify_explicit_pq2025() {
     let wrapper = AgentWrapper::new();
     wrapper
-        .ephemeral(Some("ed25519"))
-        .expect("ephemeral(ed25519) should succeed");
+        .ephemeral(Some("pq2025"))
+        .expect("ephemeral(pq2025) should succeed");
     let signed = wrapper
         .create_document(
-            &serde_json::json!({"curve": "ed25519"}).to_string(),
+            &serde_json::json!({"algorithm": "pq2025"}).to_string(),
             None,
             None,
             true,
@@ -474,12 +809,12 @@ fn test_full_roundtrip_create_sign_verify_ed25519() {
     let valid = wrapper
         .verify_signature(&signed, None)
         .expect("verify_signature should succeed");
-    assert!(valid, "ed25519 roundtrip document should verify");
+    assert!(valid, "pq2025 roundtrip document should verify");
 }
 
 #[cfg(feature = "pq-tests")]
 #[test]
-fn test_full_roundtrip_create_sign_verify_pq2025() {
+fn test_full_roundtrip_create_sign_verify_default_pq2025_feature() {
     let wrapper = create_ephemeral_wrapper_pq();
 
     let content = json!({
@@ -584,4 +919,178 @@ fn test_get_agent_json_before_load_fails() {
         result.is_err(),
         "get_agent_json should fail when agent is not loaded"
     );
+}
+
+// =============================================================================
+// 12. P2 Task 006 — surface guardrails: no generic projection surface.
+//
+// P2 ships ONLY named, targeted exporters (JWKS, compat key binding, A2A
+// card, AP2 mandate, Agreement-v2 VC). These source-scan tests (same
+// include_str! pattern as agreement_v2_json.rs) prove the old broad
+// "project any document into any envelope/algorithm" design did not creep
+// back onto the public binding surface. Source scan is feature-independent:
+// cfg(a2a) / cfg(agreements) methods are visible in the raw source.
+// =============================================================================
+
+const SIMPLE_WRAPPER_SRC: &str = include_str!("../src/simple_wrapper.rs");
+
+#[test]
+fn simple_wrapper_has_no_generic_sign_jws_method() {
+    assert!(
+        !SIMPLE_WRAPPER_SRC.contains("fn sign_jws"),
+        "SimpleAgentWrapper must not expose a generic sign_jws method; \
+         ES256 JWS signing is internal (pub(crate) sign_es256_jose) and \
+         only reachable through the named exporters"
+    );
+}
+
+#[test]
+fn simple_wrapper_has_no_generic_sign_es256_method() {
+    for forbidden in ["fn sign_es256", "fn sign_with_algorithm"] {
+        assert!(
+            !SIMPLE_WRAPPER_SRC.contains(forbidden),
+            "SimpleAgentWrapper must not expose `{forbidden}`; the ES256 \
+             compatibility key never signs arbitrary caller-chosen payloads"
+        );
+    }
+}
+
+#[test]
+fn simple_wrapper_has_no_generic_sign_data_integrity_method() {
+    for forbidden in [
+        "fn sign_data_integrity",
+        "fn issue_w3c_vc",
+        "fn export_dsse_document",
+    ] {
+        assert!(
+            !SIMPLE_WRAPPER_SRC.contains(forbidden),
+            "SimpleAgentWrapper must not expose `{forbidden}`; Data \
+             Integrity / VC / DSSE projections exist only as the named, \
+             scope-gated exporters"
+        );
+    }
+}
+
+/// Extract every `pub fn` in simple_wrapper.rs as `(name, [param names])`,
+/// handling multi-line parameter lists.
+fn simple_wrapper_public_fn_signatures() -> Vec<(String, Vec<String>)> {
+    let src = SIMPLE_WRAPPER_SRC;
+    let mut signatures = Vec::new();
+    let mut cursor = 0;
+    while let Some(rel) = src[cursor..].find("pub fn ") {
+        let name_start = cursor + rel + "pub fn ".len();
+        let rest = &src[name_start..];
+        let open = rest.find('(').expect("pub fn should have a parameter list");
+        let name = rest[..open]
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        // Walk to the matching close paren (param types may nest parens).
+        let mut depth = 0usize;
+        let mut close = open;
+        for (i, c) in rest[open..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = open + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(close > open, "unbalanced parameter list for pub fn {name}");
+
+        let params: Vec<String> = rest[open + 1..close]
+            .split(',')
+            .filter_map(|piece| piece.split_once(':'))
+            .map(|(param, _ty)| param.trim().trim_start_matches("mut ").trim().to_string())
+            .filter(|param| {
+                !param.is_empty() && param.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            })
+            .collect();
+
+        signatures.push((name, params));
+        cursor = name_start + close;
+    }
+    assert!(
+        signatures.len() > 30,
+        "source scan should see the full SimpleAgentWrapper surface, found only {}",
+        signatures.len()
+    );
+    signatures
+}
+
+#[test]
+fn no_public_method_accepts_arbitrary_document_plus_algorithm_or_suite() {
+    // A method that takes BOTH a document/JSON payload AND an
+    // algorithm/cryptosuite selector is the generic-projection shape P2
+    // deliberately closed (callers must not choose the envelope). Methods
+    // may take one or the other: rotate_keys/create/ephemeral take an
+    // algorithm but no document; sign_message_json takes a document but
+    // no algorithm; verify_with_key_json takes a document + key but no
+    // algorithm selector today.
+    //
+    // Exemptions:
+    // - verify_* methods: an algorithm parameter for VERIFICATION does
+    //   not let a caller mint signatures, so it is allowed.
+    // - ALLOWLIST: any future deliberate exception must be named here
+    //   with a justification (currently empty).
+    const ALLOWLIST: [&str; 0] = [];
+
+    let doc_like = |param: &str| {
+        ["document", "json", "payload", "data", "content", "message"]
+            .iter()
+            .any(|marker| param.contains(marker))
+    };
+    let algorithm_like = |param: &str| {
+        param.contains("algorithm")
+            || param.contains("suite")
+            || param.split('_').any(|segment| segment == "alg")
+    };
+
+    let violations: Vec<String> = simple_wrapper_public_fn_signatures()
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with("verify") && !ALLOWLIST.contains(&name.as_str()))
+        .filter(|(_, params)| {
+            params.iter().any(|p| doc_like(p)) && params.iter().any(|p| algorithm_like(p))
+        })
+        .map(|(name, params)| format!("pub fn {name}({})", params.join(", ")))
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "generic projection surface detected on SimpleAgentWrapper — a public \
+         method takes BOTH a document/JSON payload AND an algorithm/cryptosuite \
+         selector. Either remove the method or add it to the ALLOWLIST in this \
+         test with a written justification:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn named_targeted_export_methods_exist() {
+    // The narrow P2 surface: these exact named exporters, nothing broader.
+    // export_a2a_agent_card_json (cfg a2a) and export_agreement_v2_as_vc_json
+    // (cfg agreements) are checked via source scan so this test passes under
+    // any feature combination.
+    for method in [
+        "pub fn add_compat_key_json",
+        "pub fn export_compatibility_jwks_json",
+        "pub fn export_compatibility_key_binding_json",
+        "pub fn export_ap2_mandate_json",
+        "pub fn export_a2a_agent_card_json",
+        "pub fn export_agreement_v2_as_vc_json",
+    ] {
+        assert!(
+            SIMPLE_WRAPPER_SRC.contains(method),
+            "named targeted exporter `{method}` is missing from \
+             SimpleAgentWrapper — P2 exports must stay named, not generic"
+        );
+    }
 }

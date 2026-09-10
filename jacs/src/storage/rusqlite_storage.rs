@@ -434,7 +434,7 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
                 })?;
-            let value: Value = serde_json::from_str(&raw)?;
+            let value: Value = jacs_core::strict_json::parse_strict_json(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
                 version: jacs_version,
@@ -536,7 +536,7 @@ impl DatabaseDocumentTraits for RusqliteStorage {
 
         let mut docs = Vec::new();
         for (jacs_id, jacs_version, jacs_type, raw) in rows_result {
-            let value: Value = serde_json::from_str(&raw)?;
+            let value: Value = jacs_core::strict_json::parse_strict_json(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
                 version: jacs_version,
@@ -604,7 +604,7 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
                 })?;
-            let value: Value = serde_json::from_str(&raw)?;
+            let value: Value = jacs_core::strict_json::parse_strict_json(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
                 version: jacs_version,
@@ -704,7 +704,7 @@ impl DatabaseDocumentTraits for RusqliteStorage {
 
         let mut docs = Vec::new();
         for (jacs_id, jacs_version, jacs_type, raw) in rows_result {
-            let value: Value = serde_json::from_str(&raw)?;
+            let value: Value = jacs_core::strict_json::parse_strict_json(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
                 version: jacs_version,
@@ -989,7 +989,7 @@ impl SqliteDocumentService {
 
 impl DocumentService for SqliteDocumentService {
     fn create(&self, json: &str, options: CreateOptions) -> Result<JACSDocument, JacsError> {
-        let mut value: Value = serde_json::from_str(json)
+        let mut value: Value = jacs_core::strict_json::parse_strict_json(json)
             .map_err(|e| JacsError::DocumentError(format!("Invalid JSON: {}", e)))?;
 
         if let Some(obj) = value.as_object_mut() {
@@ -1113,7 +1113,7 @@ impl DocumentService for SqliteDocumentService {
         let current = self.get_latest(document_id)?;
         let current_key = current.getkey();
 
-        let mut value: Value = serde_json::from_str(new_json)
+        let mut value: Value = jacs_core::strict_json::parse_strict_json(new_json)
             .map_err(|e| JacsError::DocumentError(format!("Invalid JSON: {}", e)))?;
 
         let mut agent = self.lock_agent("update")?;

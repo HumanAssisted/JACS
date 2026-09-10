@@ -7,7 +7,7 @@
  *
  * Prerequisites:
  *   1. Install dependencies: npm install
- *   2. Set up a JACS agent: npx jacs init && npx jacs create
+ *   2. Set up a JACS agent: npx jacs-cli quickstart --name langchain-agent --domain langchain.local
  *   3. Set your LLM API key: export ANTHROPIC_API_KEY=your-key
  *
  * Usage:
@@ -19,7 +19,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import * as jacs from "../../simple.js";
+import * as jacs from "@hai.ai/jacs/simple";
 
 // Configuration
 const CONFIG_PATH = process.env.JACS_CONFIG || "./jacs.config.json";

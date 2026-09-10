@@ -42,6 +42,16 @@ fn known_methods() -> Vec<&'static str> {
         "sign_message_json",
         "sign_raw_bytes_base64",
         "sign_file_json",
+        // Protocol helpers
+        "build_auth_header",
+        "build_request_auth_header",
+        "canonicalize_json",
+        "sign_response",
+        "encode_verify_payload",
+        "decode_verify_payload",
+        "extract_document_id",
+        "prepare_signed_event_replay_json",
+        "unwrap_signed_event",
         // Conversion
         "to_yaml",
         "from_yaml",
@@ -49,6 +59,12 @@ fn known_methods() -> Vec<&'static str> {
         "from_html",
         // Key management
         "rotate_keys",
+        // Ecosystem compatibility (P2 Tasks 002/003/004/004b)
+        "add_compat_key_json",
+        "issue_compat_binding_json",
+        "export_compatibility_jwks_json",
+        "export_compatibility_key_binding_json",
+        "export_ap2_mandate_json",
         // W3C AI Agent Protocol interop
         "export_w3c_did",
         "export_w3c_did_document_json",
@@ -67,6 +83,25 @@ fn known_methods() -> Vec<&'static str> {
     methods
 }
 
+#[cfg(feature = "a2a")]
+fn known_a2a_methods() -> Vec<&'static str> {
+    vec!["export_a2a_agent_card_json"]
+}
+
+#[cfg(feature = "a2a")]
+#[test]
+fn test_a2a_methods_match_fixture() {
+    let fixture = load_method_parity_fixture();
+    let fixture_methods: Vec<String> = fixture["feature_gated_methods"]["a2a"]
+        .as_array()
+        .expect("feature_gated_methods.a2a should be an array")
+        .iter()
+        .map(|v| v.as_str().expect("method name").to_string())
+        .collect();
+    let known: Vec<String> = known_a2a_methods().iter().map(|s| s.to_string()).collect();
+    assert_eq!(fixture_methods, known, "a2a feature-gated methods drifted");
+}
+
 #[cfg(feature = "agreements")]
 fn known_agreement_v2_methods() -> Vec<&'static str> {
     let mut methods = vec![
@@ -77,6 +112,7 @@ fn known_agreement_v2_methods() -> Vec<&'static str> {
         "detect_agreement_v2_branch_conflict_json",
         "merge_agreement_v2_transcript_branches_json",
         "resolve_agreement_v2_branch_conflict_json",
+        "export_agreement_v2_as_vc_json",
     ];
     methods.sort();
     methods
@@ -190,10 +226,47 @@ fn test_method_parity_fixture_count() {
 
     assert_eq!(
         flat_methods.len(),
-        38,
-        "SimpleAgentWrapper should have exactly 38 public methods. \
+        52,
+        "SimpleAgentWrapper should have exactly 52 public methods. \
          Found {}. If you added or removed a method, update the fixture.",
         flat_methods.len()
+    );
+}
+
+#[test]
+fn wrapper_exposes_additive_auth_builders() {
+    let _: fn(&jacs_binding_core::SimpleAgentWrapper) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::build_auth_header;
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &[u8],
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::build_request_auth_header;
+}
+
+#[test]
+fn wrapper_exposes_external_replay_preparation() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        u64,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::prepare_signed_event_replay_json;
+}
+
+#[cfg(feature = "human-approval")]
+#[test]
+fn wrapper_exposes_stateless_human_approval_verification() {
+    let _: fn(&str, &str, &str, &str) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::verify_human_approved_document_json;
+    let fixture = load_method_parity_fixture();
+    assert_eq!(
+        fixture["feature_gated_methods"]["human-approval"],
+        serde_json::json!(["verify_human_approved_document_json"])
     );
 }
 

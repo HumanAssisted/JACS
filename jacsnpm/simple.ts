@@ -24,6 +24,8 @@
  * ```
  */
 
+import { channel as diagnosticsChannel } from 'node:diagnostics_channel';
+
 import {
   JacsAgent,
   JacsSimpleAgent,
@@ -45,7 +47,14 @@ import {
 } from './index';
 import * as path from 'path';
 import * as fs from 'fs';
+import { createHash } from 'crypto';
 import { warnDeprecated } from './deprecation';
+import {
+  authenticatedSignatureMetadata,
+  normalizeAgreementStatus,
+  normalizeAttestationVerificationResult,
+  requireLiteralTrueVerification,
+} from './verification';
 
 // =============================================================================
 // Re-exports for advanced usage
@@ -80,12 +89,98 @@ export interface SignedDocument {
 
 export interface VerificationResult {
   valid: boolean;
+  /** Local enrollment only, not Current/purpose authorization. Missing means unavailable. */
+  identityBindingStatus?: 'unavailable' | 'locally_enrolled';
+  identityBound?: boolean;
   data?: any;
   signerId: string;
   signerName?: string;
   timestamp: string;
   attachments: Attachment[];
   errors: string[];
+}
+
+export type SignedEventReplayErrorCode =
+  | 'replay_duplicate'
+  | 'replay_store_unavailable'
+  | 'replay_store_timeout'
+  | 'replay_store_invalid_result'
+  | 'replay_store_not_shared'
+  | 'signed_event_expired';
+
+export type SignedEventReplayPreparer = JacsAgent | JacsSimpleAgent;
+
+export interface SharedReplayStore {
+  readonly scope: 'shared';
+  /** Stable operational label; must be a nonblank string. */
+  readonly name: string;
+  /**
+   * Must be declared with `async`, perform nonblocking I/O, and honor the
+   * AbortSignal. Synchronous work blocks JavaScript's event loop and therefore
+   * cannot be preempted by any Promise-based timeout.
+   */
+  consume(
+    key: string,
+    ttlSeconds: number,
+    signal: AbortSignal,
+  ): Promise<boolean>;
+}
+
+export interface SignedEventReplayOptions {
+  /** Freshness window passed to native cryptographic verification. Default 300. */
+  maxAgeSeconds?: number;
+  /** Application replay-store deadline in milliseconds. Default 5000, maximum 30000. */
+  timeoutMs?: number;
+}
+
+export interface SignedEventReplayPreparation {
+  contractVersion: 1;
+  status: 'crypto_verified_replay_pending';
+  cryptographicallyVerified: true;
+  freshnessVerified: true;
+  replayConsumed: false;
+  signerId: string;
+  timestamp: string;
+  algorithm: string;
+  documentId: string;
+  eventSha256: string;
+  replayKey: string;
+  replayTtlSeconds: number;
+  expiresAtUnixSeconds: number;
+}
+
+export interface VerifiedSignedEvent<T = unknown> {
+  status: 'verified';
+  verified: true;
+  replayConsumed: true;
+  data: T;
+  signerId: string;
+  timestamp: string;
+  algorithm: string;
+  documentId: string;
+}
+
+export interface SignedEventReplaySecurityEvent {
+  level: 'warn';
+  event: 'jacs_security_outcome';
+  operation: 'signed_event_replay';
+  outcome: 'rejected';
+  error_code: SignedEventReplayErrorCode;
+}
+
+/** Node diagnostics_channel name for structured JACS security outcomes. */
+export const JACS_SECURITY_DIAGNOSTICS_CHANNEL = 'jacs.security';
+const jacsSecurityChannel = diagnosticsChannel(JACS_SECURITY_DIAGNOSTICS_CHANNEL);
+
+export class SignedEventReplayError extends Error {
+  readonly code: SignedEventReplayErrorCode;
+
+  constructor(code: SignedEventReplayErrorCode, message: string) {
+    super(`${code}: ${message}`);
+    this.name = 'SignedEventReplayError';
+    this.code = code;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
 }
 
 export interface Attachment {
@@ -232,6 +327,498 @@ function normalizeDocumentInput(document: any): string {
 
 function normalizeJsonInput(value: any): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+const DEFAULT_SIGNED_EVENT_MAX_AGE_SECONDS = 300;
+const DEFAULT_REPLAY_STORE_TIMEOUT_MS = 5_000;
+const MAX_REPLAY_STORE_TIMEOUT_MS = 30_000;
+const MAX_NAPI_U32 = 0xffff_ffff;
+const MAX_SIGNED_EVENT_FUTURE_SKEW_SECONDS = 300;
+const SIGNED_EVENT_REPLAY_PREPARATION_FIELDS = Object.freeze([
+  'contractVersion',
+  'status',
+  'cryptographicallyVerified',
+  'freshnessVerified',
+  'replayConsumed',
+  'signerId',
+  'timestamp',
+  'algorithm',
+  'documentId',
+  'eventSha256',
+  'replayKey',
+  'replayTtlSeconds',
+  'expiresAtUnixSeconds',
+] as const);
+const SIGNED_EVENT_REPLAY_PREPARATION_FIELD_SET = new Set<string>(
+  SIGNED_EVENT_REPLAY_PREPARATION_FIELDS,
+);
+const NATIVE_JACS_AGENT_DIAGNOSTICS = JacsAgent.prototype.diagnostics;
+const NATIVE_JACS_SIMPLE_AGENT_DIAGNOSTICS = JacsSimpleAgent.prototype.diagnostics;
+
+function replayFailure(
+  code: SignedEventReplayErrorCode,
+  message: string,
+): SignedEventReplayError {
+  return new SignedEventReplayError(code, message);
+}
+
+function publishReplayRejection(error: SignedEventReplayError): void {
+  const event: SignedEventReplaySecurityEvent = {
+    level: 'warn',
+    event: 'jacs_security_outcome',
+    operation: 'signed_event_replay',
+    outcome: 'rejected',
+    error_code: error.code,
+  };
+  jacsSecurityChannel.publish(event);
+}
+
+function hasOwn(value: object, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, field);
+}
+
+function requirePositiveSafeInteger(
+  value: number,
+  name: string,
+  maximum: number = Number.MAX_SAFE_INTEGER,
+): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      `${name} must be a positive safe integer no greater than ${maximum}`,
+    );
+  }
+  return value;
+}
+
+function isWellFormedUtf16(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) {
+        return false;
+      }
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function requireWellFormedUtf16(value: unknown, name: string): asserts value is string {
+  if (typeof value !== 'string' || !isWellFormedUtf16(value)) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      `${name} must be a well-formed UTF-16 string`,
+    );
+  }
+}
+
+function advanceJsonString(raw: string, start: number): number {
+  let index = start + 1;
+  while (index < raw.length) {
+    const codeUnit = raw.charCodeAt(index);
+    if (codeUnit === 0x22) {
+      return index + 1;
+    }
+    if (codeUnit === 0x5c) {
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return raw.length;
+}
+
+function skipJsonWhitespace(raw: string, start: number): number {
+  let index = start;
+  while (index < raw.length && /\s/.test(raw[index])) {
+    index += 1;
+  }
+  return index;
+}
+
+// JSON.parse overwrites duplicate object names. Native preparation is a flat
+// object, so scan its top-level names as written before trusting the parsed
+// value. Decoding each name also catches escaped aliases such as st\u0061tus.
+function topLevelJsonObjectKeys(raw: string): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  let index = skipJsonWhitespace(raw, 0);
+  if (raw[index] !== '{') {
+    return keys;
+  }
+  index += 1;
+
+  while (index < raw.length) {
+    index = skipJsonWhitespace(raw, index);
+    if (raw[index] === '}') {
+      return keys;
+    }
+    if (raw[index] !== '"') {
+      return keys;
+    }
+    const keyStart = index;
+    index = advanceJsonString(raw, index);
+    const key = JSON.parse(raw.slice(keyStart, index)) as string;
+    if (seen.has(key)) {
+      throw replayFailure(
+        'replay_store_invalid_result',
+        `native replay preparation contains duplicate field ${key}`,
+      );
+    }
+    seen.add(key);
+    keys.push(key);
+
+    index = skipJsonWhitespace(raw, index);
+    if (raw[index] !== ':') {
+      return keys;
+    }
+    index = skipJsonWhitespace(raw, index + 1);
+
+    let nesting = 0;
+    while (index < raw.length) {
+      const character = raw[index];
+      if (character === '"') {
+        index = advanceJsonString(raw, index);
+        continue;
+      }
+      if (character === '{' || character === '[') {
+        nesting += 1;
+      } else if (character === '}' || character === ']') {
+        if (nesting === 0) {
+          break;
+        }
+        nesting -= 1;
+      } else if (character === ',' && nesting === 0) {
+        break;
+      }
+      index += 1;
+    }
+
+    if (raw[index] === ',') {
+      index += 1;
+      continue;
+    }
+    return keys;
+  }
+  return keys;
+}
+
+function daysInUtcMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function parseStrictRfc3339UnixSeconds(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+  if (!match) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation timestamp must be strict RFC 3339',
+    );
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[8] === 'Z' ? 0 : Number(match[10]);
+  const offsetMinute = match[8] === 'Z' ? 0 : Number(match[11]);
+  if (
+    year < 1970
+    || month < 1 || month > 12
+    || day < 1 || day > daysInUtcMonth(year, month)
+    || hour > 23 || minute > 59 || second > 59
+    || offsetHour > 23 || offsetMinute > 59
+  ) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation timestamp is not a valid RFC 3339 instant',
+    );
+  }
+
+  const instant = new Date(0);
+  instant.setUTCFullYear(year, month - 1, day);
+  instant.setUTCHours(hour, minute, second, 0);
+  let unixSeconds = Math.floor(instant.getTime() / 1000);
+  if (match[8] !== 'Z') {
+    const offsetSeconds = offsetHour * 3600 + offsetMinute * 60;
+    unixSeconds += match[9] === '+' ? -offsetSeconds : offsetSeconds;
+  }
+  if (!Number.isSafeInteger(unixSeconds) || unixSeconds < 0) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation timestamp is outside the supported range',
+    );
+  }
+  return unixSeconds;
+}
+
+function isNativeReplayAgent(agent: unknown): agent is SignedEventReplayPreparer {
+  try {
+    if (agent instanceof JacsAgent) {
+      NATIVE_JACS_AGENT_DIAGNOSTICS.call(agent);
+      return true;
+    }
+    if (agent instanceof JacsSimpleAgent) {
+      NATIVE_JACS_SIMPLE_AGENT_DIAGNOSTICS.call(agent);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function isAsyncFunction(value: Function): boolean {
+  try {
+    const source = Function.prototype.toString.call(value);
+    return Object.prototype.toString.call(value) === '[object AsyncFunction]'
+      && /^\s*async(?:\s+function\b|\s*\(|\s+[A-Za-z_$])/.test(source);
+  } catch {
+    return false;
+  }
+}
+
+interface ValidatedSharedReplayStore {
+  receiver: SharedReplayStore;
+  consume: SharedReplayStore['consume'];
+}
+
+function validateSharedReplayStore(store: unknown): ValidatedSharedReplayStore {
+  if (!store || (typeof store !== 'object' && typeof store !== 'function')) {
+    throw replayFailure(
+      'replay_store_not_shared',
+      'signed-event delivery requires a shared replay store',
+    );
+  }
+
+  let scope: unknown;
+  let name: unknown;
+  let consume: unknown;
+  try {
+    const runtimeStore = store as Record<string, unknown>;
+    scope = runtimeStore.scope;
+    name = runtimeStore.name;
+    consume = runtimeStore.consume;
+  } catch {
+    throw replayFailure(
+      'replay_store_unavailable',
+      'shared replay store metadata could not be read',
+    );
+  }
+  if (scope !== 'shared') {
+    throw replayFailure(
+      'replay_store_not_shared',
+      'signed-event delivery requires store.scope === "shared"',
+    );
+  }
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'shared replay store must provide a nonblank string name',
+    );
+  }
+  if (typeof consume !== 'function') {
+    throw replayFailure(
+      'replay_store_unavailable',
+      'shared replay store must provide consume(key, ttlSeconds, signal)',
+    );
+  }
+  if (!isAsyncFunction(consume)) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'shared replay store consume must be declared async',
+    );
+  }
+  return {
+    receiver: store as SharedReplayStore,
+    consume: consume as SharedReplayStore['consume'],
+  };
+}
+
+function parseReplayPreparation(
+  rawPreparation: string,
+  immutableEventJson: string,
+  maxAgeSeconds: number,
+): SignedEventReplayPreparation {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawPreparation);
+  } catch {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation was not valid JSON',
+    );
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation must be a JSON object',
+    );
+  }
+  const preparation = parsed as Record<string, unknown>;
+
+  const rawFields = topLevelJsonObjectKeys(rawPreparation);
+  const parsedFields = Object.keys(preparation);
+  if (
+    rawFields.length !== SIGNED_EVENT_REPLAY_PREPARATION_FIELDS.length
+    || parsedFields.length !== SIGNED_EVENT_REPLAY_PREPARATION_FIELDS.length
+    || rawFields.some((field) => !SIGNED_EVENT_REPLAY_PREPARATION_FIELD_SET.has(field))
+    || parsedFields.some((field) => !SIGNED_EVENT_REPLAY_PREPARATION_FIELD_SET.has(field))
+  ) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation fields do not exactly match contract version 1',
+    );
+  }
+
+  if (
+    preparation.contractVersion !== 1
+    || preparation.status !== 'crypto_verified_replay_pending'
+    || preparation.cryptographicallyVerified !== true
+    || preparation.freshnessVerified !== true
+    || preparation.replayConsumed !== false
+  ) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation did not satisfy the fixed contract values',
+    );
+  }
+
+  for (const field of [
+    'signerId',
+    'timestamp',
+    'algorithm',
+    'documentId',
+    'eventSha256',
+    'replayKey',
+  ]) {
+    const value = preparation[field];
+    if (typeof value !== 'string' || value.length === 0 || !isWellFormedUtf16(value)) {
+      throw replayFailure(
+        'replay_store_invalid_result',
+        `native replay preparation field ${field} must be a non-empty well-formed string`,
+      );
+    }
+  }
+
+  const expectedSha256 = createHash('sha256')
+    .update(immutableEventJson, 'utf8')
+    .digest('hex');
+  if (
+    !/^[0-9a-f]{64}$/.test(preparation.eventSha256 as string)
+    || preparation.eventSha256 !== expectedSha256
+  ) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation did not bind the exact signed-event UTF-8 bytes',
+    );
+  }
+  const signerId = preparation.signerId as string;
+  const documentId = preparation.documentId as string;
+  const replayScope = `signed-event:${signerId}`;
+  const expectedReplayKey = `jacs-replay-v1:${Buffer.byteLength(replayScope, 'utf8')}:${replayScope}:${documentId}`;
+  if (preparation.replayKey !== expectedReplayKey) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation replay key does not match signer and document',
+    );
+  }
+
+  const maximumReplayTtlSeconds = maxAgeSeconds + MAX_SIGNED_EVENT_FUTURE_SKEW_SECONDS + 1;
+  const replayTtlSeconds = requirePositiveSafeInteger(
+    preparation.replayTtlSeconds as number,
+    'replayTtlSeconds',
+    maximumReplayTtlSeconds,
+  );
+  const expiresAtUnixSeconds = requirePositiveSafeInteger(
+    preparation.expiresAtUnixSeconds as number,
+    'expiresAtUnixSeconds',
+  );
+  const issuedAtUnixSeconds = parseStrictRfc3339UnixSeconds(preparation.timestamp as string);
+  const nowUnixSeconds = Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(nowUnixSeconds) || nowUnixSeconds < 0) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'system clock is outside the supported range',
+    );
+  }
+  if (issuedAtUnixSeconds > nowUnixSeconds + MAX_SIGNED_EVENT_FUTURE_SKEW_SECONDS) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation timestamp exceeds allowed future skew',
+    );
+  }
+  const expectedExpiry = issuedAtUnixSeconds + maxAgeSeconds;
+  if (!Number.isSafeInteger(expectedExpiry) || expectedExpiry !== expiresAtUnixSeconds) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation expiry does not match timestamp plus maxAgeSeconds',
+    );
+  }
+
+  if (nowUnixSeconds > expiresAtUnixSeconds) {
+    throw replayFailure('signed_event_expired', 'signed event expired before replay consumption');
+  }
+  const minimumSafeTtl = expiresAtUnixSeconds - nowUnixSeconds + 1;
+  if (replayTtlSeconds < minimumSafeTtl) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay TTL ends before the signed event absolute expiry',
+    );
+  }
+
+  return preparation as unknown as SignedEventReplayPreparation;
+}
+
+async function consumeReplayWithTimeout(
+  store: ValidatedSharedReplayStore,
+  replayKey: string,
+  replayTtlSeconds: number,
+  timeoutMs: number,
+): Promise<unknown> {
+  const controller = new AbortController();
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutError = replayFailure(
+    'replay_store_timeout',
+    `shared replay store did not respond within ${timeoutMs}ms`,
+  );
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(timeoutError);
+    }, timeoutMs);
+  });
+  const consumption = Promise.resolve().then(() =>
+    store.consume.call(store.receiver, replayKey, replayTtlSeconds, controller.signal));
+
+  try {
+    return await Promise.race([consumption, timeout]);
+  } catch (error) {
+    if (timedOut || error === timeoutError) {
+      throw timeoutError;
+    }
+    throw replayFailure(
+      'replay_store_unavailable',
+      'shared replay store consume failed',
+    );
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function requireQuickstartIdentity(options: QuickstartOptions | undefined): { name: string; domain: string; description: string } {
@@ -415,12 +1002,13 @@ function verifyImpl(signedDocument: string, agent: JacsAgent, isSync: boolean): 
   }
 
   const extractAttachments = () => extractAttachmentsFromDocument(doc);
+  const signatureMetadata = authenticatedSignatureMetadata(doc);
 
   const makeSuccess = (): VerificationResult => ({
     valid: true,
     data: doc.content,
-    signerId: doc.jacsSignature?.agentID || '',
-    timestamp: doc.jacsSignature?.date || '',
+    signerId: signatureMetadata.signerId,
+    timestamp: signatureMetadata.timestamp,
     attachments: extractAttachments(),
     errors: [],
   });
@@ -431,8 +1019,8 @@ function verifyImpl(signedDocument: string, agent: JacsAgent, isSync: boolean): 
     }
     return {
       valid: false,
-      signerId: doc.jacsSignature?.agentID || '',
-      timestamp: doc.jacsSignature?.date || '',
+      signerId: '',
+      timestamp: '',
       attachments: [],
       errors: [String(e)],
     };
@@ -440,14 +1028,18 @@ function verifyImpl(signedDocument: string, agent: JacsAgent, isSync: boolean): 
 
   if (isSync) {
     try {
-      agent.verifyDocumentSync(signedDocument);
+      const verified = agent.verifyDocumentSync(signedDocument);
+      requireLiteralTrueVerification(verified, 'Native document verification');
       return makeSuccess();
     } catch (e) {
       return makeFailure(e);
     }
   } else {
     return agent.verifyDocument(signedDocument)
-      .then(() => makeSuccess())
+      .then((verified) => {
+        requireLiteralTrueVerification(verified, 'Native document verification');
+        return makeSuccess();
+      })
       .catch((e: any) => makeFailure(e));
   }
 }
@@ -605,7 +1197,8 @@ export async function verifySelf(): Promise<VerificationResult> {
   const agent = requireAgent();
 
   try {
-    await agent.verifyAgent();
+    const verified = await agent.verifyAgent();
+    requireLiteralTrueVerification(verified, 'Native agent verification');
     return makeVerificationSuccess(agentInfo?.agentId || '');
   } catch (e) {
     return makeVerificationFailure(e, 'Self-verification failed');
@@ -619,7 +1212,8 @@ export function verifySelfSync(): VerificationResult {
   const agent = requireAgent();
 
   try {
-    agent.verifyAgentSync();
+    const verified = agent.verifyAgentSync();
+    requireLiteralTrueVerification(verified, 'Native agent verification');
     return makeVerificationSuccess(agentInfo?.agentId || '');
   } catch (e) {
     return makeVerificationFailure(e, 'Self-verification failed');
@@ -797,7 +1391,12 @@ export const AgreementV2Role = {
  * the wire format emitted by the Rust verifier.
  */
 export interface AgreementV2VerificationReport {
+  /** Always false: consent-signature inspection is not policy acceptance. */
   valid: boolean;
+  /** Mathematical and structural checks only; not authorization. */
+  mathematicalChecksValid: boolean;
+  policyAccepted: false;
+  overallScope: 'consent_signatures_only';
   status: string;
   expectedStatus: string;
   recomputedAgreementHash: string;
@@ -1042,6 +1641,135 @@ export function extractMediaSignatureSync(
 }
 
 /**
+ * Verify an exact signed-event JSON string, atomically consume its replay key
+ * in an application-owned shared store, and only then release its data.
+ *
+ * The native preparation step runs on the NAPI worker pool. The application
+ * store must implement a cross-replica atomic consume operation where literal
+ * `true` means this was the first accepted delivery and literal `false` means
+ * a duplicate.
+ */
+async function unwrapSignedEventWithReplayStoreImpl<T = unknown>(
+  agent: SignedEventReplayPreparer,
+  eventJson: string,
+  serverKeysJson: string,
+  store: SharedReplayStore,
+  options: SignedEventReplayOptions = {},
+): Promise<VerifiedSignedEvent<T>> {
+  requireWellFormedUtf16(eventJson, 'eventJson');
+  requireWellFormedUtf16(serverKeysJson, 'serverKeysJson');
+  if (!isNativeReplayAgent(agent)) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'agent must be a native JacsAgent or JacsSimpleAgent instance',
+    );
+  }
+  const validatedStore = validateSharedReplayStore(store);
+
+  const maxAgeSeconds = requirePositiveSafeInteger(
+    options.maxAgeSeconds ?? DEFAULT_SIGNED_EVENT_MAX_AGE_SECONDS,
+    'maxAgeSeconds',
+    MAX_NAPI_U32,
+  );
+  const requestedTimeoutMs = requirePositiveSafeInteger(
+    options.timeoutMs ?? DEFAULT_REPLAY_STORE_TIMEOUT_MS,
+    'timeoutMs',
+  );
+  const timeoutMs = Math.min(requestedTimeoutMs, MAX_REPLAY_STORE_TIMEOUT_MS);
+  const immutableEventJson = eventJson;
+
+  // Do not parse the event or inspect its data before native cryptographic and
+  // freshness verification produces a no-payload preparation claim.
+  const rawPreparation = await agent.prepareSignedEventReplay(
+    immutableEventJson,
+    serverKeysJson,
+    maxAgeSeconds,
+  );
+  if (typeof rawPreparation !== 'string') {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'native replay preparation must be returned as a JSON string',
+    );
+  }
+  const preparation = parseReplayPreparation(
+    rawPreparation,
+    immutableEventJson,
+    maxAgeSeconds,
+  );
+
+  const consumed = await consumeReplayWithTimeout(
+    validatedStore,
+    preparation.replayKey,
+    preparation.replayTtlSeconds,
+    timeoutMs,
+  );
+  if (consumed === false) {
+    throw replayFailure('replay_duplicate', 'signed event replay key was already consumed');
+  }
+  if (consumed !== true) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'shared replay store consume must return literal true or false',
+    );
+  }
+  if (Math.floor(Date.now() / 1000) > preparation.expiresAtUnixSeconds) {
+    throw replayFailure('signed_event_expired', 'signed event expired during replay consumption');
+  }
+
+  // The string passed to native verification is immutable. Parse that same
+  // value only after atomic replay consumption succeeds.
+  let event: unknown;
+  try {
+    event = JSON.parse(immutableEventJson);
+  } catch {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'verified signed-event JSON could not be parsed after replay consumption',
+    );
+  }
+  if (!event || typeof event !== 'object' || Array.isArray(event) || !hasOwn(event, 'data')) {
+    throw replayFailure(
+      'replay_store_invalid_result',
+      'verified signed event did not contain data',
+    );
+  }
+
+  return {
+    status: 'verified',
+    verified: true,
+    replayConsumed: true,
+    data: (event as Record<string, unknown>).data as T,
+    signerId: preparation.signerId,
+    timestamp: preparation.timestamp,
+    algorithm: preparation.algorithm,
+    documentId: preparation.documentId,
+  };
+}
+
+export async function unwrapSignedEventWithReplayStore<T = unknown>(
+  agent: SignedEventReplayPreparer,
+  eventJson: string,
+  serverKeysJson: string,
+  store: SharedReplayStore,
+  options: SignedEventReplayOptions = {},
+): Promise<VerifiedSignedEvent<T>> {
+  try {
+    return await unwrapSignedEventWithReplayStoreImpl<T>(
+      agent,
+      eventJson,
+      serverKeysJson,
+      store,
+      options,
+    );
+  } catch (error) {
+    if (error instanceof SignedEventReplayError) {
+      publishReplayRejection(error);
+    }
+    throw error;
+  }
+}
+
+/**
  * Verifies a signed document and extracts its content.
  */
 export async function verify(signedDocument: string): Promise<VerificationResult> {
@@ -1071,12 +1799,15 @@ export function verifyStandalone(
     options?.dataDirectory ?? undefined,
     options?.keyDirectory ?? undefined
   );
+  const valid = r?.valid === true;
   return {
-    valid: r.valid,
-    signerId: r.signerId,
-    timestamp: r.timestamp || '',
+    valid,
+    identityBindingStatus: valid && r.identityBindingStatus === 'locally_enrolled' ? 'locally_enrolled' : 'unavailable',
+    identityBound: valid && r.identityBindingStatus === 'locally_enrolled',
+    signerId: valid && typeof r.signerId === 'string' ? r.signerId : '',
+    timestamp: valid && typeof r.timestamp === 'string' ? r.timestamp : '',
     attachments: [],
-    errors: [],
+    errors: valid ? [] : ['Native standalone verification did not return literal true'],
   };
 }
 
@@ -1091,12 +1822,14 @@ export async function verifyById(documentId: string): Promise<VerificationResult
   }
 
   try {
-    await agent.verifyDocumentById(documentId);
+    const verified = await agent.verifyDocumentById(documentId);
+    requireLiteralTrueVerification(verified, 'Native stored-document verification');
     const storedJson = await agent.getDocumentById(documentId);
     const stored = JSON.parse(storedJson);
+    const metadata = authenticatedSignatureMetadata(stored);
     return {
-      ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
-      timestamp: stored?.jacsSignature?.date || '',
+      ...makeVerificationSuccess(metadata.signerId),
+      timestamp: metadata.timestamp,
       attachments: extractAttachmentsFromDocument(stored || {}),
     };
   } catch (e) {
@@ -1115,12 +1848,14 @@ export function verifyByIdSync(documentId: string): VerificationResult {
   }
 
   try {
-    agent.verifyDocumentByIdSync(documentId);
+    const verified = agent.verifyDocumentByIdSync(documentId);
+    requireLiteralTrueVerification(verified, 'Native stored-document verification');
     const storedJson = agent.getDocumentByIdSync(documentId);
     const stored = JSON.parse(storedJson);
+    const metadata = authenticatedSignatureMetadata(stored);
     return {
-      ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
-      timestamp: stored?.jacsSignature?.date || '',
+      ...makeVerificationSuccess(metadata.signerId),
+      timestamp: metadata.timestamp,
       attachments: extractAttachmentsFromDocument(stored || {}),
     };
   } catch (e) {
@@ -1412,7 +2147,7 @@ export async function checkAgreement(
   const agent = requireAgent();
   const docString = normalizeDocumentInput(document);
   const result = await agent.checkAgreement(docString, fieldName || null);
-  return JSON.parse(result);
+  return normalizeAgreementStatus(JSON.parse(result));
 }
 
 export function checkAgreementSync(
@@ -1422,7 +2157,7 @@ export function checkAgreementSync(
   const agent = requireAgent();
   const docString = normalizeDocumentInput(document);
   const result = agent.checkAgreementSync(docString, fieldName || null);
-  return JSON.parse(result);
+  return normalizeAgreementStatus(JSON.parse(result));
 }
 
 // =============================================================================
@@ -1555,7 +2290,9 @@ export async function verifyAttestation(
   } else {
     resultJson = await (agent as any).verifyAttestation(docKey);
   }
-  return JSON.parse(resultJson) as AttestationVerificationResult;
+  return normalizeAttestationVerificationResult(
+    JSON.parse(resultJson),
+  ) as unknown as AttestationVerificationResult;
 }
 
 /**
@@ -1581,7 +2318,9 @@ export function verifyAttestationSync(
   } else {
     resultJson = (agent as any).verifyAttestationSync(docKey);
   }
-  return JSON.parse(resultJson) as AttestationVerificationResult;
+  return normalizeAttestationVerificationResult(
+    JSON.parse(resultJson),
+  ) as unknown as AttestationVerificationResult;
 }
 
 /**

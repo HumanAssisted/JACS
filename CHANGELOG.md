@@ -1,3 +1,264 @@
+## 0.12.0
+
+(unreleased)
+
+### Removed
+
+- **The CrewAI adapter and the `crewai` Python extra.** CrewAI pins
+  `chromadb ~=1.1.0`, which carries four advisories with no patched release;
+  rather than keep an expired security exception, the adapter, its tests, docs,
+  and audit suppression are gone. Use the LangChain, FastAPI, Anthropic, or MCP
+  adapters instead.
+
+### Changed
+
+- **JACS is licensed under Apache-2.0 without the Common Clause.** The former
+  additional restriction has been removed from the project license and all
+  first-party package license files. Third-party notices continue to identify
+  dependency licenses separately.
+- **The Rust MCP server now supports MCP `2026-07-28` through RMCP 3.0.**
+  Modern stdio clients can use `server/discover` without an initialization
+  handshake, while legacy `2025-11-25` clients retain the existing
+  `initialize` flow. Tool catalogs include a five-minute public cache hint;
+  JACS remains stdio-only and does not enable RMCP HTTP, SSE, or OAuth
+  transports.
+- **New-agent algorithm selection is truthful across every binding.**
+  `pq2025` remains the default, while explicit `ed25519` / `ring-Ed25519`
+  requests now create genuine 32-byte Ed25519 public keys and emit the
+  canonical `ring-Ed25519` signature label instead of silently substituting
+  PQ keys. Rust, Python, Node, Go, CLI, and MCP accept the same user-facing
+  labels and expose the algorithm actually created. Key rotation remains the
+  explicit convergence path to `pq2025`.
+- **Request bodies preserve their exact bytes across native bindings.** Python
+  accepts strings and contiguous bytes-like objects, Node accepts strings,
+  `Buffer`, and `Uint8Array` (including offset views), and Go preserves its
+  existing byte-slice contract. Request-auth digests no longer require lossy
+  UTF-8 conversion.
+- **Canonicalization parity includes the published RFC 8785 vectors.** The
+  portable core and Rust, Python, Node, and Go binding suites share the
+  official serialization and UTF-16 property-ordering cases.
+- **Rust 1.97.0 is now the repository-wide minimum toolchain.** Every active
+  crate, CI job, release builder, wheel image, example, and user-facing
+  installation guide now uses the exact current stable compiler. A root
+  `rust-toolchain.toml` pins Rust 1.97.0 with Clippy and rustfmt, and bootstrap
+  paths pin checksum-verified rustup 1.29.0 binaries.
+- **Ephemeral agents cache their own public key.** Agent creation now stores the
+  agent's public key under its hash in whichever storage the agent uses, so an
+  ephemeral (memory-storage) agent resolves its own key through the same lookup
+  path as a persistent one when inspecting documents it signed.
+- **Node MCP `jacs_verify_document` matches the canonical contract.** The Node
+  tool now requires `document`, raw `public_key` bytes, and `algorithm`
+  (`ed25519` or `pq2025`) and verifies with exactly that key instead of the MCP
+  process's loaded identity and trust store; the result reports integrity only.
+- **Test suites track the closed agreement semantics.** Rust, Node, and Python
+  tests assert `mathematical_checks_valid` for Agreement v2 reports and
+  `complete: false` for legacy v1 inspection, matching the fail-closed reports
+  the library now returns; the MCP integration tests that spawned the removed
+  `full` profile are ignored with a reason until the capability broker exists.
+
+### Security
+
+- **2026-09-05: Explicit local MCP JSON/Agreement signing.** `jacs mcp
+  --profile local-sign --config ./jacs.config.json` uses a signed configuration,
+  one matching encrypted key pair and a fixed local document root. Nine scoped
+  JSON/Agreement tools share advertisement and dispatch checks; verification
+  remains the default and does not unlock a key. Agent provenance is not human
+  approval. Sixty-two scoped tests and strict Clippy passed locally, including
+  real stdio signing workflows. Broader file/media and frozen-profile MCP
+  workflows remain separate capability work; the full runtime suite is not
+  claimed green.
+- **Public human-approval verification is available to opt-in native bindings.**
+  One stateless binding-core method delegates to the existing verifier, with
+  thin Python, Node and Go entrypoints preserving the full report and explicit
+  caller-selected expectations and authority/provenance pins. Public evidence
+  may be read from disk without an agent, private key or implicit enrollment.
+  Both current-status facts remain `not_evaluated`; successful archival
+  verification is not permission to execute. The optional `human-approval`
+  feature leaves Rust default builds unchanged. Normal Python/npm/Go release
+  profiles now select the optional vendored backend; slim builds can opt out.
+  Exact installed Python/npm and relocated Go native consumer checks passed on
+  macOS arm64, including public proof and ordinary disk/key signing. Source
+  archives, load paths, lockfile subsets and report parity have regressions.
+  Other distribution platforms and browser proof support remain separate
+  release gates; no artifact was published.
+- **Numeric hardening preserves existing RFC 8785 decimal behavior.** Raw JSON
+  entry points retain nonintegral binary64 rounding while rejecting duplicate
+  members and unsafe mathematical integers consistently across plain, decimal,
+  and exponent spellings. Exact decimal preservation is separately opt-in as
+  `jacs-json-safe-binary64-v1`; an explicit strict-policy rejection never
+  falls back to the compatibility profile.
+- **HTTP authorization credentials are bound to the actual request.**
+  `build_request_auth_header` signs a canonical v2 claim set containing the
+  signer/key, method, normalized absolute URL and query, exact body digest,
+  audience, timestamp, and nonce under a dedicated domain separator. The
+  verifier checks every binding before consuming shared replay state. Legacy
+  `build_auth_header` credentials remain available for source compatibility,
+  emit a WARN, and can be rejected by strict deployments with
+  `JACS_REJECT_UNBOUND_AUTH_HEADER=true`.
+- **Attacker-controlled Argon2 work factors are bounded before KDF work.** V2
+  encrypted-key envelopes enforce a versioned Argon2id profile (8–19 MiB,
+  1–2 passes, parallelism 1), serialized/ciphertext size limits, exact salt and
+  nonce sizes, and strict field decoding before allocation or derivation.
+  Rejections emit a structured WARN and increment
+  `jacs_kdf_policy_rejections_total{kdf,profile}` without key/password data.
+- **Response envelopes authenticate their complete protocol context.**
+  `sign_response` now emits a domain-separated v2 envelope whose signature
+  covers the payload, version/type, issuer, document ID, payload hash,
+  timestamp, signer, algorithm, key hash, signature-scope version, and any
+  additional fields. `verify_response_*_with_key` verifies the complete
+  envelope and accepts equivalent raw or canonical-PEM trusted keys.
+- **Node MCP transports bind signatures to the configured peer and session.**
+  Incoming carriers use native `verifyResponseWithAgentId()` and dispatch only
+  when the authenticated stable agent ID matches `expectedPeerAgentId` or an
+  explicit `allowedPeerAgentIds` allowlist; an optional public-key-hash pin can
+  bind the exact key. Missing policy fails closed. The literal-only
+  `dangerouslyAllowAnyValidSigner: true` migration mode proves possession of a
+  resolvable key but is explicitly not endpoint authentication. Outbound
+  requests receive random, bounded, one-use wire IDs, so a valid response from
+  another session cannot be transplanted merely because both callers reused
+  the same local JSON-RPC ID.
+- **Python MCP transports now enforce the same authenticated session contract.**
+  FastMCP 3.2 middleware, SSE transports, streamable HTTP, and helper clients
+  carry schema-valid signed JSON-RPC envelopes, require an explicit peer-agent
+  policy (with an optional public-key-hash pin), bound request bodies, and use
+  random bounded one-use wire IDs. Unsigned fallback remains an explicit
+  compatibility opt-in and still preserves response correlation. The packaged
+  examples require caller-generated identities and configured peer pins.
+- **Framework outputs must be complete portable-v2 signed documents.** Python
+  and Node adapters reject malformed, unsigned, or partially signed native
+  results, and verification wrappers accept only a literal boolean `true` from
+  native verification. Python FastMCP tool/task wrappers preserve their native
+  result schemas while attaching the signed proof; Node Vercel streaming proves
+  each exact message before exposing content.
+- **Python release wheels include attestation support.** The canonical maturin
+  feature set now compiles `attestation` alongside agreements and A2A, with an
+  isolated wheel smoke test covering create, verify, and lift. Node's generated
+  MCP declarations and source maps are included in package composition checks.
+- **Signed-event consumption fails closed and carries verified provenance.**
+  `unwrap_signed_event` no longer returns plain, legacy payload-only, malformed,
+  or unknown-signer data with `verified: false`. Those cases are errors. A
+  successful binding result always has `status: "verified"` plus authenticated
+  signer, timestamp, algorithm, and document ID metadata.
+- **Ambiguous JSON is rejected before cryptographic processing.** One strict
+  decoder in `jacs-core` now rejects duplicate decoded object names recursively,
+  including escape-equivalent names such as `"agentID"` and
+  `"agent\u0049D"`. Native Rust, Python, Node, Go/CGo, and WASM raw-string
+  entry points use it before create, update, sign, canonicalize, verify, A2A,
+  response, agreement, W3C, attestation, email, schema, and key-source logic.
+  Repeated array elements remain valid.
+- **Replay nonce consumption is atomic and backend-injectable.** The default
+  process-local Moka store now uses a per-key atomic entry operation, so exactly
+  one concurrent verification accepts a nonce. Services can install a shared
+  `ReplayStore`; `JACS_REQUIRE_SHARED_REPLAY_STORE=true` fails closed when
+  only local state is configured or the shared backend errors. Structured
+  replay events and `jacs_replay_checks_total{backend,outcome}` expose every
+  decision without logging nonce contents.
+- **Replay retention follows the credential's absolute expiry.** Payload,
+  request-auth, signed-event, and W3C proof checks retain future-skewed nonces through
+  `issued_at + max_age` (inclusive), rather than applying a fixed TTL from the
+  verifier's current clock. External shared stores can use
+  `request_auth_replay_ttl` to apply the same policy.
+- **Persisted trust metadata fails closed.** Missing verification markers now
+  deserialize as unverified, while duplicate and unknown fields are rejected;
+  legacy bookmark records cannot silently become verified trust entries.
+- **Protocol inputs and legacy key envelopes are bounded before parsing or
+  cryptographic work.** Raw response/event/options inputs use the shared size
+  policy, and legacy encrypted blobs are capped before PBKDF2 or AEAD work.
+- **Missing signing-algorithm state is an error.** Request, response, and W3C
+  helpers no longer silently substitute Ed25519 when the configured/native
+  root algorithm is absent.
+- **Public-key shape detection is deterministic.** Every exact 32-byte
+  Ed25519 public key is accepted for cryptographic verification, regardless
+  of its random byte distribution, and exact 2592-byte ML-DSA-87 keys retain
+  their existing classification. Unknown key lengths now fail instead of
+  being guessed as Ed25519 from a high non-ASCII byte ratio. This removes
+  intermittent `key_not_found` results across Rust, Python, Node, and Go
+  provenance verification without weakening signature checks.
+- **Outbound trust-boundary fetches share one fail-closed policy.** Remote
+  schemas, keys, registry records, DNS well-known keys, A2A cards, JWKS, and
+  compatibility bindings use bounded time/body/redirect handling, proxy
+  isolation, DNS pinning, and public-address enforcement. Loopback access is
+  an explicit local-test/development exception.
+- **Native binding lifetimes are race-safe.** Go handle copies share one
+  synchronized lifecycle and concurrent/idempotent `Close` cannot free a
+  handle still in use. Node async request-auth copies borrowed view bytes
+  before leaving the event-loop thread.
+- **The Python optional CLI installer is fail-closed.** It requires a pinned
+  release checksum, bounds redirects/time/downloads/archive expansion, rejects
+  links and traversal, preflights ZIP directory metadata before object
+  allocation, installs atomically into owner-only version-and-platform caches,
+  and refuses unsafe pre-existing cache paths. Remote HTTPS redirects cannot
+  downgrade into loopback, local-test redirects remain same-origin, aggregate
+  checksum manifests must name the exact asset without conflicting hashes, and
+  Linux musl fails clearly while no musl CLI artifact is published.
+- **The Node optional CLI installer now applies the same fail-closed policy.**
+  It keeps remote HTTPS and loopback-test redirect contexts separate, redacts
+  unsafe URLs, enforces one total deadline plus strict length and byte limits,
+  validates the aggregate checksum before any archive download, and parses
+  bounded TAR/GZIP and ZIP archives using Node built-ins only. Links, special
+  files, duplicate members, excessive metadata/member counts, and expansion
+  bombs are rejected; bounded local PAX metadata emitted by macOS `bsdtar` is
+  accepted without permitting path, link, or size overrides. Executables are
+  installed atomically as owner-only regular files into an exact
+  version-and-platform user cache, so shared npm
+  stores cannot reuse a host binary across architectures; Linux musl fails
+  closed because no musl CLI asset exists.
+- **Server verification no longer creates throwaway identities.** Request-auth,
+  response-envelope, and signed-event verification now have stateless
+  explicit-key entry points. Applications with Redis or another shared nonce
+  store can verify the complete request context first and atomically consume
+  the returned nonce themselves.
+- **Protocol methods live on the public binding contract.** Request-bound auth,
+  canonical JSON, response signing, verification-link helpers, and strict
+  signed-event unwrapping are now on `SimpleAgentWrapper` and its Python,
+  Node, and Go `SimpleAgent` surfaces, with shared parity tests.
+- **Rotation proofs can be registry-bound.**
+  `Agent::verify_transition_proof_for_rotation` validates the old-key proof
+  and binds it to the expected stable agent ID and exact candidate new public
+  key, preventing a valid detached proof from being transplanted.
+- **A2A discovery identities are persistent and native-root-bound.**
+  Well-known generators now reuse the persisted ES256 compatibility key,
+  converge concurrent shared-storage replicas on one signed binding, and
+  publish that binding at `/.well-known/jacs-compat-binding.json`. Obsolete
+  ephemeral Ed25519 generator choices fail closed. ES256/JCS Agent Card
+  verification is supported, while strict trust additionally checks the
+  trusted native root, expected agent id/version, binding hash, compatibility
+  JWK/kid, `a2a-agent-card` scope, expiry, signature, and an absolute seven-day
+  signed-issuance freshness window (five-minute future skew). Well-known
+  generation refreshes authentic bindings at six days under the shared
+  issuance lock while preserving scopes and explicit expiry. Verified/TOFU remains
+  explicitly origin/key-pin trust. JWKS and binding network reads use the
+  shared bounded SSRF-safe fetch policy. Python and Node discovery servers now
+  preserve the native signed card/JWKS/binding set verbatim and never fall back
+  to unsigned wrapper documents. Their legacy assessment fallbacks reject
+  `verified`/`strict`, and explicit A2A trust requires a full native agent
+  document plus an out-of-band public key rather than a self-advertised card.
+  TOFU and binding lifecycle updates use crash-safe advisory locks opened
+  without following symlinks or hard links, preventing lock-file redirection
+  from changing unrelated local files.
+- **Digest-only evidence adapters no longer manufacture verified claims.**
+  Normalizing arbitrary A2A or email bytes now emits a self-asserted
+  `*-evidence-digest-recorded` claim instead of claiming that an A2A protocol
+  or email signature was verified. Evidence verification results explicitly
+  state that they compare only the embedded-byte digest; caller-controlled
+  metadata cannot elevate assurance.
+
+Dependabot remediation (production + dev surfaces):
+
+- **Rust, Python, and Node dependency locks were refreshed to their latest
+  compatible releases.** `object_store` 0.14.1 admits patched `quick-xml`
+  0.41.0, clearing RUSTSEC-2026-0194 and RUSTSEC-2026-0195; yanked `spin`
+  0.9.8/0.10.0 releases are replaced by 0.9.9/0.10.1. Root Rust, npm, and Go
+  audits report no vulnerabilities. Remaining no-fix or upstream-pinned
+  findings are isolated to the optional SurrealDB and CrewAI graphs,
+  documented with owners and review deadlines in `SECURITY_AUDIT.md`, and
+  machine-checked by CI.
+- **jacs-surrealdb 0.1.19: surrealdb 3.0.5 → 3.2.0.** Clears all open surrealdb advisories against the storage crate, including the high-severity arbitrary file read via `DEFINE ANALYZER` (GHSA-cc8f-fcx3-gpjr), the JWKS SSRF, the indexed `ORDER BY` field leak, and the deep-operator-chain DoS. Practical exposure was low (embedded `kv-mem`, JACS controls all queries) but the crate is published, so downstream usage may differ. Also drops the unmaintained `proc-macro-error2` from the dependency tree.
+- **jacspy dev lock refreshed** (`uv.lock`; nothing here ships in the wheel — jacspy declares no required runtime deps, and the extras' version ranges already resolve to patched releases for end users): aiohttp 3.14.1, cryptography 49.0.0, starlette 1.3.1, python-multipart 0.0.32, langsmith 0.9.7, langchain 1.3.11, langgraph-sdk 0.4.2, langgraph-checkpoint 4.1.1.
+- **jacsnpm dev/example locks refreshed**: hono 4.12.27 (transitive via `@modelcontextprotocol/sdk` devDependency; also in `examples/`), js-yaml 4.3.0. The published package's runtime deps were unaffected.
+- **opentelemetry stack 0.30 → 0.32 in `jacs` core**: `opentelemetry` 0.32.0, `opentelemetry_sdk` 0.32.1 (fixes unbounded memory allocation in W3C Baggage propagation, GHSA-w9wp-h8wv-79jx), `opentelemetry-otlp` 0.32.0, `opentelemetry-appender-tracing` 0.32.0, `tracing-opentelemetry` 0.33. No source changes needed; the 34 observability tests (`otlp-logs`/`otlp-metrics`/`otlp-tracing` features) pass unchanged against the pre-bump baseline.
+- The observability example had rotted (it called `provider.shutdown()` on the no-otlp stub type, and nothing CI-compiles that standalone workspace): it now enables the `otlp-*` features on its `jacs` dependency, drops its unused direct otel deps, and compiles again with `opentelemetry_sdk` 0.32.1 in its lockfile.
+
 ## 0.11.3
 
 
@@ -80,7 +341,7 @@ Key-management hardening from a focused security review (each fix is test-covere
 
 - **A2A key-substitution defense (TOFU pinning).** A verified self-published JWKS only proves control of the Agent Card's origin, not the claimed `jacsId`. `assess_a2a_agent` now pins the verifying A2A key trust-on-first-use, keyed by `jacsId:jacsVersion`; a later card for the same id/version that presents a different key is downgraded to `Untrusted` (refused under the `Verified`/`Strict` policies). Legitimate key rotation bumps the version and produces a fresh pin, so it is not flagged. Pin-store failures degrade gracefully (the agent stays `JacsVerified`).
 - **A2A JWKS transport hardening.** JWKS used for trust decisions must now be served over `https`; plaintext `http` is rejected for non-loopback origins (`agent_card_origin`), closing a network-MITM key-substitution vector. `http` is still permitted for loopback hosts (local development).
-- **Legacy v1 signature content is no longer silently trusted.** A legacy v1 signature (no `signatureContentVersion`) does not authenticate its signature metadata (`agentID`, `date`, `jti`, `signingAlgorithm`). It is still verified by default for backward compatibility, but acceptance now emits a loud, structured `SECURITY` event carrying the agent ID, and deployments can refuse legacy documents entirely by setting `JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true`.
+- **Legacy v1 signature content is denied by default.** A legacy v1 signature (no `signatureContentVersion`) does not authenticate its signature metadata (`agentID`, `date`, `jti`, `signingAlgorithm`). Use the explicit migration API to re-sign it as v2. An audited archive-compatibility workflow may opt in with `JACS_ALLOW_LEGACY_SIGNATURE_CONTENT=true`; even then, verification results suppress the unauthenticated signer, version, and timestamp fields. The historical `JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true` override remains supported and takes precedence.
 - **Hardened key re-encryption across the binding/MCP surface.** `binding-core`'s `reencrypt_key` (reachable from Python, Node, and the `jacs_reencrypt_key` MCP tool) previously wrote the re-encrypted private key with a bare `std::fs::write` (process-umask permissions, symlink-following, non-atomic). It now routes through the shared `reencrypt_private_key_file` primitive that writes atomically with owner-only `0o600` and refuses to follow symlinks, and validates the config-derived key filename against path traversal.
 - **Private-key password no longer leaks via `Debug`.** `Config` and `Agent` now carry hand-written `Debug` impls that redact the at-rest key password (and, for `Config`, the database URL and raw config JSON), so the password can no longer reach logs or panic output through `{:?}`.
 - **Decrypted signing key is zeroized.** The plaintext private key copied into the signing path (`sign_string` / `sign_bytes` / `sign_batch`) is now held in a `zeroize::Zeroizing` buffer and wiped after each operation, closing a memory-scraping window.
@@ -95,7 +356,7 @@ Key-management hardening from a focused security review (each fix is test-covere
 ### Added
 
 - New crate `jacs-core` (portable JACS protocol layer) that compiles for both native and `wasm32-unknown-unknown`. Holds the canonical-JSON serializer, embedded schema set, AES-256-GCM + Argon2id encrypted-key envelope (V2) plus the legacy PBKDF2 reader, `DetachedSigner` trait + Ed25519 (`ed25519-dalek`) and pq2025 (`fips204`) backends, `CoreAgent` sign/verify, and multi-party agreement payload helpers. No I/O — pure protocol.
-- New crate `jacs-wasm` with the browser bindings (`wasm-bindgen` wrapper around `jacs-core`). Exports `initJacsWasm`, `createEphemeral`, `importEncryptedAgent`, `importEncryptedAgentFiles`, `createVerifier`, plus the `CoreAgentHandle` methods (`signMessageJson`, `verifyJson`, `verifyWithKeyJson`, `exportAgent`, `getPublicKeyBase64`, `algorithm`, `isUnlocked`, `clearSecrets`, `signAgreementJson`, `verifyAgreementJson`), the `createAgreementJson` free function, the `localStore.*` browser-storage helpers (with `RefusedPayload` / `StorageUnavailable` / `QuotaExceeded` / `KeyNotFound` error codes and a defense-in-depth secret-leak tripwire), the `workerHandleMessage` dispatcher used by the `@jacs/wasm/worker` subpath, and a hand-written TypeScript wrapper (`index.ts`) that single-sources `localStore` from the camelCase exports. Published to npm as `@jacs/wasm` via the new `release-wasm.yml` workflow triggered by `wasm-vX.Y.Z` tags.
+- New crate `jacs-wasm` with the browser bindings (`wasm-bindgen` wrapper around `jacs-core`). Exports `initJacsWasm`, `createEphemeral`, `importEncryptedAgent`, `importEncryptedAgentFiles`, `createVerifier`, plus the `CoreAgentHandle` methods (`signMessageJson`, `verifyJson`, `verifyWithKeyJson`, `exportAgent`, `getPublicKeyBase64`, `algorithm`, `isUnlocked`, `clearSecrets`, `signAgreementJson`, `verifyAgreementJson`), the `createAgreementJson` free function, the `localStore.*` browser-storage helpers (with `RefusedPayload` / `StorageUnavailable` / `QuotaExceeded` / `KeyNotFound` error codes and a defense-in-depth secret-leak tripwire), the `workerHandleMessage` dispatcher used by the `@jacs/wasm/worker` subpath, and a hand-written TypeScript wrapper (`index.ts`) that single-sources `localStore` from the camelCase exports. Release automation targets npm as `@jacs/wasm` through `release-wasm.yml` on `wasm-vX.Y.Z` tags; source packaging was completed, but no registry version had been published as of the 2026-07-09 distribution baseline.
 - Web Worker bridge (`@jacs/wasm/worker`): `worker/index.ts` (main-thread API: `createEphemeralInWorker`, `importEncryptedAgentInWorker`, `WorkerAgentHandle`, `terminateWorker`) + `worker/jacs-worker.ts` (worker-side bootstrap routing `postMessage` events through Rust). Replies are always structured `{ id, ok, result | error }` — never thrown exceptions — so `id` correlation survives error paths.
 - `jacs-wasm/scripts/finalize-pkg.sh` (idempotent post-`wasm-pack build` step): derives the version from `jacs-wasm/Cargo.toml`, merges `package.template.json` into `pkg/package.json`, sandbox-compiles the TS wrapper + worker glue, copies README. Fixture: `scripts/tests/finalize-pkg.test.sh`.
 - `jacs-wasm/examples/vite-smoke/` (Vite + Playwright smoke that loads the locally built `pkg/`, signs, verifies, asserts `valid === true`) and `jacs-wasm/examples/worker-smoke/` (creates an ephemeral pq2025 agent in a Web Worker and signs + verifies a message).
@@ -807,7 +1068,7 @@ proof of concept
  - [x] TEST init agent without needing configs in filesystem by checking that needed ENV variables are set
 
 ## 0.3.2
- - [x] add common clause to Apache 2.0
+ - [x] added the Common Clause to Apache 2.0 at the time (removed in 0.11.4)
  - [x] use a single file to handle file i/o for all storage types
  - [x] use an ENV wrapper to prep for wasm
  - [x] complete migration away from fs calls except for config, security, tests, cli 

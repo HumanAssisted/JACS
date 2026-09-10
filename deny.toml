@@ -29,27 +29,11 @@ allow = [
 # In cargo-deny v0.19+, any license not in `allow` is denied by default.
 # The allow-list above is sufficient to block GPL/AGPL/LGPL/SSPL/EUPL.
 
-# Workspace crates without explicit license field use the workspace license
-[[licenses.clarify]]
-name = "jacsnpm"
-expression = "Apache-2.0"
-license-files = []
-
-[[licenses.clarify]]
-name = "jacspy"
-expression = "Apache-2.0"
-license-files = []
-
-[[licenses.clarify]]
-name = "jacsgo"
-expression = "Apache-2.0"
-license-files = []
-
 # ring contains legacy OpenSSL-licensed code alongside ISC/Apache-2.0
 [[licenses.clarify]]
 name = "ring"
 expression = "(Apache-2.0 OR ISC) AND OpenSSL"
-license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+license-files = [{ path = "LICENSE", hash = 0x0d99693a }]
 
 # SurrealDB uses BUSL-1.1; accepted for optional backend integration
 [[licenses.exceptions]]
@@ -60,22 +44,37 @@ name = "surrealdb-protocol"
 [[licenses.clarify]]
 name = "surrealdb"
 expression = "BUSL-1.1"
-license-files = []
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
 
 [[licenses.clarify]]
 name = "surrealdb-core"
 expression = "BUSL-1.1"
-license-files = []
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
 
 [[licenses.clarify]]
 name = "surrealdb-types"
 expression = "BUSL-1.1"
-license-files = []
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
 
 [[licenses.clarify]]
 name = "surrealdb-types-derive"
 expression = "BUSL-1.1"
-license-files = []
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.clarify]]
+name = "surrealdb-collections"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.clarify]]
+name = "surrealdb-strand"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.clarify]]
+name = "tokio-tungstenite-wasm"
+expression = "MIT"
+license-files = [{ path = "LICENSE", hash = 0x5c83871f }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -93,6 +92,14 @@ name = "surrealdb-types"
 allow = ["BUSL-1.1"]
 name = "surrealdb-types-derive"
 
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-collections"
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-strand"
+
 [licenses.private]
 ignore = true
 
@@ -100,6 +107,20 @@ ignore = true
 # Use the RustSec advisory database
 db-urls = ["https://github.com/rustsec/advisory-db"]
 
-# Each ignore here MUST carry a reason. Re-evaluate on every quarterly audit
-# and whenever the named upstream releases.
-ignore = []
+# Each ignore here MUST carry a reason, owner, and review deadline. Re-evaluate
+# whenever the named upstream releases and no later than the recorded date.
+ignore = [
+    # rsa 0.9.10 is present only in the standalone SurrealDB lock through
+    # jsonwebtoken. That backend verifies public-key JWTs and does not expose
+    # RSA private-key operations. Owner: JACS storage maintainers.
+    # Review by: 2026-10-09.
+    "RUSTSEC-2023-0071",
+    # atomic-polyfill is unmaintained in the standalone SurrealDB geometry
+    # graph; it has no reported vulnerability and is not cryptographic code.
+    # Owner: JACS storage maintainers. Review by: 2026-10-09.
+    "RUSTSEC-2023-0089",
+    # bincode 2.0.1 is unmaintained in SurrealDB's surrealmx graph; no
+    # exploitable flaw is reported and JACS has no direct bincode use.
+    # Owner: JACS storage maintainers. Review by: 2026-10-09.
+    "RUSTSEC-2025-0141",
+]

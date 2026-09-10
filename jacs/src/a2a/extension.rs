@@ -1,7 +1,7 @@
 //! JACS extension management for A2A protocol (v0.4.0)
 
 use crate::a2a::agent_card::create_extension_descriptor;
-use crate::a2a::keys::{create_jwk_set, export_as_jwk, sign_jws};
+use crate::a2a::keys::sign_jws;
 use crate::a2a::{AgentCard, AgentCardSignature};
 use crate::agent::{Agent, boilerplate::BoilerPlate};
 use crate::crypt::supported_verification_algorithms;
@@ -83,12 +83,59 @@ pub fn verify_agent_card_jws(
         return Err("Agent Card signatures array is empty".into());
     }
 
-    let jws = &signatures[0].jws;
+    let signature = &signatures[0];
+    let jws = &signature.jws;
 
-    // Serialize the card without signatures for comparison
+    // The outer A2A keyId and protected JOSE kid must name the same key. A
+    // verifier selects the JWKS entry by keyId, so allowing a different or
+    // missing protected kid would make key-selection metadata ambiguous.
+    use base64::Engine as _;
+    let protected_segment = jws
+        .split('.')
+        .next()
+        .ok_or_else(|| JacsError::CryptoError("JWS protected header is missing".to_string()))?;
+    let protected_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(protected_segment)
+        .map_err(|error| {
+            JacsError::CryptoError(format!("Invalid JWS protected header encoding: {error}"))
+        })?;
+    let protected =
+        jacs_core::strict_json::parse_strict_json_slice(&protected_bytes).map_err(|error| {
+            JacsError::CryptoError(format!("Invalid JWS protected header: {error}"))
+        })?;
+    let protected_kid = protected
+        .get("kid")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            JacsError::CryptoError("JWS protected header is missing required 'kid'".to_string())
+        })?;
+    let outer_kid = signature.key_id.as_deref().ok_or_else(|| {
+        JacsError::CryptoError("Agent Card signature is missing required keyId".to_string())
+    })?;
+    if protected_kid != outer_kid {
+        return Err(JacsError::CryptoError(format!(
+            "Agent Card signature keyId '{}' does not match protected JWS kid '{}'",
+            outer_kid, protected_kid
+        )));
+    }
+
+    // Serialize the card without signatures for comparison. The named ES256
+    // exporter signs RFC 8785/JCS bytes; the historical Ed25519 API signed the
+    // AgentCard serializer's bytes. Support both contracts explicitly.
     let mut card_without_sig = agent_card.clone();
     card_without_sig.signatures = None;
-    let expected_payload = serde_json::to_vec(&card_without_sig)?;
+    let expected_payload = if matches!(algorithm, "ES256" | "es256" | "ecdsa") {
+        let value = serde_json::to_value(&card_without_sig)?;
+        jacs_core::canonical::canonicalize_json_try(&value)
+            .map_err(|error| {
+                JacsError::ValidationError(format!(
+                    "Agent Card JCS canonicalization failed: {error}"
+                ))
+            })?
+            .into_bytes()
+    } else {
+        serde_json::to_vec(&card_without_sig)?
+    };
 
     // Verify the JWS signature
     let verified_payload = verify_jws(jws, public_key, algorithm)?;
@@ -106,6 +153,7 @@ pub fn verify_agent_card_jws(
 pub struct WellKnownEndpoints {
     pub agent_card_path: String,
     pub jwks_path: String,
+    pub compat_binding_path: String,
     pub jacs_descriptor_path: String,
     pub jacs_pubkey_path: String,
     pub jacs_extension_path: String,
@@ -116,6 +164,7 @@ impl Default for WellKnownEndpoints {
         Self {
             agent_card_path: "/.well-known/agent-card.json".to_string(),
             jwks_path: "/.well-known/jwks.json".to_string(),
+            compat_binding_path: crate::compatibility::exports::A2A_COMPAT_BINDING_PATH.to_string(),
             jacs_descriptor_path: "/.well-known/jacs-agent.json".to_string(),
             jacs_pubkey_path: "/.well-known/jacs-pubkey.json".to_string(),
             jacs_extension_path: "/.well-known/jacs-extension.json".to_string(),
@@ -123,44 +172,114 @@ impl Default for WellKnownEndpoints {
     }
 }
 
-/// Generate all .well-known documents for A2A integration (v0.4.0).
+/// Legacy caller-supplied-key discovery generator.
 ///
-/// The agent card is returned with the JWS signature embedded in its
-/// `signatures` field rather than wrapped in a separate document.
+/// This API previously produced a fresh, unbound Ed25519 identity on every
+/// call. It now fails closed because a self-advertised ephemeral key cannot
+/// establish the card's JACS identity. Use
+/// [`generate_bound_well_known_documents`] so the persisted ES256
+/// compatibility key and its native-root-signed binding are published
+/// together.
+#[deprecated(
+    since = "0.11.4",
+    note = "use generate_bound_well_known_documents; caller-supplied unbound A2A keys are rejected"
+)]
 pub fn generate_well_known_documents(
-    agent: &Agent,
-    agent_card: &AgentCard,
-    a2a_public_key: &[u8],
-    a2a_algorithm: &str,
-    jws_signature: &str,
+    _agent: &Agent,
+    _agent_card: &AgentCard,
+    _a2a_public_key: &[u8],
+    _a2a_algorithm: &str,
+    _jws_signature: &str,
 ) -> Result<Vec<(String, Value)>, JacsError> {
+    Err(JacsError::ValidationError(
+        "caller-supplied A2A discovery keys are no longer accepted because they are not bound to \
+         the claimed JACS identity; use generate_bound_well_known_documents with the persisted \
+         ES256 compatibility key"
+            .to_string(),
+    ))
+}
+
+/// Generate the complete, identity-bound A2A discovery document set.
+///
+/// The Agent Card is JCS-signed with the persisted ES256 compatibility key;
+/// the JWKS publishes that same key; and the same-origin compatibility
+/// binding endpoint publishes the current native-root-signed authorization
+/// artifact. Repeated calls and processes sharing the identity directory
+/// therefore return the same card/JWKS/binding tuple.
+pub fn generate_bound_well_known_documents(
+    agent: &mut Agent,
+    key_directory: &str,
+    agent_card: Option<AgentCard>,
+) -> Result<Vec<(String, Value)>, JacsError> {
+    let signing_algorithm = agent.get_key_algorithm().cloned().ok_or_else(|| {
+        JacsError::ValidationError(
+            "identity-bound A2A discovery requires the loaded agent's configured signing algorithm"
+                .to_string(),
+        )
+    })?;
     let mut documents = Vec::new();
     let endpoints = WellKnownEndpoints::default();
 
-    // 1. Agent Card with embedded signature (v0.4.0)
-    let signed_card = embed_signature_in_agent_card(agent_card, jws_signature, None);
-    let card_json = serde_json::to_value(&signed_card)?;
+    // 1. Agent Card signed by the persisted, native-root-bound ES256 key.
+    let card = match agent_card {
+        Some(card) => card,
+        None => crate::a2a::agent_card::export_agent_card(agent)?,
+    };
+    let expected_agent_id = agent.get_id()?;
+    let expected_agent_version = agent.get_version()?;
+    let card_agent_id = card
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("jacsId"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            JacsError::ValidationError(
+                "identity-bound A2A Agent Card is missing metadata.jacsId".to_string(),
+            )
+        })?;
+    let card_agent_version = card
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("jacsVersion"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            JacsError::ValidationError(
+                "identity-bound A2A Agent Card is missing metadata.jacsVersion".to_string(),
+            )
+        })?;
+    if card_agent_id != expected_agent_id
+        || card_agent_version != expected_agent_version
+        || card.version != expected_agent_version
+    {
+        return Err(JacsError::ValidationError(format!(
+            "identity-bound A2A Agent Card does not match the loaded agent: expected \
+             id/version '{expected_agent_id}:{expected_agent_version}', card metadata claims \
+             '{card_agent_id}:{card_agent_version}', card.version is '{}'",
+            card.version
+        )));
+    }
+    let card_json =
+        crate::compatibility::exports::export_a2a_agent_card_from(agent, key_directory, card)?;
     documents.push((endpoints.agent_card_path, card_json));
 
-    // 2. JWK Set for A2A
-    let agent_id = agent.get_id()?;
-    let jwk = export_as_jwk(a2a_public_key, a2a_algorithm, &agent_id)?;
-    let jwk_set = create_jwk_set(vec![jwk]);
-    documents.push((endpoints.jwks_path, jwk_set));
+    // 2. JWKS for the exact same persisted ES256 compatibility key.
+    let jwks = crate::compatibility::exports::export_compatibility_jwks(agent, key_directory)?;
+    documents.push((endpoints.jwks_path, jwks));
 
-    // 3. JACS Agent Descriptor
+    // 3. Deterministically resolvable native-root-signed binding artifact.
+    let binding =
+        crate::compatibility::exports::export_compatibility_key_binding(agent, key_directory)?;
+    documents.push((endpoints.compat_binding_path, binding));
+
+    // 4. JACS Agent Descriptor
     let jacs_descriptor = create_jacs_agent_descriptor(agent)?;
     documents.push((endpoints.jacs_descriptor_path, jacs_descriptor));
 
-    // 4. JACS Public Key
+    // 5. JACS Public Key
     let jacs_pubkey_doc = create_jacs_pubkey_document(agent)?;
     documents.push((endpoints.jacs_pubkey_path, jacs_pubkey_doc));
 
-    // 5. JACS Extension Descriptor
-    let signing_algorithm = agent
-        .get_key_algorithm()
-        .cloned()
-        .unwrap_or_else(|| "unknown".to_string());
+    // 6. JACS Extension Descriptor
     let extension_descriptor = create_extension_descriptor(&signing_algorithm);
     documents.push((endpoints.jacs_extension_path, extension_descriptor));
 
@@ -202,6 +321,8 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, JacsError> {
             "verify": "/jacs/verify",
             "sign": "/jacs/sign",
             "agent": "/jacs/agent",
+            "jwks": "/.well-known/jwks.json",
+            "compatibilityBinding": crate::compatibility::exports::A2A_COMPAT_BINDING_PATH,
         }
     }))
 }
@@ -231,10 +352,14 @@ mod tests {
     use crate::a2a::JACS_EXTENSION_URI;
 
     #[test]
-    fn test_well_known_endpoints_has_all_five_paths() {
+    fn test_well_known_endpoints_has_all_six_paths() {
         let endpoints = WellKnownEndpoints::default();
         assert_eq!(endpoints.agent_card_path, "/.well-known/agent-card.json");
         assert_eq!(endpoints.jwks_path, "/.well-known/jwks.json");
+        assert_eq!(
+            endpoints.compat_binding_path,
+            "/.well-known/jacs-compat-binding.json"
+        );
         assert_eq!(
             endpoints.jacs_descriptor_path,
             "/.well-known/jacs-agent.json"
@@ -247,11 +372,23 @@ mod tests {
     }
 
     #[test]
+    fn bound_discovery_rejects_missing_configured_signing_algorithm() {
+        let mut agent = crate::get_empty_agent();
+        let error = generate_bound_well_known_documents(&mut agent, ".", None)
+            .expect_err("an unconfigured algorithm must never be advertised as unknown");
+        assert!(
+            error.to_string().contains("configured signing algorithm"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn test_well_known_endpoints_all_under_well_known() {
         let endpoints = WellKnownEndpoints::default();
         let paths = [
             &endpoints.agent_card_path,
             &endpoints.jwks_path,
+            &endpoints.compat_binding_path,
             &endpoints.jacs_descriptor_path,
             &endpoints.jacs_pubkey_path,
             &endpoints.jacs_extension_path,

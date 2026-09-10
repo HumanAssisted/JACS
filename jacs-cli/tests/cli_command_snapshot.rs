@@ -236,3 +236,55 @@ fn test_cli_commands_fixture_structure() {
         );
     }
 }
+
+/// Recursively collect every command path in the Clap tree, including
+/// hidden and feature-gated subcommands (unlike `extract_clap_command_paths`,
+/// which mirrors the fixture layout). Used by guardrail tests that must see
+/// the entire surface.
+fn collect_all_clap_command_paths(cmd: &Command, prefix: &str, out: &mut Vec<String>) {
+    for sub in cmd.get_subcommands() {
+        let path = if prefix.is_empty() {
+            sub.get_name().to_string()
+        } else {
+            format!("{} {}", prefix, sub.get_name())
+        };
+        out.push(path.clone());
+        collect_all_clap_command_paths(sub, &path, out);
+    }
+}
+
+/// P2 Task 006 guardrail: the CLI ships only NAMED projection exporters
+/// (`agent export-jwks`, `agent export-compat-binding`, `ap2 export-mandate`,
+/// `agreement-v2 export-vc`, and the pre-existing `attest export-dsse`).
+/// A generic "sign any document as JWS / Data Integrity / DSSE / VC"
+/// command would reopen the broad projection design P2 closed, so no
+/// command or subcommand may carry one of these names.
+#[test]
+fn test_cli_has_no_generic_projection_commands() {
+    let forbidden = [
+        "sign-jws",
+        "sign-data-integrity",
+        "export-dsse-document",
+        "issue-w3c-vc",
+    ];
+
+    let cli = build_cli();
+    let mut all_paths = Vec::new();
+    collect_all_clap_command_paths(&cli, "", &mut all_paths);
+
+    let offenders: Vec<&String> = all_paths
+        .iter()
+        .filter(|path| {
+            let leaf = path.rsplit(' ').next().unwrap_or(path);
+            forbidden.contains(&leaf)
+        })
+        .collect();
+
+    assert!(
+        offenders.is_empty(),
+        "generic projection command(s) found in the Clap tree: {:?}\n\
+         P2 allows only named exporters (export-jwks, export-compat-binding, \
+         export-mandate, export-vc, export-dsse) — remove the generic command.",
+        offenders
+    );
+}

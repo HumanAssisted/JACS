@@ -5,14 +5,51 @@ use crate::crypt::constants::{
     SINGLE_CLASS_MIN_ENTROPY_BITS, SPECIAL_CHAR_POOL_SIZE, UPPERCASE_POOL_SIZE,
 };
 use crate::error::JacsError;
+use crate::observability::convenience::{
+    SecurityOutcome, SecurityPolicy, SecuritySource, record_security_outcome,
+};
 use crate::storage::jenv::get_env_var;
 use jacs_core::CoreError;
 use jacs_core::envelope as core_env;
+use std::collections::HashMap;
+use tracing::warn;
 
 // Re-export ZeroizingVec so existing callers via `jacs::crypt::aes_encrypt`
 // don't change. The canonical home moved to `jacs-core::envelope` so wasm
 // builds can return secure buffers too. See PRD §4.6.
 pub use jacs_core::envelope::ZeroizingVec;
+
+const ARGON2_POLICY_REJECTION_PREFIX: &str = "Argon2id parameter policy rejected:";
+
+fn record_kdf_policy_rejection(reason: &str) {
+    if !reason.starts_with(ARGON2_POLICY_REJECTION_PREFIX) {
+        return;
+    }
+    let mut labels = HashMap::new();
+    labels.insert("kdf".to_string(), "Argon2id".to_string());
+    labels.insert("profile".to_string(), "v2".to_string());
+    crate::observability::metrics::increment_counter(
+        "jacs_kdf_policy_rejections_total",
+        1,
+        Some(labels),
+    );
+    record_security_outcome(
+        SecuritySource::EncryptedKey,
+        SecurityOutcome::KdfPolicyRejected,
+        SecurityPolicy::Strict,
+        None,
+        None,
+    );
+    warn!(
+        event = "encrypted_key_kdf_policy_rejected",
+        kdf = "Argon2id",
+        profile = "v2",
+        outcome = "kdf_policy_rejected",
+        error_kind = "resource_policy_rejected",
+        policy = "strict",
+        "Rejected encrypted private-key envelope before KDF execution"
+    );
+}
 
 /// Common weak passwords that should be rejected regardless of calculated entropy.
 const WEAK_PASSWORDS: &[&str] = &[
@@ -512,11 +549,14 @@ pub fn decrypt_private_key_secure_with_password(
     // shaping; the crypto is portable.
     match core_env::decrypt_private_key(encrypted_key_with_salt_and_nonce, password) {
         Ok(zv) => Ok(zv),
-        Err(CoreError::MalformedEnvelope(reason)) => Err(JacsError::CryptoError(format!(
-            "Encrypted private key file is corrupted or truncated: {reason}. \
-             The key file may have been damaged during transfer or storage. \
-             Try regenerating your keys with 'jacs keygen' or restore from a backup."
-        ))),
+        Err(CoreError::MalformedEnvelope(reason)) => {
+            record_kdf_policy_rejection(&reason);
+            Err(JacsError::CryptoError(format!(
+                "Encrypted private key file is corrupted or truncated: {reason}. \
+                 The key file may have been damaged during transfer or storage. \
+                 Try regenerating your keys with 'jacs keygen' or restore from a backup."
+            )))
+        }
         Err(CoreError::InvalidPassword) => Err(JacsError::CryptoError(
             "Private key decryption failed: incorrect password or corrupted key file. \
              Check that JACS_PRIVATE_KEY_PASSWORD matches the password used during key generation. \
@@ -538,9 +578,12 @@ pub fn decrypt_with_password(encrypted_data: &[u8], password: &str) -> Result<Ve
     // flows, not user-facing key loads.
     match core_env::decrypt_private_key(encrypted_data, password) {
         Ok(zv) => Ok(zv.as_slice().to_vec()),
-        Err(CoreError::MalformedEnvelope(reason)) => Err(JacsError::CryptoError(format!(
-            "Encrypted data too short or malformed: {reason}"
-        ))),
+        Err(CoreError::MalformedEnvelope(reason)) => {
+            record_kdf_policy_rejection(&reason);
+            Err(JacsError::CryptoError(format!(
+                "Encrypted data too short or malformed: {reason}"
+            )))
+        }
         Err(CoreError::InvalidPassword) => Err(JacsError::CryptoError(
             "Decryption failed: incorrect password or corrupted data.".to_string(),
         )),

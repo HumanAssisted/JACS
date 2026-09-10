@@ -8,23 +8,41 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-crate-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/rust.yml
+
   verify-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Extract version from tag
+      - name: Validate and extract release tag
         id: extract
-        run: |
-          TAG="${GITHUB_REF#refs/tags/crate/v}"
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+        run: python3 scripts/release_tag.py --surface crate
 
       - name: Check Cargo.toml version matches tag (jacs-core + jacs-media + jacs + binding-core + jacs-mcp + jacs-cli)
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          set -euo pipefail
           for dir in jacs-core jacs-media jacs binding-core jacs-mcp jacs-cli; do
             CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             echo "$dir Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
@@ -36,202 +54,418 @@ jobs:
           echo "Version match confirmed for jacs-core, jacs-media, jacs, binding-core, jacs-mcp, and jacs-cli"
 
   publish:
-    needs: verify-version
+    needs: [security-gate, functional-gate, verify-version]
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     env:
       VERSION: ${{ needs.verify-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Install system dependencies (D-Bus for keychain support)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: "1.97"
+
+      # Transitional fallback only: keep CRATES_IO_TOKEN until every crate has
+      # a crates.io trusted publisher for this workflow and environment. Then
+      # set CRATES_IO_TRUSTED_PUBLISHING_ENABLED=true and remove the secret.
+      - name: Report CRATES_IO_TOKEN migration fallback
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED != 'true'
+        run: echo "::warning::Trusted publishing is not enabled; using the CRATES_IO_TOKEN migration fallback"
 
       - name: Pre-publish compile check (all crates)
+        env:
+          RUSTFLAGS: "-D warnings"
         run: |
           echo "Checking all publishable crates compile cleanly with -D warnings..."
-          cargo check -p jacs-core -p jacs-media -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
+          cargo check --locked -p jacs-core -p jacs-media -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
           echo "All crates compile cleanly"
+
+      # Build the complete immutable candidate set before the first
+      # irreversible crates.io upload. `--no-verify` is intentional here:
+      # dependent crates cannot complete Cargo's package verification until
+      # the earlier crates in this release are indexed. Each crate is still
+      # packaged and verified normally immediately before its publish step.
+      - name: Build complete pre-publish Rust candidate set
+        run: |
+          set -euo pipefail
+          mkdir -p security-candidates/archives security-candidates/extracted
+          candidates=(
+            "jacs-core:jacs-core"
+            "jacs-media:jacs-media"
+            "jacs:jacs"
+            "binding-core:jacs-binding-core"
+            "jacs-mcp:jacs-mcp"
+            "jacs-cli:jacs-cli"
+          )
+          for candidate in "${candidates[@]}"; do
+            directory="${candidate%%:*}"
+            package="${candidate#*:}"
+            cargo package --locked --no-verify --manifest-path "${directory}/Cargo.toml"
+            archive="target/package/${package}-${VERSION}.crate"
+            test -f "$archive"
+            cp "$archive" security-candidates/archives/
+            mkdir -p "security-candidates/extracted/${package}"
+            tar -xzf "$archive" -C "security-candidates/extracted/${package}"
+          done
+          actual="$(find security-candidates/archives -maxdepth 1 -type f -name '*.crate' | wc -l | tr -d ' ')"
+          test "$actual" = 6
+
+      - name: Generate pre-publish Rust candidate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: security-candidates/extracted
+          format: spdx-json
+          output-file: pre-publish-rust-candidates.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Gate publish on complete Rust candidate evidence
+        run: |
+          set -euo pipefail
+          jq -e '.spdxVersion | startswith("SPDX-2.")' pre-publish-rust-candidates.spdx.json >/dev/null
+          jq -e '((.packages // []) | length) > 0' pre-publish-rust-candidates.spdx.json >/dev/null
+          for package in jacs-core jacs-media jacs jacs-binding-core jacs-mcp jacs-cli; do
+            test -f "security-candidates/archives/${package}-${VERSION}.crate"
+          done
 
       # ---------------------------------------------------------------------
       # jacs-core — first in the chain. jacs and jacs-media both depend on
       # the canonicalizer / sign / envelope / schema modules that live here.
       # See CLAUDE.md "Publish Order (crates.io)" and PRD §4.9.
       # ---------------------------------------------------------------------
-      - name: Publish jacs-core to crates.io
+      - name: Build exact jacs-core crate candidate
         run: |
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          cargo package --locked --manifest-path jacs-core/Cargo.toml
+          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-core
+          cp "target/package/jacs-core-${VERSION}.crate" packaged-crates/archives/
+          tar -xzf "target/package/jacs-core-${VERSION}.crate" -C packaged-crates/extracted/jacs-core
+
+      - name: Authenticate jacs-core publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_core
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Publish jacs-core to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_core.outputs.token || secrets.CRATES_IO_TOKEN }}
+        run: |
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate jacs-core --version "$VERSION")
+          if "${gate[@]}"; then
             echo "jacs-core $VERSION already published, skipping"
           else
-            set -o pipefail
-            if ! (cd jacs-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-core.log); then
-              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-core.log; then
-                echo "::warning::jacs-core $VERSION already exists on crates.io, continuing"
-              else
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            if ! (cd jacs-core && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-core.log); then
+              if ! "${gate[@]}"; then
                 echo "::error::publishing jacs-core $VERSION failed (real error, not already-exists)"
                 exit 1
               fi
+              echo "::warning::cargo publish failed after jacs-core $VERSION became visible; continuing"
             fi
           fi
 
       - name: Wait for jacs-core to appear on crates.io
+        run: python3 scripts/crates_release_gate.py wait --crate jacs-core --version "$VERSION"
+
+      - name: Build exact jacs-media crate candidate
         run: |
-          echo "Waiting for jacs-core $VERSION on crates.io..."
-          for i in $(seq 1 60); do
-            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-            if [ "$LATEST" = "$VERSION" ]; then
-              echo "jacs-core $VERSION is available on crates.io"
-              exit 0
-            fi
-            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
-            sleep 15
-          done
-          echo "::error::Timed out waiting for jacs-core $VERSION on crates.io"
-          exit 1
+          set -euo pipefail
+          cargo package --locked --manifest-path jacs-media/Cargo.toml
+          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-media
+          cp "target/package/jacs-media-${VERSION}.crate" packaged-crates/archives/
+          tar -xzf "target/package/jacs-media-${VERSION}.crate" -C packaged-crates/extracted/jacs-media
+
+      - name: Authenticate jacs-media publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_media
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
       - name: Publish jacs-media to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_media.outputs.token || secrets.CRATES_IO_TOKEN }}
         run: |
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-media | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate jacs-media --version "$VERSION")
+          if "${gate[@]}"; then
             echo "jacs-media $VERSION already published, skipping"
           else
-            set -o pipefail
-            if ! (cd jacs-media && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-media.log); then
-              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-media.log; then
-                echo "::warning::jacs-media $VERSION already exists on crates.io, continuing"
-              else
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            if ! (cd jacs-media && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-media.log); then
+              if ! "${gate[@]}"; then
                 echo "::error::publishing jacs-media $VERSION failed (real error, not already-exists)"
                 exit 1
               fi
+              echo "::warning::cargo publish failed after jacs-media $VERSION became visible; continuing"
             fi
           fi
 
       - name: Wait for jacs-media to appear on crates.io
+        run: python3 scripts/crates_release_gate.py wait --crate jacs-media --version "$VERSION"
+
+      - name: Build exact jacs crate candidate
         run: |
-          echo "Waiting for jacs-media $VERSION on crates.io..."
-          for i in $(seq 1 60); do
-            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-media | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-            if [ "$LATEST" = "$VERSION" ]; then
-              echo "jacs-media $VERSION is available on crates.io"
-              exit 0
-            fi
-            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
-            sleep 15
-          done
-          echo "::error::Timed out waiting for jacs-media $VERSION on crates.io"
-          exit 1
+          set -euo pipefail
+          cargo package --locked --manifest-path jacs/Cargo.toml
+          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs
+          cp "target/package/jacs-${VERSION}.crate" packaged-crates/archives/
+          tar -xzf "target/package/jacs-${VERSION}.crate" -C packaged-crates/extracted/jacs
+
+      - name: Authenticate jacs publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
       - name: Publish jacs to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs.outputs.token || secrets.CRATES_IO_TOKEN }}
         run: |
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate jacs --version "$VERSION")
+          if "${gate[@]}"; then
             echo "jacs $VERSION already published, skipping"
           else
-            set -o pipefail
-            if ! (cd jacs && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs.log); then
-              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs.log; then
-                echo "::warning::jacs $VERSION already exists on crates.io, continuing"
-              else
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            if ! (cd jacs && cargo publish --locked 2>&1 | tee /tmp/publish-jacs.log); then
+              if ! "${gate[@]}"; then
                 echo "::error::publishing jacs $VERSION failed (real error, not already-exists)"
                 exit 1
               fi
+              echo "::warning::cargo publish failed after jacs $VERSION became visible; continuing"
             fi
           fi
 
       - name: Wait for jacs to appear on crates.io
+        run: python3 scripts/crates_release_gate.py wait --crate jacs --version "$VERSION"
+
+      - name: Build exact jacs-binding-core crate candidate
         run: |
-          echo "Waiting for jacs $VERSION on crates.io..."
-          for i in $(seq 1 60); do
-            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-            if [ "$LATEST" = "$VERSION" ]; then
-              echo "jacs $VERSION is available on crates.io"
-              exit 0
-            fi
-            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
-            sleep 15
-          done
-          echo "::error::Timed out waiting for jacs $VERSION on crates.io"
-          exit 1
+          set -euo pipefail
+          cargo package --locked --manifest-path binding-core/Cargo.toml
+          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-binding-core
+          cp "target/package/jacs-binding-core-${VERSION}.crate" packaged-crates/archives/
+          tar -xzf "target/package/jacs-binding-core-${VERSION}.crate" -C packaged-crates/extracted/jacs-binding-core
+
+      - name: Authenticate jacs-binding-core publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_binding_core
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
       - name: Publish jacs-binding-core to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_binding_core.outputs.token || secrets.CRATES_IO_TOKEN }}
         run: |
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate jacs-binding-core --version "$VERSION")
+          if "${gate[@]}"; then
             echo "jacs-binding-core $VERSION already published, skipping"
           else
-            set -o pipefail
-            if ! (cd binding-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-binding-core.log); then
-              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-binding-core.log; then
-                echo "::warning::jacs-binding-core $VERSION already exists on crates.io, continuing"
-              else
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            if ! (cd binding-core && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-binding-core.log); then
+              if ! "${gate[@]}"; then
                 echo "::error::publishing jacs-binding-core $VERSION failed (real error, not already-exists)"
                 exit 1
               fi
+              echo "::warning::cargo publish failed after jacs-binding-core $VERSION became visible; continuing"
             fi
           fi
 
       - name: Wait for jacs-binding-core to appear on crates.io
+        run: python3 scripts/crates_release_gate.py wait --crate jacs-binding-core --version "$VERSION"
+
+      - name: Build exact jacs-mcp crate candidate
         run: |
-          echo "Waiting for jacs-binding-core $VERSION on crates.io..."
-          for i in $(seq 1 60); do
-            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-            if [ "$LATEST" = "$VERSION" ]; then
-              echo "jacs-binding-core $VERSION is available on crates.io"
-              exit 0
-            fi
-            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
-            sleep 15
-          done
-          echo "::error::Timed out waiting for jacs-binding-core $VERSION on crates.io"
-          exit 1
+          set -euo pipefail
+          cargo package --locked --manifest-path jacs-mcp/Cargo.toml
+          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-mcp
+          cp "target/package/jacs-mcp-${VERSION}.crate" packaged-crates/archives/
+          tar -xzf "target/package/jacs-mcp-${VERSION}.crate" -C packaged-crates/extracted/jacs-mcp
+
+      - name: Authenticate jacs-mcp publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_mcp
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
       - name: Publish jacs-mcp to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_mcp.outputs.token || secrets.CRATES_IO_TOKEN }}
         run: |
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate jacs-mcp --version "$VERSION")
+          if "${gate[@]}"; then
             echo "jacs-mcp $VERSION already published, skipping"
           else
-            set -o pipefail
-            if ! (cd jacs-mcp && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-mcp.log); then
-              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-mcp.log; then
-                echo "::warning::jacs-mcp $VERSION already exists on crates.io, continuing"
-              else
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            if ! (cd jacs-mcp && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-mcp.log); then
+              if ! "${gate[@]}"; then
                 echo "::error::publishing jacs-mcp $VERSION failed (real error, not already-exists)"
                 exit 1
               fi
+              echo "::warning::cargo publish failed after jacs-mcp $VERSION became visible; continuing"
             fi
           fi
 
       - name: Wait for jacs-mcp to appear on crates.io
+        run: python3 scripts/crates_release_gate.py wait --crate jacs-mcp --version "$VERSION"
+
+      - name: Build exact jacs-cli crate candidate
         run: |
-          echo "Waiting for jacs-mcp $VERSION on crates.io..."
-          for i in $(seq 1 60); do
-            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-            if [ "$LATEST" = "$VERSION" ]; then
-              echo "jacs-mcp $VERSION is available on crates.io"
-              exit 0
-            fi
-            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
-            sleep 15
-          done
-          echo "::error::Timed out waiting for jacs-mcp $VERSION on crates.io"
-          exit 1
+          set -euo pipefail
+          cargo package --locked --manifest-path jacs-cli/Cargo.toml
+          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-cli
+          cp "target/package/jacs-cli-${VERSION}.crate" packaged-crates/archives/
+          tar -xzf "target/package/jacs-cli-${VERSION}.crate" -C packaged-crates/extracted/jacs-cli
+
+      - name: Authenticate jacs-cli publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_cli
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
       - name: Publish jacs-cli to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_cli.outputs.token || secrets.CRATES_IO_TOKEN }}
         run: |
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-cli | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate jacs-cli --version "$VERSION")
+          if "${gate[@]}"; then
             echo "jacs-cli $VERSION already published, skipping"
           else
-            set -o pipefail
-            if ! (cd jacs-cli && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} 2>&1 | tee /tmp/publish-jacs-cli.log); then
-              if grep -qE "already (uploaded|exists)" /tmp/publish-jacs-cli.log; then
-                echo "::warning::jacs-cli $VERSION already exists on crates.io, continuing"
-              else
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            if ! (cd jacs-cli && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-cli.log); then
+              if ! "${gate[@]}"; then
                 echo "::error::publishing jacs-cli $VERSION failed (real error, not already-exists)"
                 exit 1
               fi
+              echo "::warning::cargo publish failed after jacs-cli $VERSION became visible; continuing"
             fi
           fi
+
+      - name: Verify exact crate candidate set
+        run: |
+          set -euo pipefail
+          actual="$(find packaged-crates/archives -maxdepth 1 -type f -name '*.crate' | wc -l | tr -d ' ')"
+          if [[ "$actual" != 6 ]]; then
+            echo "::error::expected 6 packaged Rust crate candidates, found $actual"
+            exit 1
+          fi
+
+      - name: Record exact Rust crate candidate digests
+        run: |
+          set -euo pipefail
+          sha256sum packaged-crates/archives/*.crate \
+            | sed 's#packaged-crates/archives/##' \
+            | sort -k2 \
+            > "jacs-rust-${VERSION}-sha256sums.txt"
+          test "$(wc -l < "jacs-rust-${VERSION}-sha256sums.txt" | tr -d ' ')" = 6
+
+      - name: Verify published crates match the exact reviewed candidates
+        run: |
+          set -euo pipefail
+          for package in jacs-core jacs-media jacs jacs-binding-core jacs-mcp jacs-cli; do
+            python3 scripts/crates_release_gate.py verify \
+              --crate "$package" \
+              --version "$VERSION" \
+              --archive "packaged-crates/archives/${package}-${VERSION}.crate"
+          done
+
+      - name: Generate packaged Rust-crate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: packaged-crates/extracted
+          format: spdx-json
+          output-file: jacs-rust-packages.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate packaged Rust-crate SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacs-rust-packages.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacs-rust-packages.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacs-rust-${{ needs.verify-version.outputs.version }}-release-evidence
+          path: |
+            packaged-crates/archives/*.crate
+            jacs-rust-${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            jacs-rust-packages.spdx.json
+            pre-publish-rust-candidates.spdx.json
+          if-no-files-found: error
+
+      - name: Wait for jacs-cli and smoke a clean registry consumer
+        run: |
+          set -euo pipefail
+          python3 scripts/crates_release_gate.py wait --crate jacs-cli --version "$VERSION"
+          rm -rf /tmp/jacs-rust-release-smoke
+          cargo new --bin /tmp/jacs-rust-release-smoke
+          cd /tmp/jacs-rust-release-smoke
+          cargo add "jacs@=$VERSION" serde_json
+          # Run the exact source block synchronized to jacs/README.md, not a
+          # second release-only approximation of the quickstart.
+          cp "$GITHUB_WORKSPACE/jacs/examples/readme_quickstart.rs" src/main.rs
+          cargo run --locked
+
+  durable-release-evidence:
+    needs: [verify-version, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacs-rust-${{ needs.verify-version.outputs.version }}-release-evidence
+          path: release-evidence
+
+      - name: Attest durable Rust release evidence
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            release-evidence/jacs-rust-${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            release-evidence/jacs-rust-packages.spdx.json
+            release-evidence/pre-publish-rust-candidates.spdx.json
+
+      - name: Publish durable Rust release evidence
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: JACS Rust crates v${{ needs.verify-version.outputs.version }}
+          body: Attested candidate checksums and SPDX SBOMs for the crates.io release.
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release-evidence/jacs-rust-${{ needs.verify-version.outputs.version }}-sha256sums.txt
+            release-evidence/jacs-rust-packages.spdx.json
+            release-evidence/pre-publish-rust-candidates.spdx.json

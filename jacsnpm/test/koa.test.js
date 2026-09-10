@@ -7,6 +7,7 @@
 
 const { expect } = require('chai');
 const sinon = require('sinon');
+const { signedResult } = require('./helpers/signed-document');
 
 // The compiled middleware — skip entire suite if not compiled yet.
 let koaModule;
@@ -46,12 +47,6 @@ function mockNext(fn) {
 
 /** Create a stubbed JacsClient with configurable behavior. */
 function createMockClient(options = {}) {
-  const signedRaw = JSON.stringify({
-    jacsId: 'mock-doc-id:1',
-    jacsSignature: { agentID: 'mock-agent', date: '2025-01-01T00:00:00Z' },
-    content: options.signContent || { signed: true },
-  });
-
   const verifyResult = options.verifyResult || {
     valid: true,
     data: { message: 'hello' },
@@ -62,12 +57,14 @@ function createMockClient(options = {}) {
   };
 
   return {
-    signMessage: sinon.stub().resolves({
-      raw: signedRaw,
-      documentId: 'mock-doc-id:1',
-      agentId: 'mock-agent',
-      timestamp: '2025-01-01T00:00:00Z',
-    }),
+    signMessage: sinon.stub().resolves(signedResult(
+      options.signContent || { signed: true },
+      {
+        documentId: 'mock-doc-id',
+        agentId: 'mock-agent',
+        timestamp: '2025-01-01T00:00:00Z',
+      },
+    )),
     verify: sinon.stub().resolves(verifyResult),
     agentId: 'mock-agent',
   };
@@ -278,6 +275,33 @@ describe('JACS Koa Middleware', function () {
       expect(ctx.body).to.have.property('error', 'JACS verification failed');
       expect(next.called).to.be.false;
     });
+
+    for (const malformedValid of ['false', 1, {}, null, undefined]) {
+      (available ? it : it.skip)(
+        `should reject non-boolean valid=${JSON.stringify(malformedValid)}`,
+        async () => {
+          const client = createMockClient({
+            verifyResult: {
+              valid: malformedValid,
+              data: { role: 'admin' },
+              errors: [],
+            },
+          });
+          const mw = koaModule.jacsKoaMiddleware({ client });
+          const ctx = mockCtx({
+            method: 'POST',
+            request: { body: '{"jacsSignature":{}}' },
+          });
+          const next = mockNext();
+
+          await mw(ctx, next);
+
+          expect(ctx.status).to.equal(401);
+          expect(ctx.state.jacsPayload).to.be.undefined;
+          expect(next.called).to.be.false;
+        },
+      );
+    }
 
     (available ? it : it.skip)('should return 401 when verify() throws', async () => {
       const client = createMockClient();
@@ -563,28 +587,29 @@ describe('JACS Koa Middleware', function () {
       expect(ctx.type).to.equal('application/json');
     });
 
-    (available ? it : it.skip)('should NOT sign when body is a string', async () => {
-      const client = createMockClient();
-      const mw = koaModule.jacsKoaMiddleware({ client, verify: false, sign: true });
+    for (const scalar of ['plain text response', 42, true, null]) {
+      (available ? it : it.skip)(`should sign scalar JSON response ${JSON.stringify(scalar)}`, async () => {
+        const client = createMockClient();
+        const mw = koaModule.jacsKoaMiddleware({ client, verify: false, sign: true });
+        const ctx = mockCtx({ method: 'GET' });
+        const next = mockNext(async () => {
+          ctx.body = scalar;
+        });
 
-      const ctx = mockCtx({ method: 'GET' });
-      const next = mockNext(async () => {
-        ctx.body = 'plain text response';
+        await mw(ctx, next);
+
+        expect(client.signMessage.calledOnce).to.be.true;
+        expect(client.signMessage.firstCall.args[0]).to.equal(scalar);
+        expect(ctx.body).to.be.a('string').and.include('jacsSignature');
       });
+    }
 
-      await mw(ctx, next);
-
-      expect(client.signMessage.called).to.be.false;
-      expect(ctx.body).to.equal('plain text response');
-    });
-
-    (available ? it : it.skip)('should NOT sign when body is null/undefined', async () => {
+    (available ? it : it.skip)('should not sign an absent undefined response', async () => {
       const client = createMockClient();
       const mw = koaModule.jacsKoaMiddleware({ client, verify: false, sign: true });
-
       const ctx = mockCtx({ method: 'GET' });
       const next = mockNext(async () => {
-        ctx.body = null;
+        ctx.body = undefined;
       });
 
       await mw(ctx, next);
@@ -622,7 +647,7 @@ describe('JACS Koa Middleware', function () {
       expect(ctx.body).to.equal(responseObj);
     });
 
-    (available ? it : it.skip)('should leave body intact if signing fails', async () => {
+    (available ? it : it.skip)('should withhold the original body if signing fails by default', async () => {
       const client = createMockClient();
       client.signMessage = sinon.stub().rejects(new Error('Sign failed'));
       const mw = koaModule.jacsKoaMiddleware({ client, verify: false, sign: true });
@@ -635,8 +660,59 @@ describe('JACS Koa Middleware', function () {
 
       await mw(ctx, next);
 
-      // Body should remain untouched on sign failure
+      expect(ctx.status).to.equal(500);
+      expect(ctx.body).to.not.equal(originalBody);
+      expect(String(ctx.body)).to.include('JACS response signing failed');
+    });
+
+    (available ? it : it.skip)('should allow unsigned output only after explicit dangerous opt-in', async () => {
+      const client = createMockClient();
+      client.signMessage = sinon.stub().rejects(new Error('Sign failed'));
+      const mw = koaModule.jacsKoaMiddleware({
+        client,
+        verify: false,
+        sign: true,
+        allowUnsignedOutput: true,
+      });
+      const ctx = mockCtx({ method: 'GET' });
+      const originalBody = { keep: 'me intentionally' };
+
+      await mw(ctx, mockNext(async () => { ctx.body = originalBody; }));
+
+      expect(ctx.status).to.equal(200);
       expect(ctx.body).to.equal(originalBody);
+    });
+
+    (available ? it : it.skip)('should let strict mode override unsigned-output opt-in', async () => {
+      const client = createMockClient();
+      client.signMessage = sinon.stub().rejects(new Error('Sign failed'));
+      const mw = koaModule.jacsKoaMiddleware({
+        client,
+        verify: false,
+        sign: true,
+        allowUnsignedOutput: true,
+        strict: true,
+      });
+      const ctx = mockCtx({ method: 'GET' });
+      const originalBody = { keep: 'never' };
+
+      await mw(ctx, mockNext(async () => { ctx.body = originalBody; }));
+
+      expect(ctx.status).to.equal(500);
+      expect(ctx.body).to.not.equal(originalBody);
+    });
+
+    (available ? it : it.skip)('should fail closed when signing returns no portable raw document', async () => {
+      const client = createMockClient();
+      client.signMessage = sinon.stub().resolves({ documentId: 'missing-raw' });
+      const mw = koaModule.jacsKoaMiddleware({ client, verify: false, sign: true });
+      const ctx = mockCtx({ method: 'GET' });
+      const originalBody = { keep: 'never' };
+
+      await mw(ctx, mockNext(async () => { ctx.body = originalBody; }));
+
+      expect(ctx.status).to.equal(500);
+      expect(ctx.body).to.not.equal(originalBody);
     });
   });
 

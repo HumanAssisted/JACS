@@ -1,8 +1,8 @@
 [package]
 name = "jacs-core"
-version = "0.11.3"
+version = "0.12.0"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.97"
 resolver = "3"
 description = "JACS portable protocol layer (no I/O, no native deps)"
 readme = "README.md"
@@ -23,16 +23,20 @@ include = [
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/agreement/v2/agreement.schema.json",
+    "schemas/agreement/v3/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
     "schemas/conflict/v1/conflict.schema.json",
+    "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json",
     "schemas/a2a-verification-result.schema.json",
     "schemas/jacs.config.schema.json",
+    "LICENSE-APACHE",
+    "THIRD-PARTY-NOTICES",
     "Cargo.toml",
 ]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 serde_json_canonicalizer = "0.3.2"
 thiserror = "2"
 # Embedded $ref resolution for jsonschema. `default-features = false` keeps
@@ -57,6 +61,7 @@ fips204 = "0.4.6"
 # wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
 # §4.5.
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 # `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
 # already a transitive dep of native jacs. See PRD §4.2.
 secrecy = "0.10.3"

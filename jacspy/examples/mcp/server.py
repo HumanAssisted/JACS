@@ -1,25 +1,35 @@
-import jacs
 import os
 from pathlib import Path
 import logging
 from fastmcp import FastMCP
-from jacs.mcp import JACSMCPServer 
+from jacs.mcp import JACSMCPServer
 import uvicorn
 
 logger = logging.getLogger(__name__)
-# Load JACS configuration
-current_dir = Path(__file__).parent.absolute()
-jacs_config_path = current_dir / "jacs.server.config.json"
 
-# Set password if needed
-os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "hello"  # You should use a secure method in production
 
-# Initialize JACS
-jacs.load(str(jacs_config_path))
+def _required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(
+            f"{name} is required; generate fresh JACS identities before running "
+            "this example (see examples/mcp/README.md)"
+        )
+    return value
+
+
+jacs_config_path = Path(_required_env("JACS_CONFIG_PATH")).expanduser()
+if not jacs_config_path.is_file():
+    raise RuntimeError(f"JACS_CONFIG_PATH does not exist: {jacs_config_path}")
+allowed_client_agent_id = _required_env("JACS_MCP_ALLOWED_CLIENT_AGENT_ID")
 
 
 # Create original FastMCP server first
-mcp = JACSMCPServer(FastMCP("Authenticated Echo Server"))
+mcp = JACSMCPServer(
+    FastMCP("Authenticated Echo Server"),
+    str(jacs_config_path),
+    allowed_peer_agent_ids=[allowed_client_agent_id],
+)
 
 
 @mcp.tool()
@@ -49,5 +59,5 @@ if __name__ == "__main__":
     host = "localhost"
     port = 8000
     print("Starting JACS FastMCP server...")
-    app = mcp.http_app()
+    app = mcp.http_app(transport="sse")
     uvicorn.run(app, host=host, port=port)

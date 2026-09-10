@@ -132,31 +132,31 @@
       "cli_command": "sign-text",
       "mcp_tool": "jacs_sign_text",
       "status": "aligned",
-      "notes": "Both append an inline JACS signature block to a text/markdown file (PRD \u00a74.1)"
+      "notes": "Both append an inline JACS signature block to a text/markdown file (PRD §4.1)"
     },
     {
       "cli_command": "verify-text",
       "mcp_tool": "jacs_verify_text",
       "status": "aligned",
-      "notes": "Both verify inline JACS signatures; both expose a strict mode (PRD \u00a74.1, C1)"
+      "notes": "Both verify inline JACS signatures; both expose a strict mode (PRD §4.1, C1)"
     },
     {
       "cli_command": "sign-image",
       "mcp_tool": "jacs_sign_image",
       "status": "aligned",
-      "notes": "Both embed JACS signatures into PNG/JPEG/WebP metadata (PRD \u00a74.2)"
+      "notes": "Both embed JACS signatures into PNG/JPEG/WebP metadata (PRD §4.2)"
     },
     {
       "cli_command": "verify-image",
       "mcp_tool": "jacs_verify_image",
       "status": "aligned",
-      "notes": "Both verify embedded image signatures with optional --key-dir / --robust LSB scan (PRD \u00a74.2)"
+      "notes": "Both verify embedded image signatures with optional --key-dir / --robust LSB scan (PRD §4.2)"
     },
     {
       "cli_command": "extract-media-signature",
       "mcp_tool": "jacs_extract_media_signature",
       "status": "aligned",
-      "notes": "Both dump the JACS signed-document payload from a signed image (PRD \u00a73.2)"
+      "notes": "Both dump the JACS signed-document payload from a signed image (PRD §3.2)"
     },
     {
       "cli_command": "w3c did",
@@ -233,6 +233,10 @@
       "mcp_excluded_reason": "Combined create-and-serve convenience; orchestration command not suitable for MCP"
     },
     {
+      "cli_command": "ap2 export-mandate",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
       "cli_command": "document extract",
       "mcp_excluded_reason": "Extracts embedded content from JACS documents; could be an MCP tool in the future"
     },
@@ -267,6 +271,26 @@
     {
       "cli_command": "w3c serve",
       "mcp_excluded_reason": "Long-running HTTP server process for local W3C discovery demos, not suitable as an MCP tool"
+    },
+    {
+      "cli_command": "agent add-compat-key",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agent export-jwks",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agent export-compat-binding",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agent issue-compat-binding",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
+    },
+    {
+      "cli_command": "agreement-v2 export-vc",
+      "mcp_excluded_reason": "P2 FR19: all P2 compatibility surfaces are CLI + binding only; no new MCP tools in P2"
     }
   ],
   "cli_only_feature_gated": [
@@ -360,11 +384,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 50,
+    "total_cli_commands": 56,
     "total_cli_feature_gated": 4,
     "total_mcp_tools": 42,
     "aligned_pairs": 32,
-    "cli_only_count": 18,
+    "cli_only_count": 24,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 11,
     "mcp_only_intentional": 5,

@@ -98,3 +98,74 @@ fn pq2025_signer_malformed_signature_length_rejected() {
         Pq2025Signer::verify(signer.public_key(), b"msg", &[0u8; 100]).expect_err("must fail");
     assert!(matches!(err, CoreError::SignatureInvalid(_)), "got {err:?}");
 }
+
+// =========================================================================
+// P2 Task 001 — native PQ signing policy / algorithm wall.
+//
+// ES256 exists in JACS only as an ecosystem compatibility key; it is never
+// a native signing algorithm. These tests pin the parser and verify layers
+// of that wall (the schema layer is pinned in tests/schema.rs).
+// =========================================================================
+
+#[test]
+fn signing_algorithm_parser_does_not_accept_es256() {
+    for rejected in ["es256", "ES256", "ring-ES256", "ecdsa", "P-256"] {
+        assert!(
+            SigningAlgorithm::from_wire_str(rejected).is_none(),
+            "'{rejected}' must not parse as a native signing algorithm"
+        );
+    }
+    // Sanity: the two native algorithms (and the legacy lowercase alias) parse.
+    assert_eq!(
+        SigningAlgorithm::from_wire_str("pq2025"),
+        Some(SigningAlgorithm::Pq2025)
+    );
+    assert_eq!(
+        SigningAlgorithm::from_wire_str("ring-Ed25519"),
+        Some(SigningAlgorithm::Ed25519)
+    );
+    assert_eq!(
+        SigningAlgorithm::from_wire_str("ed25519"),
+        Some(SigningAlgorithm::Ed25519)
+    );
+}
+
+#[test]
+fn core_verify_rejects_es256_with_unsupported_algorithm() {
+    // Layer pin: a native document claiming an ecosystem algorithm fails in
+    // jacs-core with UnsupportedAlgorithm (the unrecognized-algorithm
+    // variant) BEFORE any signature bytes are examined — the ES256 verifier
+    // is unreachable from native verification dispatch.
+    let doc = serde_json::json!({
+        "jacsSignature": {
+            "signingAlgorithm": "ES256",
+            "signature": "AAAA",
+            "fields": [],
+        }
+    });
+    let err = jacs_core::verify::verify_document(
+        &doc,
+        &[0u8; 32],
+        SigningAlgorithm::Pq2025,
+        "jacsSignature",
+    )
+    .expect_err("ES256 must be rejected");
+    assert!(
+        matches!(err, CoreError::UnsupportedAlgorithm(_)),
+        "must fail with UnsupportedAlgorithm, got {err:?}"
+    );
+}
+
+#[test]
+fn new_native_signature_sets_signing_algorithm() {
+    use jacs_core::CoreAgent;
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Pq2025).expect("ephemeral");
+    let signed = agent
+        .sign_message(&serde_json::json!({"hello": "p2"}))
+        .expect("sign");
+    assert_eq!(
+        signed["jacsSignature"]["signingAlgorithm"].as_str(),
+        Some("pq2025"),
+        "new native signatures must set signingAlgorithm"
+    );
+}

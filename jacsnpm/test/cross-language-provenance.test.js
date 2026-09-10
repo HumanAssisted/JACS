@@ -246,22 +246,23 @@ describe('cross-language provenance fixtures (Node verifies Rust-signed)', funct
       fs.writeFileSync(path.join(keyDir, `${encoded}.public.pem`), pem);
 
       const workspaceRoot = path.resolve(__dirname, '..', '..');
-      // Prefer cargo run from a developer checkout (matches the Python test
-      // path); the CI image always has cargo available.
+      // Prefer the CLI already built by `cargo build -p jacs-cli` (CI does this
+      // before the suite). `cargo run --bin jacs` at the workspace root can
+      // resolve a different feature set and rebuild past the test timeout, so
+      // it is only the fallback for checkouts without a built binary.
+      const prebuilt = path.join(
+        workspaceRoot,
+        'target',
+        'debug',
+        process.platform === 'win32' ? 'jacs.exe' : 'jacs',
+      );
+      const verifyArgs = ['verify-text', target, '--key-dir', keyDir, '--json'];
+      const [command, commandArgs] = fs.existsSync(prebuilt)
+        ? [prebuilt, verifyArgs]
+        : ['cargo', ['run', '-q', '--bin', 'jacs', '--', ...verifyArgs]];
       const result = spawnSync(
-        'cargo',
-        [
-          'run',
-          '-q',
-          '--bin',
-          'jacs',
-          '--',
-          'verify-text',
-          target,
-          '--key-dir',
-          keyDir,
-          '--json',
-        ],
+        command,
+        commandArgs,
         {
           cwd: workspaceRoot,
           encoding: 'utf8',
@@ -270,7 +271,7 @@ describe('cross-language provenance fixtures (Node verifies Rust-signed)', funct
       );
       expect(
         result.status,
-        `cargo verify-text exited ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+        `${command} verify-text exited ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
       ).to.equal(0);
 
       const parsed = JSON.parse(result.stdout);

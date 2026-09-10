@@ -15,8 +15,9 @@
 #![cfg(target_arch = "wasm32")]
 
 use jacs_wasm::{
-    create_ephemeral, init_jacs_wasm, local_store_clear_all_native as clear_all,
-    local_store_list_keys_native as list_keys, local_store_load_document_native as load_document,
+    create_ephemeral, import_encrypted_agent, init_jacs_wasm,
+    local_store_clear_all_native as clear_all, local_store_list_keys_native as list_keys,
+    local_store_load_document_native as load_document,
     local_store_load_encrypted_agent_native as load_encrypted_agent,
     local_store_remove_native as remove, local_store_save_document_native as save_document,
     local_store_save_encrypted_agent_native as save_encrypted_agent,
@@ -46,6 +47,78 @@ fn save_and_load_document_roundtrip() {
     assert_eq!(
         load_document("k").expect("load"),
         Some(r#"{"a":1}"#.to_string())
+    );
+}
+
+#[wasm_bindgen_test]
+fn exported_encrypted_agent_persists_in_browser_storage() {
+    init_jacs_wasm();
+    reset_browser_storage();
+    let password = "browser persistence password";
+    let agent = create_ephemeral("ed25519").expect("create ephemeral");
+    let material_json = agent
+        .export_encrypted_agent(password.to_owned())
+        .expect("encrypted export");
+
+    save_encrypted_agent("agent-roundtrip", &material_json).expect("save encrypted material");
+    let restored = load_encrypted_agent("agent-roundtrip")
+        .expect("load encrypted material")
+        .expect("stored value present");
+    assert_eq!(restored, material_json);
+    assert!(
+        !restored.contains(password),
+        "stored material leaked password"
+    );
+}
+
+#[wasm_bindgen_test]
+fn encrypted_identity_destroy_load_import_sign_verify_roundtrip() {
+    init_jacs_wasm();
+    reset_browser_storage();
+    let password = "browser persisted identity password";
+    let original = create_ephemeral("ed25519").expect("create ephemeral");
+    let original_key = original.get_public_key_base64().expect("original key");
+    let material_json = original
+        .export_encrypted_agent(password.to_owned())
+        .expect("encrypted export");
+    save_encrypted_agent("durable-agent", &material_json).expect("persist encrypted identity");
+
+    original.clear_secrets().expect("destroy original secrets");
+    drop(original);
+
+    let stored = load_encrypted_agent("durable-agent")
+        .expect("load stored identity")
+        .expect("stored identity present");
+    let restored = import_encrypted_agent(&stored, password).expect("import stored identity");
+    assert_eq!(
+        restored.get_public_key_base64().expect("restored key"),
+        original_key
+    );
+    let signed = restored
+        .sign_message_json(r#"{"persisted":true}"#)
+        .expect("restored signer");
+    let result: serde_json::Value = serde_json::from_str(
+        &restored
+            .verify_json(&signed)
+            .expect("verify restored signature"),
+    )
+    .expect("verification JSON");
+    assert_eq!(result["valid"], serde_json::Value::Bool(true));
+}
+
+#[wasm_bindgen_test]
+fn public_agent_export_cannot_be_saved_as_encrypted_identity() {
+    init_jacs_wasm();
+    reset_browser_storage();
+    let agent = create_ephemeral("ed25519").expect("create ephemeral");
+    let public_only = agent.export_agent().expect("public export");
+    let error = save_encrypted_agent("public-only", &public_only)
+        .expect_err("public-only export must not satisfy encrypted persistence contract");
+    drop(error);
+    assert_eq!(
+        load_encrypted_agent("public-only").expect("load check"),
+        None,
+        "rejected public material must not be partially persisted"
     );
 }
 

@@ -214,14 +214,61 @@ class TestVerifyStandalone:
         assert result.valid is False
         assert result.signer_id == ""
 
-    def test_verify_standalone_tampered_returns_valid_false_with_signer_id(self):
-        """verify_standalone() with tampered doc should return valid=False and signer_id from doc."""
+    def test_verify_standalone_rejects_truthy_non_boolean_valid(self, monkeypatch):
+        monkeypatch.setattr(
+            simple,
+            "_verify_document_standalone",
+            lambda *_args, **_kwargs: {"valid": "false", "signer_id": "attacker"},
+        )
+
+        result = simple.verify_standalone("{}", key_resolution="local")
+
+        assert result.valid is False
+        assert result.signer_id == ""
+
+    def test_verification_result_from_dict_rejects_non_boolean_security_flags(self):
+        result = VerificationResult.from_dict(
+            {
+                "valid": "false",
+                "signer_id": "attacker-selected-agent",
+                "signer_public_key_hash": "attacker-selected-key",
+                "timestamp": "2099-01-01T00:00:00Z",
+                "content_hash_valid": 1,
+                "signature_valid": "yes",
+            }
+        )
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.signer_public_key_hash == ""
+        assert result.timestamp == ""
+        assert result.content_hash_valid is False
+        assert result.signature_valid is False
+
+    def test_legacy_result_does_not_infer_identity_binding_from_boolean(self):
+        result = VerificationResult.from_dict({"valid": True, "identity_bound": True})
+        assert result.identity_binding_status == "unavailable"
+        assert result.identity_bound is False
+
+    def test_identity_binding_is_derived_from_valid_captured_status(self):
+        result = VerificationResult.from_dict(
+            {"valid": True, "identity_binding_status": "locally_enrolled"}
+        )
+        assert result.identity_bound is True
+        invalid = VerificationResult.from_dict(
+            {"valid": False, "identity_binding_status": "locally_enrolled"}
+        )
+        assert invalid.identity_binding_status == "unavailable"
+        assert invalid.identity_bound is False
+
+    def test_verify_standalone_tampered_suppresses_unauthenticated_signer_id(self):
+        """Malformed input must not promote its attacker-controlled signer ID."""
         import importlib
         importlib.reload(simple)
         tampered = '{"jacsSignature":{"agentID":"test-agent"},"jacsSha256":"x"}'
         result = simple.verify_standalone(tampered, key_resolution="local")
         assert result.valid is False
-        assert result.signer_id == "test-agent"
+        assert result.signer_id == ""
 
     def test_verify_standalone_extracts_signer_id(self, loaded_agent, in_fixtures_dir):
         """verify_standalone() with a real signed doc should extract signer_id even if key not resolvable."""
@@ -340,6 +387,23 @@ class TestVerifyDns:
         result = simple.verify_dns('{"not": "an agent"}', "example.com")
         assert isinstance(result, VerificationResult)
         assert result.valid is False
+
+    def test_verify_dns_rejects_truthy_non_boolean_verified(self, monkeypatch):
+        monkeypatch.setattr(
+            simple,
+            "_verify_agent_dns",
+            lambda *_args, **_kwargs: {
+                "verified": "false",
+                "agent_id": "attacker",
+                "message": "not verified",
+            },
+        )
+
+        result = simple.verify_dns("{}", "example.com")
+
+        assert result.valid is False
+        assert result.signer_id == ""
+        assert result.errors == ["not verified"]
 
 
 # Test DNS helpers
@@ -700,6 +764,19 @@ class TestAgreementTypes:
         assert status.signers[1].signed is False
         assert status.pending == ["agent-2"]
 
+    @pytest.mark.parametrize("malformed", ["false", 1, {}, None])
+    def test_agreement_security_booleans_require_literal_true(self, malformed):
+        status = AgreementStatus.from_dict(
+            {
+                "complete": malformed,
+                "signers": [{"agent_id": "agent-1", "signed": malformed}],
+                "pending": ["agent-1"],
+            }
+        )
+
+        assert status.complete is False
+        assert status.signers[0].signed is False
+
 
 class TestCreateAgreement:
     """Test create_agreement function."""
@@ -804,7 +881,7 @@ class TestCheckAgreement:
         assert isinstance(status.pending, list)
 
     def test_check_agreement_shows_completion(self, loaded_agent):
-        """check_agreement() should show complete=True after all sign."""
+        """check_agreement() reports no pending signers but never reconstructs completion."""
         # Create agreement with only the loaded agent
         agreement = simple.create_agreement(
             document={"proposal": "Single signer"},
@@ -814,9 +891,9 @@ class TestCheckAgreement:
         # Sign it
         signed = simple.sign_agreement(agreement)
 
-        # Should be complete
+        # Every party signed, but legacy v1 inspection is closed: complete stays False
         status = simple.check_agreement(signed)
-        assert status.complete is True
+        assert status.complete is False  # v1 inspection never reconstructs completion
         assert len(status.pending) == 0
 
 
@@ -843,9 +920,9 @@ class TestAgreementWorkflow:
         signed = simple.sign_agreement(agreement)
         assert signed.document_id
 
-        # Step 4: Check status (should be complete)
+        # Step 4: Check status (no pending signers; v1 inspection never reports complete)
         final_status = simple.check_agreement(signed)
-        assert final_status.complete is True
+        assert final_status.complete is False  # v1 inspection never reconstructs completion
         assert len(final_status.pending) == 0
 
         # Step 5: Verify the signed document is valid
@@ -910,7 +987,7 @@ class TestAgreementWorkflow:
             seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
-            assert status.complete is True
+            assert status.complete is False  # v1 inspection never reconstructs completion
             assert len(status.pending) == 0
         finally:
             os.chdir(original_cwd)
@@ -921,7 +998,7 @@ class TestAllAlgorithms:
 
     Each parametrized test creates two agents and exercises sign, verify,
     trust, and two-party agreement in a single test to minimize agent
-    creation overhead (pq2025 keygen is ~30-60s per agent).
+    creation overhead (pq2025 keygen is more expensive than Ed25519).
     """
 
     @pytest.mark.parametrize("algo", ["ring-Ed25519", "pq2025"])
@@ -982,7 +1059,7 @@ class TestAllAlgorithms:
             seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
-            assert status.complete is True
+            assert status.complete is False  # v1 inspection never reconstructs completion
             assert len(status.pending) == 0
         finally:
             os.chdir(original_cwd)

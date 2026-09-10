@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json",
+  "title": "Compatibility Key Binding",
+  "description": "Native-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes. The trust bridge between a JACS agent's native identity and W3C/JOSE ecosystems: the native_root key signs this document, so granting or widening a scope always requires the current native root. The binding never authorizes native JACS signing.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    }
+  ],
+  "properties": {
+    "jacsType": {
+      "type": "string",
+      "enum": [
+        "compatibilityKeyBinding"
+      ],
+      "description": "Document type discriminator."
+    },
+    "jacsLevel": {
+      "type": "string",
+      "enum": [
+        "config"
+      ],
+      "description": "Bindings are configuration: superseded by re-issue, never silently mutated."
+    },
+    "compatibilityKeyBinding": {
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The JACS agent this compatibility key belongs to."
+        },
+        "rootKey": {
+          "type": "object",
+          "description": "The native root that signs this binding. A binding signed by a rotated-away root is superseded and must be re-issued.",
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "enum": [
+                "ring-Ed25519",
+                "pq2025"
+              ]
+            },
+            "kid": {
+              "type": "string",
+              "minLength": 1,
+              "description": "JACS public-key hash of the native root."
+            }
+          },
+          "required": [
+            "algorithm",
+            "kid"
+          ],
+          "additionalProperties": false
+        },
+        "compatibilityKey": {
+          "type": "object",
+          "description": "The ES256 ecosystem key being authorized.",
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "enum": [
+                "ES256"
+              ]
+            },
+            "kid": {
+              "type": "string",
+              "minLength": 1,
+              "description": "RFC 7638 JWK thumbprint (base64url SHA-256)."
+            },
+            "publicJwk": {
+              "type": "object",
+              "properties": {
+                "kty": {
+                  "type": "string",
+                  "enum": [
+                    "EC"
+                  ]
+                },
+                "crv": {
+                  "type": "string",
+                  "enum": [
+                    "P-256"
+                  ]
+                },
+                "x": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "y": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "kty",
+                "crv",
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "algorithm",
+            "kid",
+            "publicJwk"
+          ],
+          "additionalProperties": false
+        },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "jwks",
+              "did",
+              "a2a-agent-card",
+              "w3c-agent-identity",
+              "ap2-mandate",
+              "agreement-vc"
+            ]
+          },
+          "description": "Exports this key is authorized to produce. Identity scopes are granted by default at issuance; content scopes (ap2-mandate, agreement-vc) require an explicit re-issue by the PQ root."
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Issuance instant. When multiple bindings exist for the same kid, the latest issuedAt wins."
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "Optional expiry; an expired binding denies export. null means unbounded (acceptable for P2; revocation/status is a later phase)."
+        }
+      },
+      "required": [
+        "agentId",
+        "rootKey",
+        "compatibilityKey",
+        "scope",
+        "issuedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "jacsType",
+    "compatibilityKeyBinding",
+    "jacsSignature"
+  ]
+}

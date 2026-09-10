@@ -602,7 +602,8 @@ mod tests {
             .config_path(&format!("{}/jacs.config.json", tmp_path))
             .build();
 
-        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
+        let (agent, _info) = SimpleAgent::create_legacy_ed25519_agent_for_fixtures(params)
+            .expect("create test agent");
 
         // Set env vars needed by the keystore at signing time and restore on drop.
         let env_guard = crate::email::EmailTestEnvGuard::set(&[

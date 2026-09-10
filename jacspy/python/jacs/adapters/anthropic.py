@@ -61,6 +61,8 @@ def signed_tool(
     client: Any = ...,
     config_path: Optional[str] = ...,
     strict: bool = ...,
+    allow_unsigned_output: bool = ...,
+    allow_plain_signature_fallback: bool = ...,
     attest: bool = ...,
 ) -> Callable[[F], F]: ...
 
@@ -71,6 +73,8 @@ def signed_tool(
     client: Any = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Union[Callable[..., Any], Callable[[Callable[..., Any]], Callable[..., Any]]]:
     """Wrap a tool function to auto-sign its return value with JACS.
@@ -93,11 +97,21 @@ def signed_tool(
         client: A ``JacsClient`` instance.  If *None*, one is created
             via ``BaseJacsAdapter``'s default resolution.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
-        strict: If *True*, signing failures raise.  If *False* (default),
-            the original return value is passed through.
+        strict: If *True*, signing failures raise and passthrough is disabled.
+        allow_unsigned_output: Dangerous compatibility option that returns
+            the original tool value after signing fails. Default False.
+        allow_plain_signature_fallback: Permit failed attestation creation to
+            downgrade to a plain signature. Default False.
         attest: If *True*, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         if asyncio.iscoroutinefunction(fn):
@@ -145,7 +159,9 @@ class JacsToolHook:
     Args:
         client: A ``JacsClient`` instance.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
-        strict: If *True*, signing failures raise.
+        strict: If *True*, signing failures raise and passthrough is disabled.
+        allow_unsigned_output: Dangerous compatibility option that returns
+            unsigned tool output after signing fails. Default False.
         attest: If *True*, produce attestation documents.
     """
 
@@ -154,10 +170,17 @@ class JacsToolHook:
         client: Any = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        allow_unsigned_output: bool = False,
+        allow_plain_signature_fallback: bool = False,
         attest: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict, attest=attest
+            client=client,
+            config_path=config_path,
+            strict=strict,
+            allow_unsigned_output=allow_unsigned_output,
+            allow_plain_signature_fallback=allow_plain_signature_fallback,
+            attest=attest,
         )
 
     @property

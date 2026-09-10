@@ -18,6 +18,8 @@ use serde_json::json;
 
 const TEST_PASSWORD: &str = "PropTest!P@ss2026";
 const PASSWORD_ENV: &str = "JACS_PRIVATE_KEY_PASSWORD";
+const MAX_I_JSON_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+const MIN_I_JSON_SAFE_INTEGER: i64 = -MAX_I_JSON_SAFE_INTEGER;
 
 /// Guard to set/restore password env var for serial tests.
 struct PasswordGuard {
@@ -46,7 +48,8 @@ impl Drop for PasswordGuard {
 
 /// Create a test agent once (ephemeral) for use in property tests.
 fn test_agent() -> SimpleAgent {
-    let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).expect("create ephemeral agent");
+    let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("create grandfathered Ed25519 fixture");
     agent
 }
 
@@ -79,7 +82,7 @@ proptest! {
         key1 in "[a-z]{1,20}",
         val1 in "\\PC{0,100}",
         key2 in "[a-z]{1,20}",
-        val2 in any::<i64>(),
+        val2 in MIN_I_JSON_SAFE_INTEGER..=MAX_I_JSON_SAFE_INTEGER,
     ) {
         let _guard = PasswordGuard::set();
         let agent = test_agent();
@@ -92,6 +95,29 @@ proptest! {
             .expect("verify should not error");
 
         prop_assert!(verification.valid, "JSON object round-trip must pass");
+    }
+
+    /// Integers outside the portable I-JSON range must fail before signing.
+    #[test]
+    fn signing_rejects_unsafe_i_json_integers(
+        value in prop_oneof![
+            i64::MIN..MIN_I_JSON_SAFE_INTEGER,
+            (MAX_I_JSON_SAFE_INTEGER + 1)..=i64::MAX,
+        ],
+    ) {
+        let _guard = PasswordGuard::set();
+        let agent = test_agent();
+        let payload = json!({"unsafe_integer": value});
+
+        let error = agent
+            .sign_message(&payload)
+            .expect_err("unsafe I-JSON integer must be rejected");
+
+        prop_assert!(
+            error
+                .to_string()
+                .contains("outside the I-JSON safe integer range")
+        );
     }
 }
 

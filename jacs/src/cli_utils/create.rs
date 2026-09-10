@@ -140,17 +140,19 @@ pub fn handle_config_create() -> Result<(), JacsError> {
         match storage.file_exists(&agent_filename, None) {
             Ok(true) => match storage.get_file(&agent_filename, None) {
                 Ok(agent_content_bytes) => match String::from_utf8(agent_content_bytes) {
-                    Ok(agent_content) => match serde_json::from_str::<Value>(&agent_content) {
-                        Ok(agent_json) => {
-                            let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
-                            let jacs_version = agent_json["jacsVersion"].as_str().unwrap_or("");
-                            format!("{}:{}", jacs_id, jacs_version)
+                    Ok(agent_content) => {
+                        match jacs_core::strict_json::parse_strict_json(&agent_content) {
+                            Ok(agent_json) => {
+                                let jacs_id = agent_json["jacsId"].as_str().unwrap_or("");
+                                let jacs_version = agent_json["jacsVersion"].as_str().unwrap_or("");
+                                format!("{}:{}", jacs_id, jacs_version)
+                            }
+                            Err(e) => {
+                                println!("Error parsing agent JSON from {}: {}", agent_filename, e);
+                                String::new()
+                            }
                         }
-                        Err(e) => {
-                            println!("Error parsing agent JSON from {}: {}", agent_filename, e);
-                            String::new()
-                        }
-                    },
+                    }
                     Err(e) => {
                         println!(
                             "Error converting agent file content to UTF-8 {}: {}",
@@ -199,7 +201,7 @@ pub fn handle_config_create() -> Result<(), JacsError> {
     let jacs_agent_public_key_filename =
         request_string("Enter the public key filename:", "jacs.public.pem");
     let jacs_agent_key_algorithm = request_string(
-        "Enter the agent key algorithm (pq2025 or ring-Ed25519)",
+        "Enter the agent key algorithm (pq2025 or ed25519; ring-Ed25519 is a legacy alias)",
         "pq2025",
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
@@ -320,9 +322,44 @@ pub fn handle_config_create() -> Result<(), JacsError> {
     Ok(())
 }
 
+/// Private options bundle for [`handle_agent_create_inner`]. The four
+/// public wrappers below keep their positional signatures — two of them
+/// (`handle_agent_create`, `handle_agent_create_auto`) are re-exported by
+/// `binding-core/src/lib.rs` and must not change shape.
+#[derive(Default)]
+struct AgentCreateOpts {
+    create_keys: bool,
+    /// When true, set the new agent ID in `jacs.config.json` without prompting.
+    auto_update_config: bool,
+    /// P2 `--no-compat-key` opt-out of the eager ES256 ecosystem key.
+    no_compat_key: bool,
+}
+
 // Function to handle the 'agent create' logic
 pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, false)
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            ..Default::default()
+        },
+    )
+}
+
+/// Like `handle_agent_create` but with the P2 `--no-compat-key` opt-out.
+pub fn handle_agent_create_opts(
+    filename: Option<&String>,
+    create_keys: bool,
+    no_compat_key: bool,
+) -> Result<(), JacsError> {
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            no_compat_key,
+            ..Default::default()
+        },
+    )
 }
 
 /// Like `handle_agent_create` but when `auto_update_config` is true, automatically
@@ -332,13 +369,40 @@ pub fn handle_agent_create_auto(
     create_keys: bool,
     auto_update_config: bool,
 ) -> Result<(), JacsError> {
-    handle_agent_create_inner(filename, create_keys, auto_update_config)
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            auto_update_config,
+            ..Default::default()
+        },
+    )
+}
+
+/// Like `handle_agent_create_auto` but with the P2 `--no-compat-key` opt-out.
+pub fn handle_agent_create_auto_opts(
+    filename: Option<&String>,
+    create_keys: bool,
+    auto_update_config: bool,
+    no_compat_key: bool,
+) -> Result<(), JacsError> {
+    handle_agent_create_inner(
+        filename,
+        AgentCreateOpts {
+            create_keys,
+            auto_update_config,
+            no_compat_key,
+        },
+    )
 }
 
 fn handle_agent_create_inner(
     filename: Option<&String>,
-    create_keys: bool,
-    auto_update_config: bool,
+    AgentCreateOpts {
+        create_keys,
+        auto_update_config,
+        no_compat_key,
+    }: AgentCreateOpts,
 ) -> Result<(), JacsError> {
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
     let config_path_str = "jacs.config.json";
@@ -420,7 +484,8 @@ fn handle_agent_create_inner(
     };
 
     // -- Modify the agent template with remaining user input (agent_type) --
-    let mut agent_json: Value = serde_json::from_str(&agent_template_string).map_err(|e| {
+    let mut agent_json: Value = jacs_core::strict_json::parse_strict_json(&agent_template_string)
+        .map_err(|e| {
         format!(
             "Failed to parse agent template JSON: {}\nTemplate content:\n{}",
             e, agent_template_string
@@ -447,11 +512,8 @@ fn handle_agent_create_inner(
         println!(
             "Keys created in {}. Don't loose them! Keep them in a safe place. ",
             agent
-                .config
-                .as_ref()
-                .unwrap()
-                .jacs_key_directory()
-                .as_deref()
+                .key_paths()
+                .map(|paths| paths.key_directory.as_str())
                 .unwrap_or_default()
         );
         // If a domain is configured, emit DNS fingerprint instructions (non-strict at creation time)
@@ -488,6 +550,36 @@ fn handle_agent_create_inner(
     println!("Agent {} created successfully!", agent_id_version);
 
     agent.save()?;
+
+    // P2 Task 002: NEW agents get the ES256 ecosystem compatibility key
+    // eagerly (role: ecosystem_signing) unless the caller opted out. Same
+    // password + AES-256-GCM/Argon2id envelope as the native root key.
+    if create_keys && !no_compat_key {
+        let key_directory = agent
+            .key_paths()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .key_directory
+            .clone();
+        let native_algorithm = agent
+            .config
+            .as_ref()
+            .map(|c| c.get_key_algorithm())
+            .transpose()?
+            .unwrap_or_else(|| "pq2025".to_string());
+        let password = agent.resolve_password()?;
+        let native_public_key = agent.get_public_key()?;
+        let native_kid = crate::crypt::hash::hash_public_key(&native_public_key);
+        let compat = crate::keystore::compat::create_ecosystem_key(
+            &key_directory,
+            &password,
+            &native_algorithm,
+            &native_kid,
+        )?;
+        println!(
+            "Ecosystem compatibility key created (role: ecosystem_signing, ES256, kid {}).",
+            compat.kid
+        );
+    }
 
     // -- Determine whether to update the config --
     let should_update = if auto_update_config {

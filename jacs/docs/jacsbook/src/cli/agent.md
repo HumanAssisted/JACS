@@ -71,6 +71,35 @@ To make it easier to use, add `jacs_agent_id_and_version` to your config and you
     jacs agent verify
 
 
+## Role-based keyring and the ecosystem compatibility key
+
+Every new agent holds two key roles:
+
+- `native_root` (`pq2025`) — signs native JACS documents. New creation and
+  all rotations are PQ-only.
+- `ecosystem_signing` (`ES256` / ECDSA P-256) — a compatibility credential
+  for ecosystems that require classical P-256 signatures (JWKS, DID
+  documents, A2A agent cards, and targeted content exports). It never signs
+  native JACS documents.
+
+New agents (`jacs init`, `jacs quickstart`, `jacs agent create`) mint the
+compatibility key eagerly. Roles are recorded in
+`jacs_keys/jacs.keyring.json` (metadata only, no secrets); the ES256
+private key is encrypted at rest with the same AES-256-GCM + Argon2id
+envelope and 0600 permissions as the native root key.
+
+Opt out for minimal or air-gapped agents:
+
+    jacs init --no-compat-key
+    jacs agent create --create-keys true --no-compat-key
+
+Existing agents never gain key material on load. Migrate explicitly:
+
+    jacs agent add-compat-key
+
+Running it twice is a typed error — there is no silent re-mint, and ES256
+key rotation is out of scope for P2.
+
 ## DNS fingerprinting (TXT)
 
 Publish a TXT binding your agent ID to the SHA-256 fingerprint of its public key.

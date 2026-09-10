@@ -14,7 +14,41 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(test)]
+static LEGACY_FIXTURE_LOAD_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+struct ScopedTestEnv {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+#[cfg(test)]
+impl ScopedTestEnv {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = env::var_os(key);
+        // SAFETY: callers hold the fixture environment lock for this scope.
+        unsafe { env::set_var(key, value) };
+        Self { key, previous }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ScopedTestEnv {
+    fn drop(&mut self) {
+        // SAFETY: restore the process environment while the fixture lock is
+        // still held, including during panic unwinding.
+        unsafe {
+            if let Some(previous) = &self.previous {
+                env::set_var(self.key, previous);
+            } else {
+                env::remove_var(self.key);
+            }
+        }
+    }
+}
 
 // ============================================================================
 // Centralized test password constants for JACS test suite.
@@ -279,29 +313,10 @@ pub fn set_min_test_env_vars() {
 
 #[cfg(test)]
 pub fn load_test_agent_one() -> Agent {
-    set_min_test_env_vars();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
-    let agentid = AGENTONE.to_string();
-    let result = agent.load_by_id(agentid);
-    match result {
-        Ok(_) => {
-            debug!(
-                "AGENT ONE LOADED {} {} ",
-                agent.get_id().unwrap(),
-                agent.get_version().unwrap()
-            );
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
-        }
-    }
-    agent
+    // The committed agent-one fixture predates signatureContentVersion.
+    // Route all fixture use through the scoped compatibility loader so the
+    // process-wide default remains fail closed and is restored immediately.
+    load_test_agent_one_ed25519()
 }
 
 #[cfg(test)]
@@ -593,14 +608,18 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
     }
 
     let mut agent = create_agent_v1()?;
+    // Build the config from the values chosen above rather than reading the
+    // environment back: tests in other modules mutate these process-global
+    // variables concurrently, and a read-back could point key generation at
+    // the shared fixture directory (`File exists` on the committed keys).
     let config = Config::new(
         Some("false".to_string()),
-        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
-        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
-        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
-        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
-        Some(std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default()),
-        Some(std::env::var(PASSWORD_ENV_VAR).unwrap_or_default()),
+        Some(data_dir.to_string_lossy().to_string()),
+        Some(key_dir.to_string_lossy().to_string()),
+        Some("test-ring-Ed25519-private.pem.enc".to_string()),
+        Some("test-ring-Ed25519-public.pem".to_string()),
+        Some("ring-Ed25519".to_string()),
+        Some(TEST_PASSWORD_FIXTURES.to_string()),
         None,
         Some("fs".to_string()),
     );
@@ -611,6 +630,12 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
 /// Loads the committed Ed25519 fixture agent.
 #[cfg(test)]
 pub fn load_test_agent_one_ed25519() -> Agent {
+    // The compatibility switch is process-global while Rust tests run in
+    // parallel. Serialize the complete fixture load so one test cannot restore
+    // the environment while another is still verifying the legacy signature.
+    let _legacy_fixture_load_guard = LEGACY_FIXTURE_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     set_min_test_env_vars();
     // Override the algorithm + key filenames to point at the Ed25519 fixture.
     // PASSWORD stays at TEST_PASSWORD_LEGACY ("secretpassord") — the Ed25519
@@ -634,9 +659,14 @@ pub fn load_test_agent_one_ed25519() -> Agent {
         .expect("Agent schema should have instantiated");
     let agentid =
         "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a".to_string();
-    agent
-        .load_by_id(agentid)
-        .expect("Ed25519 fixture agent should load");
+    // This committed agent predates signatureContentVersion. Load it only
+    // through an explicitly scoped compatibility environment and restore the
+    // caller's policy immediately; payloads produced below are current v2.
+    let _legacy_signature_migration =
+        ScopedTestEnv::set("JACS_ALLOW_LEGACY_SIGNATURE_CONTENT", "true");
+    let _unsigned_config_migration = ScopedTestEnv::set("JACS_ALLOW_UNSIGNED_AGENT_CONFIG", "true");
+    let load_result = agent.load_by_id(agentid);
+    load_result.expect("Ed25519 fixture agent should load via explicit compatibility mode");
     if let Some(config) = agent.config.as_mut() {
         config
             .set_key_algorithm("ring-Ed25519".to_string())
@@ -658,8 +688,10 @@ fn generated_agent_two_ed25519() -> Ed25519GeneratedFixture {
     static AGENT_TWO: OnceLock<Ed25519GeneratedFixture> = OnceLock::new();
     AGENT_TWO
         .get_or_init(|| {
-            let mut agent =
-                Agent::ephemeral("ring-Ed25519").expect("create generated Ed25519 fixture agent");
+            // Historical fixture path keeps this generated agent independent
+            // of current compatibility-key bootstrap behavior.
+            let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures()
+                .expect("create generated Ed25519 fixture agent");
             let agent_json = create_minimal_blank_agent(
                 "ai".to_string(),
                 Some("Agent Two".to_string()),
@@ -697,7 +729,10 @@ fn generated_agent_two_ed25519() -> Ed25519GeneratedFixture {
 #[cfg(test)]
 pub fn load_test_agent_two_ed25519() -> Agent {
     let generated = generated_agent_two_ed25519();
-    let mut agent = Agent::ephemeral("ring-Ed25519").expect("create Ed25519 test agent");
+    // Fixture hatch: the agent must carry a ring-Ed25519 config to match
+    // the generated Ed25519 key material set below.
+    let mut agent =
+        Agent::ephemeral_legacy_ed25519_for_fixtures().expect("create Ed25519 test agent");
     agent.set_keys_raw(generated.private_key, generated.public_key, "ring-Ed25519");
     agent
         .load(&generated.agent_json)

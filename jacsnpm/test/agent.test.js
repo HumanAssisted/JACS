@@ -10,6 +10,7 @@ const { expect } = require('chai');
 const { JacsAgent, hashString } = require('../index');
 const path = require('path');
 const fs = require('fs');
+const { enableLegacyFixtureCompatibility } = require('./legacy-fixture');
 
 // Path to test fixtures (use jacspy fixtures which have a working agent)
 // Use shared fixtures from jacs/tests/scratch (single source of truth)
@@ -28,6 +29,16 @@ function withFixturesDir(fn) {
 }
 
 describe('JacsAgent Class', () => {
+  let restoreLegacyFixtureCompatibility;
+
+  before(() => {
+    restoreLegacyFixtureCompatibility = enableLegacyFixtureCompatibility();
+  });
+
+  after(() => {
+    restoreLegacyFixtureCompatibility();
+  });
+
   describe('constructor', () => {
     it('should create a new JacsAgent instance', () => {
       const agent = new JacsAgent();
@@ -38,6 +49,100 @@ describe('JacsAgent Class', () => {
       const agent1 = new JacsAgent();
       const agent2 = new JacsAgent();
       expect(agent1).to.not.equal(agent2);
+    });
+  });
+
+  describe('strict raw JSON ingress', () => {
+    it('rejects duplicate decoded keys before canonicalization', () => {
+      const agent = new JacsAgent();
+      expect(() => agent.canonicalizeJsonSync(
+        '{"role":"reader","role":"admin","agentID":"one","agent\\u0049D":"two"}',
+      )).to.throw(/duplicate JSON object key/);
+    });
+  });
+
+  describe('request-bound authorization', () => {
+    it('preserves the legacy builder and exposes request binding additively', async () => {
+      const agent = new JacsAgent();
+      agent.ephemeralSync('pq2025');
+      const legacy = agent.buildAuthHeaderSync();
+      expect(legacy).to.match(/^JACS /);
+
+      const header = agent.buildRequestAuthHeaderSync(
+        'POST',
+        'https://api.example.test/v1/jobs?mode=fast',
+        '{"task":"review"}',
+        'hai-api',
+      );
+      expect(header).to.match(/^JACS v2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+
+      const asyncLegacy = await agent.buildAuthHeader();
+      expect(asyncLegacy).to.match(/^JACS /);
+      const asyncHeader = await agent.buildRequestAuthHeader(
+        'POST',
+        'https://api.example.test/v1/jobs?mode=fast',
+        Buffer.from('{"task":"review"}'),
+        'hai-api',
+      );
+      expect(asyncHeader).to.match(/^JACS v2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+
+      process.env.JACS_REJECT_UNBOUND_AUTH_HEADER = 'true';
+      try {
+        expect(() => agent.buildAuthHeaderSync()).to.throw(/legacy unbound|rejected/i);
+      } finally {
+        delete process.env.JACS_REJECT_UNBOUND_AUTH_HEADER;
+      }
+    });
+  });
+
+  describe('fully-bound response envelopes', () => {
+    it('authenticates every envelope field and fails closed for unknown keys', () => {
+      const agent = new JacsAgent();
+      agent.ephemeralSync('pq2025');
+      const signed = agent.signResponseSync('{"decision":"allow"}');
+      const envelope = JSON.parse(signed);
+      const signerId = envelope.jacsSignature.agentID;
+      const keys = JSON.stringify({ [signerId]: agent.getPublicKeyPem() });
+
+      expect(envelope.version).to.equal('2.0.0');
+      expect(envelope.jacsSignature.signatureContentVersion)
+        .to.equal('jacs-response-v2');
+      const verified = JSON.parse(agent.unwrapSignedEventSync(signed, keys));
+      expect(verified).to.include({ verified: true, status: 'verified' });
+      expect(verified.data).to.deep.equal({ decision: 'allow' });
+      expect(verified.signerId).to.equal(signerId);
+
+      const attacks = [
+        ['version', '9.9.9'],
+        ['document_type', 'admin_command'],
+      ];
+      for (const [field, value] of attacks) {
+        const mutated = structuredClone(envelope);
+        mutated[field] = value;
+        expect(() => agent.unwrapSignedEventSync(JSON.stringify(mutated), keys))
+          .to.throw(/verification failed|response envelope/i);
+      }
+      for (const [section, field, value] of [
+        ['metadata', 'issuer', 'attacker'],
+        ['metadata', 'document_id', '00000000-0000-0000-0000-000000000000'],
+        ['metadata', 'created_at', '2099-01-01T00:00:00Z'],
+        ['metadata', 'hash', '0'.repeat(64)],
+        ['jacsSignature', 'agentID', 'attacker'],
+        ['jacsSignature', 'date', '2099-01-01T00:00:00Z'],
+        ['jacsSignature', 'signingAlgorithm', 'ring-Ed25519'],
+        ['jacsSignature', 'publicKeyHash', 'attacker-key'],
+      ]) {
+        const mutated = structuredClone(envelope);
+        mutated[section][field] = value;
+        const aliases = section === 'jacsSignature' && field === 'agentID'
+          ? JSON.stringify({ [signerId]: agent.getPublicKeyPem(), attacker: agent.getPublicKeyPem() })
+          : keys;
+        expect(() => agent.unwrapSignedEventSync(JSON.stringify(mutated), aliases))
+          .to.throw(/failed|mismatch|unsupported|unexpected|future|unknown/i);
+      }
+
+      expect(() => agent.unwrapSignedEventSync(signed, '{}'))
+        .to.throw(/unknown|verification failed/i);
     });
   });
 

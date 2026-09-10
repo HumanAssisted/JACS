@@ -84,6 +84,63 @@ fn core_agent_ephemeral_ed25519_works() {
     assert!(agent.is_unlocked());
 }
 
+#[test]
+fn core_agent_encrypted_export_import_roundtrips() {
+    let password = "correct horse battery staple for wasm export";
+    let original = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral ed25519");
+    let original_public_key = original.public_key().to_vec();
+    let original_agent = original.export_agent();
+
+    let material = original
+        .export_encrypted_material(password)
+        .expect("export encrypted material");
+    assert_eq!(material.algorithm, SigningAlgorithm::Ed25519);
+    assert_eq!(material.public_key, original_public_key);
+    assert_eq!(material.agent, original_agent);
+
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&material.encrypted_private_key).expect("V2 envelope JSON");
+    assert_eq!(
+        envelope["jacsEncryptedPrivateKeyVersion"],
+        serde_json::Value::from(2)
+    );
+    assert_eq!(envelope["cipher"], serde_json::Value::from("AES-256-GCM"));
+
+    assert!(matches!(
+        CoreAgent::from_encrypted_material(
+            material.clone(),
+            UnlockSecret::Password("wrong export password")
+        ),
+        Err(CoreError::InvalidPassword)
+    ));
+
+    let mut restored =
+        CoreAgent::from_encrypted_material(material, UnlockSecret::Password(password))
+            .expect("import encrypted material");
+    assert_eq!(restored.public_key(), original_public_key.as_slice());
+    assert_eq!(restored.export_agent(), original_agent);
+
+    let signed = restored
+        .sign_message(&json!({"roundtrip": true}))
+        .expect("restored agent signs");
+    assert!(
+        restored
+            .verify(&signed)
+            .expect("restored agent verifies")
+            .valid
+    );
+}
+
+#[test]
+fn core_agent_encrypted_export_requires_unlocked_signer() {
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral ed25519");
+    agent.clear_secrets();
+    assert!(matches!(
+        agent.export_encrypted_material("unused password"),
+        Err(CoreError::Locked)
+    ));
+}
+
 // -----------------------------------------------------------------------------
 // CoreAgent::from_encrypted_material — password path
 // -----------------------------------------------------------------------------

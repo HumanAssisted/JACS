@@ -77,6 +77,7 @@
 ## Integrations
 - [MCP Overview](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
+- [AP2 Mandate Export](integrations/ap2.md)
 
 ## Guides
 - [A2A Quickstart](guides/a2a-quickstart.md)

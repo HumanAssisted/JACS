@@ -1,0 +1,5 @@
+# ML-DSA-87 (`pq2025`) key generation uses more than wasm-ld's default
+# 1 MiB stack when it is nested inside the Agreement and Worker adapters.
+# Keep this target-local: native bindings do not need the larger stack.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=4194304"]

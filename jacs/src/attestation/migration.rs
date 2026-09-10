@@ -29,13 +29,14 @@ pub fn lift_to_attestation(
     claims: &[Claim],
 ) -> Result<JACSDocument, JacsError> {
     // 1. Parse the signed document
-    let doc_value: Value = serde_json::from_str(signed_document_json).map_err(|e| {
-        format!(
-            "lift_to_attestation: invalid JSON input: {}. \
+    let doc_value: Value = jacs_core::strict_json::parse_strict_json(signed_document_json)
+        .map_err(|e| {
+            format!(
+                "lift_to_attestation: invalid JSON input: {}. \
              Provide a valid signed JACS document JSON string.",
-            e
-        )
-    })?;
+                e
+            )
+        })?;
 
     // 2. Verify it has a signature (must be a signed document)
     if doc_value.get("jacsSignature").is_none() {

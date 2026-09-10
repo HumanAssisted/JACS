@@ -1,10 +1,18 @@
 import json
+from pathlib import Path
 
 import pytest
 
 jacs = pytest.importorskip("jacs")
 
 import jacs.simple as simple
+
+NATIVE_VERIFY_EXPECTED = json.loads(
+    (
+        Path(__file__).resolve().parents[2]
+        / "binding-core/tests/fixtures/agreement_v2_scenarios.json"
+    ).read_text(encoding="utf-8")
+)["expected"]["nativeVerify"]
 
 
 # The native Agreement v2 methods require the package to be built with the
@@ -61,9 +69,8 @@ def test_module_level_create_sign_verify_round_trip(loaded):
     assert isinstance(signed, str)
 
     report = simple.verify_agreement_v2(signed)
-    assert report["valid"] is True
-    assert report["expectedStatus"] == "final"
-    assert report["signerCount"] == 1
+    for field, expected in NATIVE_VERIFY_EXPECTED.items():
+        assert report[field] == expected, field
 
 
 def test_module_level_accepts_dict_document(loaded):

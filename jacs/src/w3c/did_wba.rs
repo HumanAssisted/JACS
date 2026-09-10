@@ -4,6 +4,7 @@ use crate::public_agent::PublicAgentProjection;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tracing::{info, warn};
 use url::Url;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -38,20 +39,55 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
     let parts = parts_for_projection(&projection, &options)?;
     let verification_method = verification_method_for_projection(&projection, &parts);
 
+    let mut verification_methods = vec![verification_method];
+    let mut authentication = vec![json!(parts.verification_method)];
+    let mut assertion_method = vec![json!(parts.verification_method)];
+    let mut jacs_block = json!({
+        "jacsId": projection.jacs_id,
+        "jacsVersion": projection.jacs_version,
+        "jacsLookupId": projection.jacs_lookup_id,
+        "publicKeyHash": projection.public_key_hash,
+        "keyAlgorithm": projection.key_algorithm
+    });
+
+    // P2 Task 004-B: when the agent has an ES256 compatibility key AND a
+    // valid native-root-signed binding granting the `did` scope, the DID
+    // document additionally lists the compat key TWICE for the same key:
+    // a `JsonWebKey` entry (publicKeyJwk, JOSE consumers — not the legacy
+    // JsonWebKey2020) and a `Multikey` entry (publicKeyMultibase — the
+    // type `ecdsa-jcs-2019` Data Integrity verifiers require). The `jacs`
+    // block carries the binding reference AS A CONTENT HASH — never a
+    // URL; P2 defines no resolution protocol (NG8).
+    if let Some(compat_entries) = es256_entries_if_authorized(agent, &parts)? {
+        let (jwk_entry, multikey_entry, kid, binding_hash) = compat_entries;
+        info!(
+            event = "ecosystem_export_generated",
+            format = "did",
+            jacs_id = %projection.jacs_id,
+            kid = %kid,
+            binding_hash = %binding_hash,
+            "DID document exported with ES256 compatibility verification methods"
+        );
+        crate::compatibility::record_export_generated("did");
+        let jwk_id = jwk_entry["id"].as_str().unwrap_or("").to_string();
+        let mk_id = multikey_entry["id"].as_str().unwrap_or("").to_string();
+        verification_methods.push(jwk_entry);
+        verification_methods.push(multikey_entry);
+        authentication.push(json!(jwk_id));
+        assertion_method.push(json!(jwk_id));
+        assertion_method.push(json!(mk_id));
+        jacs_block["compatKid"] = json!(kid);
+        jacs_block["compatBindingHash"] = json!(binding_hash);
+    }
+
     Ok(json!({
         "@context": [
             "https://www.w3.org/ns/did/v1"
         ],
         "id": parts.did,
-        "verificationMethod": [
-            verification_method
-        ],
-        "authentication": [
-            parts.verification_method
-        ],
-        "assertionMethod": [
-            parts.verification_method
-        ],
+        "verificationMethod": verification_methods,
+        "authentication": authentication,
+        "assertionMethod": assertion_method,
         "service": [
             {
                 "id": format!("{}#agent-desc", parts.did),
@@ -59,14 +95,47 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
                 "serviceEndpoint": format!("{}{}", parts.origin, parts.agent_description_path)
             }
         ],
-        "jacs": {
-            "jacsId": projection.jacs_id,
-            "jacsVersion": projection.jacs_version,
-            "jacsLookupId": projection.jacs_lookup_id,
-            "publicKeyHash": projection.public_key_hash,
-            "keyAlgorithm": projection.key_algorithm
-        }
+        "jacs": jacs_block
     }))
+}
+
+/// Build the two ES256 verification-method entries when (and only when)
+/// a valid binding grants the `did` scope. Returns None when the agent
+/// has no compat key, no binding, an invalid binding, or no `did` scope —
+/// the DID document then keeps its pre-P2 (native-only) shape.
+fn es256_entries_if_authorized(
+    agent: &Agent,
+    parts: &W3cDidParts,
+) -> Result<Option<(Value, Value, String, String)>, JacsError> {
+    let (compat, binding) =
+        match crate::compatibility::binding::compat_enrichment_if_authorized(agent, "did")? {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+
+    // One PEM read feeds both encodings (JWK x/y + Multikey).
+    let public_pem = compat.read_public_pem()?;
+    let (x, y) = crate::crypt::es256::jwk_xy_from_spki_pem(&public_pem)?;
+    let multibase = crate::crypt::es256::multikey_from_spki_pem(&public_pem)?;
+    let binding_hash = crate::compatibility::binding::binding_hash(&binding);
+
+    let jwk_id = format!("{}#{}", parts.did, compat.kid);
+    let mk_id = format!("{}#{}-multikey", parts.did, compat.kid);
+
+    let jwk_entry = json!({
+        "id": jwk_id,
+        "type": "JsonWebKey",
+        "controller": parts.did,
+        "publicKeyJwk": crate::crypt::es256::public_jwk(&x, &y, Some(&compat.kid))
+    });
+    let multikey_entry = json!({
+        "id": mk_id,
+        "type": "Multikey",
+        "controller": parts.did,
+        "publicKeyMultibase": multibase
+    });
+
+    Ok(Some((jwk_entry, multikey_entry, compat.kid, binding_hash)))
 }
 
 pub(crate) fn parts_for_projection(
@@ -119,7 +188,19 @@ pub(crate) fn resolve_origin(
         .origin
         .as_deref()
         .or(projection.origin.as_deref())
-        .unwrap_or("https://jacs.localhost");
+        .unwrap_or_else(|| {
+            // Each export entry point resolves the origin exactly once
+            // (generate_w3c_well_known_documents passes the resolved origin
+            // to its nested exports), so this fires once per export call.
+            warn!(
+                event = "did_origin_fallback",
+                jacs_id = %projection.jacs_id,
+                "DID origin fell back to the default 'https://jacs.localhost'; \
+                 set --domain at agent creation (stamps jacs_agent_domain in the \
+                 config) or pass --origin at export"
+            );
+            "https://jacs.localhost"
+        });
     let trimmed = candidate.trim().trim_end_matches('/');
     let origin = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         trimmed.to_string()
@@ -187,7 +268,9 @@ mod tests {
     use serde_json::json;
 
     fn test_agent() -> Agent {
-        let mut agent = Agent::ephemeral("ring-Ed25519").expect("ephemeral agent");
+        // Fixture path exercises the Ed25519 OKP JWK representation
+        // (32-byte keys) without filesystem state.
+        let mut agent = Agent::ephemeral_legacy_ed25519_for_fixtures().expect("ephemeral agent");
         let doc = json!({
             "jacsAgentType": "ai",
             "name": "w3c-test",

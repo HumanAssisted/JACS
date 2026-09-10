@@ -84,6 +84,9 @@ Use JACS when an MCP client is calling tools that should not run on blind trust.
 
 ```bash
 cargo install jacs-cli
+jacs quickstart --name mcp-agent --domain mcp-agent.example
+export JACS_CONFIG="$PWD/jacs.config.json"
+# Also configure JACS_PASSWORD_FILE or an OS-keychain password.
 jacs mcp
 ```
 

@@ -45,7 +45,7 @@ The MCP server is built into the `jacs` binary. No separate install step needed.
 
 ```bash
 # Start the MCP server (stdio transport)
-jacs mcp
+JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
 ```
 
 ## Configuration Commands

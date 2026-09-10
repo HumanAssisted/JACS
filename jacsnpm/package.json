@@ -1,6 +1,6 @@
 {
   "name": "@hai.ai/jacs",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "description": "JACS (JSON Agent Communication Standard) - Data provenance and cryptographic signing for AI agents",
   "main": "index.js",
   "types": "index.d.ts",
@@ -8,13 +8,18 @@
     "body-parser": "^2.2.1",
     "diff": "^8.0.3",
     "express-rate-limit": "^8.2.2",
-    "fast-uri": "^3.1.2",
-    "hono": "^4.12.18",
-    "ip-address": "^10.1.1",
+    "fast-uri": "^3.1.6",
+    "hono": "^4.12.34",
+    "ip-address": "^10.3.1",
     "serialize-javascript": "^7.0.5",
-    "qs": "^6.15.2"
+    "qs": "^6.16.0"
   },
   "exports": {
+    "./signing-input": {
+      "types": "./browser/signing.d.ts",
+      "import": "./browser/signing.js",
+      "default": "./browser/signing.js"
+    },
     ".": {
       "import": "./index.js",
       "require": "./index.js",
@@ -85,9 +90,10 @@
     "jacs-cli": "bin/jacs-cli.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install-cli.js || true",
-    "build": "napi build --platform --release && npm run build:ts",
-    "build:debug": "napi build --platform && npm run build:ts",
+    "postinstall": "node scripts/install-cli.js",
+    "build": "napi build --platform --release --features human-approval-vendored --cargo-flags=--locked && npm run build:ts",
+    "build:slim": "napi build --platform --release --cargo-flags=--locked && npm run build:ts",
+    "build:debug": "napi build --platform --cargo-flags=--locked && npm run build:ts",
     "build:ts": "tsc",
     "test": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/**/*.test.js'",
     "test:parallel": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --parallel --jobs 4 --timeout 15000 'test/**/*.test.js' --ignore 'test/cross-language.test.js' && JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'",
@@ -114,10 +120,7 @@
     "test:cross-language": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'",
     "test:cross-language-provenance": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 60000 'test/cross-language-provenance.test.js'"
   },
-  "dependencies": {
-    "@napi-rs/cli": "^2.16.3",
-    "uuid": "^13.0.1"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@ai-sdk/provider": ">=1.0.0",
     "@langchain/core": ">=0.3.0",
@@ -156,10 +159,11 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@napi-rs/cli": "^2.16.3",
     "@types/node": "^22.15",
     "ajv": "^8.17.1",
-    "chai": "^6.2.2",
-    "js-yaml": "^4.1.1",
+    "chai": "4.5.0",
+    "js-yaml": "^4.3.1",
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
     "typescript": "^5.7.0"
@@ -176,16 +180,25 @@
   },
   "author": "HAI.AI",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/HumanAssisted/JACS",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HumanAssisted/JACS.git"
+    "url": "https://github.com/HumanAssisted/JACS"
   },
   "files": [
+    "browser/package.json",
+    "browser/signing.js",
+    "browser/signing.d.ts",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES",
     "index.js",
     "index.d.ts",
     "simple.js",
     "simple.d.ts",
+    "simple.js.map",
     "a2a.js",
     "a2a.d.ts",
     "a2a.js.map",
@@ -213,16 +226,25 @@
     "vercel-ai.js.map",
     "client.js",
     "client.d.ts",
+    "client.js.map",
+    "verification.js",
+    "verification.d.ts",
+    "verification.js.map",
+    "output-policy.js",
+    "output-policy.d.ts",
+    "output-policy.js.map",
     "testing.js",
     "testing.d.ts",
+    "testing.js.map",
     "langchain.js",
     "langchain.d.ts",
     "langchain.js.map",
     "deprecation.js",
     "deprecation.d.ts",
+    "deprecation.js.map",
     "jacs.*.node",
     "scripts/install-cli.js",
-    "bin/"
+    "bin/jacs-cli.js"
   ],
   "keywords": [
     "jacs",

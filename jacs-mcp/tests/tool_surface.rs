@@ -229,6 +229,13 @@ fn server_metadata_identifies_as_jacs_mcp() {
         info.instructions
             .as_deref()
             .unwrap_or_default()
+            .contains("jacs_verify_document")
+    );
+    assert!(
+        !info
+            .instructions
+            .as_deref()
+            .unwrap_or_default()
             .contains("jacs_sign_document")
     );
     assert!(
@@ -244,15 +251,16 @@ fn server_metadata_identifies_as_jacs_mcp() {
 fn active_tools_respects_profile() {
     use jacs_mcp::Profile;
 
-    let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
-    let core_tools = core_server.active_tools();
-    let core_names: Vec<&str> = core_tools.iter().map(|t| t.name.as_ref()).collect();
+    let verify_server =
+        jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::VerifyOnly);
+    let verify_tools = verify_server.active_tools();
+    let verify_names: Vec<&str> = verify_tools.iter().map(|t| t.name.as_ref()).collect();
 
-    assert!(core_names.contains(&"jacs_sign_document"));
-    assert!(core_names.contains(&"jacs_trust_agent"));
-    assert!(core_names.contains(&"jacs_search"));
+    assert!(!verify_names.contains(&"jacs_sign_document"));
+    assert!(!verify_names.contains(&"jacs_trust_agent"));
+    assert_eq!(verify_names, vec!["jacs_verify_document"]);
 
-    for name in &core_names {
+    for name in &verify_names {
         assert!(!name.starts_with("jacs_message_"));
         assert!(!name.starts_with("jacs_memory_"));
         assert!(!name.starts_with("jacs_audit"));
@@ -262,7 +270,67 @@ fn active_tools_respects_profile() {
             !name.starts_with("jacs_create_agreement")
                 && !name.starts_with("jacs_sign_agreement")
                 && !name.starts_with("jacs_check_agreement"),
-            "core profile should not contain agreement tool: {name}"
+            "verify-only profile should not contain agreement tool: {name}"
+        );
+    }
+}
+
+/// P2 FR19 guardrail (positive statement): every P2 ES256 ecosystem
+/// export — JWKS, compatibility key binding, AP2 mandate, Agreement-v2
+/// VC, and the DID-document compat entries — ships as CLI + binding
+/// surface ONLY. The MCP tool surface must stay free of them in every
+/// feature combination; a tool matching these fragments means FR19 was
+/// violated and `cli_mcp_alignment.json` / this test must be revisited
+/// together.
+#[test]
+fn p2_ecosystem_exports_are_cli_only_never_mcp_tools() {
+    let names = sorted_tool_names();
+
+    for fragment in [
+        "jwks",
+        "compat",
+        "binding",
+        "ecosystem",
+        "ap2",
+        "mandate",
+        "agreement_vc",
+        "export_vc",
+    ] {
+        assert!(
+            !names.iter().any(|name| name.contains(fragment)),
+            "FR19: P2 exports are CLI-only; found MCP tool matching '{fragment}' in: {names:?}"
+        );
+    }
+
+    // The pre-P2 W3C export tools are the only DID-shaped MCP surface and
+    // they stay: P2 changed what the library puts INSIDE the DID document
+    // (scope-gated ES256 entries), not the MCP tool list.
+    assert!(names.contains(&"jacs_w3c_export_did_document".to_string()));
+}
+
+/// P2 identity-export error contract: MCP has NO identity-export tool for
+/// the ES256 compatibility surfaces (previous assertion), so there is no
+/// MCP-side error payload to type — the actionable typed errors (e.g.
+/// `KeyNotFound` pointing at `jacs agent add-compat-key`, scope denials
+/// naming the missing scope) are exercised on the CLI and binding
+/// surfaces (`jacs-cli/tests/mcp_observability_tests.rs`,
+/// `jacs/tests/compatibility_observability.rs`). This test pins that
+/// absence explicitly: adding an MCP identity-export tool later must
+/// bring its error contract (and FR19) back into review.
+#[test]
+fn identity_export_error_contract_lives_on_cli_because_mcp_has_no_such_tool() {
+    let names = sorted_tool_names();
+
+    for would_be_tool in [
+        "jacs_export_compatibility_jwks",
+        "jacs_export_compat_binding",
+        "jacs_issue_compat_binding",
+        "jacs_add_compat_key",
+    ] {
+        assert!(
+            !names.contains(&would_be_tool.to_string()),
+            "MCP unexpectedly grew P2 identity-export tool '{would_be_tool}'; \
+             its error contract must be typed and FR19 revisited"
         );
     }
 }

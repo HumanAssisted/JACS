@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json",
+  "title": "AP2 Mandate Input (UCP checkout)",
+  "description": "Typed input boundary for the JACS AP2 merchant-authorization exporter (UCP AP2-Mandates extension, revision 2026-01-23). The exporter validates the checkout object against this schema and rejects anything else: a purpose-built content exporter takes a typed source, never arbitrary documents. The signed payload is this checkout object EXCLUDING the `ap2` field, canonicalized per RFC 8785 (JCS).",
+  "type": "object",
+  "required": [
+    "id",
+    "currency",
+    "line_items",
+    "totals"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Checkout identifier assigned by the merchant/business endpoint."
+    },
+    "status": {
+      "type": "string",
+      "description": "UCP checkout status (e.g. ready_for_payment)."
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 3,
+      "description": "ISO 4217 currency code for all amounts in the checkout."
+    },
+    "line_items": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Items being authorized. Amounts are integer minor units per UCP.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "base_amount": {
+            "type": "integer"
+          },
+          "total_amount": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "totals": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Checkout totals (subtotal, tax, total, ...).",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "amount"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "display_text": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "ap2": {
+      "type": "object",
+      "description": "AP2-Mandates extension block. EXCLUDED from the signed payload; the exporter writes the merchant_authorization detached JWS here.",
+      "properties": {
+        "merchant_authorization": {
+          "type": "string",
+          "description": "Detached compact ES256 JWS (<BASE64URL(header)>..<BASE64URL(signature)>) emitted by the exporter."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

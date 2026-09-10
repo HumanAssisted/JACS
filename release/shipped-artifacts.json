@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-07-11",
+  "review_baseline": "f621a99d",
+  "source_version": "0.12.0",
+  "artifacts": {
+    "rust": {
+      "package": "jacs",
+      "registry": "crates.io",
+      "version": "0.11.3",
+      "status": "published",
+      "platforms": ["source only; no prebuilt library artifact"],
+      "evidence": "Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied."
+    },
+    "cli": {
+      "package": "jacs-cli",
+      "registry": "crates.io and GitHub Releases",
+      "version": "0.11.3",
+      "status": "published",
+      "platforms": [
+        "macOS arm64",
+        "macOS x86_64",
+        "Linux x86_64 glibc",
+        "Linux arm64 glibc",
+        "Windows x86_64"
+      ],
+      "evidence": "Release jobs build each listed target and run a launch smoke; cargo install remains a source build."
+    },
+    "python": {
+      "package": "jacs",
+      "registry": "PyPI",
+      "version": "0.11.3",
+      "status": "published",
+      "platforms": [
+        "macOS arm64",
+        "macOS x86_64",
+        "Linux x86_64 manylinux_2_38",
+        "Linux arm64 manylinux_2_38",
+        "Linux x86_64 musllinux"
+      ],
+      "evidence": "CI runtime-smokes Linux x86_64; other wheels are build-only evidence. No Windows or arm64 musllinux wheel is recorded."
+    },
+    "node": {
+      "package": "@hai.ai/jacs",
+      "registry": "npm",
+      "version": "0.10.1",
+      "status": "published-behind-source",
+      "platforms": [
+        "macOS arm64",
+        "macOS x86_64",
+        "Linux x86_64 glibc",
+        "Linux x86_64 musl",
+        "Linux arm64 glibc"
+      ],
+      "evidence": "Source CI runtime-smokes Node 20 on Ubuntu x86_64. Other listed native binaries are not runtime-smoked here."
+    },
+    "wasm": {
+      "package": "@jacs/wasm",
+      "registry": "npm",
+      "version": null,
+      "status": "source-only-not-published",
+      "platforms": ["browser source build; release package unavailable"],
+      "evidence": "Source CI builds wasm32 and runs Firefox plus Chromium/Playwright tests; Safari and Windows-hosted browsers are unverified."
+    },
+    "go": {
+      "package": "github.com/HumanAssisted/JACS/jacsgo",
+      "registry": "Go module proxy",
+      "version": "v0.0.0-20260613002535-44c41d103146",
+      "status": "pseudo-version-native-library-required",
+      "platforms": ["source binding; native library distribution is separate"],
+      "evidence": "Source CI runs Ubuntu x86_64; the observed module cannot link without a separately installed libjacsgo."
+    }
+  }
+}

@@ -59,7 +59,7 @@ impl DocumentServiceWrapper {
     /// If `None`, defaults are used.
     pub fn create_json(&self, json: &str, options_json: Option<&str>) -> BindingResult<String> {
         let options: CreateOptions = match options_json {
-            Some(opts) => serde_json::from_str(opts).map_err(|e| {
+            Some(opts) => jacs_core::strict_json::deserialize_strict_json(opts).map_err(|e| {
                 BindingCoreError::invalid_argument(format!("Invalid CreateOptions JSON: {}", e))
             })?,
             None => CreateOptions::default(),
@@ -118,7 +118,7 @@ impl DocumentServiceWrapper {
         options_json: Option<&str>,
     ) -> BindingResult<String> {
         let options: UpdateOptions = match options_json {
-            Some(opts) => serde_json::from_str(opts).map_err(|e| {
+            Some(opts) => jacs_core::strict_json::deserialize_strict_json(opts).map_err(|e| {
                 BindingCoreError::invalid_argument(format!("Invalid UpdateOptions JSON: {}", e))
             })?,
             None => UpdateOptions::default(),
@@ -161,7 +161,7 @@ impl DocumentServiceWrapper {
     /// `filter_json` is an optional JSON string of `ListFilter`.
     pub fn list_json(&self, filter_json: Option<&str>) -> BindingResult<String> {
         let filter: ListFilter = match filter_json {
-            Some(f) => serde_json::from_str(f).map_err(|e| {
+            Some(f) => jacs_core::strict_json::deserialize_strict_json(f).map_err(|e| {
                 BindingCoreError::invalid_argument(format!("Invalid ListFilter JSON: {}", e))
             })?,
             None => ListFilter::default(),
@@ -187,9 +187,10 @@ impl DocumentServiceWrapper {
     ///
     /// `query_json` is a JSON string of `SearchQuery`.
     pub fn search_json(&self, query_json: &str) -> BindingResult<String> {
-        let query: jacs::search::SearchQuery = serde_json::from_str(query_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!("Invalid SearchQuery JSON: {}", e))
-        })?;
+        let query: jacs::search::SearchQuery =
+            jacs_core::strict_json::deserialize_strict_json(query_json).map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid SearchQuery JSON: {}", e))
+            })?;
 
         let results = self.inner.search(query).map_err(|e| {
             BindingCoreError::document_failed(format!("Document search failed: {}", e))
@@ -262,8 +263,8 @@ impl DocumentServiceWrapper {
     /// `visibility_json` is a JSON string (e.g., `"public"`, `"private"`,
     /// `{"restricted":["agent-a"]}`).
     pub fn set_visibility_json(&self, key: &str, visibility_json: &str) -> BindingResult<()> {
-        let vis: jacs::document::DocumentVisibility = serde_json::from_str(visibility_json)
-            .map_err(|e| {
+        let vis: jacs::document::DocumentVisibility =
+            jacs_core::strict_json::deserialize_strict_json(visibility_json).map_err(|e| {
                 BindingCoreError::invalid_argument(format!(
                     "Invalid DocumentVisibility JSON: {}",
                     e

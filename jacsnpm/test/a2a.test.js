@@ -3,7 +3,7 @@
  *
  * Updated for Phase 2: JACSA2AIntegration now accepts a JacsClient instance.
  * wrapArtifactWithProvenance and verifyWrappedArtifact are async.
- * Uses client._agent.signRequest / verifyResponse (sync V8-thread-only).
+ * Uses canonical native A2A signing and verification entry points.
  * hashString replaced with crypto.createHash('sha256').
  */
 
@@ -19,18 +19,30 @@ const {
   A2AAgentCardSignature,
   A2A_PROTOCOL_VERSION,
   JACS_EXTENSION_URI,
-  JACS_ALGORITHMS
+  JACS_ALGORITHMS,
+  TRUST_POLICIES,
 } = require('../src/a2a');
+const {
+  configureNativeGenerator,
+  configureNativeArtifactSigner,
+  configureCanonicalArtifactVerifier,
+} = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient with a mock _agent.
  */
 function createMockClient() {
+  const agent = configureNativeGenerator({
+    signRequest: sinon.stub(),
+    signArtifactSync: sinon.stub(),
+    verifyResponse: sinon.stub(),
+    verifyA2aArtifactSync: sinon.stub(),
+    verifyA2aArtifactWithPolicySync: sinon.stub(),
+  }, { agentId: 'mock-agent-id', name: 'mock-agent' });
+  configureNativeArtifactSigner(agent, { agentId: 'mock-agent-id' });
+  configureCanonicalArtifactVerifier(agent);
   return {
-    _agent: {
-      signRequest: sinon.stub(),
-      verifyResponse: sinon.stub(),
-    },
+    _agent: agent,
     agentId: 'mock-agent-id',
     name: 'mock-agent',
   };
@@ -188,37 +200,18 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         data: { key: 'value' }
       };
 
-      const signedResult = {
-        jacsId: 'wrapped-123',
-        jacsVersion: 'v1',
-        jacsType: 'a2a-task',
-        a2aArtifact: artifact,
-        jacsSignature: {
-          agentID: 'test-agent',
-          signature: 'mock-signature'
-        }
-      };
-      mockClient._agent.signRequest.returns(signedResult);
-
       const wrapped = await a2aIntegration.wrapArtifactWithProvenance(artifact, 'task');
 
       expect(wrapped.jacsType).to.equal('a2a-task');
       expect(wrapped.a2aArtifact).to.deep.equal(artifact);
       expect(wrapped.jacsSignature).to.exist;
-      expect(mockClient._agent.signRequest.calledOnce).to.be.true;
+      expect(mockClient._agent.signArtifactSync.calledOnce).to.be.true;
+      expect(mockClient._agent.signRequest.called).to.be.false;
     });
 
     it('should include parent signatures when provided', async () => {
       const artifact = { step: 'step2' };
       const parentSig = { jacsId: 'parent-123', jacsSignature: { agentID: 'parent-agent' } };
-
-      const signedResult = {
-        jacsId: 'wrapped-456',
-        a2aArtifact: artifact,
-        jacsParentSignatures: [parentSig],
-        jacsSignature: { agentID: 'test-agent' }
-      };
-      mockClient._agent.signRequest.returns(signedResult);
 
       const wrapped = await a2aIntegration.wrapArtifactWithProvenance(artifact, 'workflow-step', [parentSig]);
 
@@ -242,6 +235,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       };
 
       mockClient._agent.verifyResponse.returns(true);
+      a2aIntegration.trustPolicy = TRUST_POLICIES.OPEN;
 
       const result = await a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
@@ -252,13 +246,13 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       expect(result.artifactType).to.equal('a2a-task');
       expect(result.timestamp).to.equal('2024-01-15T10:00:00Z');
       expect(result.originalArtifact).to.deep.equal({ data: 'test' });
-      // verifyResponse is called with a JSON string
-      expect(mockClient._agent.verifyResponse.calledOnce).to.be.true;
-      const arg = mockClient._agent.verifyResponse.firstCall.args[0];
+      expect(mockClient._agent.verifyA2aArtifactSync.calledOnce).to.equal(true);
+      expect(mockClient._agent.verifyResponse.called).to.be.false;
+      const arg = mockClient._agent.verifyA2aArtifactSync.firstCall.args[0];
       expect(typeof arg).to.equal('string');
     });
 
-    it('should coerce object verifyResponse results to boolean and expose payload', async () => {
+    it('should reject non-canonical object results from legacy verifyResponse', async () => {
       const wrappedArtifact = {
         jacsId: 'artifact-obj-verify',
         jacsType: 'a2a-task',
@@ -271,27 +265,52 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       };
 
       const nativeResult = { payload: { ok: true, source: 'native' } };
+      delete mockClient._agent.verifyA2aArtifactSync;
+      delete mockClient._agent.verifyA2aArtifactWithPolicySync;
       mockClient._agent.verifyResponse.returns(nativeResult);
+      a2aIntegration.trustPolicy = TRUST_POLICIES.OPEN;
 
       const result = await a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
-      expect(result.valid).to.equal(true);
+      expect(result.valid).to.equal(false);
       expect(typeof result.valid).to.equal('boolean');
-      expect(result.verifiedPayload).to.deep.equal(nativeResult.payload);
-      expect(result.verificationResult).to.deep.equal(nativeResult);
+      expect(result.verifiedPayload).to.equal(undefined);
+      expect(result.verificationResult).to.not.deep.equal(nativeResult);
+      expect(result.signerId).to.equal('');
+      expect(result.signerVersion).to.equal('');
+      expect(result.artifactType).to.equal('');
+      expect(result.timestamp).to.equal('');
+      expect(result.originalArtifact).to.deep.equal({});
+      expect(mockClient._agent.verifyResponse.called).to.be.false;
     });
 
     it('should handle artifacts with parent signatures', async () => {
       const wrappedArtifact = {
-        jacsSignature: { agentID: 'agent' },
+        jacsId: 'child-artifact',
+        jacsType: 'a2a-task',
+        jacsVersionDate: '2024-01-15T10:00:00Z',
+        jacsSignature: { agentID: 'agent', agentVersion: 'v1' },
         jacsParentSignatures: [
-          { jacsId: 'p1', jacsSignature: { agentID: 'a1' }, a2aArtifact: {} },
-          { jacsId: 'p2', jacsSignature: { agentID: 'a2' }, a2aArtifact: {} }
+          {
+            jacsId: 'p1',
+            jacsType: 'a2a-task',
+            jacsVersionDate: '2024-01-15T09:00:00Z',
+            jacsSignature: { agentID: 'a1', agentVersion: 'v1' },
+            a2aArtifact: {},
+          },
+          {
+            jacsId: 'p2',
+            jacsType: 'a2a-task',
+            jacsVersionDate: '2024-01-15T09:30:00Z',
+            jacsSignature: { agentID: 'a2', agentVersion: 'v1' },
+            a2aArtifact: {},
+          }
         ],
         a2aArtifact: {}
       };
 
       mockClient._agent.verifyResponse.returns(true);
+      a2aIntegration.trustPolicy = TRUST_POLICIES.OPEN;
 
       const result = await a2aIntegration.verifyWrappedArtifact(wrappedArtifact);
 
@@ -374,27 +393,23 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       expect(documents).to.have.all.keys(
         '/.well-known/agent-card.json',
         '/.well-known/jwks.json',
+        '/.well-known/jacs-compat-binding.json',
         '/.well-known/jacs-agent.json',
         '/.well-known/jacs-pubkey.json',
         '/.well-known/jacs-extension.json'
       );
 
-      // Verify agent card document has embedded signature (v0.4.0)
+      // Caller-provided signatures cannot replace the native bound card.
       const agentDoc = documents['/.well-known/agent-card.json'];
       expect(agentDoc.signatures).to.exist;
-      expect(agentDoc.signatures[0].jws).to.equal('mock-jws-signature');
+      expect(agentDoc.signatures[0].jws).to.equal('native-es256-jws');
 
-      // Verify JACS descriptor - hash is now crypto-based, not mocked
+      // Native descriptors and compatibility binding are preserved.
       const jacsDesc = documents['/.well-known/jacs-agent.json'];
-      expect(jacsDesc.agentId).to.equal('agent-123');
-      expect(jacsDesc.keyAlgorithm).to.equal('ring-Ed25519');
-      expect(jacsDesc.publicKeyHash).to.be.a('string');
-      expect(jacsDesc.publicKeyHash).to.have.length(64); // SHA-256 hex is 64 chars
-
-      // Verify public key document
-      const pubkeyDoc = documents['/.well-known/jacs-pubkey.json'];
-      expect(pubkeyDoc.publicKey).to.equal('bW9jay1wdWJsaWMta2V5');
-      expect(pubkeyDoc.algorithm).to.equal('ring-Ed25519');
+      expect(jacsDesc.agentId).to.equal('mock-agent-id');
+      expect(jacsDesc.keyAlgorithm).to.equal('pq2025');
+      expect(documents['/.well-known/jacs-compat-binding.json'].jacsSha256)
+        .to.equal('binding-hash');
 
       // Verify JWKS is present for A2A verifiers
       const jwksDoc = documents['/.well-known/jwks.json'];

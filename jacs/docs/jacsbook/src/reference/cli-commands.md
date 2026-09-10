@@ -23,15 +23,12 @@ echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.
 
 # Sign a file
 jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
-
-# Use a specific algorithm
-jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
 ```
 
 **Options:**
 - `--name <name>` - Agent name used for first-time quickstart creation (required)
 - `--domain <domain>` - Agent domain used for DNS/public-key verification workflows (required)
-- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`
+- `--algorithm <algo>` - Signing algorithm: `pq2025` (default) or `ed25519`; the legacy input alias `ring-Ed25519` is also accepted and the canonical Ed25519 wire label remains `ring-Ed25519`
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)
 
@@ -122,10 +119,11 @@ jacs keychain status --agent-id <AGENT_UUID>
 3. OS keychain keyed by agent ID (if `keychain` feature is enabled and not disabled)
 
 ### `jacs init`
-Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.
+Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup. New agents get the selected native root (`pq2025` by default) plus an ES256 ecosystem compatibility key; pass `--no-compat-key` to skip the compatibility key (minimal/air-gapped agents).
 
 ```bash
 jacs init
+jacs init --no-compat-key
 ```
 
 ### `jacs help`
@@ -155,7 +153,47 @@ Work with JACS agents - the cryptographic identities that sign and verify docume
 jacs agent [SUBCOMMAND]
 ```
 
-*Note: Specific subcommands for agent management are not detailed in the current help output.*
+### `jacs agent add-compat-key`
+Add the ES256 `ecosystem_signing` compatibility key to an existing agent (explicit migration — loading never creates key material). New agents mint this key at creation unless `--no-compat-key` was used. Errors if the key already exists.
+
+```bash
+jacs agent add-compat-key [--config ./jacs.config.json]
+```
+
+### `jacs agent issue-compat-binding`
+Issue (or re-issue) the native-root-signed compatibility key binding. Content scopes (`ap2-mandate`, `agreement-vc`) are never auto-issued — grant them here explicitly. This is also the re-issue path after `agent rotate-keys` (a binding signed by a previous root no longer authorizes exports). The same grant is available from language bindings as `issue_compat_binding_json(scopes_json, expires_at)` (scopes as a JSON array, e.g. `["jwks","did","ap2-mandate"]`), so Python/Node/Go callers can enable content exports without shelling out to the CLI.
+
+```bash
+# default: identity scopes only (jwks,did,a2a-agent-card,w3c-agent-identity)
+jacs agent issue-compat-binding
+
+# grant a content scope explicitly
+jacs agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate
+
+# optional expiry (RFC 3339)
+jacs agent issue-compat-binding --expires-at 2027-01-01T00:00:00Z
+```
+
+## Agreement VC Export
+
+### `jacs agreement-v2 export-vc`
+Export an Agreement-v2 document as a W3C Verifiable Credential with an `ecdsa-jcs-2019` Data Integrity proof (W3C vc-di-ecdsa, Multikey verification method). Requires the `agreement-vc` binding scope. The native agreement is unchanged; incoming VC verification is out of scope.
+
+```bash
+jacs agreement-v2 export-vc --agreement agreement.json   # file path
+cat agreement.json | jacs agreement-v2 export-vc --agreement -  # stdin
+```
+
+## AP2 Commands
+
+### `jacs ap2 export-mandate`
+Export the AP2 merchant-authorization mandate for a UCP checkout as a detached ES256 JWS (UCP AP2-Mandates extension, rev 2026-01-23). Requires the `ap2-mandate` binding scope. Input is validated against the named ap2-mandate schema; user-side AP2 Checkout Mandates (SD-JWT-VC) are out of scope. See [AP2 Mandate Export](../integrations/ap2.md).
+
+```bash
+jacs ap2 export-mandate --input checkout.json          # file path
+jacs ap2 export-mandate --input '{"id":"c1", ... }'    # inline JSON
+cat checkout.json | jacs ap2 export-mandate --input -  # stdin
+```
 
 ## Document Commands
 
@@ -172,9 +210,10 @@ jacs document create [OPTIONS]
 **Options:**
 - `-a <agent-file>` - Path to the agent file. If not specified, uses config `jacs_agent_id_and_version`
 - `-f <filename>` - Path to input file. Must be JSON format
-- `-o <output>` - Output filename for the created document
+- `-o, --output <output>` - Output filename for the created document (cannot be combined with `--directory`)
 - `-d <directory>` - Path to directory of files. Files should end with `.json`
 - `-v, --verbose` - Enable verbose output
+- `--json` - Emit a machine-readable result containing each document key and saved path
 - `-n, --no-save` - Instead of saving files, print to stdout
 - `-s, --schema <schema>` - Path to JSON schema file to use for validation
 - `--attach <attach>` - Path to file or directory for file attachments
@@ -185,6 +224,7 @@ jacs document create [OPTIONS]
 ```bash
 # Create document from JSON file
 jacs document create -f my-document.json
+# Prints: Saved signed document: <actual path>
 
 # Create document with embedded attachment
 jacs document create -f document.json --attach ./image.jpg --embed true

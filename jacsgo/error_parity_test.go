@@ -24,11 +24,23 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 )
 
 type parityInputsForErrors struct {
-	ErrorKinds []string `json:"error_kinds"`
+	ErrorKinds            []string              `json:"error_kinds"`
+	PortableErrorContract portableErrorContract `json:"portable_error_contract"`
+}
+
+type portableErrorContract struct {
+	MessagePrefix    string                `json:"message_prefix"`
+	RemovedAlgorithm removedAlgorithmError `json:"removed_algorithm"`
+}
+
+type removedAlgorithmError struct {
+	Input string `json:"input"`
+	Kind  string `json:"kind"`
 }
 
 func loadErrorKindsFromFixture(t *testing.T) []string {
@@ -55,6 +67,24 @@ func loadErrorKindsFromFixture(t *testing.T) []string {
 	}
 
 	return p.ErrorKinds
+}
+
+func loadPortableErrorContract(t *testing.T) portableErrorContract {
+	t.Helper()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), fixtureRelPath))
+	if err != nil {
+		t.Fatalf("failed to read parity fixture: %v", err)
+	}
+	var inputs parityInputsForErrors
+	if err := json.Unmarshal(data, &inputs); err != nil {
+		t.Fatalf("failed to parse parity fixture: %v", err)
+	}
+	return inputs.PortableErrorContract
 }
 
 // errorKindInfo documents how each Rust ErrorKind is represented in Go.
@@ -238,5 +268,18 @@ func TestGoSentinelErrorsExist(t *testing.T) {
 		if sentinel.Error() == "" {
 			t.Errorf("sentinel error %s should have a non-empty message", name)
 		}
+	}
+}
+
+func TestRemovedAlgorithmExposesPortableErrorCategory(t *testing.T) {
+	contract := loadPortableErrorContract(t)
+	algorithm := contract.RemovedAlgorithm.Input
+	_, _, err := EphemeralSimpleAgent(&algorithm)
+	if err == nil {
+		t.Fatal("removed algorithm must fail")
+	}
+	expected := contract.MessagePrefix + contract.RemovedAlgorithm.Kind
+	if !strings.Contains(err.Error(), expected) {
+		t.Fatalf("portable error category missing: got %q, want %q", err, expected)
 	}
 }

@@ -6,8 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jacs.adapters.base import BaseJacsAdapter
-from jacs.a2a import A2AAgentCard, A2AAgentInterface, A2AAgentCapabilities, A2AAgentExtension, A2AAgentSkill
-
 JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 
 SAMPLE_AGENT_DATA = {
@@ -137,12 +135,18 @@ class TestAssessTrust:
         assert result["trust_level"] == "untrusted"
 
     def test_verified_allows_jacs_registered(self):
-        adapter = _make_adapter()
+        client = _make_mock_client()
+        client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": True,
+            "jacsRegistered": True,
+            "trustLevel": "JacsVerified",
+        })
+        adapter = _make_adapter(client)
         result = adapter.assess_trust(_card_with_jacs_extension(), policy="verified")
 
         assert result["allowed"] is True
         assert result["jacs_registered"] is True
-        assert result["trust_level"] == "jacs_registered"
+        assert result["trust_level"] == "JacsVerified"
 
     def test_verified_rejects_non_jacs(self):
         adapter = _make_adapter()
@@ -153,7 +157,11 @@ class TestAssessTrust:
 
     def test_strict_requires_trust_store(self):
         client = _make_mock_client()
-        client.is_trusted.return_value = True
+        client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": True,
+            "jacsRegistered": True,
+            "trustLevel": "ExplicitlyTrusted",
+        })
         adapter = _make_adapter(client)
 
         result = adapter.assess_trust(
@@ -162,12 +170,19 @@ class TestAssessTrust:
         )
 
         assert result["allowed"] is True
-        assert result["trust_level"] == "trusted"
-        client.is_trusted.assert_called_once_with("trusted-agent")
+        assert result["trust_level"] == "ExplicitlyTrusted"
+        client._agent.assess_a2a_agent.assert_called_once_with(
+            _card_with_jacs_extension(agent_id="trusted-agent"),
+            "strict",
+        )
 
     def test_strict_denies_untrusted(self):
         client = _make_mock_client()
-        client.is_trusted.return_value = False
+        client._agent.assess_a2a_agent.return_value = json.dumps({
+            "allowed": False,
+            "jacsRegistered": True,
+            "trustLevel": "Untrusted",
+        })
         adapter = _make_adapter(client)
 
         result = adapter.assess_trust(
@@ -176,7 +191,7 @@ class TestAssessTrust:
         )
 
         assert result["allowed"] is False
-        assert result["trust_level"] == "jacs_registered"
+        assert result["trust_level"] == "Untrusted"
 
     def test_invalid_policy_raises(self):
         adapter = _make_adapter()

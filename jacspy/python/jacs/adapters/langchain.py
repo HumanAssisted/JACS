@@ -77,6 +77,8 @@ def jacs_signing_middleware(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Any:
     """Create a ``@wrap_tool_call`` middleware for LangChain 1.0 agents.
@@ -91,8 +93,9 @@ def jacs_signing_middleware(
         client: A ``JacsClient`` instance.  If *None*, one is created
             via ``BaseJacsAdapter``'s default resolution.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
-        strict: If *True*, signing failures raise.  If *False* (default),
-            the original result is passed through.
+        strict: If *True*, signing failures raise and passthrough is disabled.
+        allow_unsigned_output: Dangerous compatibility option that permits
+            unsigned output after signing fails. Default False.
 
     Returns:
         A middleware object created by the ``@wrap_tool_call`` decorator.
@@ -105,7 +108,14 @@ def jacs_signing_middleware(
             "Install it with: pip install 'langchain>=1.0.0'"
         )
 
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     @wrap_tool_call
     def jacs_signer(request: Any, handler: Callable) -> Any:
@@ -146,10 +156,17 @@ class JacsSigningMiddleware:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        allow_unsigned_output: bool = False,
+        allow_plain_signature_fallback: bool = False,
         attest: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict, attest=attest
+            client=client,
+            config_path=config_path,
+            strict=strict,
+            allow_unsigned_output=allow_unsigned_output,
+            allow_plain_signature_fallback=allow_plain_signature_fallback,
+            attest=attest,
         )
 
     @property
@@ -183,6 +200,8 @@ def jacs_wrap_tool_call(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Callable:
     """Create a ``wrap_tool_call`` function for LangGraph ToolNode.
@@ -198,11 +217,19 @@ def jacs_wrap_tool_call(
         client: A ``JacsClient`` instance.  If *None*, one is created
             via ``BaseJacsAdapter``'s default resolution.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
-        strict: If *True*, signing failures raise.  If *False* (default),
-            the original result is passed through.
+        strict: If *True*, signing failures raise and passthrough is disabled.
+        allow_unsigned_output: Dangerous compatibility option that permits
+            unsigned output after signing fails. Default False.
         attest: If *True*, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     def wrapper(request: Any, execute: Callable) -> Any:
         result = execute(request)
@@ -215,6 +242,8 @@ def jacs_awrap_tool_call(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Callable:
     """Async version of :func:`jacs_wrap_tool_call`.
@@ -222,7 +251,14 @@ def jacs_awrap_tool_call(
     Returns an async callable with signature
     ``(request, execute) -> ToolMessage``.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     async def wrapper(request: Any, execute: Callable) -> Any:
         result = await execute(request)
@@ -245,7 +281,8 @@ def _sign_tool_message(
 
     If the result has a ``content`` attribute (like langchain_core
     ToolMessage), sign the content and return a new ToolMessage with the
-    signed payload.  Otherwise return the result unchanged.
+    signed payload. Results without ``content`` are rejected by default;
+    explicit unsigned-output compatibility mode permits passthrough.
 
     Args:
         adapter: The BaseJacsAdapter to use for signing.
@@ -254,7 +291,12 @@ def _sign_tool_message(
             when the result doesn't carry one.
     """
     if not hasattr(result, "content"):
-        return result
+        if adapter.allow_unsigned_output:
+            logger.warning(
+                "JACS cannot sign unsupported LangChain result shape (passthrough)"
+            )
+            return result
+        raise TypeError("JACS cannot sign LangChain result without content")
 
     signed = adapter.sign_output_or_passthrough(result.content)
 
@@ -295,6 +337,8 @@ def signed_tool(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Any:
     """Wrap a LangChain BaseTool to auto-sign its output.
@@ -307,6 +351,8 @@ def signed_tool(
         client: A ``JacsClient`` instance.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
         strict: If *True*, signing failures raise.
+        allow_unsigned_output: Dangerous compatibility option that returns
+            unsigned output after signing fails. Default False.
         attest: If *True*, produce attestation documents.
 
     Returns:
@@ -319,7 +365,14 @@ def signed_tool(
             "langchain-core is required for signed_tool. "
             "Install it with: pip install langchain-core"
         )
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
+    adapter = BaseJacsAdapter(
+        client=client,
+        config_path=config_path,
+        strict=strict,
+        allow_unsigned_output=allow_unsigned_output,
+        allow_plain_signature_fallback=allow_plain_signature_fallback,
+        attest=attest,
+    )
 
     original_name = getattr(tool, "name", "jacs_tool")
     original_desc = getattr(tool, "description", "")
@@ -350,6 +403,8 @@ def with_jacs_signing(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    allow_unsigned_output: bool = False,
+    allow_plain_signature_fallback: bool = False,
     attest: bool = False,
 ) -> Any:
     """Create a LangGraph ToolNode with JACS signing pre-configured.
@@ -362,6 +417,8 @@ def with_jacs_signing(
         client: A ``JacsClient`` instance.
         config_path: Optional config path.
         strict: If *True*, signing failures raise.
+        allow_unsigned_output: Dangerous compatibility option that permits
+            unsigned output after signing fails. Default False.
         attest: If *True*, produce attestation documents.
 
     Returns:
@@ -378,7 +435,12 @@ def with_jacs_signing(
     return ToolNode(
         tools=tools,
         wrap_tool_call=jacs_wrap_tool_call(
-            client=client, config_path=config_path, strict=strict, attest=attest
+            client=client,
+            config_path=config_path,
+            strict=strict,
+            allow_unsigned_output=allow_unsigned_output,
+            allow_plain_signature_fallback=allow_plain_signature_fallback,
+            attest=attest,
         ),
     )
 

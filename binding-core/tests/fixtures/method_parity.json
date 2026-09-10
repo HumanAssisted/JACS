@@ -5,12 +5,20 @@
     "identity": ["get_agent_id", "key_id", "is_strict", "config_path", "export_agent", "get_public_key_pem", "get_public_key_base64", "diagnostics", "inner_ref"],
     "verification": ["verify_self", "verify_json", "verify_with_key_json", "verify_by_id_json"],
     "signing": ["sign_message_json", "sign_raw_bytes_base64", "sign_file_json"],
+    "protocol": ["build_auth_header", "build_request_auth_header", "canonicalize_json", "sign_response", "encode_verify_payload", "decode_verify_payload", "extract_document_id", "prepare_signed_event_replay_json", "unwrap_signed_event"],
     "conversion": ["to_yaml", "from_yaml", "to_html", "from_html"],
     "key_management": ["rotate_keys"],
+    "compatibility": ["add_compat_key_json", "issue_compat_binding_json", "export_compatibility_jwks_json", "export_compatibility_key_binding_json", "export_ap2_mandate_json"],
     "w3c": ["export_w3c_did", "export_w3c_did_document_json", "export_w3c_agent_description_json", "generate_w3c_well_known_json", "sign_w3c_request_json", "verify_w3c_request_json"],
     "inline_and_media": ["sign_text_file_json", "verify_text_file_json", "sign_image_json", "verify_image_json", "extract_media_signature_json"]
   },
   "feature_gated_methods": {
+    "human-approval": [
+      "verify_human_approved_document_json"
+    ],
+    "a2a": [
+      "export_a2a_agent_card_json"
+    ],
     "agreements": [
       "create_agreement_v2_json",
       "apply_agreement_v2_json",
@@ -18,19 +26,25 @@
       "verify_agreement_v2_json",
       "detect_agreement_v2_branch_conflict_json",
       "merge_agreement_v2_transcript_branches_json",
-      "resolve_agreement_v2_branch_conflict_json"
+      "resolve_agreement_v2_branch_conflict_json",
+      "export_agreement_v2_as_vc_json"
     ]
   },
   "all_methods_flat": [
-    "config_path", "create", "create_with_params", "diagnostics", "ephemeral",
-    "export_agent", "export_w3c_agent_description_json", "export_w3c_did",
-    "export_w3c_did_document_json", "extract_media_signature_json", "from_agent",
+    "add_compat_key_json",
+    "build_auth_header", "build_request_auth_header", "canonicalize_json", "config_path", "create", "create_with_params",
+    "decode_verify_payload", "diagnostics", "encode_verify_payload", "ephemeral",
+    "export_agent", "export_ap2_mandate_json",
+    "export_compatibility_jwks_json", "export_compatibility_key_binding_json",
+    "export_w3c_agent_description_json", "export_w3c_did", "export_w3c_did_document_json",
+    "extract_document_id", "extract_media_signature_json", "from_agent",
     "from_html", "from_yaml", "generate_w3c_well_known_json", "get_agent_id",
     "get_public_key_base64", "get_public_key_pem", "inner_ref", "is_strict",
-    "key_id", "load", "load_with_info", "rotate_keys",
+    "issue_compat_binding_json",
+    "key_id", "load", "load_with_info", "prepare_signed_event_replay_json", "rotate_keys",
     "sign_file_json", "sign_image_json", "sign_message_json",
-    "sign_raw_bytes_base64", "sign_text_file_json", "sign_w3c_request_json",
-    "to_html", "to_yaml", "verify_by_id_json", "verify_image_json",
+    "sign_raw_bytes_base64", "sign_response", "sign_text_file_json", "sign_w3c_request_json",
+    "to_html", "to_yaml", "unwrap_signed_event", "verify_by_id_json", "verify_image_json",
     "verify_json", "verify_self", "verify_text_file_json",
     "verify_w3c_request_json", "verify_with_key_json"
   ]

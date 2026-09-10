@@ -66,8 +66,15 @@ pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, JacsError> {
         if p.is_empty() {
             continue;
         }
-        if let Some((k, v)) = p.split_once('=') {
-            map.insert(k.trim().to_string(), v.trim().to_string());
+        if let Some((k, v)) = p.split_once('=')
+            && map
+                .insert(k.trim().to_string(), v.trim().to_string())
+                .is_some()
+        {
+            return Err(JacsError::DnsRecordInvalid {
+                domain: String::new(),
+                reason: format!("Duplicate {} field in TXT record", k.trim()),
+            });
         }
     }
     let missing = |field: &str| JacsError::DnsRecordInvalid {
@@ -224,7 +231,7 @@ pub fn emit_cloudflare_curl(rr: &DnsRecord, zone_id_hint: &str) -> String {
     )
 }
 
-/// Find the first JACS-formatted TXT record from a list of individual TXT record strings.
+/// Find the unique JACS-formatted TXT record from individual TXT record strings.
 ///
 /// DNS lookups may return multiple TXT records (SPF, DKIM, DMARC, etc.) at the same
 /// domain name. This function filters for the record starting with `v=jacs` and ignores
@@ -232,12 +239,19 @@ pub fn emit_cloudflare_curl(rr: &DnsRecord, zone_id_hint: &str) -> String {
 ///
 /// Returns `Err(JacsError::DnsRecordInvalid)` if no JACS record is found.
 pub fn find_jacs_txt_record(records: Vec<String>, domain: &str) -> Result<String, JacsError> {
+    let mut selected = None;
     for record in records {
         if record.starts_with("v=jacs") {
-            return Ok(record);
+            if selected.is_some() {
+                return Err(JacsError::DnsRecordInvalid {
+                    domain: domain.to_string(),
+                    reason: "Multiple JACS TXT records are ambiguous".to_string(),
+                });
+            }
+            selected = Some(record);
         }
     }
-    Err(JacsError::DnsRecordInvalid {
+    selected.ok_or_else(|| JacsError::DnsRecordInvalid {
         domain: domain.to_string(),
         reason: "No v=jacs TXT record found at this domain".to_string(),
     })
@@ -270,66 +284,48 @@ where
 }
 
 pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
-    use hickory_resolver::Resolver;
-    use hickory_resolver::config::{ResolverConfig, ResolverOpts};
-    use hickory_resolver::net::runtime::TokioRuntimeProvider;
-    validate_dns_owner(owner)?;
-    ensure_network_access(NetworkCapability::DnsLookup)?;
-    let mut opts = ResolverOpts::default();
-    opts.validate = true;
-    let resolver =
-        Resolver::builder_with_config(ResolverConfig::default(), TokioRuntimeProvider::default())
-            .with_options(opts)
-            .build()
-            .map_err(|e| JacsError::DnsLookupFailed {
-                domain: owner.to_string(),
-                reason: format!("Resolver init failed: {e}"),
-            })?;
-    let resp = run_dns_future(resolver.txt_lookup(owner))
-        .map_err(|e| JacsError::DnsLookupFailed {
-            domain: owner.to_string(),
-            reason: e,
-        })?
-        .map_err(|e| JacsError::DnsLookupFailed {
-            domain: owner.to_string(),
-            reason: format!("DNS lookup failed: {e}"),
-        })?;
-    let mut records = Vec::new();
-    for rr in resp.answers() {
-        let hickory_resolver::proto::rr::RData::TXT(txt) = &rr.data else {
-            continue;
-        };
-        let mut record = String::new();
-        for part in txt.txt_data.iter() {
-            record.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
-                JacsError::DnsRecordInvalid {
-                    domain: owner.to_string(),
-                    reason: format!("UTF-8 decode failed: {e}"),
-                }
-            })?);
-        }
-        records.push(record);
-    }
-    find_jacs_txt_record(records, owner)
+    resolve_txt(owner, true)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
+    resolve_txt(owner, false)
+}
+
+fn resolver_from_config(
+    config: hickory_resolver::config::ResolverConfig,
+    mut options: hickory_resolver::config::ResolverOpts,
+    require_secure: bool,
+    owner: &str,
+) -> Result<hickory_resolver::TokioResolver, JacsError> {
     use hickory_resolver::Resolver;
-    use hickory_resolver::config::{ResolverConfig, ResolverOpts};
     use hickory_resolver::net::runtime::TokioRuntimeProvider;
+    if config.name_servers().is_empty() {
+        return Err(JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: "DNS resolver configuration contains no name servers".to_string(),
+        });
+    }
+    options.validate = require_secure;
+    Resolver::builder_with_config(config, TokioRuntimeProvider::default())
+        .with_options(options)
+        .build()
+        .map_err(|error| JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: format!("Resolver init failed: {error}"),
+        })
+}
+
+fn resolve_txt(owner: &str, require_secure: bool) -> Result<String, JacsError> {
     validate_dns_owner(owner)?;
     ensure_network_access(NetworkCapability::DnsLookup)?;
-    let mut opts = ResolverOpts::default();
-    opts.validate = false; // allow unsigned answers
-    let resolver =
-        Resolver::builder_with_config(ResolverConfig::default(), TokioRuntimeProvider::default())
-            .with_options(opts)
-            .build()
-            .map_err(|e| JacsError::DnsLookupFailed {
-                domain: owner.to_string(),
-                reason: format!("Resolver init failed: {e}"),
-            })?;
+    let (config, options) = hickory_resolver::system_conf::read_system_conf().map_err(|error| {
+        JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: format!("System resolver configuration failed: {error}"),
+        }
+    })?;
+    let resolver = resolver_from_config(config, options, require_secure, owner)?;
     let resp = run_dns_future(resolver.txt_lookup(owner))
         .map_err(|e| JacsError::DnsLookupFailed {
             domain: owner.to_string(),
@@ -339,11 +335,27 @@ pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
             domain: owner.to_string(),
             reason: format!("DNS lookup failed: {e}"),
         })?;
+    txt_from_answers(resp.answers(), owner, require_secure)
+}
+
+fn txt_from_answers(
+    answers: &[hickory_resolver::proto::rr::Record],
+    owner: &str,
+    require_secure: bool,
+) -> Result<String, JacsError> {
     let mut records = Vec::new();
-    for rr in resp.answers() {
+    for rr in answers {
         let hickory_resolver::proto::rr::RData::TXT(txt) = &rr.data else {
             continue;
         };
+        if require_secure && !rr.proof.is_secure() {
+            tracing::warn!(event = "dnssec_proof_rejected", domain = owner, proof = ?rr.proof,
+                "DNS TXT answer lacks a Secure DNSSEC proof");
+            return Err(JacsError::DnsRecordInvalid {
+                domain: owner.to_string(),
+                reason: "DNS TXT answer requires a Secure DNSSEC proof".to_string(),
+            });
+        }
         let mut record = String::new();
         for part in txt.txt_data.iter() {
             record.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
@@ -404,7 +416,10 @@ pub fn verify_pubkey_via_dns_or_embedded(
                     });
                 }
             }
-            Err(_e) => {
+            Err(error) => {
+                if strict_dns {
+                    return Err(error);
+                }
                 // Fallback to embedded if provided
                 if let Some(embed) = embedded_fingerprint {
                     // Accept either the new byte-based digest or the legacy normalized-string hex
@@ -421,20 +436,9 @@ pub fn verify_pubkey_via_dns_or_embedded(
                             .to_string(),
                     });
                 }
-                // Neither DNS nor embedded available
-                if strict_dns {
-                    return Err(JacsError::DnsLookupFailed {
-                        domain: domain.to_string(),
-                        reason: format!(
-                            "Strict DNSSEC validation failed for {}: TXT not authenticated. Enable DNSSEC and publish DS at registrar",
-                            owner
-                        ),
-                    });
-                } else {
-                    return Err(JacsError::DnsRecordMissing {
-                        domain: domain.to_string(),
-                    });
-                }
+                return Err(JacsError::DnsRecordMissing {
+                    domain: domain.to_string(),
+                });
             }
         }
     }
@@ -492,6 +496,9 @@ struct RegistryApiResponse {
     #[serde(default)]
     public_key_hash: Option<String>,
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_REGISTRY_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// Check if an agent is registered with a registry.
 ///
@@ -555,41 +562,35 @@ pub fn verify_registry_registration_sync(
                 .to_string(),
         )
     })?;
-    let parsed = url::Url::parse(&api_url).map_err(|e| {
-        JacsError::ConfigError(format!("Invalid JACS_REGISTRY_URL '{}': {}", api_url, e))
-    })?;
-    let host = parsed.host_str().unwrap_or_default();
-    let http_localhost = parsed.scheme() == "http"
-        && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1");
-    if parsed.scheme() != "https" && !http_localhost {
-        return Err(JacsError::ConfigError(format!(
-            "JACS_REGISTRY_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
-            api_url
-        )));
-    }
+    let parsed = url::Url::parse(&api_url)
+        .map_err(|e| JacsError::ConfigError(format!("Invalid JACS_REGISTRY_URL: {}", e)))?;
+    let allow_loopback = crate::secure_fetch::is_exact_textual_loopback_endpoint(&api_url);
+    crate::secure_fetch::validate_transport_url(&parsed, allow_loopback, "registry API")
+        .map_err(|_| {
+            JacsError::ConfigError(
+                "JACS_REGISTRY_URL must use HTTPS. Only an exact textual loopback endpoint is allowed over HTTP for testing, and credentials/fragments are forbidden."
+                    .to_string(),
+            )
+        })?;
     ensure_network_access(NetworkCapability::RegistryLookup)?;
     let url = format!("{}/v1/agents/{}", api_url.trim_end_matches('/'), agent_id);
 
-    // Build blocking HTTP client with TLS
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
-
-    // Make request to registry API
-    let response = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .map_err(|e| {
+    let policy = crate::secure_fetch::SecureFetchPolicy::new(
+        "registry API",
+        MAX_REGISTRY_RESPONSE_BYTES,
+        &["application/json"],
+    )
+    .allow_exact_loopback(allow_loopback);
+    let response =
+        crate::secure_fetch::secure_get(&url, "application/json", &policy).map_err(|e| {
             JacsError::NetworkError(format!(
-                "Registry verification failed: unable to reach API at {}: {}",
-                url, e
+                "Registry verification failed: unable to reach configured API: {}",
+                e
             ))
         })?;
 
     // Check response status
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
+    if response.status == reqwest::StatusCode::NOT_FOUND {
         return Err(JacsError::RegistrationFailed {
             reason: format!(
                 "Agent '{}' is not registered with the registry. \
@@ -599,17 +600,18 @@ pub fn verify_registry_registration_sync(
         });
     }
 
-    if !response.status().is_success() {
+    if !response.status.is_success() {
         return Err(JacsError::NetworkError(format!(
             "Registry API returned error status {}: agent verification failed",
-            response.status()
+            response.status
         )));
     }
 
     // Parse response
-    let api_response: RegistryApiResponse = response.json().map_err(|e| {
-        JacsError::NetworkError(format!("Failed to parse registry API response: {}", e))
-    })?;
+    let api_response: RegistryApiResponse =
+        jacs_core::strict_json::deserialize_strict_json_slice(&response.body).map_err(|e| {
+            JacsError::NetworkError(format!("Failed to parse registry API response: {}", e))
+        })?;
 
     // Verify the agent is actually verified
     if !api_response.verified {
@@ -704,9 +706,11 @@ pub fn verify_agent_dns(
     domain: &str,
 ) -> Result<DnsVerificationResult, JacsError> {
     let parsed: serde_json::Value =
-        serde_json::from_str(agent_json).map_err(|e| JacsError::DocumentMalformed {
-            field: "agent_json".to_string(),
-            reason: format!("Invalid agent JSON: {}", e),
+        jacs_core::strict_json::parse_strict_json(agent_json).map_err(|e| {
+            JacsError::DocumentMalformed {
+                field: "agent_json".to_string(),
+                reason: format!("Invalid agent JSON: {}", e),
+            }
         })?;
 
     let sig = parsed
@@ -810,6 +814,71 @@ pub fn tld_requirement_text() -> &'static str {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    #[test]
+    fn resolver_requires_configured_name_servers_without_network_io() {
+        use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};
+        assert!(
+            resolver_from_config(
+                ResolverConfig::default(),
+                ResolverOpts::default(),
+                true,
+                "example.test."
+            )
+            .is_err()
+        );
+        let configured = || {
+            ResolverConfig::from_parts(
+                None,
+                vec![],
+                vec![NameServerConfig::udp(
+                    "127.0.0.1".parse().expect("loopback"),
+                )],
+            )
+        };
+        for require_secure in [false, true] {
+            resolver_from_config(
+                configured(),
+                ResolverOpts::default(),
+                require_secure,
+                "example.test.",
+            )
+            .expect("configured resolver can be constructed without making a query");
+        }
+    }
+
+    #[test]
+    fn txt_answers_require_secure_proof_and_unambiguous_records() {
+        use hickory_resolver::proto::dnssec::Proof;
+        use hickory_resolver::proto::rr::{Name, RData, Record, rdata::TXT};
+        let owner = "_v1.agent.jacs.example.test.";
+        let text = build_agent_dns_txt("sample-agent", "sample-digest", DigestEncoding::Hex);
+        let mut answer = Record::from_rdata(
+            Name::from_ascii(owner).expect("owner"),
+            60,
+            RData::TXT(TXT::new(vec![text.clone()])),
+        );
+        answer.proof = Proof::Secure;
+        assert_eq!(
+            txt_from_answers(&[answer.clone()], owner, true).expect("secure TXT candidate"),
+            text
+        );
+        assert!(txt_from_answers(&[answer.clone(), answer.clone()], owner, true).is_err());
+        for proof in [Proof::Insecure, Proof::Bogus, Proof::Indeterminate] {
+            answer.proof = proof;
+            assert!(txt_from_answers(&[answer.clone()], owner, true).is_err());
+        }
+        assert_eq!(
+            txt_from_answers(&[answer], owner, false).expect("explicit insecure discovery"),
+            text
+        );
+    }
+
+    #[test]
+    fn dns_txt_rejects_duplicate_fields() {
+        let text = build_agent_dns_txt("sample-agent", "sample-digest", DigestEncoding::Hex);
+        assert!(parse_agent_txt(&format!("{text}; alg=SHA-256")).is_err());
+    }
 
     #[test]
     fn validate_dns_owner_accepts_normal_domain() {

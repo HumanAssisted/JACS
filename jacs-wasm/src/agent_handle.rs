@@ -3,8 +3,8 @@
 //! Exports the constructors and instance methods promised by PRD §4.3 with
 //! the exact JS-facing camelCase names (`createEphemeral`,
 //! `importEncryptedAgent`, `signMessageJson`, `verifyJson`,
-//! `verifyWithKeyJson`, `exportAgent`, `getPublicKeyBase64`, `algorithm`,
-//! `isUnlocked`, `clearSecrets`).
+//! `verifyWithKeyJson`, `exportAgent`, `exportEncryptedAgent`,
+//! `getPublicKeyBase64`, `algorithm`, `isUnlocked`, `clearSecrets`).
 //!
 //! Every fallible operation returns a `JsError` carrying a JSON payload
 //! shaped `{ code, message, details? }` (the wire shape jacs-core uses for
@@ -167,7 +167,7 @@ impl CoreAgentHandle {
     pub fn sign_message_json(&self, data_json: &str) -> Result<String, JsError> {
         debug_log("signMessageJson: start");
         let started_at = now_ms();
-        let payload: Value = serde_json::from_str(data_json).map_err(|e| {
+        let payload: Value = jacs_core::strict_json::parse_strict_json(data_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid input JSON: {}",
                 e
@@ -210,12 +210,13 @@ impl CoreAgentHandle {
     pub fn verify_json(&self, signed_json: &str) -> Result<String, JsError> {
         debug_log("verifyJson: start");
         let started_at = now_ms();
-        let signed: Value = serde_json::from_str(signed_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid signed JSON: {}",
-                e
-            )))
-        })?;
+        let signed: Value =
+            jacs_core::strict_json::parse_strict_json(signed_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid signed JSON: {}",
+                    e
+                )))
+            })?;
         let outcome = match &self.verifier_override {
             Some((pk, algo)) => {
                 CoreAgent::verify_with_key(&signed, pk, *algo).map_err(map_core_err)?
@@ -249,12 +250,13 @@ impl CoreAgentHandle {
     ) -> Result<String, JsError> {
         debug_log("verifyWithKeyJson: start");
         let started_at = now_ms();
-        let signed: Value = serde_json::from_str(signed_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid signed JSON: {}",
-                e
-            )))
-        })?;
+        let signed: Value =
+            jacs_core::strict_json::parse_strict_json(signed_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid signed JSON: {}",
+                    e
+                )))
+            })?;
         let public_key = base64::engine::general_purpose::STANDARD
             .decode(public_key_base64)
             .map_err(|e| {
@@ -286,6 +288,36 @@ impl CoreAgentHandle {
         serde_json::to_string(&agent.export_agent()).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "serialize agent: {}",
+                e
+            )))
+        })
+    }
+
+    /// Export this unlocked agent as a password-encrypted `AgentMaterial`
+    /// JSON string suitable for `localStore.saveEncryptedAgent` and
+    /// `importEncryptedAgent`.
+    ///
+    /// The private key is wrapped in the current V2 Argon2id + AES-256-GCM
+    /// envelope. The owned Rust/WASM copy of `password` and the intermediate
+    /// plaintext private-key buffer are zeroized when the call returns. The
+    /// browser's original JavaScript string remains under JavaScript engine
+    /// control and cannot be wiped by this API.
+    ///
+    /// Returns `Locked` after `clearSecrets()` or on verifier-only handles.
+    #[wasm_bindgen(js_name = exportEncryptedAgent)]
+    pub fn export_encrypted_agent(&self, password: String) -> Result<String, JsError> {
+        let password = zeroize::Zeroizing::new(password);
+        let material = {
+            let agent = self.inner.lock().map_err(|_| {
+                map_core_err(CoreError::AgreementFailed("agent lock poisoned".into()))
+            })?;
+            agent
+                .export_encrypted_material(password.as_str())
+                .map_err(map_core_err)?
+        };
+        serde_json::to_string(&material).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize encrypted agent material: {}",
                 e
             )))
         })
@@ -380,12 +412,13 @@ impl CoreAgentHandle {
     /// been called.
     #[wasm_bindgen(js_name = signAgreementJson)]
     pub fn sign_agreement_json(&self, agreement_json: &str, role: &str) -> Result<String, JsError> {
-        let mut document: Value = serde_json::from_str(agreement_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid agreement JSON: {}",
-                e
-            )))
-        })?;
+        let mut document: Value = jacs_core::strict_json::parse_strict_json(agreement_json)
+            .map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid agreement JSON: {}",
+                    e
+                )))
+            })?;
         let mut agent = self
             .inner
             .lock()
@@ -417,13 +450,17 @@ impl CoreAgentHandle {
         agreement_json: &str,
         signers_json: &str,
     ) -> Result<String, JsError> {
-        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid agreement JSON: {}",
-                e
-            )))
-        })?;
-        let signer_specs: Vec<SignerSpec> = serde_json::from_str(signers_json).map_err(|e| {
+        let document: Value =
+            jacs_core::strict_json::parse_strict_json(agreement_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid agreement JSON: {}",
+                    e
+                )))
+            })?;
+        let signer_specs: Vec<SignerSpec> = jacs_core::strict_json::deserialize_strict_json(
+            signers_json,
+        )
+        .map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid signers JSON (expected `[{{agentId, publicKeyBase64, algorithm}}]`): {}",
                 e
@@ -462,10 +499,55 @@ impl CoreAgentHandle {
         })
     }
 
+    /// Sign one closed, purpose-bound Agreement v3 proof.  The payload must
+    /// name exactly one of the five v3 proof profiles; profile, operation,
+    /// purpose, role, key ID, identity anchor, trust-row digest, and optional
+    /// ceremony digest are all covered by the signature.
+    #[wasm_bindgen(js_name = signAgreementV3ProofJson)]
+    pub fn sign_agreement_v3_proof_json(&self, payload_json: &str) -> Result<String, JsError> {
+        let payload: agreements::v3::AgreementProofPayloadV3 =
+            jacs_core::strict_json::deserialize_strict_json(payload_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid Agreement v3 proof payload: {}",
+                    e
+                )))
+            })?;
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let proof = agreements::v3::sign_proof(&agent, payload).map_err(map_core_err)?;
+        agreements::v3::serialize_canonical(&proof).map_err(map_core_err)
+    }
+
+    /// Verify a complete Agreement v3 request with the same I/O-free
+    /// implementation used by native Rust.  The request is closed and must
+    /// include an explicit verification intent and pinned schema bundles.
+    #[wasm_bindgen(js_name = verifyAgreementV3Json)]
+    pub fn verify_agreement_v3_json(&self, input_json: &str) -> Result<String, JsError> {
+        let input: agreements::v3::AgreementV3VerificationInput =
+            jacs_core::strict_json::deserialize_strict_json(input_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid Agreement v3 verification request: {}",
+                    e
+                )))
+            })?;
+        agreements::v3::serialize_canonical(&agreements::v3::verify_input(&input))
+            .map_err(map_core_err)
+    }
+
+    /// Compute the portable, domain-separated digest of a structurally valid
+    /// Agreement v3 core.
+    #[wasm_bindgen(js_name = agreementV3CoreDigestJson)]
+    pub fn agreement_v3_core_digest_json(&self, core_json: &str) -> Result<String, JsError> {
+        let core = agreements::v3::parse_core(core_json.as_bytes()).map_err(map_core_err)?;
+        agreements::v3::core_digest(&core).map_err(map_core_err)
+    }
+
     /// Create a standalone agreement v2 document from a CreateAgreementV2 JSON object.
     #[wasm_bindgen(js_name = createAgreementV2Json)]
     pub fn create_agreement_v2_json(&self, input_json: &str) -> Result<String, JsError> {
-        let input: Value = serde_json::from_str(input_json).map_err(|e| {
+        let input: Value = jacs_core::strict_json::parse_strict_json(input_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid agreement v2 input JSON: {}",
                 e
@@ -491,18 +573,20 @@ impl CoreAgentHandle {
         agreement_json: &str,
         mutation_json: &str,
     ) -> Result<String, JsError> {
-        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid agreement v2 JSON: {}",
-                e
-            )))
-        })?;
-        let mutation: Value = serde_json::from_str(mutation_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid agreement v2 mutation JSON: {}",
-                e
-            )))
-        })?;
+        let document: Value =
+            jacs_core::strict_json::parse_strict_json(agreement_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid agreement v2 JSON: {}",
+                    e
+                )))
+            })?;
+        let mutation: Value =
+            jacs_core::strict_json::parse_strict_json(mutation_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid agreement v2 mutation JSON: {}",
+                    e
+                )))
+            })?;
         let mut agent = self
             .inner
             .lock()
@@ -523,12 +607,13 @@ impl CoreAgentHandle {
         agreement_json: &str,
         role: &str,
     ) -> Result<String, JsError> {
-        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid agreement v2 JSON: {}",
-                e
-            )))
-        })?;
+        let document: Value =
+            jacs_core::strict_json::parse_strict_json(agreement_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid agreement v2 JSON: {}",
+                    e
+                )))
+            })?;
         let mut agent = self
             .inner
             .lock()
@@ -542,21 +627,19 @@ impl CoreAgentHandle {
         })
     }
 
-    /// Verify agreement v2 hash/status/transcript invariants and every
-    /// agreement signature against the supplied signer keys.
+    /// Inspect exact Agreement v2 bytes and report mathematical coverage.
+    /// The result never derives trusted role, quorum, lineage, notary status,
+    /// or policy acceptance from v2 party proofs.
     #[wasm_bindgen(js_name = verifyAgreementV2Json)]
     pub fn verify_agreement_v2_json(
         &self,
         agreement_json: &str,
         signers_json: &str,
     ) -> Result<String, JsError> {
-        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "invalid agreement v2 JSON: {}",
-                e
-            )))
-        })?;
-        let signer_specs: Vec<SignerSpec> = serde_json::from_str(signers_json).map_err(|e| {
+        let signer_specs: Vec<SignerSpec> = jacs_core::strict_json::deserialize_strict_json(
+            signers_json,
+        )
+        .map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid signers JSON (expected `[{{agentId, publicKeyBase64, algorithm}}]`): {}",
                 e
@@ -582,7 +665,8 @@ impl CoreAgentHandle {
             .map(|(id, pk, algo)| (id.as_str(), pk.as_slice(), *algo))
             .collect();
 
-        let report = agreements::v2::verify(&document, &signers_ref).map_err(map_core_err)?;
+        let report = agreements::v2::inspect_bytes(agreement_json.as_bytes(), &signers_ref)
+            .map_err(map_core_err)?;
         serde_json::to_string(&report).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "serialize agreement v2 report: {}",
@@ -599,11 +683,11 @@ impl CoreAgentHandle {
         left_json: &str,
         right_json: &str,
     ) -> Result<String, JsError> {
-        let base: Value = serde_json::from_str(base_json)
+        let base: Value = jacs_core::strict_json::parse_strict_json(base_json)
             .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("base JSON: {}", e))))?;
-        let left: Value = serde_json::from_str(left_json)
+        let left: Value = jacs_core::strict_json::parse_strict_json(left_json)
             .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("left JSON: {}", e))))?;
-        let right: Value = serde_json::from_str(right_json).map_err(|e| {
+        let right: Value = jacs_core::strict_json::parse_strict_json(right_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!("right JSON: {}", e)))
         })?;
         let analysis =
@@ -624,11 +708,11 @@ impl CoreAgentHandle {
         left_json: &str,
         right_json: &str,
     ) -> Result<String, JsError> {
-        let base: Value = serde_json::from_str(base_json)
+        let base: Value = jacs_core::strict_json::parse_strict_json(base_json)
             .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("base JSON: {}", e))))?;
-        let left: Value = serde_json::from_str(left_json)
+        let left: Value = jacs_core::strict_json::parse_strict_json(left_json)
             .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("left JSON: {}", e))))?;
-        let right: Value = serde_json::from_str(right_json).map_err(|e| {
+        let right: Value = jacs_core::strict_json::parse_strict_json(right_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!("right JSON: {}", e)))
         })?;
         let mut agent = self
@@ -654,22 +738,24 @@ impl CoreAgentHandle {
         side_json: &str,
         mutation_json: &str,
     ) -> Result<String, JsError> {
-        let base: Value = serde_json::from_str(base_json)
+        let base: Value = jacs_core::strict_json::parse_strict_json(base_json)
             .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("base JSON: {}", e))))?;
-        let previous: Value = serde_json::from_str(previous_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "previous JSON: {}",
-                e
-            )))
-        })?;
-        let side: Value = serde_json::from_str(side_json)
+        let previous: Value =
+            jacs_core::strict_json::parse_strict_json(previous_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "previous JSON: {}",
+                    e
+                )))
+            })?;
+        let side: Value = jacs_core::strict_json::parse_strict_json(side_json)
             .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("side JSON: {}", e))))?;
-        let mutation: Value = serde_json::from_str(mutation_json).map_err(|e| {
-            map_core_err(CoreError::MalformedDocument(format!(
-                "mutation JSON: {}",
-                e
-            )))
-        })?;
+        let mutation: Value =
+            jacs_core::strict_json::parse_strict_json(mutation_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "mutation JSON: {}",
+                    e
+                )))
+            })?;
         let mut agent = self
             .inner
             .lock()
@@ -712,18 +798,20 @@ pub fn create_agreement_json(
     question: Option<String>,
     context: Option<String>,
 ) -> Result<String, JsError> {
-    let document: Value = serde_json::from_str(document_json).map_err(|e| {
-        map_core_err(CoreError::MalformedDocument(format!(
-            "invalid document JSON: {}",
-            e
-        )))
-    })?;
-    let agent_ids: Vec<String> = serde_json::from_str(agent_ids_json).map_err(|e| {
-        map_core_err(CoreError::MalformedDocument(format!(
-            "invalid agent IDs JSON (expected `[\"id1\",\"id2\"]`): {}",
-            e
-        )))
-    })?;
+    let document: Value =
+        jacs_core::strict_json::parse_strict_json(document_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid document JSON: {}",
+                e
+            )))
+        })?;
+    let agent_ids: Vec<String> = jacs_core::strict_json::deserialize_strict_json(agent_ids_json)
+        .map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agent IDs JSON (expected `[\"id1\",\"id2\"]`): {}",
+                e
+            )))
+        })?;
     let updated = agreements::create(
         &document,
         &agent_ids,
@@ -768,12 +856,13 @@ pub fn import_encrypted_agent(
     password: &str,
 ) -> Result<CoreAgentHandle, JsError> {
     init_jacs_wasm();
-    let material: AgentMaterial = serde_json::from_str(material_json).map_err(|e| {
-        map_core_err(CoreError::MalformedDocument(format!(
-            "AgentMaterial JSON: {}",
-            e
-        )))
-    })?;
+    let material: AgentMaterial = jacs_core::strict_json::deserialize_strict_json(material_json)
+        .map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "AgentMaterial JSON: {}",
+                e
+            )))
+        })?;
     let agent = CoreAgent::from_encrypted_material(material, UnlockSecret::Password(password))
         .map_err(map_core_err)?;
     Ok(CoreAgentHandle {
@@ -795,9 +884,9 @@ pub fn import_encrypted_agent_files(
     algorithm: &str,
 ) -> Result<CoreAgentHandle, JsError> {
     init_jacs_wasm();
-    let config: Value = serde_json::from_str(config_text)
+    let config: Value = jacs_core::strict_json::parse_strict_json(config_text)
         .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("config text: {}", e))))?;
-    let agent_json: Value = serde_json::from_str(agent_text)
+    let agent_json: Value = jacs_core::strict_json::parse_strict_json(agent_text)
         .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("agent text: {}", e))))?;
     let algo = parse_algorithm(algorithm)?;
     let material = AgentMaterial {

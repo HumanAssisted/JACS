@@ -11,53 +11,216 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-storage-crate-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/rust.yml
+
   publish:
+    needs: [security-gate, functional-gate]
+    environment: crates-io
+    outputs:
+      crate: ${{ steps.extract.outputs.crate }}
+      version: ${{ steps.extract.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
+    timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: "1.97"
 
-      - name: Extract crate name and version from tag
+      # Transitional fallback only: keep CRATES_IO_TOKEN until all four
+      # storage crates have trusted publishers for this workflow/environment.
+      # Then set CRATES_IO_TRUSTED_PUBLISHING_ENABLED=true and remove the secret.
+      - name: Report CRATES_IO_TOKEN migration fallback
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED != 'true'
+        run: echo "::warning::Trusted publishing is not enabled; using the CRATES_IO_TOKEN migration fallback"
+
+      - name: Validate and extract release tag
         id: extract
-        run: |
-          # Tag format: crate/<crate-name>/v<version>
-          TAG="${GITHUB_REF#refs/tags/crate/}"
-          CRATE_NAME="${TAG%%/v*}"
-          VERSION="${TAG#*/v}"
-          echo "crate=$CRATE_NAME" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Publishing $CRATE_NAME v$VERSION"
+        run: python3 scripts/release_tag.py --surface storage
 
       - name: Verify Cargo.toml version matches tag
+        env:
+          CRATE: ${{ steps.extract.outputs.crate }}
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
-          CRATE="${{ steps.extract.outputs.crate }}"
-          TAG_VERSION="${{ steps.extract.outputs.version }}"
-          CARGO_VERSION=$(grep '^version = ' $CRATE/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          set -euo pipefail
+          CARGO_VERSION=$(grep '^version = ' "$CRATE/Cargo.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "$CRATE Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
           if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::Version mismatch! $CRATE/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
             exit 1
           fi
 
-      - name: Publish to crates.io
+      - name: Wait for the pinned JACS dependency on crates.io
+        env:
+          CRATE: ${{ steps.extract.outputs.crate }}
         run: |
-          CRATE="${{ steps.extract.outputs.crate }}"
-          VERSION="${{ steps.extract.outputs.version }}"
-          LATEST=$(curl -sL --retry 3 --retry-delay 5 \
-            -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' \
-            "https://crates.io/api/v1/crates/$CRATE" | \
-            python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
-          if [ "$LATEST" = "$VERSION" ]; then
+          set -euo pipefail
+          JACS_VERSION="$(sed -n 's/^jacs = { version = "\([^"]*\)".*/\1/p' "$CRATE/Cargo.toml")"
+          test -n "$JACS_VERSION"
+          for attempt in $(seq 1 480); do
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
+              -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' \
+              "https://crates.io/api/v1/crates/jacs/$JACS_VERSION" >/dev/null; then
+              echo "jacs $JACS_VERSION is available"
+              break
+            fi
+            if [[ "$attempt" -eq 480 ]]; then
+              echo "::error::jacs $JACS_VERSION did not become available on crates.io"
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Compile selected storage crate with warnings denied
+        env:
+          CRATE: ${{ steps.extract.outputs.crate }}
+          RUSTFLAGS: "-D warnings"
+        run: cargo check --locked --manifest-path "$CRATE/Cargo.toml" --lib
+
+      - name: Build exact crate package candidate
+        id: package
+        env:
+          CRATE: ${{ steps.extract.outputs.crate }}
+          VERSION: ${{ steps.extract.outputs.version }}
+        run: |
+          set -euo pipefail
+          cargo package --locked --manifest-path "$CRATE/Cargo.toml"
+          archive="target/package/${CRATE}-${VERSION}.crate"
+          test -f "$archive"
+          mkdir -p packaged-crate
+          tar -xzf "$archive" -C packaged-crate
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Record exact storage crate candidate digest
+        env:
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          set -euo pipefail
+          (
+            cd "$(dirname "$ARCHIVE")"
+            sha256sum "$(basename "$ARCHIVE")"
+          ) > storage-crate-sha256sums.txt
+
+      - name: Generate packaged storage-crate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: packaged-crate
+          format: spdx-json
+          output-file: storage-crate.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate storage-crate SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' storage-crate.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' storage-crate.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.extract.outputs.crate }}-${{ steps.extract.outputs.version }}-release-evidence
+          path: |
+            ${{ steps.package.outputs.archive }}
+            storage-crate-sha256sums.txt
+            storage-crate.spdx.json
+          if-no-files-found: error
+
+      - name: Authenticate storage crate publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_storage_crate
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_storage_crate.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CRATE: ${{ steps.extract.outputs.crate }}
+          VERSION: ${{ steps.extract.outputs.version }}
+        run: |
+          set -euo pipefail
+          gate=(python3 scripts/crates_release_gate.py check --crate "$CRATE" --version "$VERSION")
+          if "${gate[@]}"; then
             echo "$CRATE $VERSION already published, skipping"
           else
-            cd "$CRATE" && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 101 ]; then
-                echo "::warning::$CRATE $VERSION already exists on crates.io (exit 101), continuing"
-              else
-                exit $EXIT_CODE
+            status=$?
+            if [ "$status" -ne 3 ]; then
+              exit "$status"
+            fi
+            log="/tmp/publish-${CRATE}.log"
+            if ! (cd "$CRATE" && cargo publish --locked 2>&1 | tee "$log"); then
+              if ! "${gate[@]}"; then
+                echo "::error::publishing $CRATE $VERSION failed"
+                exit 1
               fi
-            }
+              echo "::warning::cargo publish failed after $CRATE $VERSION became visible; continuing"
+            fi
           fi
+
+      - name: Wait for the storage crate to appear on crates.io
+        env:
+          CRATE: ${{ steps.extract.outputs.crate }}
+          VERSION: ${{ steps.extract.outputs.version }}
+        run: python3 scripts/crates_release_gate.py wait --crate "$CRATE" --version "$VERSION"
+
+      - name: Verify crates.io matches the exact storage crate candidate
+        env:
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          CRATE: ${{ steps.extract.outputs.crate }}
+          VERSION: ${{ steps.extract.outputs.version }}
+        run: >-
+          python3 scripts/crates_release_gate.py verify
+          --crate "$CRATE"
+          --version "$VERSION"
+          --archive "$ARCHIVE"
+
+  durable-release-evidence:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.publish.outputs.crate }}-${{ needs.publish.outputs.version }}-release-evidence
+          path: release-evidence
+
+      - name: Attest durable storage-crate release evidence
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            release-evidence/storage-crate-sha256sums.txt
+            release-evidence/storage-crate.spdx.json
+
+      - name: Publish durable storage-crate release evidence
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.publish.outputs.crate }} v${{ needs.publish.outputs.version }}
+          body: Attested candidate checksum and SPDX SBOM for the crates.io release.
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release-evidence/storage-crate-sha256sums.txt
+            release-evidence/storage-crate.spdx.json

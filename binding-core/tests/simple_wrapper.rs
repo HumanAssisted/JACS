@@ -4,7 +4,8 @@
 //! `jacs::simple::SimpleAgent` with FFI-safe marshaling (String in/out,
 //! `BindingResult` errors). Zero business logic — pure delegation.
 
-use jacs_binding_core::SimpleAgentWrapper;
+use base64::Engine as _;
+use jacs_binding_core::{ErrorKind, SimpleAgentWrapper};
 use serde_json::Value;
 use serial_test::serial;
 use std::path::{Path, PathBuf};
@@ -51,9 +52,9 @@ fn assert_same_path(actual: &Value, expected: &Path) {
 // =============================================================================
 
 fn ephemeral_wrapper() -> SimpleAgentWrapper {
-    let (wrapper, _info) =
-        SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
-    wrapper
+    let (agent, _info) = jacs::simple::SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("grandfathered Ed25519 fixture should succeed");
+    SimpleAgentWrapper::from_agent(agent)
 }
 
 // =============================================================================
@@ -72,7 +73,7 @@ fn test_create_returns_wrapper_and_info_json() {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
     }
 
-    let result = SimpleAgentWrapper::create("test-agent", None, Some("ed25519"));
+    let result = SimpleAgentWrapper::create("test-agent", None, Some("pq2025"));
 
     let (wrapper, info_json) = result.expect("create should succeed");
 
@@ -110,7 +111,7 @@ fn test_load_roundtrips_with_create() {
     let params = jacs::simple::CreateAgentParams::builder()
         .name("load-test")
         .password("TestP@ss123!#")
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
@@ -150,7 +151,7 @@ fn test_load_with_info_returns_resolved_metadata() {
     let params = jacs::simple::CreateAgentParams::builder()
         .name("load-with-info-test")
         .password("TestP@ss123!#")
-        .algorithm("ring-Ed25519")
+        .algorithm("pq2025")
         .data_directory(data_dir.to_str().unwrap())
         .key_directory(key_dir.to_str().unwrap())
         .config_path(config_path.to_str().unwrap())
@@ -197,7 +198,7 @@ fn test_load_with_info_returns_resolved_metadata() {
 #[test]
 fn test_ephemeral_creates_wrapper() {
     let (wrapper, info_json) =
-        SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
+        SimpleAgentWrapper::ephemeral(Some("pq2025")).expect("ephemeral should succeed");
 
     let info: Value = serde_json::from_str(&info_json).expect("info should be valid JSON");
     assert!(!info["agent_id"].as_str().unwrap_or("").is_empty());
@@ -205,6 +206,64 @@ fn test_ephemeral_creates_wrapper() {
     // Should be usable for signing
     let signed = wrapper.sign_message_json(r#"{"ephemeral": true}"#);
     assert!(signed.is_ok());
+}
+
+#[test]
+fn test_ephemeral_honors_ed25519_without_algorithm_substitution() {
+    let (wrapper, info_json) =
+        SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("supported Ed25519 creation");
+    let info: Value = serde_json::from_str(&info_json).expect("agent info");
+    assert_eq!(info["algorithm"], "ring-Ed25519");
+    let public_key = wrapper.get_public_key_base64().expect("public key");
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(public_key)
+            .expect("base64 public key")
+            .len(),
+        32
+    );
+    let signed: Value = serde_json::from_str(
+        &wrapper
+            .sign_message_json(r#"{"algorithm": "ed25519"}"#)
+            .expect("Ed25519 signing"),
+    )
+    .expect("signed JSON");
+    assert_eq!(signed["jacsSignature"]["signingAlgorithm"], "ring-Ed25519");
+}
+
+fn assert_removed_pq_dilithium_is_agent_load_error() {
+    let error = match SimpleAgentWrapper::ephemeral(Some("pq-dilithium")) {
+        Err(error) => error,
+        Ok(_) => panic!("removed legacy algorithm must fail at the public binding boundary"),
+    };
+    assert_eq!(error.kind, ErrorKind::AgentLoad);
+    assert!(
+        error
+            .portable_message()
+            .starts_with("JACS_ERROR_KIND=AgentLoad: "),
+        "portable error category must survive language binding conversion"
+    );
+    assert!(
+        error.message.contains("pq-dilithium"),
+        "rejection should identify the removed algorithm: {}",
+        error.message
+    );
+}
+
+#[test]
+fn removed_pq_dilithium_error_kind_is_stable_around_valid_pq_use() {
+    assert_removed_pq_dilithium_is_agent_load_error();
+
+    let (wrapper, _info) =
+        SimpleAgentWrapper::ephemeral(Some("pq2025")).expect("valid pq2025 creation");
+    let signed = wrapper
+        .sign_message_json(r#"{"algorithm":"pq2025"}"#)
+        .expect("valid pq2025 signing");
+    wrapper
+        .verify_json(&signed)
+        .expect("valid pq2025 verification");
+
+    assert_removed_pq_dilithium_is_agent_load_error();
 }
 
 #[cfg(feature = "pq-tests")]
@@ -518,8 +577,8 @@ fn test_sign_file_json() {
 
 #[test]
 fn test_from_agent() {
-    let (agent, _info) =
-        jacs::simple::SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
+    let (agent, _info) = jacs::simple::SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("grandfathered Ed25519 fixture should succeed");
     let wrapper = SimpleAgentWrapper::from_agent(agent);
     let agent_id = wrapper.get_agent_id().expect("get_agent_id should succeed");
     assert!(
@@ -544,7 +603,7 @@ fn test_create_with_params_json() {
     let params_json = serde_json::json!({
         "name": "params-test",
         "password": "TestP@ss123!#",
-        "algorithm": "ring-Ed25519",
+        "algorithm": "pq2025",
         "data_directory": data_dir.to_str().unwrap(),
         "key_directory": key_dir.to_str().unwrap(),
         "config_path": config_path.to_str().unwrap()

@@ -2,12 +2,31 @@
 
 import json
 import logging
+from copy import deepcopy
+from unittest.mock import MagicMock
 
 import pytest
 
 from jacs.adapters.base import BaseJacsAdapter
 from jacs.client import JacsClient
+from jacs.types import SigningError
 from conftest import TEST_ALGORITHM
+
+
+def _portable_v2_document():
+    return {
+        "jacsId": "document-id",
+        "jacsVersion": "1",
+        "jacsDocument": {"result": "ok"},
+        "jacsSignature": {
+            "signature": "c2lnbmF0dXJl",
+            "agentID": "agent-id",
+            "agentVersion": "1",
+            "publicKeyHash": "sha256:public-key",
+            "date": "2026-07-10T00:00:00Z",
+            "signatureContentVersion": "jacs-signature-v2",
+        },
+    }
 
 
 @pytest.fixture(scope="module")
@@ -28,6 +47,24 @@ def strict_adapter(ephemeral_client):
     return BaseJacsAdapter(client=ephemeral_client, strict=True)
 
 
+@pytest.fixture
+def unverified_passthrough_adapter(ephemeral_client):
+    """Create an adapter with the explicitly dangerous compatibility opt-in."""
+    return BaseJacsAdapter(
+        client=ephemeral_client,
+        allow_unverified_passthrough=True,
+    )
+
+
+@pytest.fixture
+def unsigned_output_adapter(ephemeral_client):
+    """Create an adapter with the explicitly dangerous unsigned-output opt-in."""
+    return BaseJacsAdapter(
+        client=ephemeral_client,
+        allow_unsigned_output=True,
+    )
+
+
 class TestAdapterInit:
     """Test adapter initialization."""
 
@@ -42,6 +79,14 @@ class TestAdapterInit:
     def test_strict_mode_explicit(self, ephemeral_client):
         adapter = BaseJacsAdapter(client=ephemeral_client, strict=True)
         assert adapter.strict is True
+
+    def test_unverified_passthrough_defaults_false(self, ephemeral_client):
+        adapter = BaseJacsAdapter(client=ephemeral_client)
+        assert adapter.allow_unverified_passthrough is False
+
+    def test_unsigned_output_defaults_false(self, ephemeral_client):
+        adapter = BaseJacsAdapter(client=ephemeral_client)
+        assert adapter.allow_unsigned_output is False
 
     def test_client_property(self, adapter, ephemeral_client):
         assert adapter.client is ephemeral_client
@@ -77,6 +122,52 @@ class TestSignOutput:
         parsed = json.loads(signed)
         assert "jacsSignature" in parsed or "jacsHash" in parsed
 
+    @pytest.mark.parametrize(
+        ("label", "raw_json"),
+        [
+            ("empty", ""),
+            ("plain", '{"result":"not signed"}'),
+            (
+                "legacy",
+                json.dumps(
+                    {
+                        **_portable_v2_document(),
+                        "jacsSignature": {
+                            **_portable_v2_document()["jacsSignature"],
+                            "signatureContentVersion": "jacs-signature-v1",
+                        },
+                    }
+                ),
+            ),
+            (
+                "incomplete",
+                json.dumps(
+                    {
+                        **_portable_v2_document(),
+                        "jacsSignature": {
+                            **_portable_v2_document()["jacsSignature"],
+                            "publicKeyHash": "",
+                        },
+                    }
+                ),
+            ),
+        ],
+    )
+    def test_rejects_non_portable_signer_output(self, label, raw_json):
+        client = MagicMock()
+        client.sign_message.return_value.raw_json = raw_json
+        adapter = BaseJacsAdapter(client=client)
+
+        with pytest.raises(SigningError, match="portable v2"):
+            adapter.sign_output({"label": label})
+
+    def test_accepts_complete_portable_v2_signer_output(self):
+        client = MagicMock()
+        expected = json.dumps(deepcopy(_portable_v2_document()))
+        client.sign_message.return_value.raw_json = expected
+
+        assert BaseJacsAdapter(client=client).sign_output({"ok": True}) == expected
+
 
 class TestVerifyInput:
     """Test verify_input with signed data."""
@@ -101,6 +192,32 @@ class TestVerifyInput:
         # sign_request wraps the dict; the payload should contain our data
         assert isinstance(payload, dict)
 
+    def test_truthy_non_boolean_valid_flag_fails_closed(self):
+        class MalformedClient:
+            def verify(self, _signed_json):
+                return type(
+                    "MalformedResult",
+                    (),
+                    {"valid": "false", "errors": []},
+                )()
+
+        adapter = BaseJacsAdapter(client=MalformedClient(), strict=True)
+        with pytest.raises(Exception, match="Verification failed"):
+            adapter.verify_input('{"jacsDocument":{"role":"admin"}}')
+
+    def test_tampered_exact_input_is_never_returned_as_verified(self, adapter):
+        """The verifier and payload parser consume the same immutable JSON string."""
+        signed = adapter.sign_output({"role": "user"})
+        tampered = json.loads(signed)
+        payload = tampered.get("content", tampered.get("jacsDocument"))
+        assert isinstance(payload, dict), (
+            "signed adapter output must expose an object payload"
+        )
+        payload["role"] = "admin"
+
+        with pytest.raises(Exception, match="Verification failed"):
+            adapter.verify_input(json.dumps(tampered))
+
 
 class TestStrictMode:
     """Test strict mode behavior."""
@@ -119,29 +236,49 @@ class TestStrictMode:
 class TestPassthroughMode:
     """Test permissive (non-strict) passthrough behavior."""
 
-    def test_verify_bad_input_passthrough(self, adapter):
-        """Permissive mode should return parsed JSON on verification failure."""
+    def test_verify_bad_input_fails_closed_by_default(self, adapter):
+        """Signing permissiveness must not silently make verification permissive."""
+        with pytest.raises(Exception, match="Verification failed"):
+            adapter.verify_input_or_passthrough('{"not": "signed"}')
+
+    def test_verify_bad_input_passthrough_requires_explicit_opt_in(
+        self, unverified_passthrough_adapter
+    ):
+        """The legacy passthrough behavior requires a dangerous explicit opt-in."""
         bad_json = '{"not": "signed"}'
-        result = adapter.verify_input_or_passthrough(bad_json)
+        result = unverified_passthrough_adapter.verify_input_or_passthrough(bad_json)
         assert result == {"not": "signed"}
 
-    def test_verify_non_json_passthrough(self, adapter):
+    def test_verify_non_json_passthrough(self, unverified_passthrough_adapter):
         """Permissive mode should return raw string if not valid JSON."""
-        result = adapter.verify_input_or_passthrough("not json at all")
+        result = unverified_passthrough_adapter.verify_input_or_passthrough(
+            "not json at all"
+        )
         assert result == "not json at all"
 
-    def test_verify_passthrough_logs_warning(self, adapter, caplog):
+    def test_verify_passthrough_logs_warning(
+        self, unverified_passthrough_adapter, caplog
+    ):
         """Permissive mode should log a warning on verification failure."""
         with caplog.at_level(logging.WARNING, logger="jacs.adapters"):
-            adapter.verify_input_or_passthrough('{"not": "signed"}')
+            unverified_passthrough_adapter.verify_input_or_passthrough(
+                '{"not": "signed"}'
+            )
         assert any("verification failed" in r.message.lower() for r in caplog.records)
 
-    def test_sign_passthrough_on_error(self):
-        """If signing fails, permissive mode should return JSON-serialized data."""
-        # Create an adapter with a broken client (reset it)
+    def test_sign_failure_fails_closed_by_default(self):
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         adapter = BaseJacsAdapter(client=client, strict=False)
-        client.reset()  # break the client
+        client.reset()
+
+        with pytest.raises(Exception):
+            adapter.sign_output_or_passthrough({"must": "not escape"})
+
+    def test_sign_passthrough_on_error_requires_explicit_opt_in(self):
+        """Unsigned output requires a dangerous compatibility opt-in."""
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
+        adapter = BaseJacsAdapter(client=client, allow_unsigned_output=True)
+        client.reset()
 
         data = {"still": "works"}
         result = adapter.sign_output_or_passthrough(data)
@@ -150,7 +287,7 @@ class TestPassthroughMode:
     def test_sign_passthrough_string(self):
         """If signing a string fails, permissive mode returns the string."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
-        adapter = BaseJacsAdapter(client=client, strict=False)
+        adapter = BaseJacsAdapter(client=client, allow_unsigned_output=True)
         client.reset()
 
         result = adapter.sign_output_or_passthrough("raw text")
@@ -159,7 +296,7 @@ class TestPassthroughMode:
     def test_sign_passthrough_logs_warning(self, caplog):
         """Permissive mode should log a warning when signing fails."""
         client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
-        adapter = BaseJacsAdapter(client=client, strict=False)
+        adapter = BaseJacsAdapter(client=client, allow_unsigned_output=True)
         client.reset()
 
         with caplog.at_level(logging.WARNING, logger="jacs.adapters"):

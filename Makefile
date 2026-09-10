@@ -5,13 +5,15 @@
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         audit-jacs \
         publish-jacs publish-jacs-media publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
-        publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
-        release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-everything release-delete-tags \
-        retry-jacs retry-jacspy retry-jacsnpm retry-cli retry-everything \
+        publish-jacs-storage publish-jacs-storage-dry publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
+        release-preflight release-jacs release-jacspy release-jacsnpm release-jacs-wasm release-jacsgo release-cli release-jacs-storage release-everything release-delete-tags \
+        plan-release-everything plan-release-jacs-storage \
+        retry-jacs retry-jacspy retry-jacsnpm retry-jacs-wasm retry-jacsgo retry-cli retry-everything \
+        plan-retry-jacs plan-retry-jacspy plan-retry-jacsnpm plan-retry-jacs-wasm plan-retry-jacsgo plan-retry-cli plan-retry-everything \
         bump-patch bump-minor bump-major \
         seal-changelog check-changelog-sealed \
-        version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
-        install-githooks regen-cross-lang-fixtures sync-schemas \
+        version versions check-versions check-project-license third-party-notices check-third-party-notices check-release-matrix verify-shipped-release check-version-jacs check-version-jacspy check-version-jacsnpm check-version-wasm check-version-jacsgo check-version-cli \
+        install-githooks regen-cross-lang-fixtures sync-schemas smoke-verifiers \
         help
 
 # ============================================================================
@@ -66,6 +68,11 @@ JACS_REDB_VERSION := $(shell grep '^version' jacs-redb/Cargo.toml | head -1 | se
 JACS_SURREALDB_VERSION := $(shell grep '^version' jacs-surrealdb/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 JACS_POSTGRESQL_VERSION := $(shell grep '^version' jacs-postgresql/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
+# Release tags are handled without interpolating manifest-derived versions into
+# shell programs. The helper validates SemVer, probes local and remote tag state,
+# and applies a per-command deadline.
+RELEASE_HELPER := python3 scripts/release_retry.py
+
 # Fast Rust lane for the core crate: exclude dedicated CLI, interop, observability,
 # and PQ-only binaries so the default PR path stays bounded.
 JACS_TEST_BINS := $(basename $(notdir $(shell find jacs/tests -maxdepth 1 -name '*.rs' -print | sort)))
@@ -95,7 +102,7 @@ build-jacsnpm:
 # After wasm-pack runs, finalize-pkg.sh (Task 020) rewrites
 # pkg/package.json to set name=@jacs/wasm + the right exports map.
 build-wasm:
-	wasm-pack build --target web --release jacs-wasm
+	cd jacs-wasm && wasm-pack build --target web --release . --locked
 	@if [ -x jacs-wasm/scripts/finalize-pkg.sh ]; then \
 		bash jacs-wasm/scripts/finalize-pkg.sh; \
 	else \
@@ -105,7 +112,7 @@ build-wasm:
 # Run jacs-wasm tests headless in Chrome. Requires wasm-pack + a
 # matching chromedriver on PATH. PRD §3.2.
 test-wasm:
-	wasm-pack test --headless --chrome jacs-wasm
+	cd jacs-wasm && wasm-pack test --headless --chrome . --locked
 
 # Publish the finalized @jacs/wasm npm package. Run `make build-wasm`
 # first. Triggered from CI by the `wasm-vX.Y.Z` tag handler in
@@ -113,20 +120,6 @@ test-wasm:
 # invocation.
 publish-jacs-wasm: build-wasm
 	cd jacs-wasm/pkg && npm publish --access public
-
-# Retag + push the wasm-vX.Y.Z release tag. Mirrors retry-jacsnpm.
-release-jacs-wasm:
-	@TAG=wasm-v$(JACS_VERSION); \
-	echo "Tagging $$TAG"; \
-	git tag -a "$$TAG" -m "Release @jacs/wasm $(JACS_VERSION)"; \
-	git push origin "$$TAG"
-
-retry-jacs-wasm:
-	@TAG=wasm-v$(JACS_VERSION); \
-	echo "Deleting + retagging $$TAG"; \
-	git tag -d "$$TAG" 2>/dev/null || true; \
-	git push origin :refs/tags/"$$TAG" 2>/dev/null || true; \
-	$(MAKE) release-jacs-wasm
 
 build-jacsbook:
 	cd jacs/docs/jacsbook && mdbook build
@@ -143,11 +136,19 @@ test-jacs:
 
 # Fast test run: ed25519 only (no post-quantum keygen)
 test-jacs-fast:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib $(foreach test,$(JACS_FAST_TEST_BINS),--test $(test)) -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib $(foreach test,$(JACS_FAST_TEST_BINS),--test $(test)) -- --nocapture --skip secure_fetch::tests
+	$(MAKE) test-jacs-secure-fetch
+
+# Loopback harnesses run separately so host/sandbox socket quotas cannot make
+# them race unrelated network tests. This still executes every secure-fetch
+# regression; it changes scheduling, not coverage.
+test-jacs-secure-fetch:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib secure_fetch::tests -- --nocapture --test-threads=1
 
 # Sharded fast targets for CI parallelization (each maps to one local command).
 test-jacs-fast-lib:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib -- --nocapture --skip secure_fetch::tests
+	$(MAKE) test-jacs-secure-fetch
 
 test-jacs-fast-bin-shard-a:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation $(foreach test,$(JACS_FAST_BIN_SHARD_A),--test $(test)) -- --nocapture
@@ -157,20 +158,63 @@ test-jacs-fast-bin-shard-b:
 
 # Full test run: includes post-quantum algorithm tests (slow keygen)
 test-jacs-pq:
-	RUST_BACKTRACE=1 cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
+	cargo build --locked -p jacs-cli
+	RUST_BACKTRACE=1 cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose -- --skip secure_fetch::tests
+	$(MAKE) test-jacs-secure-fetch
 
 test-jacs-features: test-jacs-pq
 
 test-jacs-cli:
-	cargo build -p jacs-cli
+	cargo build --locked -p jacs-cli
 	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
-	RUST_BACKTRACE=1 cargo test -p jacs-cli --test cli_convert_tests -- --nocapture
+	RUST_BACKTRACE=1 cargo test -p jacs-cli --lib --tests -- --nocapture
 
 test-jacs-cross-language:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features "agreements a2a attestation" --test cross_language_tests --test a2a_cross_language_tests --test attestation_cross_lang_tests -- --nocapture
 
+# P2 NFR8 smoke lane (docs/P2_ES256_SMOKE.md "End-to-End CLI Smoke"):
+# build the CLI, create a scratch agent, run both content exporters
+# (AP2 mandate detached JWS + Agreement-v2-as-VC), then verify both
+# artifacts with the committed stock verifier scripts (jose +
+# canonicalize; no JACS verification code). Requires node/npm.
+smoke-verifiers:
+	cargo build --locked -p jacs-cli
+	@set -eu; \
+	REPO=$$(pwd); \
+	JACS=$$REPO/target/debug/jacs; \
+	WORK=$$(mktemp -d); \
+	trap 'rm -rf "$$WORK"' EXIT; \
+	cd "$$WORK"; \
+	export JACS_PRIVATE_KEY_PASSWORD='P2-Smoke-Password!2026'; \
+	export JACS_KEYCHAIN_BACKEND=disabled; \
+	"$$JACS" quickstart --name p2-smoke --domain example.com >/dev/null; \
+	"$$JACS" agent export-jwks > p2_jwks.json; \
+	"$$JACS" agent export-compat-binding > p2_binding.json; \
+	if "$$JACS" agent add-compat-key >/dev/null 2>&1; then \
+		echo "UNEXPECTED: duplicate add-compat-key succeeded"; exit 1; \
+	fi; \
+	echo "ok: duplicate add-compat-key rejected (typed error)"; \
+	"$$JACS" agent issue-compat-binding --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate,agreement-vc >/dev/null; \
+	printf '%s' '{"id":"checkout_smoke_001","status":"ready_for_payment","currency":"USD","line_items":[{"id":"li_1","title":"Widget","quantity":1,"base_amount":990,"total_amount":990}],"totals":[{"type":"total","display_text":"Total","amount":990}]}' > p2_checkout.json; \
+	"$$JACS" ap2 export-mandate --input p2_checkout.json > p2_mandate_export.json; \
+	AGENT_ID=$$(python3 -c "import json; print(json.load(open('jacs.config.json'))['jacs_agent_id_and_version'].split(':')[0])"); \
+	printf '{"title":"P2 smoke agreement","description":"Agreement used by make smoke-verifiers.","terms":"Party agrees to smoke-test things.","termsFormat":"text/plain","status":"proposed","parties":[{"agentId":"%s","agentType":"ai","role":"signer"}],"signaturePolicy":{"partyQuorum":"all"},"controllers":["%s"]}' "$$AGENT_ID" "$$AGENT_ID" > p2_agreement_input.json; \
+	"$$JACS" agreement-v2 create --input p2_agreement_input.json > p2_agreement.json; \
+	"$$JACS" agreement-v2 export-vc --agreement - < p2_agreement.json > p2_agreement_vc.json; \
+	cp "$$REPO"/scripts/smoke/verify_ap2_jws.mjs "$$REPO"/scripts/smoke/verify_di_vc.mjs .; \
+	npm init -y >/dev/null; \
+	npm install --silent --no-audit --no-fund jose canonicalize >/dev/null; \
+	node verify_ap2_jws.mjs p2_mandate_export.json p2_jwks.json; \
+	node verify_di_vc.mjs p2_agreement_vc.json p2_jwks.json; \
+	echo '{"claim":"native wall"}' | "$$JACS" quickstart --name p2-smoke --domain example.com --sign > p2_signed_document.json; \
+	"$$JACS" verify p2_signed_document.json >/dev/null; \
+	echo "SMOKE-VERIFIERS-OK"
+
+# NOTE: `observability-convenience` was removed as a feature in v0.9.4 (the
+# convenience module is unconditional); listing it made cargo abort the whole
+# lane with "does not contain this feature", so every test here was dead in CI.
 test-jacs-observability:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features "observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features "otlp-logs otlp-metrics otlp-tracing agreements" --test observability_tests --test observability_oltp_meter --test compatibility_observability --test security_observability -- --nocapture
 
 test-jacs-mcp:
 	RUST_BACKTRACE=1 cargo test -p jacs-mcp --lib --tests --verbose
@@ -183,7 +227,7 @@ test-jacs-binding-core-pq:
 
 # jacs-wasm native sanity suite (agreement v2 + forged-signature + declaration drift).
 test-jacs-wasm:
-	RUST_BACKTRACE=1 cargo test -p jacs-wasm --test native_sanity --verbose
+	RUST_BACKTRACE=1 cargo test -p jacs-wasm --lib --tests --verbose
 
 # Storage backend crates (extracted from jacs core)
 test-jacs-duckdb:
@@ -193,7 +237,7 @@ test-jacs-redb:
 	RUST_BACKTRACE=1 cargo test -p jacs-redb --lib --tests --verbose
 
 test-jacs-surrealdb:
-	RUST_BACKTRACE=1 cargo test -p jacs-surrealdb --lib --tests --verbose
+	RUST_BACKTRACE=1 cargo test --manifest-path jacs-surrealdb/Cargo.toml --locked --lib --tests --verbose
 
 test-jacs-postgresql:
 	RUST_BACKTRACE=1 cargo test -p jacs-postgresql --lib --tests --verbose
@@ -202,7 +246,7 @@ test-jacs-storage: test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs
 
 audit-jacs:
 	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
-	cargo audit --ignore RUSTSEC-2023-0071
+	cargo audit
 
 test-jacspy:
 	cd jacspy && maturin develop && python -m pytest tests/ -v
@@ -365,6 +409,24 @@ check-versions:
 	fi
 	@echo "✓ All release versions match: $(JACS_VERSION)"
 
+# Validate the checked-in evidence matrix without network access. After every
+# coordinated release, refresh release/shipped-artifacts.json from registry
+# evidence and run verify-shipped-release before updating install-facing docs.
+check-release-matrix:
+	@./scripts/check-release-matrix.py
+
+check-project-license:
+	@python3 scripts/check_project_license.py
+
+third-party-notices:
+	@python3 scripts/third_party_notices.py --write
+
+check-third-party-notices:
+	@python3 scripts/third_party_notices.py --check
+
+verify-shipped-release: check-versions
+	@./scripts/check-release-matrix.py --require-parity
+
 # ============================================================================
 # DIRECT PUBLISH (requires local credentials)
 # ============================================================================
@@ -372,75 +434,79 @@ check-versions:
 # Publish all Rust crates to crates.io in dependency order with delays.
 # Requires ~/.cargo/credentials or CARGO_REGISTRY_TOKEN.
 publish-jacs:
-	cd jacs-media && cargo publish
+	cd jacs-core && cargo publish --locked
+	@echo "Waiting 30s for crates.io to index jacs-core..."
+	sleep 30
+	cd jacs-media && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs-media..."
 	sleep 30
-	cd jacs && cargo publish
+	cd jacs && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs..."
 	sleep 30
-	cd binding-core && cargo publish
+	cd binding-core && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs-binding-core..."
 	sleep 30
-	cd jacs-mcp && cargo publish
+	cd jacs-mcp && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs-mcp..."
 	sleep 30
-	cd jacs-cli && cargo publish
+	cd jacs-cli && cargo publish --locked
 
 # Individual crate publish targets (use when resuming a partial publish)
 publish-jacs-media:
-	cd jacs-media && cargo publish
+	cd jacs-media && cargo publish --locked
 
 publish-jacs-core:
-	cd jacs && cargo publish
+	cd jacs-core && cargo publish --locked
 
 publish-jacs-binding-core:
-	cd binding-core && cargo publish
+	cd binding-core && cargo publish --locked
 
 publish-jacs-mcp:
-	cd jacs-mcp && cargo publish
+	cd jacs-mcp && cargo publish --locked
 
 publish-jacs-cli:
-	cd jacs-cli && cargo publish
+	cd jacs-cli && cargo publish --locked
 
 # Publish storage backend crates to crates.io (requires jacs already published).
 publish-jacs-storage:
-	cd jacs-duckdb && cargo publish
+	cd jacs-duckdb && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs-duckdb..."
 	sleep 30
-	cd jacs-redb && cargo publish
+	cd jacs-redb && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs-redb..."
 	sleep 30
-	cd jacs-surrealdb && cargo publish
+	cd jacs-surrealdb && cargo publish --locked
 	@echo "Waiting 30s for crates.io to index jacs-surrealdb..."
 	sleep 30
-	cd jacs-postgresql && cargo publish
+	cd jacs-postgresql && cargo publish --locked
 
 # Individual storage crate publish targets
 publish-jacs-duckdb:
-	cd jacs-duckdb && cargo publish
+	cd jacs-duckdb && cargo publish --locked
 
 publish-jacs-redb:
-	cd jacs-redb && cargo publish
+	cd jacs-redb && cargo publish --locked
 
 publish-jacs-surrealdb:
-	cd jacs-surrealdb && cargo publish
+	cd jacs-surrealdb && cargo publish --locked
 
 publish-jacs-postgresql:
-	cd jacs-postgresql && cargo publish
+	cd jacs-postgresql && cargo publish --locked
 
 # Dry run for crates.io publish
 publish-jacs-dry:
-	cd jacs-media && cargo publish --dry-run
-	cd jacs && cargo publish --dry-run
-	cd binding-core && cargo publish --dry-run
-	cd jacs-mcp && cargo publish --dry-run
-	cd jacs-cli && cargo publish --dry-run
+	cd jacs-core && cargo publish --locked --dry-run
+	cd jacs-media && cargo publish --locked --dry-run
+	cd jacs && cargo publish --locked --dry-run
+	cd binding-core && cargo publish --locked --dry-run
+	cd jacs-mcp && cargo publish --locked --dry-run
+	cd jacs-cli && cargo publish --locked --dry-run
 
 publish-jacs-storage-dry:
-	cd jacs-duckdb && cargo publish --dry-run
-	cd jacs-redb && cargo publish --dry-run
-	cd jacs-surrealdb && cargo publish --dry-run
-	cd jacs-postgresql && cargo publish --dry-run
+	cd jacs-duckdb && cargo publish --locked --dry-run
+	cd jacs-redb && cargo publish --locked --dry-run
+	cd jacs-surrealdb && cargo publish --locked --dry-run
+	cd jacs-postgresql && cargo publish --locked --dry-run
 
 # Publish to PyPI (requires MATURIN_PYPI_TOKEN or ~/.pypirc)
 publish-jacspy:
@@ -448,9 +514,10 @@ publish-jacspy:
 
 # Dry run for PyPI publish
 publish-jacspy-dry:
-	cd jacspy && maturin build --release
+	cd jacspy && maturin build --locked --release
 
-# Publish to npm (requires npm login or NPM_TOKEN)
+# Publish to npm directly from a maintainer shell (requires interactive npm login).
+# CI tag releases use OIDC trusted publishing instead.
 publish-jacsnpm:
 	cd jacsnpm && npm publish --access public
 
@@ -464,214 +531,134 @@ publish-jacsnpm-dry:
 # These commands create git tags that trigger GitHub Actions release workflows.
 # Versions are auto-detected from source files. Tags are verified before pushing.
 #
-# Required GitHub Secrets:
-#   - CRATES_IO_TOKEN  (for crate/v* tags)
-#   - PYPI_API_TOKEN   (for pypi/v* tags)
-#   - NPM_TOKEN        (for npm/v* tags)
+# Transitional GitHub secret:
+#   - CRATES_IO_TOKEN (migration fallback until crates.io OIDC is enabled)
+# crates.io, PyPI, and npm trusted-publisher setup is documented in RELEASING.md.
 # ============================================================================
 
-# Verify version and tag for crates.io release
+# One preflight node separates read-only validation from every tag-writing
+# recipe. Consequently `make -j` (including inherited MAKEFLAGS) cannot start a
+# release write while any preflight prerequisite is still running.
+release-preflight: check-versions check-project-license check-third-party-notices check-release-matrix check-changelog-sealed
+	@$(RELEASE_HELPER) check-worktree
+	@echo "Release preflight complete."
+
+# Non-destructive, remote-aware plans. These commands apply a deadline and
+# print the exact existing tag object/peeled commit when one already exists.
 check-version-jacs:
-	@echo "jacs version: $(JACS_VERSION)"
-	@if git tag -l | grep -q "^crate/v$(JACS_VERSION)$$"; then \
-		echo "ERROR: Tag crate/v$(JACS_VERSION) already exists"; \
-		exit 1; \
-	fi
-	@echo "✓ Tag crate/v$(JACS_VERSION) is available"
+	@$(RELEASE_HELPER) release --surface crate
 
-# Verify version and tag for PyPI release
 check-version-jacspy:
-	@echo "jacspy version: $(JACSPY_VERSION)"
-	@if git tag -l | grep -q "^pypi/v$(JACSPY_VERSION)$$"; then \
-		echo "ERROR: Tag pypi/v$(JACSPY_VERSION) already exists"; \
-		exit 1; \
-	fi
-	@echo "✓ Tag pypi/v$(JACSPY_VERSION) is available"
+	@$(RELEASE_HELPER) release --surface pypi
 
-# Verify version and tag for npm release
 check-version-jacsnpm:
-	@echo "jacsnpm version: $(JACSNPM_VERSION)"
-	@if git tag -l | grep -q "^npm/v$(JACSNPM_VERSION)$$"; then \
-		echo "ERROR: Tag npm/v$(JACSNPM_VERSION) already exists"; \
-		exit 1; \
-	fi
-	@echo "✓ Tag npm/v$(JACSNPM_VERSION) is available"
+	@$(RELEASE_HELPER) release --surface npm
 
-# Verify version and tag for CLI binary release
 check-version-cli:
-	@echo "cli version: $(JACS_VERSION)"
-	@if [ "$(JACS_VERSION)" != "$(JACS_MCP_VERSION)" ]; then \
-		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-mcp ($(JACS_MCP_VERSION))"; \
-		exit 1; \
-	fi
-	@if git tag -l | grep -q "^cli/v$(JACS_VERSION)$$"; then \
-		echo "ERROR: Tag cli/v$(JACS_VERSION) already exists"; \
-		exit 1; \
-	fi
-	@echo "✓ Tag cli/v$(JACS_VERSION) is available"
+	@$(RELEASE_HELPER) release --surface cli
 
-# Tag and push to trigger crates.io release via GitHub CI
-release-jacs: check-version-jacs check-changelog-sealed
-	git tag crate/v$(JACS_VERSION)
-	git push origin crate/v$(JACS_VERSION)
-	@echo "Tagged crate/v$(JACS_VERSION) - GitHub CI will publish to crates.io"
+check-version-wasm:
+	@$(RELEASE_HELPER) release --surface wasm
 
-# Tag and push to trigger PyPI release via GitHub CI
-release-jacspy: check-version-jacspy check-changelog-sealed
-	git tag pypi/v$(JACSPY_VERSION)
-	git push origin pypi/v$(JACSPY_VERSION)
-	@echo "Tagged pypi/v$(JACSPY_VERSION) - GitHub CI will publish to PyPI"
+check-version-jacsgo:
+	@$(RELEASE_HELPER) release --surface jacsgo
 
-# Tag and push to trigger npm release via GitHub CI
-release-jacsnpm: check-version-jacsnpm check-changelog-sealed
-	git tag npm/v$(JACSNPM_VERSION)
-	git push origin npm/v$(JACSNPM_VERSION)
-	@echo "Tagged npm/v$(JACSNPM_VERSION) - GitHub CI will publish to npm"
+# Tag and push individual surfaces. The Python helper reads and validates
+# manifest versions directly, so no untrusted version text is evaluated by a
+# shell. A local-only tag is pushed as-is; a remote-only tag is distinguished
+# and left intact; conflicting identities fail closed.
+release-jacs: release-preflight
+	@$(RELEASE_HELPER) release --surface crate --execute
 
-# Tag and push to trigger CLI binary release via GitHub CI
-release-cli: check-version-cli check-changelog-sealed
-	git tag cli/v$(JACS_VERSION)
-	git push origin cli/v$(JACS_VERSION)
-	@echo "Tagged cli/v$(JACS_VERSION) - GitHub CI will publish GitHub release binaries"
+release-jacspy: release-preflight
+	@$(RELEASE_HELPER) release --surface pypi --execute
 
-# Tag and push to trigger storage crate releases via GitHub CI
-release-jacs-storage:
-	@for crate in jacs-duckdb jacs-redb jacs-surrealdb jacs-postgresql; do \
-		ver=$$(grep '^version' $$crate/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'); \
-		tag="crate/$$crate/v$$ver"; \
-		if git tag -l | grep -q "^$$tag$$"; then \
-			echo "SKIP: Tag $$tag already exists"; \
-		else \
-			echo "Tagging $$tag..."; \
-			git tag "$$tag"; \
-			git push origin "$$tag"; \
-			echo "Tagged $$tag - GitHub CI will publish to crates.io"; \
-		fi; \
-	done
+release-cli: release-preflight
+	@$(RELEASE_HELPER) release --surface cli --execute
 
-# Release everything via GitHub CI: main packages (crates.io / PyPI / npm),
-# CLI binaries, and storage backend crates. Verifies all versions match first.
-release-everything: check-versions check-changelog-sealed release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage
-	@echo "All release tags, including CLI binaries and storage crates, pushed for v$(JACS_VERSION)."
+release-jacsnpm: release-preflight
+	@$(RELEASE_HELPER) release --surface npm --execute
 
-# Delete release tags for current versions (use with caution - for fixing failed releases)
+release-jacs-wasm: release-preflight
+	@$(RELEASE_HELPER) release --surface wasm --execute
+
+release-jacsgo: release-preflight
+	@$(RELEASE_HELPER) release --surface jacsgo --execute
+
+# Storage tags are planned as one batch before the first write, then pushed in
+# order. Any probe, tag, or push failure stops the helper immediately.
+plan-release-jacs-storage: check-versions
+	@$(RELEASE_HELPER) release-storage
+
+release-jacs-storage: release-preflight
+	@$(RELEASE_HELPER) release-storage --execute
+
+# The helper plans every main and storage tag before its first write. Its fixed
+# order puts the CLI tag before npm because the Node package installs that CLI.
+plan-release-everything: check-versions
+	@$(RELEASE_HELPER) release-all
+
+release-everything: release-preflight # release-all order: release-cli before release-jacsnpm
+	@$(RELEASE_HELPER) release-all --execute
+	@echo "All release tags pushed."
+	@echo "After workflows finish, refresh release/shipped-artifacts.json and run: make verify-shipped-release"
+
+# Destructive maintenance escape hatch. Retry targets never call this because
+# deleting the local ref would discard the authoritative original tag identity.
 release-delete-tags:
 	@echo "Deleting tags for version $(JACS_VERSION)..."
-	-git tag -d crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) cli/v$(JACS_VERSION)
-	-git push origin --delete crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) cli/v$(JACS_VERSION)
+	-git tag -d crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) wasm-v$(JACS_WASM_NPM_VERSION) jacsgo/v$(JACSGO_VERSION) cli/v$(JACS_VERSION)
+	-git push origin --delete crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) wasm-v$(JACS_WASM_NPM_VERSION) jacsgo/v$(JACSGO_VERSION) cli/v$(JACS_VERSION)
 	@echo "Deleted release tags"
 
-# Retry a failed crates.io release: delete old tags (local+remote), retag, push
-retry-jacs:
-	@echo "Retrying crates.io release for v$(JACS_VERSION)..."
-	-git tag -d crate/v$(JACS_VERSION)
-	-git push origin --delete crate/v$(JACS_VERSION)
-	git tag crate/v$(JACS_VERSION)
-	git push origin crate/v$(JACS_VERSION)
-	@echo "✓ Re-tagged crate/v$(JACS_VERSION) - GitHub CI will retry crates.io publish"
+# Retry plans are non-destructive. Execution never deletes the local tag or
+# creates a new one: it fetches a remote-only original when necessary, records
+# its exact tag object and peeled commit, deletes only the remote ref, then
+# re-pushes the unchanged local ref.
+plan-retry-jacs: check-versions
+	@$(RELEASE_HELPER) retry --surface crate
 
-# Retry a failed PyPI release: delete old tags (local+remote), retag, push
-retry-jacspy:
-	@echo "Retrying PyPI release for v$(JACSPY_VERSION)..."
-	-git tag -d pypi/v$(JACSPY_VERSION)
-	-git push origin --delete pypi/v$(JACSPY_VERSION)
-	git tag pypi/v$(JACSPY_VERSION)
-	git push origin pypi/v$(JACSPY_VERSION)
-	@echo "✓ Re-tagged pypi/v$(JACSPY_VERSION) - GitHub CI will retry PyPI publish"
+retry-jacs: check-versions
+	@$(RELEASE_HELPER) retry --surface crate --execute
 
-# Retry a failed npm release: delete old tags (local+remote), retag, push
-retry-jacsnpm:
-	@echo "Retrying npm release for v$(JACSNPM_VERSION)..."
-	-git tag -d npm/v$(JACSNPM_VERSION)
-	-git push origin --delete npm/v$(JACSNPM_VERSION)
-	git tag npm/v$(JACSNPM_VERSION)
-	git push origin npm/v$(JACSNPM_VERSION)
-	@echo "✓ Re-tagged npm/v$(JACSNPM_VERSION) - GitHub CI will retry npm publish"
+plan-retry-jacspy: check-versions
+	@$(RELEASE_HELPER) retry --surface pypi
 
-# Retry a failed CLI release: delete old tags (local+remote), retag, push
-retry-cli:
-	@echo "Retrying CLI release for v$(JACS_VERSION)..."
-	-git tag -d cli/v$(JACS_VERSION)
-	-git push origin --delete cli/v$(JACS_VERSION)
-	git tag cli/v$(JACS_VERSION)
-	git push origin cli/v$(JACS_VERSION)
-	@echo "✓ Re-tagged cli/v$(JACS_VERSION) - GitHub CI will retry CLI binary release"
+retry-jacspy: check-versions
+	@$(RELEASE_HELPER) retry --surface pypi --execute
 
-# Smart retry: check each registry and only retry releases that haven't published yet.
-# Checks crates.io, PyPI, npm, and GitHub Releases for the current version.
-retry-everything:
-	@echo "Checking which releases need retrying for v$(JACS_VERSION)..."
-	@echo ""
-	@NEED_RETRY=""; \
-	if curl -sf "https://crates.io/api/v1/crates/jacs/$(JACS_VERSION)" > /dev/null 2>&1; then \
-		echo "  crates.io  jacs $(JACS_VERSION) — already published, skipping"; \
-	else \
-		echo "  crates.io  jacs $(JACS_VERSION) — NOT found, will retry"; \
-		NEED_RETRY="$$NEED_RETRY crate"; \
-	fi; \
-	if curl -sf "https://pypi.org/pypi/jacs/$(JACSPY_VERSION)/json" > /dev/null 2>&1; then \
-		echo "  PyPI       jacs $(JACSPY_VERSION) — already published, skipping"; \
-	else \
-		echo "  PyPI       jacs $(JACSPY_VERSION) — NOT found, will retry"; \
-		NEED_RETRY="$$NEED_RETRY pypi"; \
-	fi; \
-	if npm view "@hai.ai/jacs@$(JACSNPM_VERSION)" version > /dev/null 2>&1; then \
-		echo "  npm        @hai.ai/jacs $(JACSNPM_VERSION) — already published, skipping"; \
-	else \
-		echo "  npm        @hai.ai/jacs $(JACSNPM_VERSION) — NOT found, will retry"; \
-		NEED_RETRY="$$NEED_RETRY npm"; \
-	fi; \
-	if gh release view "cli/v$(JACS_VERSION)" --repo HumanAssisted/JACS > /dev/null 2>&1; then \
-		echo "  CLI        cli/v$(JACS_VERSION) — release exists, skipping"; \
-	else \
-		echo "  CLI        cli/v$(JACS_VERSION) — NOT found, will retry"; \
-		NEED_RETRY="$$NEED_RETRY cli"; \
-	fi; \
-	echo ""; \
-	if [ -z "$$NEED_RETRY" ]; then \
-		echo "✓ All releases already published for v$(JACS_VERSION). Nothing to retry."; \
-	else \
-		echo "Retrying:$$NEED_RETRY"; \
-		echo ""; \
-		for target in $$NEED_RETRY; do \
-			case $$target in \
-				crate) \
-					echo "--- Retrying crates.io ---"; \
-					git tag -d crate/v$(JACS_VERSION) 2>/dev/null || true; \
-					git push origin --delete crate/v$(JACS_VERSION) 2>/dev/null || true; \
-					git tag crate/v$(JACS_VERSION); \
-					git push origin crate/v$(JACS_VERSION); \
-					echo "✓ Re-tagged crate/v$(JACS_VERSION)"; \
-					;; \
-				pypi) \
-					echo "--- Retrying PyPI ---"; \
-					git tag -d pypi/v$(JACSPY_VERSION) 2>/dev/null || true; \
-					git push origin --delete pypi/v$(JACSPY_VERSION) 2>/dev/null || true; \
-					git tag pypi/v$(JACSPY_VERSION); \
-					git push origin pypi/v$(JACSPY_VERSION); \
-					echo "✓ Re-tagged pypi/v$(JACSPY_VERSION)"; \
-					;; \
-				npm) \
-					echo "--- Retrying npm ---"; \
-					git tag -d npm/v$(JACSNPM_VERSION) 2>/dev/null || true; \
-					git push origin --delete npm/v$(JACSNPM_VERSION) 2>/dev/null || true; \
-					git tag npm/v$(JACSNPM_VERSION); \
-					git push origin npm/v$(JACSNPM_VERSION); \
-					echo "✓ Re-tagged npm/v$(JACSNPM_VERSION)"; \
-					;; \
-				cli) \
-					echo "--- Retrying CLI ---"; \
-					git tag -d cli/v$(JACS_VERSION) 2>/dev/null || true; \
-					git push origin --delete cli/v$(JACS_VERSION) 2>/dev/null || true; \
-					git tag cli/v$(JACS_VERSION); \
-					git push origin cli/v$(JACS_VERSION); \
-					echo "✓ Re-tagged cli/v$(JACS_VERSION)"; \
-					;; \
-			esac; \
-		done; \
-		echo ""; \
-		echo "✓ Retry tags pushed. GitHub CI will handle publishing."; \
-	fi
+plan-retry-jacsnpm: check-versions
+	@$(RELEASE_HELPER) retry --surface npm
+
+retry-jacsnpm: check-versions
+	@$(RELEASE_HELPER) retry --surface npm --execute
+
+plan-retry-jacs-wasm: check-versions
+	@$(RELEASE_HELPER) retry --surface wasm
+
+retry-jacs-wasm: check-versions
+	@$(RELEASE_HELPER) retry --surface wasm --execute
+
+plan-retry-cli: check-versions
+	@$(RELEASE_HELPER) retry --surface cli
+
+retry-cli: check-versions
+	@$(RELEASE_HELPER) retry --surface cli --execute
+
+plan-retry-jacsgo: check-versions
+	@$(RELEASE_HELPER) retry --surface jacsgo
+
+retry-jacsgo: check-versions
+	@$(RELEASE_HELPER) retry --surface jacsgo --execute
+
+# Smart retry treats only an authoritative registry/API 404 as absent. It
+# checks all six Rust crates and cryptographically verifies the exact CLI/Go
+# asset inventory and provenance before classifying those releases complete.
+plan-retry-everything: check-versions
+	@$(RELEASE_HELPER) retry-everything
+
+retry-everything: check-versions
+	@$(RELEASE_HELPER) retry-everything --execute
 
 # ============================================================================
 # HELP
@@ -690,6 +677,10 @@ help:
 	@echo "VERSION INFO:"
 	@echo "  make versions        Show all detected versions from source files"
 	@echo "  make check-versions  Verify all package versions match"
+	@echo "  make third-party-notices  Regenerate Cargo dependency notices and crate copies"
+	@echo "  make check-third-party-notices  Fail if Cargo dependency notices are stale"
+	@echo "  make check-release-matrix  Validate checked-in shipped-artifact evidence"
+	@echo "  make verify-shipped-release  Require public Rust/CLI/Python/Node/WASM parity"
 	@echo ""
 	@echo "BUILD:"
 	@echo "  make build-jacs      Build and install Rust CLI"
@@ -746,18 +737,22 @@ help:
 	@echo "  make release-jacspy  Tag pypi/v<version> -> triggers PyPI release"
 	@echo "  make release-jacsnpm Tag npm/v<version> -> triggers npm release"
 	@echo "  make release-cli     Tag cli/v<version> -> triggers CLI binary release"
-	@echo "  make release-everything  Verify versions match, then release crates/PyPI/npm + CLI + storage crates"
-	@echo "  make release-delete-tags  Delete release tags (for fixing failed releases)"
-	@echo "  make retry-jacs      Retry failed crates.io release (delete tags, retag, push)"
-	@echo "  make retry-jacspy    Retry failed PyPI release (delete tags, retag, push)"
-	@echo "  make retry-jacsnpm   Retry failed npm release (delete tags, retag, push)"
-	@echo "  make retry-cli       Retry failed CLI release (delete tags, retag, push)"
-	@echo "  make retry-everything  Smart retry: check registries, only retry unpublished"
+	@echo "  make plan-release-everything  Read-only local/remote plan for every release tag"
+	@echo "  make release-everything  Release crates/PyPI/Node/WASM/Go + CLI + storage crates"
+	@echo "  make release-delete-tags  DESTRUCTIVE maintenance only; never needed for retry"
+	@echo "  make plan-retry-<surface>  Read-only retry plan with exact original tag identity"
+	@echo "  make retry-jacs      Re-push the exact original crates.io release tag"
+	@echo "  make retry-jacspy    Re-push the exact original PyPI release tag"
+	@echo "  make retry-jacsnpm   Re-push the exact original npm release tag"
+	@echo "  make retry-jacs-wasm Re-push the exact original WASM release tag"
+	@echo "  make retry-cli       Re-push the exact original CLI release tag"
+	@echo "  make retry-jacsgo    Re-push the exact original Go release tag"
+	@echo "  make plan-retry-everything  Read-only exact-version registry/provenance plan"
+	@echo "  make retry-everything  Fail-closed smart retry for authoritatively absent releases"
 	@echo ""
 	@echo "Required GitHub Secrets:"
-	@echo "  CRATES_IO_TOKEN  - for crate/v* tags"
-	@echo "  PYPI_API_TOKEN   - for pypi/v* tags"
-	@echo "  NPM_TOKEN        - for npm/v* tags"
+	@echo "  CRATES_IO_TOKEN  - migration fallback until crates.io OIDC is enabled"
+	@echo "  crates.io, PyPI and npm prefer OIDC trusted publishers (see RELEASING.md)"
 
 # ============================================================================
 # DISK MAINTENANCE — Rust target/ + cargo cache hygiene

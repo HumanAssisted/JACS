@@ -14,18 +14,35 @@ const sinon = require('sinon');
 const { JACSA2AIntegration, JACS_EXTENSION_URI, TRUST_POLICIES } = require('../src/a2a');
 const { jacsA2AMiddleware, buildWellKnownDocuments } = require('../src/a2a-server');
 const { discoverAgent, discoverAndAssess, hasJacsExtension } = require('../src/a2a-discovery');
+const {
+  configureNativeGenerator,
+  configureNativeAssessor,
+  configureCanonicalArtifactVerifier,
+  configureNativeArtifactSigner,
+} = require('./helpers/a2a-bound');
 
 /**
  * Create a mock JacsClient with optional trust store entries.
  */
 function createMockClient(overrides = {}) {
   const trustedAgents = overrides.trustedAgents || [];
+  const agentId = overrides.agentId || 'jacs-agent-1';
+  const agent = {
+    signRequest: sinon.stub(),
+    signArtifactSync: sinon.stub(),
+    verifyResponse: sinon.stub().returns(true),
+  };
+  configureNativeGenerator(agent, {
+    agentId,
+    name: overrides.name || 'JACS Test Agent',
+    skills: overrides.skills || [{ id: 'sign', name: 'Sign', description: 'Sign documents', tags: ['crypto'] }],
+  });
+  configureNativeAssessor(agent, { trustedAgentIds: trustedAgents });
+  configureCanonicalArtifactVerifier(agent, { trustedAgentIds: trustedAgents });
+  configureNativeArtifactSigner(agent, { agentId });
   return {
-    _agent: {
-      signRequest: sinon.stub().callsFake((doc) => ({ ...doc, jacsSignature: { agentID: overrides.agentId || 'jacs-agent-1', agentVersion: '1' } })),
-      verifyResponse: sinon.stub().returns(true),
-    },
-    agentId: overrides.agentId || 'jacs-agent-1',
+    _agent: agent,
+    agentId,
     name: overrides.name || 'JACS Test Agent',
     isTrusted: sinon.stub().callsFake((id) => trustedAgents.includes(id)),
     trustAgent: sinon.stub().returns('ok'),
@@ -219,7 +236,9 @@ describe('A2A Ecosystem Interop - [2.5.2]', function () {
   // -----------------------------------------------------------------------
   describe('JACS agent discovers another JACS agent', () => {
     it('should assess a JACS agent as jacs_registered', async () => {
-      const result = await discoverAndAssess(`http://localhost:${jacsA2AServer.port}`);
+      const result = await discoverAndAssess(`http://localhost:${jacsA2AServer.port}`, {
+        client: createMockClient(),
+      });
 
       expect(result.card.name).to.include('JACS');
       expect(result.jacsRegistered).to.be.true;
@@ -228,13 +247,14 @@ describe('A2A Ecosystem Interop - [2.5.2]', function () {
 
     it('should allow a JACS agent under verified policy', async () => {
       const client = createMockClient();
-      const integration = new JACSA2AIntegration(client, TRUST_POLICIES.VERIFIED);
-      const card = await discoverAgent(`http://localhost:${jacsA2AServer.port}`);
-      const assessment = integration.assessRemoteAgent(card);
+      const result = await discoverAndAssess(`http://localhost:${jacsA2AServer.port}`, {
+        client,
+        policy: TRUST_POLICIES.VERIFIED,
+      });
 
-      expect(assessment.allowed).to.be.true;
-      expect(assessment.jacsRegistered).to.be.true;
-      expect(assessment.trustLevel).to.equal('jacs_registered');
+      expect(result.allowed).to.be.true;
+      expect(result.jacsRegistered).to.be.true;
+      expect(result.trustLevel).to.equal('jacs_registered');
     });
   });
 
@@ -261,7 +281,12 @@ describe('A2A Ecosystem Interop - [2.5.2]', function () {
       expect(signed.jacsSignature.agentID).to.equal('agent-alpha');
 
       // Agent B verifies the artifact from Agent A
-      const result = await integrationB.verifyWrappedArtifact(signed);
+      const cardA = JSON.parse(JSON.stringify(integrationA.exportAgentCard({
+        jacsId: 'agent-alpha',
+        jacsName: 'Agent Alpha',
+        jacsDescription: 'JACS Agent Alpha',
+      })));
+      const result = await integrationB.verifyWrappedArtifact(signed, cardA);
 
       expect(result.valid).to.be.true;
       expect(result.signerId).to.equal('agent-alpha');

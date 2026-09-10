@@ -3,13 +3,17 @@ mod support;
 use std::path::PathBuf;
 
 use jacs::storage::jenv::get_env_var;
-use support::{ENV_LOCK, ScopedEnvVar, TEST_PASSWORD, cleanup_workspace, prepare_temp_workspace};
+use support::{
+    ENV_LOCK, LEGACY_SIGNATURE_CONTENT_ENV_VAR, ScopedEnvVar, TEST_PASSWORD, cleanup_workspace,
+    prepare_temp_workspace,
+};
 
 #[test]
 fn config_path_loader_resolves_relative_directories_from_config_location() -> anyhow::Result<()> {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let (config_path, workspace) = prepare_temp_workspace();
     let _password = ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    let _legacy_fixture = ScopedEnvVar::set(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true");
 
     let (agent, info) = jacs_mcp::load_agent_from_config_path_with_info(&config_path)?;
     let _ = agent.get_agent_json()?;
@@ -34,6 +38,7 @@ fn env_loader_resolves_relative_directories_from_jacs_config() -> anyhow::Result
     let _env_guard = ENV_LOCK.lock().unwrap();
     let (config_path, workspace) = prepare_temp_workspace();
     let _password = ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    let _legacy_fixture = ScopedEnvVar::set(LEGACY_SIGNATURE_CONTENT_ENV_VAR, "true");
     let _config = ScopedEnvVar::set("JACS_CONFIG", &config_path);
 
     let agent = jacs_mcp::load_agent_from_config_env()?;

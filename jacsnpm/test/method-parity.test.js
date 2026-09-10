@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { expect } = require('chai');
 
 const FIXTURE_PATH = path.resolve(
@@ -26,6 +27,9 @@ const EXCLUDED_FROM_NODE = new Set([
   'from_agent',
   // load_with_info is an internal Rust helper; Node uses load() directly
   'load_with_info',
+  // Gated on the `a2a` cargo feature, which the default Node build does not
+  // enable (jacsnpm default features are attestation + agreements).
+  'export_a2a_agent_card_json',
 ]);
 
 // Rust snake_case method name -> Node camelCase method name mapping.
@@ -45,15 +49,31 @@ const NODE_NAME_MAP = {
   'verify_self': 'verifySelf',
   'verify_json': 'verify',
   'verify_with_key_json': 'verifyWithKey',
+  'verify_human_approved_document_json': 'verifyHumanApprovedDocument',
   'verify_by_id_json': 'verifyById',
   'sign_message_json': 'signMessage',
   'sign_raw_bytes_base64': 'signRawBytes',
   'sign_file_json': 'signFile',
+  'build_auth_header': 'buildAuthHeader',
+  'build_request_auth_header': 'buildRequestAuthHeader',
+  'canonicalize_json': 'canonicalizeJson',
+  'sign_response': 'signResponse',
+  'encode_verify_payload': 'encodeVerifyPayload',
+  'decode_verify_payload': 'decodeVerifyPayload',
+  'extract_document_id': 'extractDocumentId',
+  'prepare_signed_event_replay_json': 'prepareSignedEventReplay',
+  'unwrap_signed_event': 'unwrapSignedEvent',
   'to_yaml': 'toYaml',
   'from_yaml': 'fromYaml',
   'to_html': 'toHtml',
   'from_html': 'fromHtml',
   'rotate_keys': 'rotateKeys',
+  // ES256 compatibility key + exports (P2 Tasks 002 / 003 / 004 / 004b).
+  'add_compat_key_json': 'addCompatKey',
+  'issue_compat_binding_json': 'issueCompatBinding',
+  'export_compatibility_jwks_json': 'exportCompatibilityJwks',
+  'export_compatibility_key_binding_json': 'exportCompatibilityKeyBinding',
+  'export_ap2_mandate_json': 'exportAp2Mandate',
   'export_w3c_did': 'exportW3cDid',
   'export_w3c_did_document_json': 'exportW3cDidDocument',
   'export_w3c_agent_description_json': 'exportW3cAgentDescription',
@@ -76,10 +96,13 @@ const NODE_NAME_MAP = {
   'detect_agreement_v2_branch_conflict_json': 'detectAgreementV2BranchConflict',
   'merge_agreement_v2_transcript_branches_json': 'mergeAgreementV2TranscriptBranches',
   'resolve_agreement_v2_branch_conflict_json': 'resolveAgreementV2BranchConflict',
+  'export_agreement_v2_as_vc_json': 'exportAgreementV2AsVc',
 };
 
 // Static methods (on the class itself, not on instances)
-const STATIC_METHODS = new Set(['create', 'load', 'ephemeral', 'createWithParams']);
+const STATIC_METHODS = new Set([
+  'create', 'load', 'ephemeral', 'createWithParams', 'verifyHumanApprovedDocument',
+]);
 
 describe('Node.js method enumeration parity', function () {
   let fixture;
@@ -108,16 +131,21 @@ describe('Node.js method enumeration parity', function () {
     }
   });
 
-  function parityMethods() {
+  function parityMethods(builtOnly = false) {
     const methods = [...fixture.all_methods_flat];
-    for (const gated of Object.values(fixture.feature_gated_methods || {})) {
+    for (const [feature, gated] of Object.entries(fixture.feature_gated_methods || {})) {
+      // This backend is opt-in while portable release packaging is pending.
+      // The explicit feature gate must fail if the build loses its method.
+      if (builtOnly && feature === 'human-approval'
+        && process.env.JACS_TEST_HUMAN_APPROVAL !== '1'
+        && typeof JacsSimpleAgent.verifyHumanApprovedDocument !== 'function') continue;
       methods.push(...gated);
     }
     return methods;
   }
 
   it('all non-excluded methods from fixture exist on JacsSimpleAgent', function () {
-    const allMethods = parityMethods();
+    const allMethods = parityMethods(true);
     const missing = [];
 
     for (const rustName of allMethods) {
@@ -143,6 +171,50 @@ describe('Node.js method enumeration parity', function () {
     }
 
     expect(missing, `Missing methods:\n${missing.join('\n')}`).to.be.empty;
+  });
+
+  it('public simple protocol helpers perform a strict roundtrip', function () {
+    const legacy = agent.buildAuthHeader();
+    expect(legacy).to.match(/^JACS /);
+    const body = '{"include_test":false}';
+    const header = agent.buildRequestAuthHeader(
+      'POST',
+      'https://hai.ai/api/v1/agents/hello',
+      body,
+      'hai.ai'
+    );
+    expect(header).to.match(/^JACS v2\./);
+
+    const envelope = agent.signResponse('{"type":"connected"}');
+    const parsed = JSON.parse(envelope);
+    const signerId = parsed.jacsSignature.agentID;
+    const verified = JSON.parse(agent.unwrapSignedEvent(
+      envelope,
+      JSON.stringify({ [signerId]: agent.getPublicKeyPem() })
+    ));
+    expect(verified.verified).to.equal(true);
+    expect(verified.data.type).to.equal('connected');
+  });
+
+  it('request auth hashes exact Buffer and Uint8Array body bytes', function () {
+    const backing = new Uint8Array([0xaa, 0x10, 0x00, 0xff, 0x20, 0xbb]);
+    const bodies = [
+      Buffer.from([0x00, 0xff, 0x62, 0x00, 0x79]),
+      new Uint8Array([0x80, 0x00, 0xfe, 0x7f]),
+      backing.subarray(1, 5),
+    ];
+    for (const body of bodies) {
+      const header = agent.buildRequestAuthHeader(
+        'POST',
+        'https://hai.ai/api/v1/jobs',
+        body,
+        'hai.ai',
+      );
+      const claimsSegment = header.slice('JACS v2.'.length).split('.', 1)[0];
+      const claims = JSON.parse(Buffer.from(claimsSegment, 'base64url').toString('utf8'));
+      const expected = crypto.createHash('sha256').update(body).digest('base64');
+      expect(claims.contentDigest).to.equal(`sha-256=:${expected}:`);
+    }
   });
 
   it('exclusions are all valid fixture methods', function () {

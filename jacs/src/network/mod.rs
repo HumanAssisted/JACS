@@ -152,7 +152,7 @@ impl NetworkKVStore {
                     match result {
                         libp2p::kad::QueryResult::GetRecord(Ok(GetRecordOk { records, .. })) => {
                             if let Some(record_entry) = records.first() {
-                                let doc: Document = serde_json::from_slice(&record_entry.record.value)?;
+                                let doc: Document = jacs_core::strict_json::deserialize_strict_json_slice(&record_entry.record.value)?;
                                 return Ok(doc);
                             }
                         }

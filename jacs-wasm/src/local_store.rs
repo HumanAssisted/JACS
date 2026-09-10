@@ -144,7 +144,7 @@ pub fn validate_no_plaintext_secrets(payload: &str) -> Result<(), LocalStoreErro
     // logic: a caller who serializes an object containing a `password`,
     // `passphrase`, or `secret` field surfaces the error before anything
     // touches localStorage.
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload)
+    if let Ok(value) = jacs_core::strict_json::parse_strict_json(payload)
         && let Some(found) = find_credential_key(&value)
     {
         return Err(LocalStoreError::RefusedPayload(format!(
@@ -250,9 +250,13 @@ const MAX_RAW_KEY_BASE64_LEN: usize = 88;
 /// lighter `validate_no_plaintext_secrets` check because signed
 /// documents do not carry key material.
 pub fn validate_encrypted_material_shape(payload: &str) -> Result<(), LocalStoreError> {
-    let value: serde_json::Value = serde_json::from_str(payload).map_err(|e| {
-        LocalStoreError::RefusedPayload(format!("expected JSON-shaped AgentMaterial blob: {}", e))
-    })?;
+    let value: serde_json::Value =
+        jacs_core::strict_json::parse_strict_json(payload).map_err(|e| {
+            LocalStoreError::RefusedPayload(format!(
+                "expected JSON-shaped AgentMaterial blob: {}",
+                e
+            ))
+        })?;
     let obj = value.as_object().ok_or_else(|| {
         LocalStoreError::RefusedPayload(
             "expected JSON object (AgentMaterial); got non-object".into(),

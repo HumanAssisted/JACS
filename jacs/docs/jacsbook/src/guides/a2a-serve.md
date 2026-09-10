@@ -1,5 +1,7 @@
 # Serve Your Agent Card
 
+{{#include ../_snippets/node-registry-status.md}}
+
 Make your JACS agent discoverable by other A2A agents.
 
 > **Prerequisites:** `pip install jacs[a2a-server]` (Python) or `npm install @hai.ai/jacs express` (Node.js).
@@ -61,11 +63,25 @@ Your agent is now discoverable at `http://localhost:8080/.well-known/agent-card.
 
 ## What Gets Served
 
-All five `.well-known` endpoints are served automatically:
+The native generator serves six `.well-known` endpoints automatically:
 
 {{#include ../_snippets/a2a-well-known-docs.md}}
 
 The Agent Card includes the `urn:jacs:provenance-v1` extension in `capabilities.extensions`, signaling to other JACS agents that your agent supports cryptographic provenance.
+
+The card and JWKS reuse the persisted ES256 compatibility key across calls and
+restarts. The card references
+`/.well-known/jacs-compat-binding.json` by both fixed path and content hash;
+strict verification checks that native-root-signed artifact before treating the
+card as the explicitly trusted JACS identity. Existing pre-compatibility agents
+must run `jacs agent add-compat-key` once before serving. Local loopback trust
+tests additionally require `JACS_ALLOW_PRIVATE_JWKS=true`; private-address JWKS
+fetching is otherwise denied.
+
+Strict verifiers accept a compatibility binding for at most seven days after
+its signed `issuedAt`, with five minutes of future clock skew. Generating the
+well-known set refreshes an authentic binding after six days under the shared
+issuance lock, preserving its scopes and any explicit `expiresAt`.
 
 ## Next Steps
 

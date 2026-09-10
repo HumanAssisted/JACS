@@ -1,5 +1,5 @@
 use crate::config::{LogConfig, LogDestination};
-use std::io;
+use std::io::{self, IsTerminal};
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initialize logging with a simple, sensible default configuration.
@@ -45,7 +45,11 @@ pub fn init_logging() {
     // Try to initialize; if a subscriber already exists, this is a no-op
     let _ = Registry::default()
         .with(filter)
-        .with(fmt::layer().with_writer(io::stderr))
+        .with(
+            fmt::layer()
+                .with_writer(io::stderr)
+                .with_ansi(io::stderr().is_terminal()),
+        )
         .try_init();
 }
 
@@ -105,7 +109,11 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
         LogDestination::Stderr => {
             let _ = Registry::default()
                 .with(filter)
-                .with(fmt::layer().with_writer(io::stderr))
+                .with(
+                    fmt::layer()
+                        .with_writer(io::stderr)
+                        .with_ansi(io::stderr().is_terminal()),
+                )
                 .try_init();
             Ok(None)
         }
@@ -134,7 +142,11 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
 
                 Registry::default()
                     .with(filter)
-                    .with(fmt::layer().with_writer(io::stderr)) // Also log to stderr for debugging
+                    .with(
+                        fmt::layer()
+                            .with_writer(io::stderr)
+                            .with_ansi(io::stderr().is_terminal()),
+                    ) // Also log to stderr for debugging
                     .with(otel_layer)
                     .try_init()
                     .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;

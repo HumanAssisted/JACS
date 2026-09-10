@@ -37,7 +37,10 @@ Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may a
 
 ### Algorithm detection failed
 
-Set the `signingAlgorithm` field in your config, or pass it explicitly to `quickstart(...)` / `create(...)`. Valid values: `pq2025`, `ring-Ed25519`.
+Set `jacs_agent_key_algorithm` in the config, or pass the algorithm explicitly
+to `quickstart(...)` / `create(...)`. User-facing values are `pq2025` and
+`ed25519`; the legacy input alias and canonical Ed25519 wire label are
+`ring-Ed25519`.
 
 ## Runtime Issues
 
@@ -70,7 +73,7 @@ cd jacspy && maturin develop --release
 cd jacsnpm && npm run build
 ```
 
-Requires Rust 1.93+ (install via [rustup](https://rustup.rs/)).
+Requires Rust 1.97+ (install via [rustup](https://rustup.rs/)).
 
 ## Getting Help
 

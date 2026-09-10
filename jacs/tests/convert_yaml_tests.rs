@@ -164,8 +164,8 @@ fn yaml_round_trip_golden_fixtures() {
 /// the signature on the reconstituted document.
 #[test]
 fn yaml_round_trip_preserves_verification() {
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("should create ephemeral agent");
+    let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("should create grandfathered Ed25519 fixture");
     let signed = agent
         .sign_message(&serde_json::json!({"fixture_test": true, "round_trip": "yaml"}))
         .expect("sign should succeed");

@@ -722,27 +722,18 @@ impl FileLoader for Agent {
     fn make_key_directory_path(&self, filename: &str) -> Result<String, JacsError> {
         // Path validated to prevent traversal from untrusted input.
         require_relative_path_safe(filename).map_err::<JacsError, _>(|e| e.to_string().into())?;
-        // Fail if config or specific directory is missing
-        let mut key_dir = self
-            .config
-            .as_ref()
+        // Reuse the authenticated, config-relative path installed on Agent.
+        let key_dir = self
+            .key_paths()
             .ok_or_else(|| {
                 format!(
-                    "make_key_directory_path failed for '{}': Agent config is missing. \
-                    Ensure the agent is initialized with a valid configuration.",
+                    "make_key_directory_path failed for '{}': Agent key paths are missing. \
+                    Ensure the agent is initialized with a verified configuration.",
                     filename
                 )
             })?
-            .jacs_key_directory()
-            .as_deref()
-            .ok_or_else(|| {
-                format!(
-                    "make_key_directory_path failed for '{}': 'jacs_key_directory' not found in config. \
-                    Add this field to your jacs.config.json or set JACS_KEY_DIRECTORY environment variable.",
-                    filename
-                )
-            })?;
-        key_dir = key_dir.strip_prefix("./").unwrap_or(key_dir);
+            .key_directory
+            .as_str();
 
         // When the key directory is absolute and falls within the storage root,
         // strip the root prefix so the storage backend does not double it.
@@ -932,24 +923,14 @@ fn resolve_keys_base_url() -> String {
         .unwrap_or_else(|_| "https://hai.ai".to_string())
 }
 
-/// Returns true if `url` satisfies the remote-key-fetch transport policy:
-/// HTTPS is required, except plain-HTTP is permitted only for explicit
-/// loopback hosts (localhost / 127.0.0.1) to support local testing.
-/// Used both for the initial base URL and for every redirect hop so a
-/// redirect cannot move the request to an off-policy host/scheme.
-#[cfg(not(target_arch = "wasm32"))]
+/// Test helper for the centralized secure-fetch transport policy.
+#[cfg(all(not(target_arch = "wasm32"), test))]
 fn is_key_url_in_policy(url_str: &str) -> bool {
-    let Ok(u) = reqwest::Url::parse(url_str) else {
+    let Ok(url) = reqwest::Url::parse(url_str) else {
         return false;
     };
-    match u.scheme() {
-        "https" => true,
-        "http" => matches!(
-            u.host_str(),
-            Some("localhost") | Some("127.0.0.1") | Some("[::1]")
-        ),
-        _ => false,
-    }
+    let allow_loopback = crate::secure_fetch::is_exact_textual_loopback_endpoint(url_str);
+    crate::secure_fetch::validate_transport_url(&url, allow_loopback, "remote key service").is_ok()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -960,36 +941,6 @@ fn build_remote_key_lookup_url(base_url: &str, agent_id: &str, version: &str) ->
         agent_id,
         version
     )
-}
-
-/// Reads at most `max_bytes` from `reader`, returning an error if the source
-/// has more than `max_bytes` available. Pure helper so the cap is unit-testable
-/// without a live network.
-#[cfg(not(target_arch = "wasm32"))]
-fn read_body_capped<R: std::io::Read>(
-    mut reader: R,
-    max_bytes: usize,
-) -> Result<Vec<u8>, JacsError> {
-    use std::io::Read;
-
-    // Read up to max_bytes + 1 so we can detect overflow.
-    let mut buf = Vec::new();
-    let read = std::io::Read::by_ref(&mut reader)
-        .take((max_bytes as u64) + 1)
-        .read_to_end(&mut buf)
-        .map_err(|e| {
-            JacsError::NetworkError(format!(
-                "Failed to read remote key service response body: {}",
-                e
-            ))
-        })?;
-    if read > max_bytes {
-        return Err(JacsError::NetworkError(format!(
-            "Remote key service response exceeded maximum allowed size of {} bytes",
-            max_bytes
-        )));
-    }
-    Ok(buf)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1019,14 +970,20 @@ pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKe
     // Get base URL from environment or use default.
     let base_url = resolve_keys_base_url();
 
-    // Enforce HTTPS for security (prevent MITM on key fetch)
-    if !is_key_url_in_policy(&base_url) {
-        return Err(JacsError::ConfigError(format!(
-            "JACS_KEYS_BASE_URL must use HTTPS (got '{}'). \
-            Only localhost URLs are allowed over HTTP for testing.",
-            base_url
-        )));
-    }
+    let parsed_base = reqwest::Url::parse(&base_url)
+        .map_err(|e| JacsError::ConfigError(format!("Invalid JACS_KEYS_BASE_URL: {}", e)))?;
+    let allow_loopback = crate::secure_fetch::is_exact_textual_loopback_endpoint(&base_url);
+    crate::secure_fetch::validate_transport_url(
+        &parsed_base,
+        allow_loopback,
+        "remote key service",
+    )
+    .map_err(|_| {
+        JacsError::ConfigError(
+            "JACS_KEYS_BASE_URL must use HTTPS. Only an exact textual loopback endpoint is allowed over HTTP for testing, and credentials/fragments are forbidden."
+                .to_string(),
+        )
+    })?;
 
     let url = build_remote_key_lookup_url(&base_url, agent_id, version);
 
@@ -1037,20 +994,13 @@ pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKe
         agent_id, version
     );
 
-    // Build blocking HTTP client with 30 second timeout
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.previous().len() >= MAX_REMOTE_KEY_REDIRECTS {
-                attempt.stop()
-            } else if is_key_url_in_policy(attempt.url().as_str()) {
-                attempt.follow()
-            } else {
-                attempt.stop()
-            }
-        }))
-        .build()
-        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
+    let fetch_policy = crate::secure_fetch::SecureFetchPolicy::new(
+        "remote key service",
+        MAX_REMOTE_KEY_RESPONSE_BYTES,
+        &["application/json"],
+    )
+    .max_redirects(MAX_REMOTE_KEY_REDIRECTS)
+    .allow_exact_loopback(allow_loopback);
 
     // Retry loop with exponential backoff
     let mut last_error: JacsError =
@@ -1060,7 +1010,7 @@ pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKe
         // Rate limit outgoing requests to avoid overwhelming the key service
         remote_key_rate_limiter().acquire();
 
-        match fetch_public_key_attempt(&client, &url, agent_id, version) {
+        match fetch_public_key_attempt(&url, agent_id, version, &fetch_policy) {
             Ok(result) => return Ok(result),
             Err(err) => {
                 // Don't retry on 404 - the key doesn't exist
@@ -1105,6 +1055,7 @@ fn is_retryable_error(err: &JacsError) -> bool {
     matches!(err, JacsError::NetworkError(msg) if
         msg.contains("timed out") ||
         msg.contains("connect") ||
+        msg.contains("DNS resolution") ||
         msg.contains("HTTP request") ||
         msg.contains("error status 5") // Retry on 5xx server errors
     )
@@ -1113,34 +1064,15 @@ fn is_retryable_error(err: &JacsError) -> bool {
 /// Single attempt to fetch a public key from the remote key service.
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_public_key_attempt(
-    client: &reqwest::blocking::Client,
     url: &str,
     agent_id: &str,
     version: &str,
+    policy: &crate::secure_fetch::SecureFetchPolicy,
 ) -> Result<PublicKeyInfo, JacsError> {
-    // Make request to remote keys API
-    let response = client
-        .get(url)
-        .header("Accept", "application/json")
-        .send()
-        .map_err(|e| {
-            if e.is_timeout() {
-                JacsError::NetworkError(format!(
-                    "Request to remote key service timed out after 30 seconds: {}",
-                    url
-                ))
-            } else if e.is_connect() {
-                JacsError::NetworkError(format!(
-                    "Failed to connect to remote key service at {}: {}",
-                    url, e
-                ))
-            } else {
-                JacsError::NetworkError(format!("HTTP request to remote key service failed: {}", e))
-            }
-        })?;
+    let response = crate::secure_fetch::secure_get(url, "application/json", policy)?;
 
     // Handle response status
-    let status = response.status();
+    let status = response.status;
     if status == reqwest::StatusCode::NOT_FOUND {
         return Err(JacsError::KeyNotFound {
             path: format!(
@@ -1157,23 +1089,15 @@ fn fetch_public_key_attempt(
         )));
     }
 
-    if let Some(len) = response.content_length()
-        && len > MAX_REMOTE_KEY_RESPONSE_BYTES as u64
-    {
-        return Err(JacsError::NetworkError(format!(
-            "Remote key service response exceeded maximum allowed size of {} bytes",
-            MAX_REMOTE_KEY_RESPONSE_BYTES
-        )));
-    }
-
     // Parse JSON response
-    let body = read_body_capped(response, MAX_REMOTE_KEY_RESPONSE_BYTES)?;
-    let api_response: RemoteKeysApiResponse = serde_json::from_slice(&body).map_err(|e| {
-        JacsError::NetworkError(format!(
-            "Failed to parse remote key service response as JSON: {}",
-            e
-        ))
-    })?;
+    let body = response.body;
+    let api_response: RemoteKeysApiResponse =
+        jacs_core::strict_json::deserialize_strict_json_slice(&body).map_err(|e| {
+            JacsError::NetworkError(format!(
+                "Failed to parse remote key service response as JSON: {}",
+                e
+            ))
+        })?;
 
     // Decode public key - supports both PEM and Base64 formats
     let public_key = decode_public_key(&api_response.public_key)?;
@@ -1344,6 +1268,14 @@ CDEF
         }
 
         #[test]
+        fn test_is_retryable_error_retries_dns_failures() {
+            let err = JacsError::NetworkError(
+                "DNS resolution for 'keys.example' failed: name not found".to_string(),
+            );
+            assert!(is_retryable_error(&err));
+        }
+
+        #[test]
         fn test_is_retryable_error_not_retryable_key_not_found() {
             let err = JacsError::KeyNotFound {
                 path: "test".to_string(),
@@ -1441,14 +1373,18 @@ CDEF
 
         #[test]
         fn test_read_body_capped_reads_small_body() {
-            let result =
-                read_body_capped(std::io::Cursor::new(b"small body".to_vec()), 64).unwrap();
+            let result = crate::secure_fetch::read_body_capped(
+                std::io::Cursor::new(b"small body".to_vec()),
+                64,
+            )
+            .unwrap();
             assert_eq!(result, b"small body".to_vec());
         }
 
         #[test]
         fn test_read_body_capped_rejects_oversized() {
-            let result = read_body_capped(std::io::Cursor::new(vec![0u8; 100]), 64);
+            let result =
+                crate::secure_fetch::read_body_capped(std::io::Cursor::new(vec![0u8; 100]), 64);
 
             assert!(result.is_err());
             match result.unwrap_err() {
@@ -1466,7 +1402,9 @@ CDEF
         #[test]
         fn test_read_body_capped_allows_exact_cap() {
             let body = vec![0u8; 64];
-            let result = read_body_capped(std::io::Cursor::new(body.clone()), 64).unwrap();
+            let result =
+                crate::secure_fetch::read_body_capped(std::io::Cursor::new(body.clone()), 64)
+                    .unwrap();
             assert_eq!(result, body);
         }
 

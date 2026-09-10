@@ -1,6 +1,27 @@
 {
   "_description": "Shared agreement v2 behavioral parity fixture. Binding, CLI, MCP, and WASM tests inject runtime agent ids into this scenario so every surface exercises the same workflow data.",
+  "_verification_profiles": "nativeVerify describes the legacy native wrapper/CLI inspection report; CLI exits 1 because its overall valid verdict is fail-closed. coverageReport describes the existing exact-byte inspection used by the public WASM handle and compiled MCP handler; the MCP result envelope keeps top-level valid false, but the public MCP Agreement workflow is currently unavailable under its privileged-profile fence. verify retains historical lower-level portable verifier metadata, not the public WASM handle contract. No mathematical success in any profile is an authorization or human-approval verdict.",
   "expected": {
+    "coverageReport": {
+      "profile": "jacs-agreement-v2-coverage-report-v1",
+      "cryptographicResult": "valid",
+      "overallScope": "consent_signatures_only",
+      "roleBinding": "not_authenticated_by_v2_party_proof",
+      "quorumBinding": "not_authenticated_by_v2_party_proof",
+      "lineageBinding": "not_authenticated_by_v2_party_proof",
+      "notaryBinding": "not_authenticated_by_v2_party_proof"
+    },
+    "nativeVerify": {
+      "valid": false,
+      "mathematicalChecksValid": true,
+      "policyAccepted": false,
+      "overallScope": "consent_signatures_only",
+      "status": "final",
+      "expectedStatus": "final",
+      "signerCount": 1,
+      "witnessCount": 0,
+      "notaryCount": 0
+    },
     "verify": {
       "valid": true,
       "status": "final",
@@ -36,7 +57,7 @@
       "partyQuorum": "all",
       "witnessRequired": 0,
       "notaryRequired": 0,
-      "requiredAlgorithms": ["ring-Ed25519"],
+      "requiredAlgorithms": ["ring-Ed25519", "pq2025"],
       "minimumStrength": "classical"
     }
   },

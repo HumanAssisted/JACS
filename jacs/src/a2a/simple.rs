@@ -4,7 +4,6 @@
 //! operations. They were previously methods on `SimpleAgent` and were moved
 //! here as part of Phase 5 (narrow contract).
 
-use crate::agent::boilerplate::BoilerPlate;
 use crate::error::JacsError;
 use crate::simple::SimpleAgent;
 use serde_json::Value;
@@ -26,51 +25,42 @@ pub fn export_agent_card(agent: &SimpleAgent) -> Result<crate::a2a::AgentCard, J
 
 /// Generate .well-known documents for A2A discovery.
 ///
-/// Creates all well-known endpoint documents including the signed Agent Card,
-/// JWKS, JACS descriptor, public key document, and extension descriptor.
+/// Creates the signed Agent Card, ES256 compatibility JWKS, the
+/// native-root-signed compatibility binding, JACS descriptor, public key
+/// document, and extension descriptor. The identity tuple is persisted and is
+/// stable across calls and restarts.
+///
+/// `a2a_algorithm` is retained for source compatibility. Omit it or pass
+/// `ES256`. The former `ring-Ed25519` choice is rejected because it minted an
+/// unrelated ephemeral key and could not prove the card's claimed identity.
 ///
 /// Returns a vector of (path, JSON value) tuples suitable for serving.
 pub fn generate_well_known_documents(
     agent: &SimpleAgent,
     a2a_algorithm: Option<&str>,
 ) -> Result<Vec<(String, Value)>, JacsError> {
-    let agent_card = export_agent_card(agent)?;
+    if let Some(requested) = a2a_algorithm
+        && !requested.eq_ignore_ascii_case("ES256")
+    {
+        return Err(JacsError::ValidationError(format!(
+            "A2A well-known discovery uses the persisted compatibility key and fixed ES256 \
+             algorithm; obsolete or unsupported explicit choice '{requested}' is rejected"
+        )));
+    }
 
-    let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
-    let dual_keys = crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
-        JacsError::Internal {
-            message: format!("Failed to generate A2A keys: {}", e),
-        }
-    })?;
-
-    let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),
     })?;
+    let key_directory = inner
+        .key_paths()
+        .ok_or(JacsError::AgentNotLoaded)?
+        .key_directory
+        .clone();
 
-    let agent_id = inner.get_id().map_err(|e| JacsError::Internal {
-        message: format!("Failed to get agent ID: {}", e),
-    })?;
-
-    let jws = crate::a2a::extension::sign_agent_card_jws(
-        &agent_card,
-        &dual_keys.a2a_private_key,
-        &dual_keys.a2a_algorithm,
-        &agent_id,
-    )
-    .map_err(|e| JacsError::Internal {
-        message: format!("Failed to sign Agent Card: {}", e),
-    })?;
-
-    crate::a2a::extension::generate_well_known_documents(
-        &inner,
-        &agent_card,
-        &dual_keys.a2a_public_key,
-        &dual_keys.a2a_algorithm,
-        &jws,
-    )
-    .map_err(|e| JacsError::Internal {
-        message: format!("Failed to generate well-known documents: {}", e),
-    })
+    crate::a2a::extension::generate_bound_well_known_documents(&mut inner, &key_directory, None)
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to generate well-known documents: {}", e),
+        })
 }
 
 /// Wrap an A2A artifact with JACS provenance signature.
@@ -100,15 +90,17 @@ pub fn wrap_artifact(
     }
 
     let artifact: Value =
-        serde_json::from_str(artifact_json).map_err(|e| JacsError::DocumentMalformed {
-            field: "artifact_json".to_string(),
-            reason: format!("Invalid JSON: {}", e),
+        jacs_core::strict_json::parse_strict_json(artifact_json).map_err(|e| {
+            JacsError::DocumentMalformed {
+                field: "artifact_json".to_string(),
+                reason: format!("Invalid JSON: {}", e),
+            }
         })?;
 
     let parent_signatures: Option<Vec<Value>> = match parent_signatures_json {
         Some(json_str) => {
-            let parsed: Vec<Value> =
-                serde_json::from_str(json_str).map_err(|e| JacsError::DocumentMalformed {
+            let parsed: Vec<Value> = jacs_core::strict_json::deserialize_strict_json(json_str)
+                .map_err(|e| JacsError::DocumentMalformed {
                     field: "parent_signatures_json".to_string(),
                     reason: format!("Invalid JSON array: {}", e),
                 })?;
@@ -160,11 +152,12 @@ pub fn sign_artifact(
 /// * `agent` - The SimpleAgent to use for verification
 /// * `wrapped_json` - JSON string of the wrapped artifact to verify
 pub fn verify_artifact(agent: &SimpleAgent, wrapped_json: &str) -> Result<String, JacsError> {
-    let wrapped: Value =
-        serde_json::from_str(wrapped_json).map_err(|e| JacsError::DocumentMalformed {
+    let wrapped: Value = jacs_core::strict_json::parse_strict_json(wrapped_json).map_err(|e| {
+        JacsError::DocumentMalformed {
             field: "wrapped_json".to_string(),
             reason: format!("Invalid JSON: {}", e),
-        })?;
+        }
+    })?;
 
     let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),

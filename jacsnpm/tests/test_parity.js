@@ -79,6 +79,38 @@ function assertValidBase64(str, label) {
   assert.ok(buf.length > 0, `${label} should decode to non-empty bytes`);
 }
 
+describe('Parity: RFC 8785 canonicalization', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+  let agent;
+
+  before(() => {
+    agent = createEphemeral('ed25519');
+  });
+
+  for (const vector of (fixtures ? fixtures.canonicalization_vectors : [])) {
+    it(`matches official vector "${vector.name}"`, () => {
+      const actual = agent.canonicalizeJson(JSON.stringify(vector.data));
+      assert.strictEqual(actual, vector.expected, `RFC 8785 drift for ${vector.name}`);
+    });
+  }
+
+  for (const vector of (fixtures ? fixtures.canonicalization_rejections : [])) {
+    it(`rejects "${vector.name}"`, () => {
+      assert.throws(
+        () => agent.canonicalizeJson(vector.input),
+        new RegExp(vector.message_pattern, 'i'),
+      );
+    });
+  }
+
+  for (const vector of (fixtures ? fixtures.canonicalization_equivalences : [])) {
+    it(`preserves expected binary64 equivalence "${vector.name}"`, () => {
+      for (const input of vector.inputs) {
+        assert.strictEqual(agent.canonicalizeJson(input), vector.expected);
+      }
+    });
+  }
+});
+
 // =============================================================================
 // 1. Structural parity: signed documents have required fields
 // =============================================================================
@@ -340,6 +372,42 @@ for (const algo of ALGORITHMS) {
   });
 }
 
+describe('Parity: generic response-v2 verification', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+  it('accepts a valid bound response and redacts tampered payload or metadata', () => {
+    const contract = fixtures.response_v2_generic_verification;
+    const agent = createEphemeral(contract.algorithm);
+    const keyB64 = agent.getPublicKeyBase64();
+    const signed = agent.signResponse(JSON.stringify(contract.payload));
+    const envelope = JSON.parse(signed);
+
+    assert.strictEqual(
+      envelope.jacsSignature.signatureContentVersion,
+      contract.signature_content_version,
+    );
+    const verified = JSON.parse(agent.verifyWithKey(signed, keyB64));
+    assert.strictEqual(verified.valid, true);
+    assert.deepStrictEqual(verified.data, contract.payload);
+    assert.ok(verified.signer_id, 'valid response must include authenticated signer provenance');
+
+    for (const tamper of contract.tamper_cases) {
+      const attacked = structuredClone(envelope);
+      const parts = tamper.pointer.replace(/^\//, '').split('/');
+      let target = attacked;
+      for (const part of parts.slice(0, -1)) {
+        target = target[part];
+      }
+      target[parts.at(-1)] = tamper.replacement;
+
+      const rejected = JSON.parse(agent.verifyWithKey(JSON.stringify(attacked), keyB64));
+      assert.strictEqual(rejected.valid, contract.invalid_result.valid, tamper.name);
+      assert.strictEqual(rejected.data, contract.invalid_result.data, tamper.name);
+      assert.strictEqual(rejected.signer_id, contract.invalid_result.signer_id, tamper.name);
+      assert.strictEqual(rejected.timestamp, contract.invalid_result.timestamp, tamper.name);
+      assert.ok(rejected.errors.length > 0, `${tamper.name} must explain the failure`);
+    }
+  });
+});
+
 // =============================================================================
 // 7. Sign file parity
 // =============================================================================
@@ -413,6 +481,45 @@ for (const algo of ALGORITHMS) {
 // =============================================================================
 
 describe('Parity: cross-algorithm structure consistency', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+  for (const [requested, expected, publicKeySize] of [
+    ['ed25519', 'ring-Ed25519', 32],
+    ['ring-Ed25519', 'ring-Ed25519', 32],
+    ['pq2025', 'pq2025', 2592],
+  ]) {
+    it(`${requested} config, key, diagnostics, and signature algorithm agree`, () => {
+      const directory = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-node-algorithm-parity-')),
+      );
+      try {
+        const keyDirectory = path.join(directory, 'jacs_keys');
+        const configPath = path.join(directory, 'jacs.config.json');
+        const agent = JacsSimpleAgent.createWithParams(JSON.stringify({
+          name: `node-algorithm-${requested}`,
+          password: 'NodeAlgorithmParity!2026',
+          algorithm: requested,
+          data_directory: path.join(directory, 'jacs_data'),
+          key_directory: keyDirectory,
+          config_path: configPath,
+        }));
+        const diagnostics = JSON.parse(agent.diagnostics());
+        const publicKey = Buffer.from(agent.getPublicKeyBase64(), 'base64');
+        const signed = JSON.parse(agent.signMessage(JSON.stringify({ algorithm: requested })));
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const configuredPublicKey = fs.readFileSync(
+          path.join(config.jacs_key_directory, config.jacs_agent_public_key_filename),
+        );
+
+        assert.equal(diagnostics.key_algorithm, expected);
+        assert.equal(config.jacs_agent_key_algorithm, expected);
+        assert.equal(publicKey.length, publicKeySize);
+        assert.equal(configuredPublicKey.length, publicKeySize);
+        assert.equal(signed.jacsSignature.signingAlgorithm, expected);
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
   it('ed25519 and pq2025 signed documents have same jacsSignature field names', () => {
     const edAgent = createEphemeral('ed25519');
     const pqAgent = createEphemeral('pq2025');

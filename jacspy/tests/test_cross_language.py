@@ -22,6 +22,7 @@ import json
 import os
 import pathlib
 import tempfile
+from importlib.metadata import version as package_version
 import pytest
 
 pytest.importorskip("jacs")
@@ -44,13 +45,18 @@ FIXTURES_DIR = (
 
 # Algorithms that the Rust fixture generator creates
 ALGORITHMS = ["ed25519", "pq2025", "ed25519_curve"]
-PYTHON_FIXTURES = ["python_ed25519", "python_pq2025"]
+PYTHON_FIXTURES = [
+    "python_ed25519",
+    "python_pq2025",
+    "python_ed25519_curve",
+]
 UPDATE_FIXTURES = os.environ.get("UPDATE_CROSS_LANG_FIXTURES", "").lower() in {
     "1",
     "true",
     "yes",
 }
 IAT_SKEW_ENV_VAR = "JACS_MAX_IAT_SKEW_SECONDS"
+ALLOW_LEGACY_ENV_VAR = "JACS_ALLOW_LEGACY_SIGNATURE_CONTENT"
 
 
 def _fixture_exists(prefix: str) -> bool:
@@ -67,6 +73,11 @@ def _read_fixture(prefix: str) -> tuple:
     signed = (FIXTURES_DIR / f"{prefix}_signed.json").read_text()
     metadata = json.loads((FIXTURES_DIR / f"{prefix}_metadata.json").read_text())
     return signed, metadata
+
+
+def _is_legacy_v1(signed_json: str) -> bool:
+    signature = json.loads(signed_json).get("jacsSignature", {})
+    return "signatureContentVersion" not in signature
 
 
 def _build_standalone_key_cache(cache_dir: pathlib.Path, prefixes: list[str]) -> None:
@@ -100,8 +111,9 @@ def standalone_cache_dir():
 
 @pytest.fixture(scope="module", autouse=True)
 def disable_iat_skew_for_committed_fixtures():
-    """Committed cross-language fixtures are snapshots; disable iat skew checks."""
+    """Pin snapshot policy and keep legacy verification deny-by-default."""
     previous = os.environ.get(IAT_SKEW_ENV_VAR)
+    previous_legacy = os.environ.pop(ALLOW_LEGACY_ENV_VAR, None)
     os.environ[IAT_SKEW_ENV_VAR] = "0"
     try:
         yield
@@ -110,6 +122,8 @@ def disable_iat_skew_for_committed_fixtures():
             os.environ.pop(IAT_SKEW_ENV_VAR, None)
         else:
             os.environ[IAT_SKEW_ENV_VAR] = previous
+        if previous_legacy is not None:
+            os.environ[ALLOW_LEGACY_ENV_VAR] = previous_legacy
 
 
 # ---------------------------------------------------------------------------
@@ -121,8 +135,8 @@ def disable_iat_skew_for_committed_fixtures():
 class TestCrossLanguageVerifyStandalone:
     """Verify Rust-signed fixtures with Python verify_standalone()."""
 
-    def test_verify_fixture_valid(self, algo, standalone_cache_dir):
-        """Rust-signed fixture should verify successfully via Python."""
+    def test_verify_fixture_uses_secure_default(self, algo, standalone_cache_dir):
+        """V2 verifies normally; legacy v1 is denied without explicit opt-in."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
 
@@ -136,14 +150,42 @@ class TestCrossLanguageVerifyStandalone:
         )
 
         assert isinstance(result, VerificationResult)
-        assert result.valid is True, (
-            f"Cross-language verification failed for {algo}: "
-            f"signer_id={result.signer_id}, errors={result.errors}"
-        )
-        assert result.signer_id == metadata["agent_id"]
+        if _is_legacy_v1(signed_json):
+            assert result.valid is False
+            assert result.signer_id == ""
+        else:
+            assert result.valid is True, (
+                f"Cross-language verification failed for {algo}: "
+                f"signer_id={result.signer_id}, errors={result.errors}"
+            )
+            assert result.signer_id == metadata["agent_id"]
 
-    def test_verify_fixture_extracts_signer_id(self, algo, standalone_cache_dir):
-        """verify_standalone() should extract signer_id from the fixture even if verification fails."""
+    def test_legacy_fixture_requires_explicit_compatibility(
+        self, algo, standalone_cache_dir, monkeypatch
+    ):
+        """Explicit compatibility verifies payload but never returns v1 metadata."""
+        if not _fixture_exists(algo):
+            pytest.skip(f"Fixture {algo} not generated yet")
+        signed_json, _metadata = _read_fixture(algo)
+        if not _is_legacy_v1(signed_json):
+            pytest.skip(f"Fixture {algo} is already v2")
+
+        monkeypatch.setenv(ALLOW_LEGACY_ENV_VAR, "true")
+        result = simple.verify_standalone(
+            signed_json,
+            key_resolution="local",
+            data_directory=str(standalone_cache_dir),
+            key_directory=str(standalone_cache_dir),
+        )
+
+        assert result.valid is True
+        assert result.signer_id == ""
+        assert result.timestamp == ""
+
+    def test_verify_fixture_metadata_is_only_returned_for_v2(
+        self, algo, standalone_cache_dir
+    ):
+        """Unauthenticated v1 metadata is never returned as trusted output."""
         if not _fixture_exists(algo):
             pytest.skip(f"Fixture {algo} not generated yet")
 
@@ -157,7 +199,10 @@ class TestCrossLanguageVerifyStandalone:
         )
 
         assert isinstance(result, VerificationResult)
-        assert result.signer_id == metadata["agent_id"]
+        if _is_legacy_v1(signed_json):
+            assert result.signer_id == ""
+        else:
+            assert result.signer_id == metadata["agent_id"]
 
     def test_fixture_metadata_consistency(self, algo):
         """Metadata and signed document should agree on agent_id and algorithm."""
@@ -217,16 +262,18 @@ class TestCrossLanguageVerifyStandalone:
 # Countersigning tests
 # ---------------------------------------------------------------------------
 
-# The countersign algorithm is deliberately different from the fixture algo.
+# Produce a Python fixture for the algorithm named by each prefix. The
+# `ed25519_curve` alias intentionally resolves to the canonical Ed25519 wire
+# algorithm; the pq2025 fixture must contain an actual PQ key and signature.
 COUNTERSIGN_ALGO = {
-    "ed25519": "ring-Ed25519",
-    "pq2025": "ring-Ed25519",
-    "ed25519_curve": "ring-Ed25519",
+    "ed25519": "ed25519",
+    "pq2025": "pq2025",
+    "ed25519_curve": "ed25519",
 }
 
 
 class TestCrossLanguageCountersign:
-    """Sign the same payload with a Python agent (different algo) and export."""
+    """Sign the same payload with a truthfully labelled Python agent and export."""
 
     @pytest.mark.parametrize("algo", ALGORITHMS)
     def test_countersign_and_export(self, algo, tmp_path, standalone_cache_dir):
@@ -245,6 +292,24 @@ class TestCrossLanguageCountersign:
                 )
 
             countersigned_json, cs_metadata = _read_fixture(out_prefix)
+            countersigned_doc = json.loads(countersigned_json)
+            expected_requested = COUNTERSIGN_ALGO[algo]
+            expected_wire = (
+                "pq2025" if expected_requested == "pq2025" else "ring-Ed25519"
+            )
+            assert cs_metadata["algorithm"] == expected_requested
+            assert cs_metadata["signing_algorithm"] == expected_wire
+            assert (
+                countersigned_doc["jacsSignature"]["signingAlgorithm"]
+                == expected_wire
+            )
+            public_key_size = (
+                out_dir / f"{out_prefix}_public_key.pem"
+            ).stat().st_size
+            if expected_wire == "pq2025":
+                assert public_key_size == 2592
+            else:
+                assert public_key_size < 512
             result = simple.verify_standalone(
                 countersigned_json,
                 key_resolution="local",
@@ -252,8 +317,28 @@ class TestCrossLanguageCountersign:
                 key_directory=str(standalone_cache_dir),
             )
             assert isinstance(result, VerificationResult)
-            assert result.valid is True
-            assert result.signer_id == cs_metadata["agent_id"]
+            if _is_legacy_v1(countersigned_json):
+                assert result.valid is False
+                previous_legacy = os.environ.get(ALLOW_LEGACY_ENV_VAR)
+                os.environ[ALLOW_LEGACY_ENV_VAR] = "true"
+                try:
+                    result = simple.verify_standalone(
+                        countersigned_json,
+                        key_resolution="local",
+                        data_directory=str(standalone_cache_dir),
+                        key_directory=str(standalone_cache_dir),
+                    )
+                finally:
+                    if previous_legacy is None:
+                        os.environ.pop(ALLOW_LEGACY_ENV_VAR, None)
+                    else:
+                        os.environ[ALLOW_LEGACY_ENV_VAR] = previous_legacy
+                assert result.valid is True
+                assert result.signer_id == ""
+                assert result.timestamp == ""
+            else:
+                assert result.valid is True
+                assert result.signer_id == cs_metadata["agent_id"]
             return
 
         signed_json, metadata = _read_fixture(algo)
@@ -262,7 +347,7 @@ class TestCrossLanguageCountersign:
 
         # Create a Python agent in a temp dir and sign the same payload
         password = "CrossLang!Test#99"
-        countersign_algo = COUNTERSIGN_ALGO.get(algo, "ring-Ed25519")
+        countersign_algo = COUNTERSIGN_ALGO.get(algo, "ed25519")
 
         original_cwd = os.getcwd()
         prev_pw = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
@@ -317,7 +402,7 @@ class TestCrossLanguageCountersign:
             "timestamp": countersigned.signed_at,
             "public_key_hash": cs_hash,
             "generated_by": "python",
-            "jacs_version": "0.8.0",
+            "jacs_version": package_version("jacs"),
             "original_fixture": algo,
         }
         (out_dir / f"{out_prefix}_metadata.json").write_text(

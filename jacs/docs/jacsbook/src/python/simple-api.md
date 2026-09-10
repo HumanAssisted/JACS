@@ -17,7 +17,7 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}
-Pass `algorithm="ring-Ed25519"` to override the default (`pq2025`).
+Pass `algorithm="ed25519"` to override the default (`pq2025`).
 
 To load an existing agent explicitly, use `load()` instead:
 
@@ -47,7 +47,7 @@ Create a persistent agent with keys on disk. If `./jacs.config.json` already exi
 - `name` (str, required): Agent name used for first-time creation.
 - `domain` (str, required): Agent domain used for DNS/public-key verification workflows.
 - `description` (str, optional): Human-readable description.
-- `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Supported choices: `"ring-Ed25519"`, `"pq2025"`.
+- `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. User-facing choices: `"ed25519"`, `"pq2025"`; `"ring-Ed25519"` is accepted as a legacy alias.
 - `config_path` (str, optional): Config path (default: `"./jacs.config.json"`).
 
 **Returns:** `AgentInfo` dataclass
@@ -63,7 +63,7 @@ print(f"Private key: {info.private_key_path}")
 info = jacs.quickstart(
     name="my-agent",
     domain="my-agent.example.com",
-    algorithm="ring-Ed25519",
+    algorithm="ed25519",
 )
 ```
 
@@ -213,6 +213,55 @@ Verify a signed document **without** loading an agent. Use when you only need to
 **Parameters:** `document` (str|dict), `key_resolution` (str), `data_directory` (str, optional), `key_directory` (str, optional)
 
 **Returns:** `VerificationResult`
+
+---
+
+### HTTP protocol helpers (`SimpleAgent` instances)
+
+The module-level API focuses on durable documents. Request-bound HTTP auth and
+signed event helpers live on the instance-based native `SimpleAgent`:
+
+```python
+import json
+from jacs import SimpleAgent
+
+agent, _ = SimpleAgent.ephemeral(algorithm="ed25519")
+body = '{"action":"approve"}'
+authorization = agent.build_request_auth_header(
+    "POST",
+    "https://api.example.com/v1/jobs?mode=strict",
+    body,
+    "jobs-api",
+)
+
+envelope = agent.sign_response(json.dumps({"decision": "allow"}))
+signer_id = json.loads(envelope)["jacsSignature"]["agentID"]
+keys = json.dumps({signer_id: agent.get_public_key_pem()})
+verified = json.loads(agent.unwrap_signed_event(envelope, keys))
+assert authorization.startswith("JACS v2.")
+assert verified["verified"] is True
+assert verified["data"]["decision"] == "allow"
+```
+
+- `build_request_auth_header(method, url, body="", audience="hai.ai")` binds the
+  normalized method, absolute URL including query, exact UTF-8 body bytes,
+  audience, signer/key, issue time, and nonce. Serialize the final request body
+  before calling it and transmit that string unchanged.
+- `sign_response(payload_json)` returns a `2.0.0` envelope whose
+  `jacs-response-v2` signature covers payload and all metadata.
+- `unwrap_signed_event(event_json, server_keys_json)` returns JSON containing
+  verified `data`, `signerId`, `timestamp`, `algorithm`, and `documentId`.
+  Plain/unsigned input, legacy payload-only envelopes, unknown signers, and any
+  mutation raise; it never successfully returns `verified: false`.
+
+`server_keys_json` is a map from signer ID to a pinned base64 key or PEM string.
+It represents the application's configured trust decision. Cryptographic
+success proves possession of that key, not a real-world identity by itself.
+
+Legacy no-argument `build_auth_header()` remains available for compatibility
+and emits a WARN. Migrate both peers to v2; strict deployments can reject the
+legacy method with `JACS_REJECT_UNBOUND_AUTH_HEADER=true`. See
+[Security](../advanced/security.md#request-bound-http-authorization).
 
 ---
 

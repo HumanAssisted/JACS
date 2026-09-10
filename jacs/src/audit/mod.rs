@@ -62,6 +62,32 @@ impl Default for AuditOptions {
     }
 }
 
+#[derive(Debug, Clone)]
+struct AuditPaths {
+    data_directory: std::path::PathBuf,
+    key_directory: std::path::PathBuf,
+}
+
+impl AuditPaths {
+    fn resolve(config: &Config, options: &AuditOptions) -> Result<Self, JacsError> {
+        let data_directory = options
+            .data_directory
+            .as_deref()
+            .or_else(|| config.jacs_data_directory().as_deref())
+            .unwrap_or("./jacs_data");
+        let key_directory = options
+            .key_directory
+            .as_deref()
+            .or_else(|| config.jacs_key_directory().as_deref())
+            .unwrap_or("./jacs_keys");
+
+        Ok(Self {
+            data_directory: config.resolve_config_relative_path(data_directory)?,
+            key_directory: config.resolve_config_relative_path(key_directory)?,
+        })
+    }
+}
+
 /// Category of audit risk for grouping in the report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -205,19 +231,45 @@ pub fn audit(options: AuditOptions) -> Result<AuditResult, JacsError> {
         }
     };
 
+    if let Err(error) = crate::agent::Agent::verify_existing_config_before_use(&config) {
+        result.risks.push(AuditRisk {
+            category: RiskCategory::Config,
+            severity: RiskSeverity::High,
+            message: format!(
+                "Config integrity verification failed before audit path checks: {}",
+                error
+            ),
+            details: None,
+        });
+        result.health_checks.push(ComponentHealth::new(
+            "config",
+            HealthStatus::Unhealthy,
+            "Config integrity verification failed",
+        ));
+        build_summary_and_status(&mut result);
+        result.duration_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .and_then(|t| t.checked_sub(std::time::Duration::from_secs(checked_at)))
+            .map(|d| d.as_millis() as u64);
+        return Ok(result);
+    }
+
+    let paths = AuditPaths::resolve(&config, &options)?;
+
     // Run checks in order (Phase 2+ will populate these)
-    check_config_and_directories(&config, &options, &mut result);
-    check_secrets_and_keys(&config, &mut result);
+    check_config_and_directories(&paths, &mut result);
+    check_secrets_and_keys(&config, &paths, &mut result);
     check_trust_store(&mut result);
-    check_storage(&config, &mut result);
-    check_quarantine_and_failed(&config, &mut result);
+    check_storage(&config, &paths, &mut result);
+    check_quarantine_and_failed(&paths, &mut result);
 
     let n = options
         .recent_verify_count
         .unwrap_or(DEFAULT_RECENT_VERIFY_COUNT)
         .min(MAX_RECENT_VERIFY_COUNT);
     if n > 0 {
-        reverify_recent_documents(&config, n, &mut result);
+        reverify_recent_documents(&config, &paths, n, &mut result);
     } else {
         result.health_checks.push(
             ComponentHealth::new(
@@ -278,29 +330,18 @@ fn build_summary_and_status(result: &mut AuditResult) {
 }
 
 /// Check config and directories; push health and risks.
-fn check_config_and_directories(config: &Config, options: &AuditOptions, result: &mut AuditResult) {
-    let data_dir = options
-        .data_directory
-        .as_deref()
-        .or_else(|| config.jacs_data_directory().as_deref())
-        .unwrap_or("./jacs_data");
-    let key_dir = options
-        .key_directory
-        .as_deref()
-        .or_else(|| config.jacs_key_directory().as_deref())
-        .unwrap_or("./jacs_keys");
-
+fn check_config_and_directories(paths: &AuditPaths, result: &mut AuditResult) {
     let config_ok = true;
     let mut dirs_ok = true;
 
-    let data_path = std::path::Path::new(data_dir);
-    let key_path = std::path::Path::new(key_dir);
+    let data_path = &paths.data_directory;
+    let key_path = &paths.key_directory;
 
     if !data_path.exists() {
         result.risks.push(AuditRisk {
             category: RiskCategory::Directories,
             severity: RiskSeverity::High,
-            message: format!("Data directory does not exist: {}", data_dir),
+            message: format!("Data directory does not exist: {}", data_path.display()),
             details: None,
         });
         dirs_ok = false;
@@ -308,7 +349,7 @@ fn check_config_and_directories(config: &Config, options: &AuditOptions, result:
         result.risks.push(AuditRisk {
             category: RiskCategory::Directories,
             severity: RiskSeverity::High,
-            message: format!("Data path is not a directory: {}", data_dir),
+            message: format!("Data path is not a directory: {}", data_path.display()),
             details: None,
         });
         dirs_ok = false;
@@ -318,7 +359,7 @@ fn check_config_and_directories(config: &Config, options: &AuditOptions, result:
         result.risks.push(AuditRisk {
             category: RiskCategory::Directories,
             severity: RiskSeverity::High,
-            message: format!("Key directory does not exist: {}", key_dir),
+            message: format!("Key directory does not exist: {}", key_path.display()),
             details: None,
         });
         dirs_ok = false;
@@ -326,7 +367,7 @@ fn check_config_and_directories(config: &Config, options: &AuditOptions, result:
         result.risks.push(AuditRisk {
             category: RiskCategory::Directories,
             severity: RiskSeverity::High,
-            message: format!("Key path is not a directory: {}", key_dir),
+            message: format!("Key path is not a directory: {}", key_path.display()),
             details: None,
         });
         dirs_ok = false;
@@ -348,8 +389,14 @@ fn check_config_and_directories(config: &Config, options: &AuditOptions, result:
         )
         .with_details({
             let mut d = HashMap::new();
-            d.insert("data_directory".to_string(), data_dir.to_string());
-            d.insert("key_directory".to_string(), key_dir.to_string());
+            d.insert(
+                "data_directory".to_string(),
+                data_path.to_string_lossy().into_owned(),
+            );
+            d.insert(
+                "key_directory".to_string(),
+                key_path.to_string_lossy().into_owned(),
+            );
             d
         }),
     );
@@ -370,8 +417,14 @@ fn check_config_and_directories(config: &Config, options: &AuditOptions, result:
         )
         .with_details({
             let mut d = HashMap::new();
-            d.insert("data_directory".to_string(), data_dir.to_string());
-            d.insert("key_directory".to_string(), key_dir.to_string());
+            d.insert(
+                "data_directory".to_string(),
+                data_path.to_string_lossy().into_owned(),
+            );
+            d.insert(
+                "key_directory".to_string(),
+                key_path.to_string_lossy().into_owned(),
+            );
             d
         }),
     );
@@ -379,12 +432,8 @@ fn check_config_and_directories(config: &Config, options: &AuditOptions, result:
 
 /// Check secrets and keys (no password/key material read into result).
 /// Note: Password in config file is already warned at config load time; we do not read raw config here.
-fn check_secrets_and_keys(config: &Config, result: &mut AuditResult) {
-    let key_dir = config
-        .jacs_key_directory()
-        .as_deref()
-        .unwrap_or("./jacs_keys");
-    let key_path = std::path::Path::new(key_dir);
+fn check_secrets_and_keys(config: &Config, paths: &AuditPaths, result: &mut AuditResult) {
+    let key_path = &paths.key_directory;
     let priv_name = config
         .jacs_agent_private_key_filename()
         .as_deref()
@@ -446,7 +495,10 @@ fn check_secrets_and_keys(config: &Config, result: &mut AuditResult) {
         )
         .with_details({
             let mut d = HashMap::new();
-            d.insert("key_directory".to_string(), key_dir.to_string());
+            d.insert(
+                "key_directory".to_string(),
+                key_path.to_string_lossy().into_owned(),
+            );
             d
         }),
     );
@@ -553,12 +605,8 @@ fn check_trust_store(result: &mut AuditResult) {
 }
 
 /// Check storage and flag unexpected paths.
-fn check_storage(config: &Config, result: &mut AuditResult) {
+fn check_storage(config: &Config, paths: &AuditPaths, result: &mut AuditResult) {
     let storage_type = config.jacs_default_storage().as_deref().unwrap_or("fs");
-    let data_dir = config
-        .jacs_data_directory()
-        .as_deref()
-        .unwrap_or("./jacs_data");
 
     if storage_type != "fs" {
         result.health_checks.push(
@@ -576,7 +624,7 @@ fn check_storage(config: &Config, result: &mut AuditResult) {
         return;
     }
 
-    let data_path = std::path::Path::new(data_dir);
+    let data_path = &paths.data_directory;
     if !data_path.exists() || !data_path.is_dir() {
         result.health_checks.push(
             ComponentHealth::new(
@@ -587,7 +635,10 @@ fn check_storage(config: &Config, result: &mut AuditResult) {
             .with_details({
                 let mut d = HashMap::new();
                 d.insert("storage_type".to_string(), "fs".to_string());
-                d.insert("data_directory".to_string(), data_dir.to_string());
+                d.insert(
+                    "data_directory".to_string(),
+                    data_path.to_string_lossy().into_owned(),
+                );
                 d
             }),
         );
@@ -658,12 +709,8 @@ fn check_storage(config: &Config, result: &mut AuditResult) {
 }
 
 /// List quarantine and failed dirs if present.
-fn check_quarantine_and_failed(config: &Config, result: &mut AuditResult) {
-    let data_dir = config
-        .jacs_data_directory()
-        .as_deref()
-        .unwrap_or("./jacs_data");
-    let data_path = std::path::Path::new(data_dir);
+fn check_quarantine_and_failed(paths: &AuditPaths, result: &mut AuditResult) {
+    let data_path = &paths.data_directory;
 
     let quarantine_dir = data_path.join(QUARANTINE_SUBDIR);
     let failed_dir = data_path.join(FAILED_SUBDIR);
@@ -727,7 +774,12 @@ fn check_quarantine_and_failed(config: &Config, result: &mut AuditResult) {
 
 /// Re-verify up to N most recent documents (by list order).
 /// Uses a temporary config and SimpleAgent to run verification (same key resolution as runtime).
-fn reverify_recent_documents(config: &Config, n: u32, result: &mut AuditResult) {
+fn reverify_recent_documents(
+    config: &Config,
+    paths: &AuditPaths,
+    n: u32,
+    result: &mut AuditResult,
+) {
     let storage_type = config.jacs_default_storage().as_deref().unwrap_or("fs");
     if storage_type != "fs" {
         result.health_checks.push(
@@ -748,17 +800,9 @@ fn reverify_recent_documents(config: &Config, n: u32, result: &mut AuditResult) 
         return;
     }
 
-    let data_dir = config
-        .jacs_data_directory()
-        .as_deref()
-        .unwrap_or("./jacs_data");
-    let key_dir = config
-        .jacs_key_directory()
-        .as_deref()
-        .unwrap_or("./jacs_keys");
     let storage = match crate::storage::MultiStorage::_new(
         storage_type.to_string(),
-        std::path::PathBuf::from(data_dir),
+        paths.data_directory.clone(),
     ) {
         Ok(s) => s,
         Err(e) => {
@@ -837,8 +881,8 @@ fn reverify_recent_documents(config: &Config, n: u32, result: &mut AuditResult) 
         .join(",");
     let config_json = serde_json::json!({
         "jacs_use_security": "false",
-        "jacs_data_directory": data_dir,
-        "jacs_key_directory": key_dir,
+        "jacs_data_directory": paths.data_directory.to_string_lossy(),
+        "jacs_key_directory": paths.key_directory.to_string_lossy(),
         "jacs_agent_private_key_filename": "jacs.private.pem.enc",
         "jacs_agent_public_key_filename": "jacs.public.pem",
         "jacs_agent_key_algorithm": config.jacs_agent_key_algorithm().as_deref().unwrap_or("pq2025"),
@@ -1151,6 +1195,85 @@ mod tests {
         assert!(
             dir_risk || dir_unhealthy,
             "expected directory risk or unhealthy component"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env)]
+    fn audit_resolves_relative_directories_from_config_location() {
+        let root = tempfile::Builder::new()
+            .prefix("jacs-audit-config-path-")
+            .tempdir_in(
+                std::env::temp_dir()
+                    .canonicalize()
+                    .expect("canonical temp dir"),
+            )
+            .expect("temp root");
+        let project = root.path().join("project");
+        std::fs::create_dir_all(project.join("data")).expect("create data directory");
+        std::fs::create_dir_all(project.join("keys")).expect("create key directory");
+
+        let config = Config::builder()
+            .data_directory("data")
+            .key_directory("keys")
+            .private_key_filename("jacs.private.pem.enc")
+            .public_key_filename("jacs.public.pem")
+            .default_storage("fs")
+            .build();
+        let config_path = project.join("jacs.config.json");
+        std::fs::write(
+            &config_path,
+            serde_json::to_vec_pretty(&config).expect("serialize config"),
+        )
+        .expect("write config");
+
+        const ALLOW_UNSIGNED_CONFIG: &str = "JACS_ALLOW_UNSIGNED_AGENT_CONFIG";
+        let had_override = crate::storage::jenv::has_jenv_override(ALLOW_UNSIGNED_CONFIG);
+        let previous = if had_override {
+            crate::storage::jenv::get_env_var(ALLOW_UNSIGNED_CONFIG, false)
+                .expect("read prior migration override")
+        } else {
+            None
+        };
+        crate::storage::jenv::set_env_var(ALLOW_UNSIGNED_CONFIG, "true")
+            .expect("allow unsigned test config");
+
+        let audit_result = audit(AuditOptions {
+            config_path: Some(config_path.to_string_lossy().into_owned()),
+            recent_verify_count: Some(0),
+            ..AuditOptions::default()
+        });
+
+        if had_override {
+            if let Some(previous) = previous {
+                crate::storage::jenv::set_env_var(ALLOW_UNSIGNED_CONFIG, &previous)
+                    .expect("restore migration override");
+            } else {
+                crate::storage::jenv::clear_env_var(ALLOW_UNSIGNED_CONFIG)
+                    .expect("clear empty migration override");
+            }
+        } else {
+            crate::storage::jenv::clear_env_var(ALLOW_UNSIGNED_CONFIG)
+                .expect("clear migration override");
+        }
+
+        let result = audit_result.expect("audit config-relative project");
+
+        assert!(
+            !result
+                .risks
+                .iter()
+                .any(|risk| risk.category == RiskCategory::Directories),
+            "existing config-relative directories must not be reported missing: {:?}",
+            result.risks
+        );
+        assert!(
+            result.health_checks.iter().any(|check| {
+                check.name == "directories" && check.status == HealthStatus::Healthy
+            }),
+            "expected healthy config-relative directories: risks={:?}, health={:?}",
+            result.risks,
+            result.health_checks
         );
     }
 

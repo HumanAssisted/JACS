@@ -8,7 +8,10 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
-use jacs_wasm::{CoreAgentHandle, create_ephemeral, create_verifier};
+use jacs_wasm::{
+    CoreAgentHandle, create_ephemeral, create_verifier, import_encrypted_agent,
+    validate_encrypted_material_shape,
+};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -132,6 +135,48 @@ fn export_agent_returns_json_with_jacs_id() {
 }
 
 #[test]
+fn encrypted_export_import_round_trips_via_wasm_handle() {
+    let password = "native wasm-handle roundtrip password";
+    let original = create_ephemeral("ed25519").expect("create");
+    let original_public_key = original.get_public_key_base64().expect("public key");
+    let original_agent: Value =
+        serde_json::from_str(&original.export_agent().expect("public agent")).unwrap();
+
+    let material_json = original
+        .export_encrypted_agent(password.to_owned())
+        .expect("encrypted export");
+    validate_encrypted_material_shape(&material_json)
+        .expect("exported material is accepted by localStore");
+    let material: Value = serde_json::from_str(&material_json).expect("AgentMaterial JSON");
+    assert_eq!(material["algorithm"], Value::from("ed25519"));
+    assert!(
+        material["encrypted_private_key"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+
+    let restored = import_encrypted_agent(&material_json, password).expect("encrypted import");
+    assert_eq!(
+        restored.get_public_key_base64().expect("restored key"),
+        original_public_key
+    );
+    let restored_agent: Value =
+        serde_json::from_str(&restored.export_agent().expect("restored agent")).unwrap();
+    assert_eq!(restored_agent["jacsId"], original_agent["jacsId"]);
+
+    let signed = restored
+        .sign_message_json(r#"{"restored":true}"#)
+        .expect("restored signer works");
+    let outcome: Value = serde_json::from_str(
+        &restored
+            .verify_json(&signed)
+            .expect("restored verifier works"),
+    )
+    .unwrap();
+    assert_eq!(outcome["valid"], Value::Bool(true));
+}
+
+#[test]
 fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
     let handle = create_ephemeral("ed25519").expect("create");
     let agent_id = wasm_agent_id(&handle);
@@ -148,15 +193,18 @@ fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
         .verify_agreement_v2_json(&signed, &signers_json)
         .expect("verify agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
-    assert_eq!(report["valid"], wasm_expected()["verify"]["valid"]);
-    assert_eq!(report["status"], wasm_expected()["verify"]["status"]);
+    for (field, value) in wasm_expected()["coverageReport"]
+        .as_object()
+        .expect("public handle coverage expectations")
+    {
+        assert_eq!(&report[field], value, "coverage report field {field}");
+    }
+    assert!(report.get("valid").is_none());
+    assert_eq!(report["partyProofs"].as_array().unwrap().len(), 1);
+    assert_eq!(report["partyProofs"][0]["partyId"], json!(agent_id));
     assert_eq!(
-        report["signerCount"],
-        wasm_expected()["verify"]["signerCount"]
-    );
-    assert_eq!(
-        report["verificationDepth"],
-        wasm_expected()["verify"]["verificationDepth"]
+        report["partyProofs"][0]["cryptographicResult"],
+        json!("valid")
     );
 }
 
@@ -186,14 +234,19 @@ fn agreement_v2_forged_signature_is_rejected_and_not_counted() {
         .verify_agreement_v2_json(&forged.to_string(), &signers_json)
         .expect("verify forged agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
-    assert_eq!(report["valid"], Value::Bool(false));
-    assert_eq!(report["signerCount"], Value::from(0));
-    assert_eq!(report["signatures"][0]["agentID"], Value::String(agent_id));
+    assert_eq!(report["cryptographicResult"], json!("invalid"));
+    assert_eq!(report["partyProofs"][0]["partyId"], json!(agent_id));
     assert_eq!(
-        report["signatures"][0]["role"],
-        Value::String("signer".to_string())
+        report["partyProofs"][0]["cryptographicResult"],
+        json!("invalid")
     );
-    assert_eq!(report["signatures"][0]["valid"], Value::Bool(false));
+    assert_eq!(
+        report["roleBinding"],
+        json!("not_authenticated_by_v2_party_proof")
+    );
+    assert!(report.get("valid").is_none());
+    assert!(report.get("signerCount").is_none());
+    assert!(report["partyProofs"][0].get("role").is_none());
 }
 
 fn wasm_agent_id(handle: &CoreAgentHandle) -> String {
@@ -256,23 +309,33 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
     // SOURCE OF TRUTH for the expected camelCase js_name of each agreement v2
     // method. If the Rust source declares a *different* js_name (drift), the
     // test fails at the parsed-vs-expected check below.
-    let expected_js_names = [
-        ("create_agreement_v2_json", "createAgreementV2Json"),
-        ("apply_agreement_v2_json", "applyAgreementV2Json"),
-        ("sign_agreement_v2_json", "signAgreementV2Json"),
-        ("verify_agreement_v2_json", "verifyAgreementV2Json"),
+    //
+    // `None` = a deliberate NOT-ON-WASM decision: the fixture method is
+    // excluded from the browser surface, and the test enforces that it is
+    // NOT declared (an undocumented wasm exposure fails loud, and a new
+    // fixture method with no entry here still panics below).
+    let expected_js_names: [(&str, Option<&str>); 8] = [
+        ("create_agreement_v2_json", Some("createAgreementV2Json")),
+        ("apply_agreement_v2_json", Some("applyAgreementV2Json")),
+        ("sign_agreement_v2_json", Some("signAgreementV2Json")),
+        ("verify_agreement_v2_json", Some("verifyAgreementV2Json")),
         (
             "detect_agreement_v2_branch_conflict_json",
-            "detectAgreementV2BranchConflictJson",
+            Some("detectAgreementV2BranchConflictJson"),
         ),
         (
             "merge_agreement_v2_transcript_branches_json",
-            "mergeAgreementV2TranscriptBranchesJson",
+            Some("mergeAgreementV2TranscriptBranchesJson"),
         ),
         (
             "resolve_agreement_v2_branch_conflict_json",
-            "resolveAgreementV2BranchConflictJson",
+            Some("resolveAgreementV2BranchConflictJson"),
         ),
+        // P2 Task 004c exporter: signs with the ES256 ecosystem compatibility
+        // key, which lives in the ON-DISK keystore (jacs_keys/) gated by an
+        // on-disk PQ-root-signed binding — machinery browser builds do not
+        // have. Excluded from the wasm surface by decision, not omission.
+        ("export_agreement_v2_as_vc_json", None),
     ];
 
     // Parse src/agent_handle.rs into rust_fn_name -> js_name by scanning for
@@ -291,6 +354,17 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
             .unwrap_or_else(|| {
                 panic!("test mapping missing expected js_name for {rust_name}; update the test")
             });
+
+        let Some(expected) = expected else {
+            // Documented not-on-wasm exclusion: it must stay absent from the
+            // declared surface — exposing it requires updating this decision.
+            assert!(
+                !declared_js_names.contains_key(rust_name),
+                "{rust_name} is excluded from the wasm surface by decision, \
+                 but src/agent_handle.rs declares it; update the test mapping"
+            );
+            continue;
+        };
 
         let actual = declared_js_names.get(rust_name).unwrap_or_else(|| {
             panic!("src/agent_handle.rs has no #[wasm_bindgen(js_name = ...)] for {rust_name}")

@@ -1,25 +1,37 @@
 name: Go Bindings (jacsgo)
 
 on:
+  workflow_call:
   push:
     branches: ["main"]
     paths:
       - "jacsgo/**"
       - "jacs/**"
+      - "jacs-core/**"
+      - "jacs-media/**"
       - "binding-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/jacsgo.yml"
+      - ".github/workflows/release-jacsgo.yml"
+      - "scripts/check_native_crypto_linkage.py"
   pull_request:
     branches: ["main"]
     paths:
       - "jacsgo/**"
       - "jacs/**"
+      - "jacs-core/**"
+      - "jacs-media/**"
       - "binding-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/jacsgo.yml"
+      - ".github/workflows/release-jacsgo.yml"
+      - "scripts/check_native_crypto_linkage.py"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: go-${{ github.event.pull_request.number || github.ref }}
@@ -30,33 +42,54 @@ env:
 
 jobs:
   test-jacsgo:
-    name: Test jacsgo
+    name: Test jacsgo (${{ matrix.profile }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: slim
+            cargo_features: ""
+            go_test_tags: ""
+          - profile: public-proof
+            cargo_features: human-approval-vendored
+            go_test_tags: human_approval
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          toolchain: "1.93"
+          toolchain: "1.97"
 
       - name: Install libdbus (required by keyring crate on Linux)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.21"
+          go-version: "1.26"
 
       - name: Run jacsgo tests
         working-directory: jacsgo
-        run: GOCACHE=/tmp/jacs-go-cache make test
+        run: GOCACHE=/tmp/jacs-go-cache make test CARGO_FEATURES="${{ matrix.cargo_features }}" GO_TEST_TAGS="${{ matrix.go_test_tags }}"
+
+      - name: Reject external OpenSSL runtime dependencies
+        if: matrix.profile == 'public-proof'
+        run: python3 scripts/check_native_crypto_linkage.py jacsgo/build/libjacsgo.so
+
+      - name: Run provenance test beside a competing Cargo build
+        if: matrix.profile == 'slim'
+        working-directory: jacsgo
+        run: GOCACHE=/tmp/jacs-go-cache make test-competing-cargo
 
       - name: Build jacsgo examples
         working-directory: jacsgo
-        run: GOCACHE=/tmp/jacs-go-cache make examples
+        run: GOCACHE=/tmp/jacs-go-cache make examples CARGO_FEATURES="${{ matrix.cargo_features }}"

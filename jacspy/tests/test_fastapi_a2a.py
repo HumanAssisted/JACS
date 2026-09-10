@@ -6,7 +6,7 @@ Verifies:
 - a2a=False (default) does not serve well-known documents
 - Correct CORS headers on well-known responses
 - a2a_skills override propagates to agent card
-- All 5 well-known endpoints respond
+- All 6 identity-bound well-known endpoints respond
 - Normal app routes still work with a2a enabled
 - No-client scenario logs a warning
 """
@@ -47,6 +47,44 @@ def _make_mock_client(agent_data: dict | None = None) -> MagicMock:
     client = MagicMock()
     client._agent = MagicMock()
     client._agent.get_agent_json.return_value = json.dumps(data)
+    compat_kid = "compat-kid"
+    binding_hash = "binding-hash"
+    documents = {
+        "/.well-known/agent-card.json": {
+            "name": data.get("jacsName", "JACS Agent"),
+            "description": data.get("jacsDescription", ""),
+            "version": data.get("jacsVersion", "1"),
+            "protocolVersions": ["0.4.0"],
+            "supportedInterfaces": [
+                {"url": "https://agent.example.com", "protocolBinding": "jsonrpc"}
+            ],
+            "skills": data.get("skills", []),
+            "metadata": {
+                "jacsId": data.get("jacsId"),
+                "jacsVersion": data.get("jacsVersion", "1"),
+                "jacsCompatKid": compat_kid,
+                "jacsCompatBindingHash": binding_hash,
+                "jacsCompatBindingPath": "/.well-known/jacs-compat-binding.json",
+            },
+            "signatures": [{"keyId": compat_kid, "jws": "native-es256-jws"}],
+        },
+        "/.well-known/jwks.json": {
+            "keys": [{"kid": compat_kid, "alg": "ES256", "use": "sig"}]
+        },
+        "/.well-known/jacs-compat-binding.json": {"jacsSha256": binding_hash},
+        "/.well-known/jacs-agent.json": {"agentId": data.get("jacsId")},
+        "/.well-known/jacs-pubkey.json": {"agentId": data.get("jacsId")},
+        "/.well-known/jacs-extension.json": {
+            "uri": "urn:jacs:provenance-v1",
+            "capabilities": {
+                "documentSigning": {"algorithms": ["ring-Ed25519", "pq2025"]}
+            },
+        },
+    }
+    client._agent.generate_well_known_documents.return_value = json.dumps([
+        {"path": path, "document": document}
+        for path, document in documents.items()
+    ])
     client._agent_info = MagicMock()
     client._agent_info.agent_id = data.get("jacsId", "test-id")
     client._agent_info.public_key_path = None
@@ -66,7 +104,10 @@ class TestMiddlewareA2ARoutes:
         from fastapi.testclient import TestClient
         from jacs.adapters.fastapi import JacsMiddleware
 
-        mock_client = _make_mock_client()
+        agent_data = dict(SAMPLE_AGENT_DATA)
+        if a2a_skills is not None:
+            agent_data["skills"] = a2a_skills
+        mock_client = _make_mock_client(agent_data)
         app = FastAPI()
 
         @app.get("/health")
@@ -93,12 +134,13 @@ class TestMiddlewareA2ARoutes:
         assert body["name"] == "Middleware Bot"
         assert body["protocolVersions"] == ["0.4.0"]
 
-    def test_all_five_endpoints_respond(self):
+    def test_all_six_endpoints_respond(self):
         tc = self._make_test_client(a2a=True)
 
         paths = [
             "/.well-known/agent-card.json",
             "/.well-known/jwks.json",
+            "/.well-known/jacs-compat-binding.json",
             "/.well-known/jacs-agent.json",
             "/.well-known/jacs-pubkey.json",
             "/.well-known/jacs-extension.json",

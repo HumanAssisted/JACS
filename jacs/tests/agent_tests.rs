@@ -9,6 +9,43 @@ use utils::{
     read_new_agent_fixture, set_min_test_env_vars,
 };
 
+struct EnvVarGuard {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var_os(key);
+        // SAFETY: this test is serialized because it mutates process-wide
+        // JACS configuration.
+        unsafe { std::env::set_var(key, value) };
+        Self { key, previous }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let previous = std::env::var_os(key);
+        // SAFETY: this test is serialized because it mutates process-wide
+        // JACS configuration.
+        unsafe { std::env::remove_var(key) };
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        // SAFETY: restore the process environment before leaving the
+        // serialized test.
+        unsafe {
+            if let Some(previous) = &self.previous {
+                std::env::set_var(self.key, previous);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+}
+
 // Note: The password in this config is deprecated and should be ignored.
 // Actual password comes from JACS_PRIVATE_KEY_PASSWORD env var.
 // Uses centralized fixture paths from utils.
@@ -44,8 +81,8 @@ fn setup() {
     }
 }
 
-/// Verify that the committed Ed25519 agent fixture still loads and
-/// exposes `ring-Ed25519` as its key algorithm.
+/// Verify that the committed legacy Ed25519 agent fixture is denied by
+/// default, then remains available to an explicitly audited migration flow.
 ///
 /// `#[serial]` because `test_update_ed25519_agent_and_verify_versions`
 /// mutates `JACS_DATA_DIRECTORY` et al. via `create_ring_test_agent()`;
@@ -67,8 +104,28 @@ fn test_ed25519_fixture_load_exposes_algorithm() {
         .expect("Failed to get agent ID from config")
         .to_string();
 
+    // This committed legacy fixture predates signed persisted configuration.
+    // Admit that one known migration condition explicitly so the assertions
+    // below continue to isolate the independent legacy-signature policy.
+    let _unsigned_config_migration = EnvVarGuard::set("JACS_ALLOW_UNSIGNED_AGENT_CONFIG", "true");
+
+    {
+        let _strict_policy = EnvVarGuard::remove("JACS_ALLOW_LEGACY_SIGNATURE_CONTENT");
+        let mut strict_agent = create_agent_v1().expect("Agent schema should have instantiated");
+        let error = strict_agent
+            .load_by_id(agent_id.clone())
+            .expect_err("legacy fixture must fail closed without an explicit migration policy");
+        assert!(
+            error.to_string().contains("legacy v1 signature content"),
+            "unexpected strict-mode error: {error}"
+        );
+    }
+
+    let _legacy_policy = EnvVarGuard::set("JACS_ALLOW_LEGACY_SIGNATURE_CONTENT", "true");
     let mut agent = create_agent_v1().expect("Agent schema should have instantiated");
-    agent.load_by_id(agent_id).expect("Agent loading failed");
+    agent
+        .load_by_id(agent_id)
+        .expect("explicit legacy compatibility load failed");
 
     println!(
         "AGENT LOADED {} {} ",
@@ -134,7 +191,11 @@ fn test_update_ed25519_agent_and_verify_versions() {
         .expect("updated agent signature must verify");
 }
 
+/// `#[serial]` because `set_min_test_env_vars()` rewrites the process-wide
+/// key-directory variables that the serial Ed25519 tests above rely on while
+/// they create keys.
 #[test]
+#[serial]
 fn test_validate_agent_json_raw() {
     setup();
     set_min_test_env_vars();

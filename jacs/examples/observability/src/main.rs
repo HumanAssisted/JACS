@@ -10,7 +10,6 @@ use jacs::observability::{
 use tracing::{error, info, warn, debug};
 use tokio::time::{sleep, Duration};
 use std::collections::HashMap;
-use opentelemetry::global;
 use jacs::observability::metrics;
 use reqwest;
 

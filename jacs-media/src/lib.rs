@@ -1,7 +1,7 @@
 //! `jacs-media` — embed base64url-encoded JACS signed-document JSON in
 //! PNG (iTXt), JPEG (APP11), or WebP (XMP) images.
 //!
-//! Clean-room guardrails: `LICENSE-NOTICE` in this crate root. No ST3GG code.
+//! Clean-room guardrails: `CLEAN_ROOM_PROVENANCE.md` in this crate root. No ST3GG code.
 //!
 //! Public API:
 //! - [`MediaFormat`] — PNG / JPEG / WebP discriminator.

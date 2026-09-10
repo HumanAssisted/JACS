@@ -43,8 +43,13 @@ import type { JacsClient } from './client.js';
 export interface JacsToolOptions {
     /** An initialized JacsClient instance. */
     client: JacsClient;
-    /** Throw on signing failure instead of logging and passing through. Default: false. */
+    /** Force fail-closed output even if allowUnsignedOutput is true. */
     strict?: boolean;
+    /**
+     * DANGEROUS: return the original tool output when signing or output-shape
+     * validation fails. Enabled only by literal `true`; default is fail closed.
+     */
+    allowUnsignedOutput?: boolean;
 }
 /**
  * Wrap a LangChain BaseTool so its output is automatically signed with JACS.

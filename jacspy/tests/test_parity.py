@@ -8,7 +8,7 @@ Shared fixture inputs are loaded from binding-core/tests/fixtures/parity_inputs.
 Parity guarantees:
   1. Structural parity   -- signed documents contain required field names/types
   2. Roundtrip parity     -- sign -> verify succeeds for all fixture inputs
-  3. Cross-algorithm      -- ed25519 and pq2025 produce structurally identical output
+  3. Algorithm policy     -- requested label, key shape, and signature algorithm agree
   4. Identity parity      -- agent_id, key_id, PEM, base64, export, diagnostics, verify_self, config_path
   5. Error parity         -- all bindings reject the same invalid inputs (incl. verify_with_key)
   6. Sign raw bytes       -- sign_string returns valid base64
@@ -35,6 +35,8 @@ import pytest
 jacs = pytest.importorskip("jacs")
 
 from jacs import SimpleAgent
+
+NEW_AGENT_ALGORITHMS = ["ed25519", "pq2025"]
 
 # ---------------------------------------------------------------------------
 # Fixture loading
@@ -80,10 +82,38 @@ def expected_verify_fields(parity_inputs: dict) -> dict:
     return parity_inputs["expected_verification_result_fields"]
 
 
-def _ephemeral(algo: str = "ed25519") -> SimpleAgent:
+def _ephemeral(algo: str = "pq2025") -> SimpleAgent:
     """Create an ephemeral in-memory agent. Returns just the agent."""
     agent, _info = SimpleAgent.ephemeral(algorithm=algo)
     return agent
+
+
+def test_rfc8785_canonicalization_vectors(parity_inputs: dict) -> None:
+    """Every binding must emit the official RFC 8785 canonical bytes."""
+    agent = _ephemeral("ed25519")
+    for vector in parity_inputs["canonicalization_vectors"]:
+        actual = agent.canonicalize_json(
+            json.dumps(vector["data"], ensure_ascii=False, separators=(",", ":"))
+        )
+        assert actual == vector["expected"], (
+            f"RFC 8785 drift for {vector['name']}: {actual!r}"
+        )
+
+
+def test_canonicalization_rejects_unsafe_integer_tokens(parity_inputs: dict) -> None:
+    agent = _ephemeral("ed25519")
+    for vector in parity_inputs["canonicalization_rejections"]:
+        with pytest.raises(Exception, match=vector["message_pattern"]):
+            agent.canonicalize_json(vector["input"])
+
+
+def test_canonicalization_preserves_rfc8785_binary64_equivalence(
+    parity_inputs: dict,
+) -> None:
+    agent = _ephemeral("ed25519")
+    for vector in parity_inputs["canonicalization_equivalences"]:
+        for input_json in vector["inputs"]:
+            assert agent.canonicalize_json(input_json) == vector["expected"]
 
 
 # ===========================================================================
@@ -94,7 +124,7 @@ def _ephemeral(algo: str = "ed25519") -> SimpleAgent:
 class TestParitySignedDocumentStructure:
     """Mirrors test_parity_signed_document_structure_{ed25519,pq2025} in Rust."""
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_signed_document_has_required_fields(
         self,
         algo: str,
@@ -138,7 +168,7 @@ class TestParitySignedDocumentStructure:
 class TestParitySignVerifyRoundtrip:
     """Mirrors test_parity_sign_verify_roundtrip_{ed25519,pq2025} in Rust."""
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_roundtrip_all_inputs(
         self, algo: str, sign_message_inputs: list[dict]
     ) -> None:
@@ -163,38 +193,21 @@ class TestParitySignVerifyRoundtrip:
 # ===========================================================================
 
 
-class TestParityCrossAlgorithmStructure:
-    """Mirrors test_parity_cross_algorithm_structure_consistency in Rust."""
-
-    def test_ed25519_and_pq2025_have_same_structure(
-        self, sign_message_inputs: list[dict]
+class TestNewAgentAlgorithmPolicy:
+    @pytest.mark.parametrize(
+        ("requested", "expected", "public_key_size"),
+        [("ed25519", "ring-Ed25519", 32), ("pq2025", "pq2025", 2592)],
+    )
+    def test_requested_algorithm_matches_key_and_signature(
+        self, requested: str, expected: str, public_key_size: int
     ) -> None:
-        ed_agent = _ephemeral("ed25519")
-        pq_agent = _ephemeral("pq2025")
+        agent, info = SimpleAgent.ephemeral(algorithm=requested)
+        assert info["algorithm"] == expected
+        assert len(base64.b64decode(agent.get_public_key_base64())) == public_key_size
 
-        # Use the first fixture input (simple_message)
-        data = sign_message_inputs[0]["data"]
-
-        ed_signed = json.loads(ed_agent.sign_message(data)["raw"])
-        pq_signed = json.loads(pq_agent.sign_message(data)["raw"])
-
-        # Both should have jacsId and jacsSignature
-        assert "jacsId" in ed_signed, "ed25519 signed doc should have jacsId"
-        assert "jacsId" in pq_signed, "pq2025 signed doc should have jacsId"
-        assert "jacsSignature" in ed_signed, (
-            "ed25519 signed doc should have jacsSignature"
-        )
-        assert "jacsSignature" in pq_signed, (
-            "pq2025 signed doc should have jacsSignature"
-        )
-
-        # Signature objects should have the same field names
-        ed_sig_keys = sorted(ed_signed["jacsSignature"].keys())
-        pq_sig_keys = sorted(pq_signed["jacsSignature"].keys())
-        assert ed_sig_keys == pq_sig_keys, (
-            "jacsSignature fields should be identical across algorithms: "
-            f"ed25519={ed_sig_keys}, pq2025={pq_sig_keys}"
-        )
+        signed = agent.sign_message({"algorithm": requested})
+        document = json.loads(signed["raw"])
+        assert document["jacsSignature"]["signingAlgorithm"] == expected
 
 
 # ===========================================================================
@@ -205,21 +218,21 @@ class TestParityCrossAlgorithmStructure:
 class TestParityIdentityMethods:
     """Mirrors test_parity_identity_methods_{ed25519,pq2025} in Rust."""
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_get_agent_id(self, algo: str) -> None:
         agent = _ephemeral(algo)
         agent_id = agent.get_agent_id()
         assert isinstance(agent_id, str), f"[{algo}] agent_id should be str"
         assert len(agent_id) > 0, f"[{algo}] agent_id should be non-empty"
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_key_id(self, algo: str) -> None:
         agent = _ephemeral(algo)
         kid = agent.key_id()
         assert isinstance(kid, str), f"[{algo}] key_id should be str"
         assert len(kid) > 0, f"[{algo}] key_id should be non-empty"
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_get_public_key_pem(self, algo: str) -> None:
         agent = _ephemeral(algo)
         pem = agent.get_public_key_pem()
@@ -228,7 +241,7 @@ class TestParityIdentityMethods:
             f"[{algo}] should return PEM format, got: {pem[:80]}..."
         )
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_get_public_key_base64(self, algo: str) -> None:
         agent = _ephemeral(algo)
         key_b64 = agent.get_public_key_base64()
@@ -239,7 +252,7 @@ class TestParityIdentityMethods:
             f"[{algo}] decoded public key should be non-empty"
         )
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_export_agent(self, algo: str) -> None:
         agent = _ephemeral(algo)
         exported = agent.export_agent()
@@ -249,7 +262,7 @@ class TestParityIdentityMethods:
             f"[{algo}] exported agent should have jacsId"
         )
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_diagnostics(self, algo: str) -> None:
         agent = _ephemeral(algo)
         diag = agent.diagnostics()
@@ -262,7 +275,7 @@ class TestParityIdentityMethods:
             f"[{algo}] diagnostics should show agent_loaded=true"
         )
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_verify_self(self, algo: str) -> None:
         agent = _ephemeral(algo)
         result = agent.verify_self()
@@ -271,14 +284,14 @@ class TestParityIdentityMethods:
             f"[{algo}] verify_self should be valid, errors={result.get('errors')}"
         )
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_is_strict(self, algo: str) -> None:
         agent = _ephemeral(algo)
         assert agent.is_strict() is False, (
             f"[{algo}] ephemeral agent should not be strict"
         )
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_config_path(self, algo: str) -> None:
         agent = _ephemeral(algo)
         cp = agent.config_path()
@@ -300,7 +313,7 @@ class TestParitySignRawBytes:
     decoded fixture data.
     """
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_sign_raw_bytes_all_inputs(
         self, algo: str, sign_raw_bytes_inputs: list[dict]
     ) -> None:
@@ -338,7 +351,7 @@ class TestParitySignRawBytes:
 class TestParitySignFile:
     """Mirrors test_parity_sign_file_{ed25519,pq2025} in Rust."""
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_sign_and_verify_file(self, algo: str) -> None:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False
@@ -380,7 +393,7 @@ class TestParityErrors:
 
     def test_verify_rejects_invalid_json(self) -> None:
         """Mirrors test_parity_verify_rejects_invalid_json."""
-        agent = _ephemeral("ed25519")
+        agent = _ephemeral()
         with pytest.raises(RuntimeError):
             agent.verify("not-valid-json{{{")
 
@@ -390,7 +403,7 @@ class TestParityErrors:
         Tampering with the signed content should either raise an error
         or return valid=False -- either is acceptable parity behavior.
         """
-        agent = _ephemeral("ed25519")
+        agent = _ephemeral()
         signed = agent.sign_message({"original": True})
         signed_json = signed["raw"]
 
@@ -424,19 +437,19 @@ class TestParityErrors:
         # In Python, sign_message accepts any JSON-serializable object,
         # so invalid JSON as a concept doesn't directly apply the same way.
         # We test that verify rejects garbage, which is the true parity.
-        agent = _ephemeral("ed25519")
+        agent = _ephemeral()
         with pytest.raises(RuntimeError):
             agent.verify("not valid json {{")
 
     def test_verify_by_id_rejects_bad_format(self) -> None:
         """Mirrors test_parity_verify_by_id_rejects_bad_format."""
-        agent = _ephemeral("ed25519")
+        agent = _ephemeral()
         with pytest.raises(RuntimeError):
             agent.verify_by_id("not-a-valid-id")
 
     def test_verify_with_key_rejects_invalid_base64(self) -> None:
         """Mirrors test_parity_verify_with_key_rejects_invalid_base64 in Rust."""
-        agent = _ephemeral("ed25519")
+        agent = _ephemeral()
         signed = agent.sign_message({"test": 1})
         with pytest.raises(RuntimeError):
             agent.verify_with_key(signed["raw"], "not-valid-base64!!!")
@@ -453,7 +466,7 @@ class TestParityVerificationResultStructure:
     def test_verification_result_has_required_fields(
         self, expected_verify_fields: dict
     ) -> None:
-        agent = _ephemeral("ed25519")
+        agent = _ephemeral()
         required = expected_verify_fields["required"]
 
         signed = agent.sign_message({"structure_test": True})
@@ -473,7 +486,7 @@ class TestParityVerificationResultStructure:
 class TestParityVerifyWithKey:
     """Mirrors test_parity_verify_with_key_{ed25519,pq2025} in Rust."""
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_verify_with_explicit_key(
         self, algo: str, sign_message_inputs: list[dict]
     ) -> None:
@@ -488,6 +501,45 @@ class TestParityVerifyWithKey:
             f"[{algo}] verify with explicit key should succeed, "
             f"errors={result.get('errors')}"
         )
+
+
+def test_generic_verify_with_key_accepts_only_bound_response_v2(
+    parity_inputs: dict,
+) -> None:
+    contract = parity_inputs["response_v2_generic_verification"]
+    agent = _ephemeral(contract["algorithm"])
+    key_b64 = agent.get_public_key_base64()
+    signed = agent.sign_response(
+        json.dumps(contract["payload"], separators=(",", ":"))
+    )
+    envelope = json.loads(signed)
+
+    assert (
+        envelope["jacsSignature"]["signatureContentVersion"]
+        == contract["signature_content_version"]
+    )
+    verified = agent.verify_with_key(signed, key_b64)
+    assert verified["valid"] is True
+    assert verified["data"] == contract["payload"]
+    assert verified["signer_id"]
+
+    for tamper in contract["tamper_cases"]:
+        attacked = json.loads(signed)
+        parts = tamper["pointer"].removeprefix("/").split("/")
+        target = attacked
+        for part in parts[:-1]:
+            target = target[part]
+        target[parts[-1]] = tamper["replacement"]
+
+        rejected = agent.verify_with_key(
+            json.dumps(attacked, separators=(",", ":")), key_b64
+        )
+        expected = contract["invalid_result"]
+        assert rejected["valid"] is expected["valid"], tamper["name"]
+        assert rejected["data"] is expected["data"], tamper["name"]
+        assert rejected["signer_id"] == expected["signer_id"], tamper["name"]
+        assert rejected["timestamp"] == expected["timestamp"], tamper["name"]
+        assert rejected["errors"], tamper["name"]
 
 
 # ===========================================================================
@@ -550,7 +602,7 @@ class TestParityCreateAgent:
 class TestParityEphemeralInfo:
     """Verify the info dict returned by SimpleAgent.ephemeral()."""
 
-    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    @pytest.mark.parametrize("algo", NEW_AGENT_ALGORITHMS)
     def test_ephemeral_returns_info_dict(self, algo: str) -> None:
         agent, info = SimpleAgent.ephemeral(algorithm=algo)
         assert isinstance(info, dict), "ephemeral should return (agent, dict)"

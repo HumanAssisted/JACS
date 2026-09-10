@@ -494,7 +494,7 @@ mod attestation_tracing {
     use std::collections::HashMap;
 
     fn ephemeral_agent() -> SimpleAgent {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
         agent
     }
 
@@ -655,4 +655,48 @@ mod attestation_tracing {
         assert_has_field(ev, "valid");
         assert_has_field(ev, "evidence_count");
     }
+}
+
+// =============================================================================
+// Supported Ed25519 signing is reported as a normal successful operation.
+// It must not emit the obsolete legacy/deprecation warning.
+// =============================================================================
+
+#[test]
+#[serial]
+fn test_supported_ed25519_sign_has_truthful_logs() {
+    let _password = PasswordEnvGuard::set();
+    let _scope = ScopedTempCwd::enter("jacs_structlog_grandfather");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name("legacy-ed25519-grandfather")
+        .password(TEST_PASSWORD)
+        .algorithm("ring-Ed25519")
+        .data_directory("./jacs_data")
+        .key_directory("./jacs_keys")
+        .config_path("./jacs.config.json")
+        .build();
+    let (agent, info) = SimpleAgent::create_with_params(params).expect("Ed25519 agent");
+    assert_eq!(info.algorithm, "ring-Ed25519");
+
+    let events = with_captured_logs(|| {
+        let _ = agent
+            .sign_message(&json!({"algorithm": "ed25519"}))
+            .expect("supported Ed25519 sign");
+    });
+
+    let warns = events_with_name(&events, "native_legacy_ed25519_sign");
+    assert!(
+        warns.is_empty(),
+        "supported Ed25519 must not emit a false legacy warning. All events: {:?}",
+        events.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
+    let completions = events_with_name(&events, "signing_procedure_complete");
+    assert_eq!(
+        completions.len(),
+        1,
+        "one signing completion event expected"
+    );
+    assert_eq!(get_field(completions[0], "algorithm"), Some("ring-Ed25519"));
+    assert_has_field(completions[0], "agent_id");
 }

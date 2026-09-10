@@ -11,7 +11,7 @@ Verifies:
 import json
 
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration, A2AAgentCard
@@ -152,7 +152,19 @@ class TestExportAgentCard:
             "jacsSignature": {"agentID": "agent-abc-123"},
         }
         client._agent.sign_request.return_value = json.dumps(signed_doc)
-        client._agent.verify_response.return_value = {"action": "greet"}
+        client._agent.verify_a2a_artifact.return_value = json.dumps(
+            {
+                "valid": True,
+                "status": "Verified",
+                "signerId": "agent-abc-123",
+                "signerVersion": "v2.0",
+                "artifactType": "a2a-task",
+                "timestamp": "2026-07-10T00:00:00Z",
+                "originalArtifact": {"action": "greet"},
+                "parentSignaturesValid": True,
+                "parentVerificationResults": [],
+            }
+        )
 
         a2a = client.get_a2a()
         wrapped = a2a.sign_artifact({"action": "greet"}, "task")
@@ -160,6 +172,7 @@ class TestExportAgentCard:
 
         assert result["valid"] is True
         assert result["signer_id"] == "agent-abc-123"
+        client._agent.verify_response.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +202,7 @@ class TestClientSignArtifact:
             "jacsParentSignatures": [{"jacsId": "parent-1"}],
         })
 
-        result = client.sign_artifact(
+        client.sign_artifact(
             {"step": 2}, "workflow-step", parent_signatures=[{"jacsId": "parent-1"}]
         )
 
@@ -232,6 +245,18 @@ class TestEphemeralAdapterA2AParity:
 
         adapter = _EphemeralAgentAdapter(native)
         with pytest.raises(RuntimeError, match="signature mismatch"):
+            adapter.verify_response('{"signed":true}')
+
+    def test_verify_response_rejects_truthy_non_boolean_valid(self):
+        native = MagicMock()
+        native.verify.return_value = {
+            "valid": "false",
+            "data": {"jacs_payload": {"must_not": "escape"}},
+            "errors": ["invalid verification flag"],
+        }
+
+        adapter = _EphemeralAgentAdapter(native)
+        with pytest.raises(RuntimeError, match="invalid verification flag"):
             adapter.verify_response('{"signed":true}')
 
 

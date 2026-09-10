@@ -4,13 +4,19 @@
 
 * [A2A Verification Result](./a2a-verification-result.md "Cross-language schema for A2A artifact verification results") – `https://hai.ai/schemas/a2a-verification-result.schema.json`
 
+* [AP2 Mandate Input (UCP checkout)](./ap2-mandate.md "Typed input boundary for the JACS AP2 merchant-authorization exporter (UCP AP2-Mandates extension, revision 2026-01-23)") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json`
+
 * [Agent](./agent.md "General schema for human, hybrid, and AI agents") – `https://hai.ai/schemas/agent/v1/agent.schema.json`
 
 * [Agreement](./agreement.md "A standalone JACS agreement document for verifiable consent to terms") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json`
 
 * [Attestation](./attestation.md "A JACS attestation document that proves WHO did WHAT and WHY it should be trusted") – `https://hai.ai/schemas/attestation/v1/attestation.schema.json`
 
+* [Compatibility Key Binding](./compatibility-key-binding.md "Native-root-signed binding that authorizes an ES256 ecosystem compatibility key for explicit export scopes") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json`
+
 * [Config](./jacs.md "Jacs Configuration File") – `https://hai.ai/schemas/jacs.config.schema.json`
+
+* [Conflict](./conflict.md "A standalone JACS conflict document for signed, versioned tracking of participant positions, divergences, phases, and resolving agreement links") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json`
 
 * [File](./files.md "General data about unstructured content not in JACS") – `https://hai.ai/schemas/components/files/v1/files.schema.json`
 
@@ -35,6 +41,12 @@
 * [Untitled object in A2A Verification Result](./a2a-verification-result-definitions-trustassessment.md "Result of assessing a remote agent's trustworthiness") – `https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/TrustAssessment`
 
 * [Untitled object in A2A Verification Result](./a2a-verification-result-definitions-parentverificationresult.md "Result of verifying a parent signature in a chain of custody") – `https://hai.ai/schemas/a2a-verification-result.schema.json#/definitions/ParentVerificationResult`
+
+* [Untitled object in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-line_items-items.md) – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/line_items/items`
+
+* [Untitled object in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-totals-items.md) – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/totals/items`
+
+* [Untitled object in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-ap2.md "AP2-Mandates extension block") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/ap2`
 
 * [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
 
@@ -80,6 +92,14 @@
 
 * [Untitled object in Attestation](./attestation-properties-attestation-properties-policycontext.md "Optional policy context") – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/policyContext`
 
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding.md) – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding`
+
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-rootkey.md "The native root that signs this binding") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/rootKey`
+
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-compatibilitykey.md "The ES256 ecosystem key being authorized") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/compatibilityKey`
+
+* [Untitled object in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-compatibilitykey-properties-publicjwk.md) – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/compatibilityKey/properties/publicJwk`
+
 * [Untitled object in Config](./jacs-properties-observability.md "Observability configuration for logging, metrics, and tracing") – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability`
 
 * [Untitled object in Config](./jacs-properties-observability-properties-logs.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/logs`
@@ -120,11 +140,25 @@
 
 * [Untitled object in Config](./jacs-properties-observability-properties-tracing-properties-resource-properties-attributes.md) – `https://hai.ai/schemas/jacs.config.schema.json#/properties/observability/properties/tracing/properties/resource/properties/attributes`
 
+* [Untitled object in Conflict](./conflict-allof-1.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1`
+
+* [Untitled object in Conflict](./conflict-definitions-participant.md "A participant in a conflict") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/participant`
+
+* [Untitled object in Conflict](./conflict-definitions-position.md "A participant statement in the conflict belief structure") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/position`
+
+* [Untitled object in Conflict](./conflict-definitions-divergence.md "A typed divergence between participant positions") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/divergence`
+
+* [Untitled object in Conflict](./conflict-definitions-jacsdocumentref.md "Verifiable reference to a specific signed JACS document version") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/jacsDocumentRef`
+
 * [Untitled object in Header](./header-properties-jacsvisibility-oneof-1.md) – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVisibility/oneOf/1`
 
 ### Arrays
 
 * [Untitled array in A2A Verification Result](./a2a-verification-result-properties-parentverificationresults.md "Individual verification results for each parent signature") – `https://hai.ai/schemas/a2a-verification-result.schema.json#/properties/parentVerificationResults`
+
+* [Untitled array in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-line_items.md "Items being authorized") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/line_items`
+
+* [Untitled array in AP2 Mandate Input (UCP checkout)](./ap2-mandate-properties-totals.md "Checkout totals (subtotal, tax, total, ") – `https://hai.ai/schemas/compatibility/ap2-mandate/v1/ap2-mandate.schema.json#/properties/totals`
 
 * [Untitled array in Agreement](./agreement-allof-1-properties-parties.md) – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/parties`
 
@@ -147,6 +181,20 @@
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-evidence.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/evidence`
 
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-derivation-properties-inputs.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/derivation/properties/inputs`
+
+* [Untitled array in Compatibility Key Binding](./compatibility-key-binding-properties-compatibilitykeybinding-properties-scope.md "Exports this key is authorized to produce") – `https://hai.ai/schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json#/properties/compatibilityKeyBinding/properties/scope`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-participants.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/participants`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-positions.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/positions`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-divergences.md) – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/divergences`
+
+* [Untitled array in Conflict](./conflict-definitions-divergence-properties-participantpositions.md "Position ids participating in this divergence") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/definitions/divergence/properties/participantPositions`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-linkedagreements.md "JACS document references to agreements that resolve part of this conflict") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/linkedAgreements`
+
+* [Untitled array in Conflict](./conflict-allof-1-properties-allpreviousversions.md "Append-only list of every prior jacsVersion of this conflict document, in chronological order") – `https://hai.ai/schemas/conflict/v1/conflict.schema.json#/allOf/1/properties/allPreviousVersions`
 
 * [Untitled array in Header](./header-properties-jacsfiles.md "A set of files included with the jacs document") – `https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles`
 

@@ -14,6 +14,34 @@ from unittest.mock import MagicMock, patch
 from jacs.a2a import JACSA2AIntegration
 
 
+def _native_well_known_pairs(agent_data: dict) -> str:
+    compat_kid = "native-compat-kid"
+    binding_hash = "native-binding-hash"
+    documents = {
+        "/.well-known/agent-card.json": {
+            "name": agent_data.get("jacsName", "JACS Agent"),
+            "metadata": {
+                "jacsId": agent_data.get("jacsId"),
+                "jacsCompatKid": compat_kid,
+                "jacsCompatBindingHash": binding_hash,
+                "jacsCompatBindingPath": "/.well-known/jacs-compat-binding.json",
+            },
+            "signatures": [{"keyId": compat_kid, "jws": "native-es256-jws"}],
+        },
+        "/.well-known/jwks.json": {
+            "keys": [{"kid": compat_kid, "alg": "ES256", "use": "sig"}],
+        },
+        "/.well-known/jacs-compat-binding.json": {"jacsSha256": binding_hash},
+        "/.well-known/jacs-agent.json": {"agentId": agent_data.get("jacsId")},
+        "/.well-known/jacs-pubkey.json": {"agentId": agent_data.get("jacsId")},
+        "/.well-known/jacs-extension.json": {"uri": "urn:jacs:provenance-v1"},
+    }
+    return json.dumps([
+        {"path": path, "document": document}
+        for path, document in documents.items()
+    ])
+
+
 def _has_fastapi() -> bool:
     try:
         import fastapi  # noqa: F401
@@ -78,6 +106,9 @@ class TestServe:
         client = MagicMock()
         client._agent = MagicMock()
         client._agent.get_agent_json.return_value = json.dumps(agent_data)
+        client._agent.generate_well_known_documents.return_value = (
+            _native_well_known_pairs(agent_data)
+        )
         return JACSA2AIntegration(client)
 
     def test_serve_app_agent_card(self):
