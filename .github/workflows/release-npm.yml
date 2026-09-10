@@ -90,7 +90,7 @@ jobs:
             target: aarch64-apple-darwin
             use_zig: false
             allow_failure: false
-          - os: macos-14
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             use_zig: false
             allow_failure: false
@@ -390,7 +390,7 @@ jobs:
             architecture: arm64
           - os: macos-latest
             architecture: arm64
-          - os: macos-14
+          - os: macos-15-intel
             architecture: x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

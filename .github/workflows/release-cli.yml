@@ -65,7 +65,7 @@ jobs:
             target: aarch64-apple-darwin
             asset_suffix: darwin-arm64
             archive_ext: tar.gz
-          - os: macos-14
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             asset_suffix: darwin-x64
             archive_ext: tar.gz

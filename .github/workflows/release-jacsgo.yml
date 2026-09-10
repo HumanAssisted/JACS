@@ -61,7 +61,7 @@ jobs:
             goos: darwin
             goarch: arm64
             extension: dylib
-          - os: macos-14
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             goos: darwin
             goarch: amd64
@@ -202,7 +202,7 @@ jobs:
         include:
           - os: macos-latest
             goarch: arm64
-          - os: macos-14
+          - os: macos-15-intel
             goarch: amd64
           - os: ubuntu-latest
             goarch: amd64
@@ -312,7 +312,7 @@ jobs:
         include:
           - os: macos-latest
             goarch: arm64
-          - os: macos-14
+          - os: macos-15-intel
             goarch: amd64
           - os: ubuntu-latest
             goarch: amd64
