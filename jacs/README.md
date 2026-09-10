@@ -165,4 +165,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](../DEVELOPMENT.md)
 
-**Version**: 0.12.0 | [Apache-2.0](../LICENSE-APACHE)
+**Version**: 0.13.0 | [Apache-2.0](../LICENSE-APACHE)
