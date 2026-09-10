@@ -4543,23 +4543,3 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
-
-[[patch.unused]]
-name = "jacs-binding-core"
-version = "0.13.0"
-
-[[patch.unused]]
-name = "jacs-duckdb"
-version = "0.1.20"
-
-[[patch.unused]]
-name = "jacs-mcp"
-version = "0.13.0"
-
-[[patch.unused]]
-name = "jacs-postgresql"
-version = "0.1.20"
-
-[[patch.unused]]
-name = "jacs-redb"
-version = "0.1.20"
