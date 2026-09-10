@@ -161,6 +161,8 @@ jobs:
             $_ -eq "$prefix/jacs-media/README.md" -or
             $_ -like "$prefix/jacs-media/src/*" -or
             $_ -like "$prefix/binding-core/src/*" -or
+            $_ -like "$prefix/binding-core/examples/*.rs" -or
+            $_ -like "$prefix/jacs-mcp/examples/*.rs" -or
             $_ -like "$prefix/jacs/src/*" -or
             $_ -like "$prefix/jacs/schemas/*" -or
             $_ -like "$prefix/jacs-cli/src/*" -or
