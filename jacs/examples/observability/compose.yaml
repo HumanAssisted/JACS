@@ -10,7 +10,7 @@ volumes:
 services:
   # Jaeger - Distributed Tracing
   jaeger:
-    image: jaegertracing/all-in-one:1.51
+    image: jaegertracing/all-in-one:1.60
     container_name: jaeger
     ports:
       - "16686:16686"  # Jaeger UI
