@@ -14,7 +14,7 @@
     "@langchain/openai": "^1.5.5",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@hai.ai/jacs": "file:../..",
-    "zod": "^3.22.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
