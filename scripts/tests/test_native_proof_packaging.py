@@ -111,7 +111,7 @@ class NativeProofPackagingTests(unittest.TestCase):
             with self.subTest(workflow=name):
                 text = (ROOT / ".github/workflows" / name).read_text()
                 candidates = text.split("  candidate-smoke:", 1)[1].split("  candidate-musl-smoke:", 1)[0]
-                for runner in ("ubuntu-latest", "ubuntu-24.04-arm", "macos-latest", "macos-14"):
+                for runner in ("ubuntu-latest", "ubuntu-24.04-arm", "macos-latest", "macos-15-intel"):
                     self.assertIn(runner, candidates)
                 musl = text.split("  candidate-musl-smoke:", 1)[1].split("\n  cli-release-ready:", 1)[0].split("\n  publish:", 1)[0]
                 self.assertRegex(musl, r"(?:node:20|python:3\.11)-alpine@sha256:[0-9a-f]{64}")

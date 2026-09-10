@@ -175,7 +175,9 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
         self.assertEqual(pypi_build.count("maturin build --locked"), 2)
 
         npm_build = job_block(workflow_text("release-npm.yml"), "build")
-        self.assertEqual(npm_build.count("--cargo-flags=--locked"), 2)
+        # Every napi build path (zig cross, native, Alpine container) stays locked.
+        self.assertGreaterEqual(npm_build.count("npx napi build"), 3)
+        self.assertEqual(npm_build.count("npx napi build"), npm_build.count("--cargo-flags=--locked"))
 
         wasm_build = job_block(workflow_text("release-wasm.yml"), "build-and-test")
         self.assertIn("wasm-pack test --headless --firefox . --locked", wasm_build)
