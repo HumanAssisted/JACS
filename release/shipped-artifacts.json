@@ -2,7 +2,7 @@
   "schema_version": 1,
   "observed_at": "2026-07-11",
   "review_baseline": "f621a99d",
-  "source_version": "0.12.0",
+  "source_version": "0.13.0",
   "artifacts": {
     "rust": {
       "package": "jacs",

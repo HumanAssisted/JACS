@@ -1,10 +1,6 @@
 ## 0.13.0
 
-(unreleased)
-
-## 0.12.0
-
-(unreleased)
+Released 2026-09-09
 
 ### Removed
 

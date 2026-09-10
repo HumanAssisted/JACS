@@ -3,7 +3,7 @@
 Cryptographic identity, signing, and verification for AI agents from Node.js.
 
 > **Registry status (observed 2026-07-11):** npm still serves
-> `@hai.ai/jacs@0.10.1`. This README describes source `0.12.0`; Agreement v2 and
+> `@hai.ai/jacs@0.10.1`. This README describes source `0.13.0`; Agreement v2 and
 > other newer methods are unavailable from the current registry package. Pin a
 > version and inspect its exported methods until a coordinated release closes
 > the gap.

@@ -222,7 +222,7 @@ make test    # Run all tests
 ## Node.js
 
 > npm serves `@hai.ai/jacs@0.10.1` at the 2026-07-09 distribution baseline,
-> while this checkout is source `0.12.0`. The examples below describe source
+> while this checkout is source `0.13.0`. The examples below describe source
 > head; pin and inspect registry exports before using them against the npm
 > package.
 
