@@ -213,9 +213,13 @@ mod tests {
 
     fn spec_private_pkcs8_der() -> Vec<u8> {
         use p256::pkcs8::EncodePrivateKey;
-        let bytes = bs58::decode(SPEC_SECRET_MULTIKEY.trim_start_matches('z'))
-            .into_vec()
-            .expect("secret multikey decodes");
+        let bytes = bs58::decode(
+            SPEC_SECRET_MULTIKEY
+                .strip_prefix('z')
+                .expect("multibase base58btc prefix"),
+        )
+        .into_vec()
+        .expect("secret multikey decodes");
         assert_eq!(&bytes[..2], &[0x86, 0x26], "p256 secret multicodec prefix");
         let secret = p256::SecretKey::from_slice(&bytes[2..]).expect("scalar");
         secret.to_pkcs8_der().expect("pkcs8").as_bytes().to_vec()
@@ -223,9 +227,13 @@ mod tests {
 
     fn spec_public_spki_pem() -> String {
         use p256::pkcs8::EncodePublicKey;
-        let bytes = bs58::decode(SPEC_PUBLIC_MULTIKEY.trim_start_matches('z'))
-            .into_vec()
-            .expect("public multikey decodes");
+        let bytes = bs58::decode(
+            SPEC_PUBLIC_MULTIKEY
+                .strip_prefix('z')
+                .expect("multibase base58btc prefix"),
+        )
+        .into_vec()
+        .expect("public multikey decodes");
         assert_eq!(&bytes[..2], &[0x80, 0x24], "p256 public multicodec prefix");
         let key = p256::PublicKey::from_sec1_bytes(&bytes[2..]).expect("compressed point");
         key.to_public_key_pem(Default::default()).expect("pem")
@@ -285,9 +293,13 @@ mod tests {
             .expect("spec signature verifies");
 
         // b58 sanity: proofValue decodes to the spec signature bytes.
-        let decoded = bs58::decode(SPEC_PROOF_VALUE.trim_start_matches('z'))
-            .into_vec()
-            .unwrap();
+        let decoded = bs58::decode(
+            SPEC_PROOF_VALUE
+                .strip_prefix('z')
+                .expect("multibase base58btc prefix"),
+        )
+        .into_vec()
+        .unwrap();
         assert_eq!(hex::encode(decoded), SPEC_SIGNATURE_HEX);
     }
 }

@@ -94,6 +94,26 @@ fn grant_agreement_vc_scope(agent: &SimpleAgent) {
         .expect("issue binding with agreement-vc scope");
 }
 
+/// Decode a multibase base58btc `proofValue`. Only the multibase prefix is
+/// removed: `z` is also a base58 digit, so trimming every leading `z` would
+/// corrupt roughly one signature in fifty-eight.
+fn decode_proof_value(proof_value: &str) -> Vec<u8> {
+    let digits = proof_value
+        .strip_prefix('z')
+        .expect("multibase base58btc prefix");
+    bs58::decode(digits).into_vec().expect("proofValue decodes")
+}
+
+#[test]
+fn decode_proof_value_keeps_leading_z_digits() {
+    // 58^87 - 1 is the largest 87-digit base58 number and fits in 64 bytes; it
+    // encodes as eighty-seven `z` digits, so the multibase form starts "zz".
+    let digits = "z".repeat(87);
+    let bytes = decode_proof_value(&format!("z{digits}"));
+    assert_eq!(bytes.len(), 64);
+    assert_eq!(bs58::encode(&bytes).into_string(), digits);
+}
+
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn agreement_vc_uses_ecdsa_jcs_2019() {
@@ -135,9 +155,7 @@ fn agreement_vc_uses_ecdsa_jcs_2019() {
     let mut hash_data = Vec::with_capacity(64);
     hash_data.extend_from_slice(&config_hash);
     hash_data.extend_from_slice(&doc_hash);
-    let sig = bs58::decode(proof_value.trim_start_matches('z'))
-        .into_vec()
-        .expect("proofValue decodes");
+    let sig = decode_proof_value(proof_value);
     assert_eq!(sig.len(), 64, "P-256 r||s");
     let public_pem =
         std::fs::read_to_string("./jacs_keys/jacs.ecosystem.public.pem").expect("public pem");
@@ -322,14 +340,7 @@ fn agreement_vc_proof_verifies_by_independent_reconstruction() {
     hash_data.extend_from_slice(&Sha256::digest(
         jacs::protocol::canonicalize_json(&unsecured).as_bytes(),
     ));
-    let sig = bs58::decode(
-        proof["proofValue"]
-            .as_str()
-            .unwrap()
-            .trim_start_matches('z'),
-    )
-    .into_vec()
-    .unwrap();
+    let sig = decode_proof_value(proof["proofValue"].as_str().unwrap());
     let public_pem =
         std::fs::read_to_string("./jacs_keys/jacs.ecosystem.public.pem").expect("public pem");
     jacs::crypt::es256::verify_es256_jose(&public_pem, &hash_data, &sig)
@@ -359,14 +370,7 @@ fn agreement_vc_tampered_credential_subject_fails_verification() {
     let proof = vc["proof"].clone();
     let public_pem =
         std::fs::read_to_string("./jacs_keys/jacs.ecosystem.public.pem").expect("public pem");
-    let sig = bs58::decode(
-        proof["proofValue"]
-            .as_str()
-            .unwrap()
-            .trim_start_matches('z'),
-    )
-    .into_vec()
-    .expect("proofValue decodes");
+    let sig = decode_proof_value(proof["proofValue"].as_str().unwrap());
 
     // hashData = SHA-256(JCS(proof sans proofValue)) || SHA-256(JCS(doc
     // sans proof)) for any candidate document.
