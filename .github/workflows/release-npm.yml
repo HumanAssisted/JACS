@@ -262,7 +262,7 @@ jobs:
           npm ci --ignore-scripts
           npm run build
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: bindings-*
           path: jacsnpm/artifacts
@@ -431,7 +431,7 @@ jobs:
           node-version: 20
           architecture: ${{ matrix.architecture }}
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: release
@@ -512,7 +512,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: release
@@ -592,7 +592,7 @@ jobs:
           npm install --global npm@11.18.0
           test "$(npm --version)" = "11.18.0"
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: release
@@ -682,7 +682,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: release-evidence
