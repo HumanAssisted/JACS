@@ -2,6 +2,12 @@
 
 ### Changed
 
+- **Agreement v2 documentation and example distinguish signature inspection
+  from policy acceptance.** Mathematical checks and structural status do not
+  establish human approval or authority; `valid` and `policyAccepted` remain
+  false. Principal delegation is unsupported and unscheduled. Obsolete
+  delegation schema pages are removed; a real clean-generation regression
+  confirms they stay absent and the parent page matches the source.
 - **Rust MCP SDK updated to RMCP 3.3.0** (previous lockfile: 3.2.0).
   Defaults are explicitly disabled; production enables only the stdio server
   and macros with their implied schema/async-I/O features. RMCP client and
