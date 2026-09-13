@@ -1,13 +1,13 @@
 # Agreement v2 Developer Guide
 
-Agreement v2 is a standalone `jacsType: "agreement"` document for one job: make consent to terms portable and verifiable. Use it when the question is "did these agents agree to these terms?", not merely "was this JSON signed?"
+Agreement v2 is a standalone `jacsType: "agreement"` document with consent-signature and signed-transcript-prefix inspection. Its party proofs do not authenticate the full role, quorum, lineage, or finalization policy. A successful mathematical check is not permission to act on the agreement.
 
-Rust core is the source of truth. Python, Node.js, Go, CLI, MCP, and WASM expose the same JSON workflow so developers can create in one surface and verify in another.
+Rust owns the protocol checks; Python, Node.js, Go, CLI, MCP, and WASM expose related JSON workflows. Native `verify_agreement_v2` reports `mathematicalChecksValid` separately and always returns `valid: false`, `policyAccepted: false`, and `overallScope: "consent_signatures_only"`. The portable inspection report likewise does not accept application policy. Do not interpret either result as proof of human approval or authority.
 
 ## Mental Model
 
 - The JACS header owns document identity, versioning, authorship signatures, content hash, registration, files, and visibility.
-- The agreement body owns consent: `title`, `description`, `terms`, `parties`, `signaturePolicy`, `agreementSignatures`, `transcript`, `links`, `controllers`, and `owners`.
+- The agreement body records terms and consent-signature inputs: `title`, `description`, `terms`, `parties`, `signaturePolicy`, `agreementSignatures`, `transcript`, `links`, `controllers`, and `owners`.
 - `jacsAgreementHash` is the consent hash. It changes when terms, parties, policy, effective dates, or expiry dates change.
 - Transcript appends do not change `jacsAgreementHash`. They change the transcript hash that later agreement signatures bind.
 - Links are intentionally slim: only `jacsId` and `jacsVersion`. Put relationship meaning in the successor agreement's terms and status.
@@ -40,7 +40,7 @@ Rust core is the source of truth. Python, Node.js, Go, CLI, MCP, and WASM expose
 }
 ```
 
-Roles are deliberately small. `signer` means consent and obligation. `witness` means process attestation. `notary` means notarial attestation, the role HAI uses when it counter-signs. `observer` may appear in `parties`, but observers do not sign.
+The schema labels are `signer`, `witness`, `notary`, and `observer`; observers do not sign. V2 helpers check membership against supplied roles, but that does not establish portable role authority. An `agentType: "human"` label is metadata: an automated signature with that label is not evidence that a person reviewed or approved the terms.
 
 ## Workflow
 
@@ -48,7 +48,7 @@ Roles are deliberately small. `signer` means consent and obligation. `witness` m
 2. Append transcript references as negotiation messages, statements, or evidence are emitted as separate JACS documents.
 3. Update terms only when the actual agreement language changes. This clears prior agreement signatures because `jacsAgreementHash` changes.
 4. Sign as `signer`, `witness`, or `notary`.
-5. Verify before acting on `status`. The verifier recomputes hashes, role counts, quorum, notary/witness requirements, and transcript tamper evidence.
+5. Inspect signatures and transcript tamper evidence. Native role counts and `expectedStatus` are structural diagnostics over the supplied document; neither they nor stored `status` authorize an action.
 6. Resolve concurrent branches in Rust core: transcript-only branches auto-merge; terms conflicts require an explicit successor mutation.
 
 ## Prerequisites
@@ -63,8 +63,8 @@ Multiple distinct agents must share a `data_directory` (or exchange public keys 
 ## Roles, Quorum, and Notaries
 
 - `signaturePolicy.partyQuorum` is `all` or an integer M (M-of-N signer parties).
-- `witnessRequired` and `notaryRequired` are separate counts; a `notary` (the role HAI uses) attests the final state and is counted independently of signer quorum.
-- `controllers` lists agents allowed to emit new versions; `owners` are soft copyright claims. Keep them distinct from `parties`.
+- `witnessRequired` and `notaryRequired` are separate inputs to structural status calculation; their presence does not authenticate a witness or notary role.
+- `controllers` is the supplied list checked by mutation helpers; the header signature does not prove that the parties authorized that controller list. `owners` are soft copyright claims. Keep both distinct from `parties`.
 
 ## Mutations
 
@@ -108,7 +108,9 @@ agreement = agent.create_agreement_v2({
 
 signed = agent.sign_agreement_v2(agreement, "signer")
 report = agent.verify_agreement_v2(signed)
-assert report["valid"] is True
+assert report["mathematicalChecksValid"] is True
+assert report["valid"] is False
+assert report["policyAccepted"] is False
 ```
 
 ## Node.js
@@ -134,7 +136,8 @@ async function main() {
 
   const signed = await agent.signAgreementV2(agreement, "signer");
   const report = await agent.verifyAgreementV2(signed);
-  console.log("valid:", report.valid);
+  console.log("mathematical checks:", report.mathematicalChecksValid);
+  console.log("policy accepted:", report.policyAccepted); // always false for v2
 }
 
 main();
@@ -148,6 +151,8 @@ jacs agreement-v2 create --input agreement-input.json > agreement.json
 jacs agreement-v2 sign --agreement agreement.json --role signer > signed.json
 jacs agreement-v2 verify --agreement signed.json
 ```
+
+The verify command emits the inspection report and exits non-zero because v2 does not produce an accepted policy verdict. This is the expected result even when the mathematical checks pass.
 
 For branch handling:
 
@@ -172,13 +177,13 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 
 ## Golden Example
 
-The repository includes a three-party Python example that matches the core product scenario:
+The repository includes a three-party Python example of the v2 consent-signature workflow:
 
 ```bash
 python examples/agreement_v2_three_party.py
 ```
 
-It creates Agent A and Agent B as signer parties, HAI as a `notary`, and Agent X as an outsider. The example appends transcript references, rejects outsider mutation/signing, collects two signer signatures plus the HAI notary signature, and verifies the final agreement.
+It creates Agent A and Agent B as signer parties, a local demo agent labeled `notary`, and Agent X as an outsider. The example appends transcript references, rejects outsider mutation/signing, collects two signer signatures plus the demo notary signature, and inspects their mathematical validity. The resulting v2 report does not establish a portable finalization or human-approval verdict. The example checks `mathematicalChecksValid: true` while requiring `valid: false` and `policyAccepted: false`, and rejects transcript and signature tampering.
 
 ## MCP and WASM
 
@@ -197,17 +202,17 @@ WASM exposes the same flow as JSON-string methods: `createAgreementV2Json`, `app
 ## DevEx Rules
 
 - Use core helpers instead of hand-editing agreement JSON. The helpers maintain `jacsAgreementHash`, `allPreviousVersions`, `jacsPreviousVersion`, and status transitions.
-- Keep `parties`, `controllers`, and `owners` separate. Parties consent or attest; controllers can propose versions; owners are soft copyright claims.
-- Treat stored `status` as a cache. Always verify before acting on an agreement.
+- Keep `parties`, `controllers`, and `owners` separate. Party signatures record agent provenance; controllers are checked by version helpers; owners are soft copyright claims. None of those labels establishes human approval.
+- Treat stored `status` as a cache. V2 inspection cannot establish authority to act on that status; the application must separately establish its authorization policy.
 - Use transcript entries for process evidence and links for agreement lineage. Links stay `{jacsId, jacsVersion}` by design.
 - For post-final terms changes, create a successor agreement or explicit conflict resolution rather than mutating a final agreement in place.
-- Delegated signing is reserved for a future feature. In v2 core, the agent that signs must be listed in `parties` with the matching role.
+- Principal delegation (one agent signing on behalf of another party) is unsupported and unscheduled. The signing agent must be listed in `parties` with the matching role; `delegatedBy` and `delegationChain` are rejected. This does not change ES256 export-key delegation through compatibility key bindings, or SDK forwarding of calls to Rust.
 
 ## Migrating from v1 agreements
 
-JACS still ships the original v1 "sidecar" agreement: a `jacsAgreement` field attached to an *existing* signed document, with separate `create_agreement` / `sign_agreement` / `check_agreement` calls and an `AgreementOptions` struct. v1 answers "did these agents approve this existing payload?" Agreement v2 answers "did these agents consent to *these terms*, under *this policy*, with *this process record*?" - it is a self-contained `jacsType: "agreement"` document with its own content hash, version chain, parties, roles, signature policy, notary, and transcript.
+JACS still ships the original v1 "sidecar" agreement: a `jacsAgreement` field attached to an existing signed document, with separate `create_agreement` / `sign_agreement` / `check_agreement` calls and an `AgreementOptions` struct. V1 and v2 both permit mathematical signature inspection without proving the complete authorization policy. V2 additionally supplies a standalone identity, terms hash, transcript-prefix binding, and version/branch helpers. The presence of parties, roles, and `signaturePolicy` fields does not mean all of those claims are authenticated by each party proof.
 
-v1 is still supported but legacy; new work should use v2.
+V1 and v2 remain available for compatibility and inspection. Moving a payload to v2 does not make it an actionable authorization.
 
 ### Conceptual difference
 
@@ -237,25 +242,27 @@ There is no v1 equivalent for v2 mutations (`apply_agreement_v2` / `jacs agreeme
 
 - Roles: `signer`, `witness`, `notary`, `observer` (v1 has only "agents that must sign").
 - Notary and witness requirements (`signaturePolicy.notaryRequired`, `signaturePolicy.witnessRequired`), counted independently of signer quorum.
-- A `transcript` of process evidence whose tampering is detectable.
+- A `transcript` with tamper evidence for each signature's covered prefix.
 - Branch merge / conflict resolution for concurrent successor versions.
-- A top-level `valid` verdict from `verify_agreement_v2` (the report also carries `expectedStatus`).
-- Fail-closed CLI: `jacs agreement-v2 verify` exits non-zero when the agreement is not valid.
+- A diagnostic report from `verify_agreement_v2`: `mathematicalChecksValid`, `expectedStatus`, errors, and chain coverage. The retained `valid` and `policyAccepted` fields are always false.
+- Fail-closed CLI: `jacs agreement-v2 verify` exits non-zero for v2 because no accepted policy verdict is produced.
 
 For the full v2 walkthrough, see the [Workflow](#workflow), [Python](#python), [Node.js](#nodejs), and [CLI](#cli) sections above and the [Rust core / legacy comparison](../rust/agreements.md).
 
 ## Verification Matrix
 
+This is a source-test inventory, not evidence that every published SDK has been exercised together. It does not establish all-language discovery parity.
+
 | Scenario | Coverage |
 |----------|----------|
 | Create standalone Agreement v2 | Rust core tests, binding parity fixture, CLI/MCP/WASM tests |
-| Signer quorum | Rust core tests and shared parity fixture |
-| HAI-style `notaryRequired` | Rust core tests and language parity tests |
-| Human `agentType` parties | Rust core tests |
+| Structural signer-count/quorum calculation; not portable policy acceptance | Rust core tests and shared parity fixture |
+| Structural `notaryRequired` calculation; not authenticated notary authority | Rust core tests and language parity tests |
+| Human `agentType` labels; not human-approval evidence | Rust core tests |
 | Outsider cannot mutate | Rust core authorization tests |
 | Outsider cannot sign | Rust core role-membership tests |
 | Transcript append preserves `jacsAgreementHash` | Rust core tests |
-| Transcript tamper/reorder/substitution detection | Rust core tests |
+| Signed-prefix tamper/reorder/substitution detection; no per-entry hash chain | Rust core tests |
 | Terms edit changes `jacsAgreementHash` and clears signatures | Rust core tests |
 | `effectiveFrom` and `expiresAt` | Rust core tests |
 | `allPreviousVersions` chain reconciliation | Rust core tests |
@@ -263,7 +270,7 @@ For the full v2 walkthrough, see the [Workflow](#workflow), [Python](#python), [
 | Transcript-only branch auto-merge | Rust core, binding parity, CLI, MCP, WASM tests |
 | Terms conflict requires explicit resolution | Rust core, binding parity, CLI, MCP, WASM tests |
 | Key rotation / `agentVersion` matching | Rust core tests |
-| Cross-language JSON workflow parity | Python, Node.js, Go, CLI, MCP, and WASM parity tests |
+| Shared agreement workflow fixtures | Python, Node.js, Go, CLI, MCP, and WASM parity tests |
 
 The fixture `binding-core/tests/fixtures/agreement_v2_scenarios.json` is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.
 
@@ -299,6 +306,6 @@ Verifying incoming VCs is out of scope for JACS in P2.
 
 ## Troubleshooting
 
-- `report.valid` is false with a signature error: the verifier could not resolve a signer's key. Confirm all agents share a `data_directory`, or that the signer published a reachable public key.
+- `report.valid` and `report.policyAccepted` are always false for v2. To diagnose mathematical failures, inspect `mathematicalChecksValid` and `errors`; a missing signer key is one possible failure, not the reason for the unconditional policy rejection.
 - "outsider" rejection on sign/apply: the acting agent is not listed in `parties` with the matching role. Add it to `parties` (and to `controllers` for mutations).
-- Status looks wrong: treat stored `status` as a cache and always call verify; the report carries the recomputed `expectedStatus`.
+- Status looks wrong: `expectedStatus` is a structural diagnostic. Neither it nor stored `status` is an accepted authorization verdict.

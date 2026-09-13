@@ -175,19 +175,23 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="multi-agent-agreements"><a class="header" href="#multi-agent-agreements">Multi-Agent Agreements</a></h1>
-<p>Agreement v2 is the recommended JACS model for new multi-agent consent workflows. It creates a standalone <code>jacsType: "agreement"</code> document with terms, parties, signature policy, transcript references, notary support, and verifiable status.</p>
-<p>Use it when the question is: "did these agents agree to these terms?"</p>
+<p>Agreement v2 records terms and agent consent signatures in a standalone <code>jacsType: "agreement"</code> document. Its verifier inspects mathematical and structural checks. It does not accept the full authorization policy or prove human approval, even when the supplied quorum produces a <code>final</code> status.</p>
+<p>Use this walkthrough to inspect agent provenance. An application must separately establish the authority and any exact-action human approval required before acting.</p>
 <h2 id="the-lifecycle"><a class="header" href="#the-lifecycle">The Lifecycle</a></h2>
-<pre><code class="language-text">Create agreement -&gt; append transcript refs -&gt; signers consent -&gt; HAI notarizes -&gt; verify final status
+<pre><code class="language-text">Create agreement -&gt; append transcript refs -&gt; collect signer/notary signatures -&gt; inspect math and policy scope
 </code></pre>
 <h2 id="python"><a class="header" href="#python">Python</a></h2>
+<p>All three demo identities are controlled by this code, including the agent labeled <code>notary</code>; no person or external notary approves anything here.</p>
 <p>The three agents are persistent and share one <code>data_directory</code> so each can resolve the others' public keys when verifying. Independent <code>ephemeral()</code> agents keep keys in memory only and cannot verify each other's signatures.</p>
-<pre><code class="language-python">import tempfile
+<pre><code class="language-python">import os
+import secrets
+import tempfile
 from pathlib import Path
 
 from jacs import SimpleAgent
 
-PASSWORD = "MultiAgentDemo!2026"
+os.environ["JACS_KEYCHAIN_BACKEND"] = "disabled"  # throwaway demo only
+PASSWORD = secrets.token_urlsafe(32)
 workspace = Path(tempfile.mkdtemp(prefix="jacs_multi_agent_"))
 shared_data = workspace / "shared_data"  # all agents share this so keys resolve
 
@@ -206,19 +210,19 @@ def make_agent(name, agent_type="ai"):
 
 
 agent_a, a = make_agent("agent-a")
-agent_b, b = make_agent("agent-b", agent_type="human")
-hai, h = make_agent("hai-notary")
+agent_b, b = make_agent("agent-b")
+notary, n = make_agent("demo-notary")
 
 agreement = agent_a.create_agreement_v2({
     "title": "Bounded refund authorization",
-    "description": "Two parties agree on a bounded refund; HAI notarizes the final state.",
+    "description": "Demo refund terms for agent signature inspection; no refund is authorized.",
     "terms": "Agent B may issue a refund up to $25 for order 123 after Agent A approval.",
     "termsFormat": "text/markdown",
     "status": "proposed",
     "parties": [
         {"agentId": a["agent_id"], "agentType": "ai", "role": "signer"},
-        {"agentId": b["agent_id"], "agentType": "human", "role": "signer"},
-        {"agentId": h["agent_id"], "agentType": "ai", "role": "notary"},
+        {"agentId": b["agent_id"], "agentType": "ai", "role": "signer"},
+        {"agentId": n["agent_id"], "agentType": "ai", "role": "notary"},
     ],
     "signaturePolicy": {
         "partyQuorum": "all",
@@ -226,34 +230,35 @@ agreement = agent_a.create_agreement_v2({
         "notaryRequired": 1,
         "minimumStrength": "classical",
     },
-    "controllers": [a["agent_id"], b["agent_id"], h["agent_id"]],
+    "controllers": [a["agent_id"], b["agent_id"], n["agent_id"]],
 })
 
 agreement = agent_a.sign_agreement_v2(agreement, "signer")
 agreement = agent_b.sign_agreement_v2(agreement, "signer")
-agreement = hai.sign_agreement_v2(agreement, "notary")
+agreement = notary.sign_agreement_v2(agreement, "notary")
 
-# hai resolves agent_a's and agent_b's public keys from the shared data directory.
-report = hai.verify_agreement_v2(agreement)
-assert report["valid"]
-assert report["expectedStatus"] == "final"
+# The demo notary resolves the signers' public keys from shared storage.
+report = notary.verify_agreement_v2(agreement)
+assert report["mathematicalChecksValid"] is True
+assert report["valid"] is False
+assert report["policyAccepted"] is False
+assert report["overallScope"] == "consent_signatures_only"
+assert report["expectedStatus"] == "final"  # structural diagnostic only
 </code></pre>
-<p>For a fuller runnable version with transcript references and adversarial checks:</p>
+<p>This abbreviated snippet leaves its temporary workspace for inspection; remove it when finished. The runnable version includes transcript references and adversarial checks, and cleans up its temporary keys:</p>
 <pre><code class="language-bash">python examples/agreement_v2_three_party.py
 </code></pre>
-<h2 id="what-gets-verified"><a class="header" href="#what-gets-verified">What Gets Verified</a></h2>
+<h2 id="what-the-report-means"><a class="header" href="#what-the-report-means">What the Report Means</a></h2>
 <ul>
-<li><code>jacsAgreementHash</code> matches the terms, parties, policy, and effective dates.</li>
-<li>Signer signatures satisfy <code>partyQuorum</code>.</li>
-<li>Witness and notary signatures satisfy their separate requirements.</li>
-<li>Signatures come from listed parties with matching roles.</li>
-<li>Transcript signatures bind the transcript hash when transcript entries exist.</li>
-<li>Header signature and controller checks prove the emitted version came from an authorized controller.</li>
-<li><code>status</code> is recomputed before callers rely on it.</li>
+<li><code>mathematicalChecksValid</code> covers the native hash, signature and structural checks. Inspect <code>errors</code> for failures and <code>notes</code>, <code>verifiedChainDepth</code> and <code>chainFullyVerified</code> for lineage coverage limits.</li>
+<li>Consent signatures bind the agreement identity and consent hash; signatures made with a nonempty transcript also bind its prefix at signing. Later unsigned transcript entries are not retroactively covered.</li>
+<li>Signer counts, quorum, witness/notary requirements and <code>expectedStatus</code> are diagnostics against the supplied document. Neither a count nor <code>status: "final"</code> is an accepted policy verdict.</li>
+<li>Helpers check membership, role and controller lists. These checks do not establish portable role/controller authority or a person's approval. Changing an agent's label to <code>human</code> does not add human approval evidence.</li>
+<li><code>valid</code> and <code>policyAccepted</code> remain false, including for the successful mathematical inspection above. Do not turn either field into true or treat <code>mathematicalChecksValid</code> as permission to act.</li>
 </ul>
 <h2 id="legacy-sidecar-agreements"><a class="header" href="#legacy-sidecar-agreements">Legacy Sidecar Agreements</a></h2>
-<p>The older <code>create_agreement()</code> / <code>sign_agreement()</code> / <code>check_agreement()</code> API still exists for adding <code>jacsAgreement</code> metadata to an arbitrary signed document. Use it for simple countersignature approval of an existing payload.</p>
-<p>Use Agreement v2 for standalone terms, HAI notarization, transcript evidence, branch handling, or cross-language product workflows.</p>
+<p>The older <code>create_agreement()</code> / <code>sign_agreement()</code> / <code>check_agreement()</code> API still exists for adding <code>jacsAgreement</code> metadata to an arbitrary signed document. It supports signature inspection of an existing payload; those signatures alone do not establish human approval or the complete application policy.</p>
+<p>V2 adds standalone terms, transcript-prefix evidence and branch helpers. Moving to v2 does not create an actionable authorization.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><a href="../guides/agreement-v2.html">Agreement v2 Developer Guide</a></li>

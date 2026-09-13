@@ -4,7 +4,7 @@
 https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature
 ```
 
-A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcript is non-empty) and carries the signer's agent identity and timestamp. Delegated signing is intentionally not part of v2 core: a future version may allow one agent to sign on behalf of a listed party when a signed delegation document proves authority.
+A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcript is non-empty) and carries the signer's agent identity and timestamp. Principal delegation (one agent signing on behalf of another party) is unsupported and unscheduled. The signing agent must be a listed party with the matching role; delegatedBy and delegationChain are rejected. This restriction does not change ES256 export-key delegation through compatibility key bindings or SDK forwarding of calls to Rust.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
