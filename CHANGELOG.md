@@ -9,6 +9,10 @@
   10 update. MCP/CLI tests use `serial_test` 4.0.1. Protocol support remains
   MCP `2026-07-28` plus legacy initialization; no tool names, schemas, signing
   formats, keys or transport endpoints changed.
+- **MCP onboarding distinguishes verification from signing.** The crate and
+  book guides give key-free verification and explicit local-sign client
+  configuration, remove obsolete `core`/`full` recipes, and require a separate
+  content-directory grant for file tools.
 
 ### Security
 
