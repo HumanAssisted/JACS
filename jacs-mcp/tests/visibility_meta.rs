@@ -76,12 +76,24 @@ fn visibility_unknown_value_defaults_private() {
 // ============================================================================
 
 #[test]
-fn public_hint_mentions_freely_shared() {
+fn public_hint_does_not_grant_sharing_or_publication_permission() {
     let hint = Visibility::Public.hint();
     assert!(
-        hint.contains("freely shared"),
-        "expected 'freely shared' in hint: {hint}"
+        hint.contains("does not grant permission to share or publish"),
+        "document-declared visibility must not grant sharing permission: {hint}"
     );
+    assert!(!hint.contains("can be freely shared"));
+}
+
+#[test]
+fn all_visibility_hints_are_advisory() {
+    for visibility in [
+        Visibility::Public,
+        Visibility::Private,
+        Visibility::Restricted,
+    ] {
+        assert!(visibility.hint().contains("advisory"));
+    }
 }
 
 #[test]
@@ -122,7 +134,12 @@ fn annotate_response_wraps_with_document_and_meta() {
 
     let meta = &annotated["_jacs_meta"];
     assert_eq!(meta["visibility"].as_str().unwrap(), "public");
-    assert!(meta["hint"].as_str().unwrap().contains("freely shared"));
+    assert!(
+        meta["hint"]
+            .as_str()
+            .unwrap()
+            .contains("does not grant permission")
+    );
 }
 
 #[test]

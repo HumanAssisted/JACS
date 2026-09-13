@@ -18,7 +18,7 @@ README.md and CHANGELOG.md may be useful to understand some future goals and wha
 
 ## Working Norms
 
-1. **Observability.** Good logging and how a system admin monitors the system. More 12-factor. Structured JSON logs to stdout, env-driven config (`RUST_LOG`, `LOG_FORMAT`, `LOG_LEVEL`), `/metrics` on Prometheus, `/health` and `/health/ready`, request IDs propagated. Auth and verification failures log at WARN, not DEBUG. Every PRD says what the sysadmin sees when this fails: which log line, which metric, which alert. `jacs mcp` and the JACS CLI must initialize a tracing subscriber before serving — silent stdio is not acceptable.
+1. **Observability.** Good logging and how a system admin monitors the system. More 12-factor. Structured JSON service logs to stdout; CLI and MCP diagnostics to stderr (MCP stdout carries JSON-RPC only). Env-driven config (`RUST_LOG`, `LOG_FORMAT`, `LOG_LEVEL`), `/metrics` on Prometheus, `/health` and `/health/ready`, request IDs propagated. Auth and verification failures log at WARN, not DEBUG. Every PRD says what the sysadmin sees when this fails: which log line, which metric, which alert. `jacs mcp` and the JACS CLI must initialize a tracing subscriber before serving — silent diagnostics are not acceptable.
 
 2. **Vertical integration.** In a buy-or-build decision, prefer a well-integrated monolith over a bloated open-source dependency we use 10% of, when the feature is simple, sure, and well known. Every PRD that introduces or depends on an external service includes a buy/build assessment: what surface we use, what ships unused, what the smallest owned alternative would cost.
 
@@ -56,7 +56,7 @@ Cross-language feature parity is enforced through canonical JSON fixtures that s
 | `binding-core/tests/fixtures/adapter_inventory.json` | Framework adapter modules and public functions | Rust, Python, Node |
 | `binding-core/tests/fixtures/cli_mcp_alignment.json` | CLI-to-MCP tool mapping (aligned, CLI-only, MCP-only) | Rust |
 | `jacs-cli/contract/cli_commands.json` | 38 CLI commands + 4 feature-gated | Rust (extracted from Clap tree) |
-| `jacs-mcp/contract/jacs-mcp-contract.json` | 48 MCP tools with parameter schemas | Python, Node, Go |
+| `jacs-mcp/contract/jacs-mcp-contract.json` | 42 compiled MCP tools with parameter schemas; runtime profiles expose only their authorized subset | Python, Node, Go |
 
 ### What to update when
 

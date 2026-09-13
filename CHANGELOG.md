@@ -1,3 +1,41 @@
+## Unreleased
+
+### Changed
+
+- **Rust MCP SDK updated to RMCP 3.3.0** (previous lockfile: 3.2.0).
+  Defaults are explicitly disabled; production enables only the stdio server
+  and macros with their implied schema/async-I/O features. RMCP client and
+  child-process support are test-only, including its required `process-wrap`
+  10 update. MCP/CLI tests use `serial_test` 4.0.1. Protocol support remains
+  MCP `2026-07-28` plus legacy initialization; no tool names, schemas, signing
+  formats, keys or transport endpoints changed.
+
+### Security
+
+- **MCP visibility labels no longer imply sharing consent.** Returned hints
+  describe document-declared visibility as advisory. A caller's `public` label
+  cannot grant publication permission. Signing and verification messages
+  explicitly distinguish agent provenance and supplied-key integrity from
+  human approval, authorization and truth.
+- **Wire-level MCP scope denials now emit a redacted WARN before dispatch.**
+  `mcp_tool_scope_denied` records the active profile and known tool name (or
+  `unknown`), without arbitrary client strings or arguments. The returned
+  denial also redacts unknown names because RMCP logs JSON-RPC errors at WARN.
+  A raw-wire regression reproduced that disclosure before the correction. Verification
+  failures emit `mcp_verification_failed`; denied calls retain the existing
+  JSON-RPC/tool error shapes. File-tool denial guidance now reflects the
+  explicit startup content-root grant.
+
+### Verification
+
+- On Rust 1.97, all seven raw stdio regressions and 156 full-feature MCP tests
+  passed (seven pre-existing parked-profile tests remain ignored). Strict
+  checks, minimal builds, Clippy and advisory/license gates passed. The fast
+  Rust PR lane's five sandbox-denied loopback tests passed in their isolated
+  rerun with scoped permission; all other lanes passed. Exact commands,
+  counts and untested release surfaces are recorded in
+  [the September follow-up](docs/RMCP_3_UPGRADE_SPIKE.md#2026-09-13-rmcp-33-and-local-signing-follow-up).
+
 ## 0.13.0
 
 Released 2026-09-09

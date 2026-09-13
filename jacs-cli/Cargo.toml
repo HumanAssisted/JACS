@@ -44,7 +44,7 @@ tracing = "0.1"
 assert_cmd = "2"
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
 predicates = "3.1"
-serial_test = "3.2.0"
+serial_test = "4.0.1"
 serde_json = "1.0"
 tempfile = "3"
 # Used by cli_image_tests.rs to generate fixture PNG/JPEG bytes inline.

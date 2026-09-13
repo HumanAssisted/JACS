@@ -2,11 +2,29 @@
 
 MCP server for JACS verification and explicitly configured local agent signing.
 
-Uses **stdio transport only**. The default process loads no agent configuration
-or private key. Local JSON/Agreement signing requires an existing signed agent
-config; it needs no server, extra policy file, or new key format.
+Uses **stdio transport only**. Verification needs no signing identity or key
+setup. An explicitly supplied `--config` or `JACS_CONFIG` is loaded public-only
+in the default `verify-only` profile; private keys are never unlocked there.
+Local JSON/Agreement signing requires an existing signed agent config; it needs
+no server, extra policy file, or new key format.
 
 The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
+
+### Protocol compatibility
+
+The Rust server uses [RMCP 3.3.0](https://github.com/modelcontextprotocol/rust-sdk/releases/tag/rmcp-v3.3.0).
+MCP protocol versions are dates: the current supported revision is
+[`2026-07-28`](https://modelcontextprotocol.io/docs/2026-07-28/learn/versioning),
+not a protocol named "MCP 2". Modern clients can use `server/discover` and
+per-request protocol metadata without initialization. Legacy `2025-11-25`
+clients retain `initialize` / `notifications/initialized` and their legacy
+response shapes. `tools/list` returns the process's fixed authorized inventory,
+with a five-minute public cache hint for modern clients.
+
+RMCP defaults are disabled. Production selects only `server`, `transport-io`
+and `macros`, with their implied schema/async-I/O features; client and child
+process support are test dependencies. No RMCP HTTP, SSE or OAuth transport
+is enabled. See [upgrade evidence](../docs/RMCP_3_UPGRADE_SPIKE.md).
 
 Ecosystem compatibility exports (ES256 JWKS, the native-root-signed compatibility key binding, ES256-signed A2A agent cards, AP2 mandates, and Agreement-v2 Verifiable Credentials) are CLI and language-binding surfaces only — by design there are no MCP tools for them.
 
@@ -45,12 +63,29 @@ remain on disk. Agreement inspection may read configured local public keys,
 but network opt-ins must be off for this local process.
 
 This grants the MCP client permission to sign allowed content **as this agent**.
-It does not prove a human reviewed any particular action, nor does Agreement-v2
+It does not prove the content is true or a human reviewed any particular action, nor does Agreement-v2
 signature coverage establish role/quorum/notary authority or policy acceptance.
 The operator trusts the local host and protects the config, key and storage
 directories; this is not a sandbox against another process controlling those
-files. Startup reports `mcp_local_signing_authorized`; rejection logs
-`mcp_local_signing_denied` at WARN without document bodies or secrets.
+files. Startup reports `mcp_local_signing_authorized`. Handler scope rejection
+logs `mcp_local_signing_denied`; wire calls outside the advertised inventory
+log `mcp_tool_scope_denied` at WARN before dispatch. Verification failures log
+`mcp_verification_failed` at WARN. These events omit document bodies, keys,
+passwords and arbitrary unknown tool names. Logs go to stderr; stdout carries
+only MCP JSON-RPC. A rejected call leaves the process available for subsequent
+authorized calls.
+
+Verification with a supplied public key checks integrity, not identity, trust,
+authorization, human approval, truth, freshness or revocation. A document's
+`jacsVisibility` and the returned `_jacs_meta` hints are advisory labels, never
+permission to publish or share; that permission must be established separately.
+
+Clients must inspect each response layer. A tool outside the active inventory
+returns JSON-RPC `-32602`. Invalid tool arguments return an MCP tool result with
+`isError: true`. Dispatched JACS operations retain their JSON text result:
+check `success` and, for verification, `valid`, even when the MCP envelope has
+`isError: false`. Neither transport completion nor signature integrity is an
+authorization decision.
 
 To also work with local text and images, explicitly select an existing content
 directory at startup:
@@ -151,27 +186,22 @@ actual process surface.
 
 ## Quick Start
 
-### Step 1: Install JACS CLI
+### Install JACS CLI
 
 ```bash
 cargo install jacs-cli
 ```
 
-### Step 2: Create Agent and Keys
+### Verify documents without creating keys
 
-```bash
-jacs init
-```
-
-### Step 3: Start the MCP Server
-
-The MCP server is built into the `jacs` binary.
+The default server verifies a document with the public key and algorithm
+supplied by its caller. It does not need `jacs init`:
 
 ```bash
 jacs mcp
 ```
 
-### Step 4: Configure Your MCP Client
+Configure your MCP client with:
 
 ```json
 {
@@ -183,6 +213,34 @@ jacs mcp
   }
 }
 ```
+
+### Let your local agent sign documents
+
+Reuse an existing signed config, or run `jacs init` once in the directory where
+you want to keep the agent identity. Then start the explicitly authorized signer:
+
+```bash
+jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+```
+
+Use the same arguments in your MCP client. Replace the absolute path with your
+existing config; keep using its normal keychain/password source and never send
+the password as a tool argument.
+
+```json
+{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
+    }
+  }
+}
+```
+
+This permits the client to use the [existing local signing scope](#explicit-local-signing)
+as the selected agent. Opt into file signing separately with `JACS_MCP_BASE_DIR`;
+the signing profile does not grant human approval or publication permission.
 
 ## Configuration
 
