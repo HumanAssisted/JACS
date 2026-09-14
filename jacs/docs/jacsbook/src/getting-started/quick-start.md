@@ -2,6 +2,55 @@
 
 Get a persistent agent identity, sign data, and verify it.
 
+## Let your agent sign documents with MCP
+
+The unified `jacs` binary includes a stdio-only MCP server. After installing
+it and creating an identity with the [CLI setup](#cli), or selecting an
+existing signed config, explicitly enable local signing:
+
+```bash
+jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+```
+
+Configure your MCP client with the same arguments:
+
+```json
+{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
+    }
+  }
+}
+```
+
+Local signing uses the selected config's persistent encrypted keys and its
+[keychain or password source](#password-bootstrap). It grants agent signing
+authority; a signature does not establish a person's approval of the content.
+Key and trust administration are not enabled by this profile.
+
+To verify documents without creating an identity or unlocking private keys,
+use the default verification-only configuration instead:
+
+```json
+{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The default `verify-only` profile stays verification-only when a config or
+password is available; selecting `local-sign` is explicit. Set
+`JACS_MCP_BASE_DIR` only when you intend to add scoped text/image
+file tools to `local-sign`; no content directory is granted implicitly. See the
+[canonical MCP guide](../integrations/mcp.md#1-ready-made-server-jacs-mcp) for
+file scope, overwrite behavior and the actual tool inventory.
+
 ## CLI
 
 Install the unified CLI/MCP binary:
@@ -84,32 +133,6 @@ jacs extract-media-signature signed.png
 ```
 
 JACS embeds the signature in PNG, JPEG, or WebP metadata. See [Image and Media Signatures](../guides/media-signing.md) for overwrite policy, robust mode, and verification details.
-
-## Start the MCP server
-
-The MCP server is built into the `jacs` binary. It uses stdio transport only.
-
-```bash
-JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
-```
-
-Example MCP client config:
-
-```json
-{
-  "mcpServers": {
-    "jacs": {
-      "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
-    }
-  }
-}
-```
 
 ## Password bootstrap
 

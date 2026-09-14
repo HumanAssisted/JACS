@@ -236,23 +236,35 @@ jacs extract-media-signature signed.png
 </ul>
 <p>Email signing is currently documented as a Rust core API via <code>jacs::email</code>, not as a CLI or Python/Node/Go binding surface.</p>
 <h2 id="5-secure-a-local-mcp-tool-server"><a class="header" href="#5-secure-a-local-mcp-tool-server">5. Secure a local MCP tool server</a></h2>
-<p>Use JACS when an MCP client is calling tools that should not run on blind trust.</p>
+<p>Use JACS when an MCP client needs local document signing or supplied-key integrity checks.</p>
 <p><strong>Start with:</strong></p>
 <ul>
 <li><a href="integrations/mcp.html">MCP Overview</a></li>
 </ul>
+<p>For keyless verification, install the CLI and start the explicit verification profile:</p>
 <pre><code class="language-bash">cargo install jacs-cli
-jacs quickstart --name mcp-agent --domain mcp-agent.example
-export JACS_CONFIG="$PWD/jacs.config.json"
-# Also configure JACS_PASSWORD_FILE or an OS-keychain password.
-jacs mcp
+jacs mcp --profile verify-only
 </code></pre>
+<p>For document signing, configure a <a href="getting-started/quick-start.html#password-bootstrap">password source</a>
+before creating an identity, or use an existing signing config. Then start the
+explicit signing profile:</p>
+<pre><code class="language-bash">jacs quickstart --name mcp-agent --domain mcp-agent.example
+jacs mcp --profile local-sign --config ./jacs.config.json
+</code></pre>
+<p>To also enable scoped text/image tools, prefix the final command with
+<code>JACS_MCP_BASE_DIR=/path/to/content</code>. Each server command runs until the MCP
+client closes it; verification and signing are alternative startup choices.</p>
 <p><strong>What JACS adds:</strong></p>
 <ul>
 <li>A ready-made stdio MCP server</li>
-<li>Signing and verification tools for documents, text, images, trust, audit, and agent workflows</li>
+<li>Explicit-key document verification by default; JSON/Agreement tools with <code>local-sign</code></li>
+<li>Five text/image tools only with <code>local-sign</code>, a signing config and <code>JACS_MCP_BASE_DIR</code></li>
 <li>Local private-key custody; no HTTP listener</li>
 </ul>
+<p>Signatures establish key-backed provenance, not per-action human approval,
+truth or authority. Loading a config alone does not grant signing. Trust/admin
+capabilities remain unavailable through these profiles; inspect <code>tools/list</code>
+for the running process's actual inventory.</p>
 <h2 id="6-add-provenance-to-framework-boundaries"><a class="header" href="#6-add-provenance-to-framework-boundaries">6. Add provenance to framework boundaries</a></h2>
 <p>Use JACS when an existing app already has a boundary such as LangChain tool output, FastAPI response, Express middleware, or Koa middleware.</p>
 <p><strong>Start with:</strong></p>
@@ -280,8 +292,13 @@ jacs mcp
 <ul>
 <li>Signed A2A artifacts</li>
 <li>Trust policies for admission control</li>
-<li>M-of-N approvals with quorum and algorithm constraints</li>
+<li>Agreement-v2 inspection of mathematical signature coverage; M-of-N, role,
+status and algorithm policy claims require separate application evaluation</li>
 </ul>
+<p>Agreement-v2 math is not policy acceptance: its native <code>valid</code> and
+<code>policyAccepted</code> stay false. Quorum counts, human/notary labels and final status
+cannot establish human approval or authority. See the
+<a href="guides/agreement-v2.html">Agreement-v2 guide</a> for the inspection/report distinction.</p>
 <h2 id="8-publish-identity-without-a-central-auth-service"><a class="header" href="#8-publish-identity-without-a-central-auth-service">8. Publish identity without a central auth service</a></h2>
 <p>Use JACS when external systems need to verify an agent identity without putting a shared server in the middle.</p>
 <p><strong>Start with:</strong></p>

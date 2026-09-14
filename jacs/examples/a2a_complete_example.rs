@@ -174,8 +174,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Post-quantum support future-proofs the system");
     println!("\nTo serve as an A2A agent:");
     println!("1. Host the .well-known files on your web server");
-    println!("2. Implement the JACS endpoints (/jacs/sign, /jacs/verify)");
-    println!("3. Register your agent with A2A discovery services");
+    println!("2. Implement any required message/task interface in your host application");
+    println!(
+        "3. Legacy /jacs/sign and /jacs/verify are optional host examples, not discovery routes"
+    );
 
     // Cleanup
     cleanup_example_environment()?;

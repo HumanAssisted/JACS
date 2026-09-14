@@ -18,8 +18,11 @@ Already using the A2A protocol? Here's what JACS adds -- and what stays the same
 
 ### What Stays the Same
 
-- **Agent Cards** follow the v0.4.0 shape. Your existing Agent Card fields (`name`, `description`, `skills`, `url`) are preserved.
-- **Discovery** uses `/.well-known/agent-card.json`. No new endpoints are required for basic interop.
+- **Agent Cards** currently export the legacy v0.4.0 shape, preserving fields such as `name`, `description`, `skills` and `url`. Interoperability with current released A2A peers remains unproven; this guide does not claim current wire compatibility.
+- **Discovery** publishes the native six-document well-known set, including
+  `/.well-known/agent-card.json`. The bundled routers do not implement
+  message/task or remote-signing endpoints; callable services require separate
+  host implementation and authorization.
 - **JSON-RPC** transport is untouched. JACS works alongside A2A, not instead of it.
 
 ### What JACS Adds
