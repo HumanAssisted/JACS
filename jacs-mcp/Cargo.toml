@@ -45,7 +45,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1.0"
 uuid = { version = "1", features = ["v4"] }
-sha2 = "0.10.8"
+sha2 = "0.11.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
@@ -57,4 +57,4 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 anyhow = "1"
 # Required by `path_policy.rs` lib tests to serialise process-wide env-var
 # manipulation (see Issue 024).
-serial_test = "3.2.0"
+serial_test = "4.0.1"

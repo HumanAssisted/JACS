@@ -11,15 +11,15 @@ authors.workspace = true
 readme = "README.md"
 
 [dependencies]
-png = "0.17"
-img-parts = "0.3"
+png = "0.18"
+img-parts = "0.4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-base64 = "0.22"
-sha2 = "0.10"
+base64 = "0.23"
+sha2 = "0.11"
 thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
 # Required by tests/oxipng_survival_test.rs (Issue 016 / PRD §5.1) — verifies
 # PNG iTXt JACS signatures survive oxipng default optimisation.
-oxipng = { version = "9", default-features = false, features = ["parallel"] }
+oxipng = { version = "10", default-features = false, features = ["parallel"] }
