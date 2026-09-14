@@ -2,6 +2,11 @@
 
 ### Changed
 
+- **Local MCP/MIME baseline demo (2026-09-14).** A standard-library Python
+  example carries an MCP-signed JSON report unchanged through a MIME attachment
+  to a separate keyless JACS recipient. A real-process CLI regression exercises
+  byte preservation, verification and rejection paths with disposable keys;
+  it sends no mail and does not infer email identity or approval/authority.
 - **Provenance guidance clarified (2026-09-14).** MCP documentation distinguishes
   per-tool execution, signature inspection and policy acceptance. Email guidance
   describes the current JACS envelope and unchecked forwarding ancestors, with
