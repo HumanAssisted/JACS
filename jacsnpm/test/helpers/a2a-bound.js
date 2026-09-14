@@ -33,6 +33,11 @@ function boundWellKnownPairs(options = {}) {
     '/.well-known/jacs-compat-binding.json': {
       jacsSha256: bindingHash,
       jacsSignature: { agentID: agentId, signingAlgorithm: keyAlgorithm },
+      // Synthetic builder fixture, not a cryptographic native integration.
+      compatibilityKeyBinding: {
+        issuedAt: options.issuedAt || new Date().toISOString(),
+        expiresAt: options.expiresAt ?? null,
+      },
     },
     '/.well-known/jacs-agent.json': {
       agentId,

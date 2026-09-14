@@ -11,6 +11,7 @@ Verifies:
 """
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -70,7 +71,13 @@ def _make_mock_client(agent_data: dict | None = None) -> MagicMock:
         "/.well-known/jwks.json": {
             "keys": [{"kid": compat_kid, "alg": "ES256", "use": "sig"}]
         },
-        "/.well-known/jacs-compat-binding.json": {"jacsSha256": binding_hash},
+        "/.well-known/jacs-compat-binding.json": {
+            "jacsSha256": binding_hash,
+            "compatibilityKeyBinding": {
+                "issuedAt": datetime.now(timezone.utc).isoformat(),
+                "expiresAt": None,
+            },
+        },
         "/.well-known/jacs-agent.json": {"agentId": agent_data.get("jacsId")},
         "/.well-known/jacs-pubkey.json": {"agentId": agent_data.get("jacsId")},
         "/.well-known/jacs-extension.json": {
@@ -310,3 +317,393 @@ class TestServeRefactoring:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# These controlled native-builder fixtures exercise mounted FastAPI handlers.
+# They do not claim cryptographic native integration.
+_DAY = 86400
+_START = datetime(2026, 9, 14, tzinfo=timezone.utc).timestamp()
+_BINDING = "/.well-known/jacs-compat-binding.json"
+_CARD = "/.well-known/agent-card.json"
+
+
+def _snapshot_pairs(generation, issued, expires=None):
+    pairs = json.loads(
+        _make_mock_client()._agent.generate_well_known_documents.return_value
+    )
+    documents = {pair["path"]: pair["document"] for pair in pairs}
+    for document in documents.values():
+        document["snapshot"] = generation
+    binding = documents[_BINDING]
+    binding["compatibilityKeyBinding"] = {
+        "issuedAt": datetime.fromtimestamp(issued, timezone.utc).isoformat(),
+        "expiresAt": (
+            None
+            if expires is None
+            else datetime.fromtimestamp(expires, timezone.utc).isoformat()
+        ),
+    }
+    binding["jacsSha256"] = f"binding-{generation}"
+    documents[_CARD]["metadata"]["jacsCompatBindingHash"] = f"binding-{generation}"
+    return pairs
+
+
+@pytest.fixture
+def discovery_clock(monkeypatch):
+    from jacs import a2a_server
+
+    now = [_START]
+    # Mock wallclock only: threadpool, HTTP and lock scheduling remain real.
+    monkeypatch.setattr(a2a_server.time, "time", lambda: now[0])
+    return now
+
+
+def _mount_lifecycle(now, initial=None, next_builder=None):
+    client = _make_mock_client()
+    generator = client._agent.generate_well_known_documents
+
+    def build():
+        if generator.call_count == 1:
+            return json.dumps(
+                initial if initial is not None else _snapshot_pairs(1, now[0])
+            )
+        return json.dumps(
+            next_builder() if next_builder else _snapshot_pairs(2, now[0])
+        )
+
+    generator.side_effect = build
+    tc = TestJacsA2ARoutes()._get_test_client(
+        client, skills=json.loads(client._agent.get_agent_json.return_value)["skills"]
+    )
+    return tc, generator
+
+
+class TestDiscoverySnapshotLifetime:
+
+    def test_refreshes_all_six_at_six_days_and_avoids_ordinary_regeneration(
+        self, discovery_clock
+    ):
+        now = discovery_clock
+        tc, generator = _mount_lifecycle(now)
+        original = tc.get(_CARD).json()
+        now[0] += 6 * _DAY - 1
+        cached_at = now[0]
+        near_renewal = tc.get(_CARD)
+        assert (
+            near_renewal.headers["cache-control"]
+            == "public, max-age=1, must-revalidate"
+        )
+        max_age = int(
+            near_renewal.headers["cache-control"].split("max-age=")[1].split(",")[0]
+        )
+        assert cached_at + max_age <= _START + 6 * _DAY
+        now[0] = _START + 6 * _DAY - 0.001
+        before_renewal = tc.get(_CARD)
+        assert before_renewal.json() == original
+        assert before_renewal.headers["cache-control"] == "no-store"
+        assert generator.call_count == 1
+        now[0] = _START + 6 * _DAY
+        renewed_binding = tc.get(_BINDING)
+        assert (
+            near_renewal.json()["metadata"]["jacsCompatBindingHash"]
+            != renewed_binding.json()["jacsSha256"]
+        )
+        documents = {}
+        for pair in _snapshot_pairs(0, now[0]):
+            response = tc.get(pair["path"])
+            documents[pair["path"]] = response.json()
+            assert response.status_code == 200
+            assert response.json()["snapshot"] == 2
+            assert (
+                response.headers["cache-control"]
+                == "public, max-age=3600, must-revalidate"
+            )
+        assert (
+            documents[_CARD]["metadata"]["jacsCompatBindingHash"]
+            == documents[_BINDING]["jacsSha256"]
+        )
+        assert (
+            documents[_CARD]["signatures"][0]["keyId"]
+            == documents["/.well-known/jwks.json"]["keys"][0]["kid"]
+        )
+        assert generator.call_count == 2
+        assert original["snapshot"] == 1
+
+    def test_refreshes_after_more_than_seven_idle_days(self, discovery_clock):
+        tc, generator = _mount_lifecycle(discovery_clock)
+        discovery_clock[0] += 8 * _DAY
+        assert tc.get(_CARD).json()["snapshot"] == 2
+        assert generator.call_count == 2
+
+    def test_uses_preexisting_issuance_not_mount_time(self, discovery_clock):
+        tc, generator = _mount_lifecycle(
+            discovery_clock, _snapshot_pairs(1, _START - 6 * _DAY + 1)
+        )
+        assert tc.get(_CARD).json()["snapshot"] == 1
+        discovery_clock[0] += 1
+        assert tc.get(_CARD).json()["snapshot"] == 2
+        assert generator.call_count == 2
+
+    def test_failure_retry_cache_deadline_refusal_and_recovery(
+        self, discovery_clock, caplog
+    ):
+        def fail():
+            raise RuntimeError("PRIVATE SIGNED PAYLOAD /private/key")
+
+        now = discovery_clock
+        initial = _snapshot_pairs(1, now[0])
+        tc, generator = _mount_lifecycle(now, initial, next_builder=fail)
+        now[0] = _START + 6 * _DAY
+        for pair in initial:
+            response = tc.get(pair["path"])
+            assert response.status_code == 200
+            assert response.json() == pair["document"]
+            assert response.headers["cache-control"] == "no-store"
+        assert generator.call_count == 2
+        now[0] += 59
+        tc.get(_CARD)
+        assert generator.call_count == 2
+        now[0] += 1
+        tc.get(_CARD)
+        assert generator.call_count == 3
+        now[0] = _START + 7 * _DAY - 1.5
+        assert tc.get(_CARD).headers["cache-control"] == "no-store"
+        now[0] += 1
+        assert tc.get(_CARD).headers["cache-control"] == "no-store"
+        now[0] += 0.5
+        response = tc.get(_CARD)
+        assert response.status_code == 503
+        assert response.json() == {"error": "A2A discovery unavailable"}
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["access-control-allow-origin"] == "*"
+        calls = generator.call_count
+        tc.get(_BINDING)
+        assert generator.call_count == calls
+        generator.side_effect = lambda: json.dumps(_snapshot_pairs(3, now[0]))
+        now[0] += 60
+        recovered = tc.get(_CARD)
+        assert recovered.json()["snapshot"] == 3
+        assert (
+            recovered.headers["cache-control"]
+            == "public, max-age=3600, must-revalidate"
+        )
+        assert (
+            recovered.json()["metadata"]["jacsCompatBindingHash"]
+            == tc.get(_BINDING).json()["jacsSha256"]
+        )
+        assert "PRIVATE" not in caplog.text
+        assert "a2a_discovery_refresh_failed" in caplog.text
+
+    def test_explicit_expiry_stops_without_regeneration(self, discovery_clock, caplog):
+        now = discovery_clock
+        tc, generator = _mount_lifecycle(now, _snapshot_pairs(1, _START, _START + 2.5))
+        assert (
+            tc.get(_CARD).headers["cache-control"]
+            == "public, max-age=2, must-revalidate"
+        )
+        for delay in [0, 60, 8 * _DAY]:
+            now[0] = _START + 2.5 + delay
+            response = tc.get(_BINDING)
+            assert response.status_code == 503
+            assert response.headers["cache-control"] == "no-store"
+        assert generator.call_count == 1
+        assert caplog.text.count("a2a_discovery_expired") == 1
+
+    @pytest.mark.parametrize(
+        "damage",
+        [
+            "missing document",
+            "mismatched binding",
+            "bad date",
+            "expiry extension",
+            "skill override",
+        ],
+    )
+    def test_invalid_replacement_cannot_partially_publish(
+        self, discovery_clock, damage
+    ):
+        now = discovery_clock
+
+        def damaged():
+            pairs = _snapshot_pairs(2, now[0], _START + 10 * _DAY)
+            binding = next(
+                pair["document"] for pair in pairs if pair["path"] == _BINDING
+            )
+            if damage == "missing document":
+                pairs.pop()
+            if damage == "mismatched binding":
+                binding["jacsSha256"] = "mismatch"
+            if damage == "bad date":
+                binding["compatibilityKeyBinding"]["issuedAt"] = "not a date"
+            if damage == "expiry extension":
+                binding["compatibilityKeyBinding"]["expiresAt"] = None
+            if damage == "skill override":
+                next(pair["document"] for pair in pairs if pair["path"] == _CARD)[
+                    "skills"
+                ] = [{"id": "unauthorized"}]
+            return pairs
+
+        tc, generator = _mount_lifecycle(
+            now, _snapshot_pairs(1, _START, _START + 10 * _DAY), damaged
+        )
+        now[0] += 6 * _DAY
+        for pair in _snapshot_pairs(0, now[0]):
+            response = tc.get(pair["path"])
+            assert response.status_code == 200
+            assert response.json()["snapshot"] == 1
+        assert generator.call_count == 2
+
+    @pytest.mark.parametrize(
+        "issued",
+        [
+            None,
+            123,
+            "",
+            "2026-02-30T00:00:00Z",
+            "2026-09-14",
+            "2026-09-14T00:00:00",
+            "2026-09-14T00:00:00+01:60",
+        ],
+    )
+    def test_invalid_initial_issuance_fails_closed(self, discovery_clock, issued):
+        pairs = _snapshot_pairs(1, _START)
+        next(pair["document"] for pair in pairs if pair["path"] == _BINDING)[
+            "compatibilityKeyBinding"
+        ]["issuedAt"] = issued
+        with pytest.raises(
+            RuntimeError, match="Cannot build identity-bound A2A routes"
+        ):
+            _mount_lifecycle(discovery_clock, pairs)
+
+    def test_future_skew_and_wallclock_rollback(self, discovery_clock):
+        with pytest.raises(RuntimeError):
+            _mount_lifecycle(discovery_clock, _snapshot_pairs(1, _START + 301))
+        fractional = _snapshot_pairs(1, _START)
+        binding = next(
+            pair["document"] for pair in fractional if pair["path"] == _BINDING
+        )
+        binding["compatibilityKeyBinding"][
+            "issuedAt"
+        ] = "2026-09-14T00:05:00.000000001Z"
+        with pytest.raises(RuntimeError):
+            _mount_lifecycle(discovery_clock, fractional)
+        tc, generator = _mount_lifecycle(
+            discovery_clock, _snapshot_pairs(1, _START + 300)
+        )
+        assert tc.get(_CARD).status_code == 200
+        generator.side_effect = RuntimeError("failed")
+        discovery_clock[0] -= 1
+        assert tc.get(_CARD).status_code == 503
+
+    def test_concurrent_threadpool_requests_share_one_complete_refresh(
+        self, discovery_clock, monkeypatch
+    ):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier, Event
+        from jacs.a2a_server import _DiscoveryCache
+
+        entered, release = Event(), Event()
+        arrived = Barrier(7)
+        now = discovery_clock
+
+        original_get = _DiscoveryCache.get
+
+        def simultaneous_get(cache):
+            # All six actual route handlers reach the cache in separate
+            # threadpool workers before any is allowed to refresh.
+            arrived.wait(timeout=5)
+            return original_get(cache)
+
+        monkeypatch.setattr(_DiscoveryCache, "get", simultaneous_get)
+
+        def slow_builder():
+            entered.set()
+            assert release.wait(5), "refresh was not released"
+            return _snapshot_pairs(2, now[0])
+
+        tc, generator = _mount_lifecycle(now, next_builder=slow_builder)
+        now[0] += 6 * _DAY
+        paths = [pair["path"] for pair in _snapshot_pairs(0, now[0])]
+        with tc, ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [pool.submit(tc.get, path) for path in paths]
+            arrived.wait(timeout=5)
+            assert entered.wait(5), "refresh never started"
+            release.set()
+            responses = [future.result(timeout=5) for future in futures]
+        assert generator.call_count == 2
+        assert all(response.status_code == 200 for response in responses)
+        assert [response.json()["snapshot"] for response in responses] == [2] * 6
+
+    def test_refresh_preserves_finite_expiry_and_rejects_malformed_expiry(
+        self, discovery_clock
+    ):
+        now = discovery_clock
+        expiry = _START + 6 * _DAY + 2.5
+        tc, generator = _mount_lifecycle(
+            now,
+            _snapshot_pairs(1, _START, expiry),
+            lambda: _snapshot_pairs(2, now[0], expiry),
+        )
+        now[0] += 6 * _DAY
+        renewed = tc.get(_BINDING)
+        assert (
+            renewed.json()["compatibilityKeyBinding"]["expiresAt"]
+            == datetime.fromtimestamp(expiry, timezone.utc).isoformat()
+        )
+        assert renewed.headers["cache-control"] == "public, max-age=2, must-revalidate"
+        for expires in [False, 123, "bad", "2026-02-30T00:00:00Z"]:
+            pairs = _snapshot_pairs(0, now[0])
+            next(pair["document"] for pair in pairs if pair["path"] == _BINDING)[
+                "compatibilityKeyBinding"
+            ]["expiresAt"] = expires
+            with pytest.raises(RuntimeError):
+                _mount_lifecycle(now, pairs)
+        now[0] = expiry
+        assert tc.get(_CARD).status_code == 503
+        assert generator.call_count == 2
+
+    def test_rfc3339_instants_preserve_signed_timestamp_strings(self, discovery_clock):
+        pairs = _snapshot_pairs(1, _START)
+        binding = next(pair["document"] for pair in pairs if pair["path"] == _BINDING)[
+            "compatibilityKeyBinding"
+        ]
+        binding["issuedAt"] = "2026-09-13T19:00:00-05:00"
+        binding["expiresAt"] = "2026-09-14T02:00:02.999999999+02:00"
+        tc, generator = _mount_lifecycle(discovery_clock, pairs)
+        response = tc.get(_BINDING)
+        assert response.json()["compatibilityKeyBinding"] == binding
+        assert response.headers["cache-control"] == "public, max-age=2, must-revalidate"
+        discovery_clock[0] += 3
+        assert tc.get(_CARD).status_code == 503
+        assert generator.call_count == 1
+
+    def test_missing_issuance_fails_closed(self, discovery_clock):
+        pairs = _snapshot_pairs(1, _START)
+        binding = next(pair["document"] for pair in pairs if pair["path"] == _BINDING)
+        del binding["compatibilityKeyBinding"]["issuedAt"]
+        with pytest.raises(
+            RuntimeError, match="Cannot build identity-bound A2A routes"
+        ):
+            _mount_lifecycle(discovery_clock, pairs)
+
+    def test_slow_failure_rechecks_lifetime_and_delays_retry_from_completion(
+        self, discovery_clock, caplog
+    ):
+        now = discovery_clock
+
+        def fail_slowly():
+            now[0] = _START + 7 * _DAY + 1
+            raise RuntimeError("PRIVATE slow native failure")
+
+        tc, generator = _mount_lifecycle(now, next_builder=fail_slowly)
+        now[0] += 6 * _DAY
+        response = tc.get(_CARD)
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+        assert tc.get(_BINDING).status_code == 503
+        assert generator.call_count == 2
+        generator.side_effect = lambda: json.dumps(_snapshot_pairs(3, now[0]))
+        now[0] += 60
+        assert tc.get(_CARD).json()["snapshot"] == 3
+        assert generator.call_count == 3
+        assert "PRIVATE" not in caplog.text
