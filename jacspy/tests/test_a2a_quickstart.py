@@ -7,6 +7,7 @@ Tests for JACSA2AIntegration.quickstart() and serve() (Task #22 / [2.4.1]).
 """
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -31,7 +32,13 @@ def _native_well_known_pairs(agent_data: dict) -> str:
         "/.well-known/jwks.json": {
             "keys": [{"kid": compat_kid, "alg": "ES256", "use": "sig"}],
         },
-        "/.well-known/jacs-compat-binding.json": {"jacsSha256": binding_hash},
+        "/.well-known/jacs-compat-binding.json": {
+            "jacsSha256": binding_hash,
+            "compatibilityKeyBinding": {
+                "issuedAt": datetime.now(timezone.utc).isoformat(),
+                "expiresAt": None,
+            },
+        },
         "/.well-known/jacs-agent.json": {"agentId": agent_data.get("jacsId")},
         "/.well-known/jacs-pubkey.json": {"agentId": agent_data.get("jacsId")},
         "/.well-known/jacs-extension.json": {"uri": "urn:jacs:provenance-v1"},

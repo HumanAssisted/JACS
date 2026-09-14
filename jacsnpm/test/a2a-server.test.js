@@ -286,3 +286,243 @@ describe('A2A Express Middleware - [2.3.2]', function () {
     });
   });
 });
+
+// Controlled native-builder fixtures exercise real HTTP/cache behavior, not
+// cryptographic validation. Native signing/verification is owned by JACS.
+describe('A2A discovery snapshot lifetime', function () {
+  this.timeout(15000);
+  const DAY = 86400000;
+  const START = Date.UTC(2026, 8, 14);
+  const BINDING = '/.well-known/jacs-compat-binding.json';
+  const CARD = '/.well-known/agent-card.json';
+  const { boundWellKnownPairs } = require('./helpers/a2a-bound');
+  let clock, server, generator, warnings;
+
+  function bundle(generation, issued = Date.now(), expires = null) {
+    const pairs = boundWellKnownPairs({
+      issuedAt: new Date(issued).toISOString(),
+      expiresAt: expires === null ? null : new Date(expires).toISOString(),
+    });
+    for (const pair of pairs) pair.document.snapshot = generation;
+    const documents = Object.fromEntries(pairs.map((p) => [p.path, p.document]));
+    documents[BINDING].jacsSha256 = `binding-${generation}`;
+    documents[CARD].metadata.jacsCompatBindingHash = `binding-${generation}`;
+    return pairs;
+  }
+
+  async function mount(initial, next) {
+    const client = createMockClient();
+    generator = sinon.stub().callsFake(next || (() => JSON.stringify(bundle(2))));
+    generator.onFirstCall().returns(JSON.stringify(initial || bundle(1)));
+    client._agent.generateWellKnownDocumentsSync = generator;
+    server = await startTestServer(client, { skills: [] });
+  }
+
+  beforeEach(() => {
+    // Leave timers and HTTP event-loop scheduling real.
+    clock = sinon.useFakeTimers({ now: START, toFake: ['Date'] });
+    warnings = sinon.stub(console, 'warn');
+  });
+  afterEach(async () => {
+    if (server) await server.close();
+    server = null;
+    sinon.restore();
+    clock.restore();
+  });
+
+  it('caches until six days, then publishes all six replacements together', async () => {
+    await mount();
+    const original = await httpGet(server.port, CARD);
+    clock.setSystemTime(START + 6 * DAY - 1000);
+    const cachedAt = Date.now();
+    const nearRenewal = await httpGet(server.port, CARD);
+    expect(nearRenewal.headers['cache-control']).to.equal('public, max-age=1, must-revalidate');
+    const maxAge = Number(nearRenewal.headers['cache-control'].match(/max-age=(\d+)/)[1]);
+    expect(cachedAt + maxAge * 1000).to.be.at.most(START + 6 * DAY);
+    clock.setSystemTime(START + 6 * DAY - 1);
+    const beforeRenewal = await httpGet(server.port, CARD);
+    expect(beforeRenewal.body).to.deep.equal(original.body);
+    expect(beforeRenewal.headers['cache-control']).to.equal('no-store');
+    expect(generator.callCount).to.equal(1);
+    clock.setSystemTime(START + 6 * DAY);
+    const renewedBinding = await httpGet(server.port, BINDING);
+    expect(nearRenewal.body.metadata.jacsCompatBindingHash).not.to.equal(renewedBinding.body.jacsSha256);
+    const paths = bundle(0).map((p) => p.path);
+    const responses = await Promise.all(paths.map((p) => httpGet(server.port, p)));
+    expect(generator.callCount).to.equal(2);
+    for (const response of responses) {
+      expect(response.status).to.equal(200);
+      expect(response.body.snapshot).to.equal(2);
+      expect(response.headers['cache-control']).to.equal('public, max-age=3600, must-revalidate');
+    }
+    const documents = Object.fromEntries(paths.map((path, index) => [path, responses[index].body]));
+    expect(documents[CARD].metadata.jacsCompatBindingHash).to.equal(documents[BINDING].jacsSha256);
+    expect(documents[CARD].signatures[0].keyId).to.equal(documents['/.well-known/jwks.json'].keys[0].kid);
+    expect(original.body.snapshot).to.equal(1);
+  });
+
+  it('refreshes on the first request after more than seven idle days', async () => {
+    await mount();
+    clock.setSystemTime(START + 8 * DAY);
+    expect((await httpGet(server.port, CARD)).body.snapshot).to.equal(2);
+    expect(generator.callCount).to.equal(2);
+  });
+
+  it('uses a preexisting binding issuance deadline, not mount time', async () => {
+    await mount(bundle(1, START - 6 * DAY + 1000));
+    expect((await httpGet(server.port, CARD)).body.snapshot).to.equal(1);
+    clock.setSystemTime(START + 1000);
+    expect((await httpGet(server.port, CARD)).body.snapshot).to.equal(2);
+    expect(generator.callCount).to.equal(2);
+  });
+
+  it('bounds failed retries, caps caching, refuses stale data and recovers', async () => {
+    const initial = bundle(1);
+    await mount(initial, () => { throw new Error('PRIVATE SIGNED PAYLOAD /private/key'); });
+    clock.setSystemTime(START + 6 * DAY);
+    for (const pair of initial) {
+      const response = await httpGet(server.port, pair.path);
+      expect(response.status).to.equal(200);
+      expect(response.body).to.deep.equal(pair.document);
+      expect(response.headers['cache-control']).to.equal('no-store');
+    }
+    expect(generator.callCount).to.equal(2);
+    clock.setSystemTime(START + 6 * DAY + 59000);
+    await httpGet(server.port, CARD);
+    expect(generator.callCount).to.equal(2);
+    clock.setSystemTime(START + 6 * DAY + 60000);
+    await httpGet(server.port, CARD);
+    expect(generator.callCount).to.equal(3);
+    clock.setSystemTime(START + 7 * DAY - 1500);
+    expect((await httpGet(server.port, CARD)).headers['cache-control']).to.equal('no-store');
+    clock.setSystemTime(START + 7 * DAY - 500);
+    expect((await httpGet(server.port, CARD)).headers['cache-control']).to.equal('no-store');
+    clock.setSystemTime(START + 7 * DAY);
+    const denied = await httpGet(server.port, CARD);
+    expect(denied.status).to.equal(503);
+    expect(denied.body).to.deep.equal({ error: 'A2A discovery unavailable' });
+    expect(denied.headers['cache-control']).to.equal('no-store');
+    expect(denied.headers['access-control-allow-origin']).to.equal('*');
+    const calls = generator.callCount;
+    await httpGet(server.port, BINDING);
+    expect(generator.callCount).to.equal(calls);
+    generator.callsFake(() => JSON.stringify(bundle(3)));
+    clock.setSystemTime(START + 7 * DAY + 60000);
+    const recovered = await httpGet(server.port, CARD);
+    expect(recovered.body.snapshot).to.equal(3);
+    expect(recovered.headers['cache-control']).to.equal('public, max-age=3600, must-revalidate');
+    expect(recovered.body.metadata.jacsCompatBindingHash).to.equal((await httpGet(server.port, BINDING)).body.jacsSha256);
+    expect(JSON.stringify(warnings.args)).not.to.include('PRIVATE');
+  });
+
+  it('never regenerates an explicitly expired grant and caps its HTTP lifetime', async () => {
+    await mount(bundle(1, START, START + 2500));
+    expect((await httpGet(server.port, CARD)).headers['cache-control']).to.equal('public, max-age=2, must-revalidate');
+    clock.setSystemTime(START + 2500);
+    for (const delay of [0, 60000, 8 * DAY]) {
+      clock.setSystemTime(START + 2500 + delay);
+      const denied = await httpGet(server.port, BINDING);
+      expect(denied.status).to.equal(503);
+      expect(denied.headers['cache-control']).to.equal('no-store');
+    }
+    expect(generator.callCount).to.equal(1);
+    expect(warnings.callCount).to.equal(1);
+  });
+
+  for (const damage of ['missing document', 'mismatched binding', 'bad date', 'expiry extension', 'skill override']) {
+    it(`retains the entire valid snapshot after replacement with ${damage}`, async () => {
+      await mount(bundle(1, START, START + 10 * DAY), () => {
+        const next = bundle(2, Date.now(), START + 10 * DAY);
+        const binding = next.find((p) => p.path === BINDING).document;
+        if (damage === 'missing document') next.pop();
+        if (damage === 'mismatched binding') binding.jacsSha256 = 'mismatch';
+        if (damage === 'bad date') binding.compatibilityKeyBinding.issuedAt = 'not a date';
+        if (damage === 'expiry extension') binding.compatibilityKeyBinding.expiresAt = null;
+        if (damage === 'skill override') next.find((p) => p.path === CARD).document.skills = [{ id: 'unauthorized' }];
+        return JSON.stringify(next);
+      });
+      clock.setSystemTime(START + 6 * DAY);
+      for (const pair of bundle(0)) {
+        const response = await httpGet(server.port, pair.path);
+        expect(response.status).to.equal(200);
+        expect(response.body.snapshot).to.equal(1);
+      }
+      expect(generator.callCount).to.equal(2);
+    });
+  }
+
+  for (const timestamp of [undefined, null, 123, '', '2026-02-30T00:00:00Z', '2026-09-14', '2026-09-14T00:00:00', '2026-09-14T00:00:00+01:60']) {
+    it(`fails closed at mount for invalid issuance ${JSON.stringify(timestamp)}`, () => {
+      const client = createMockClient();
+      const pairs = bundle(1);
+      pairs.find((p) => p.path === BINDING).document.compatibilityKeyBinding.issuedAt = timestamp;
+      client._agent.generateWellKnownDocumentsSync = () => JSON.stringify(pairs);
+      expect(() => jacsA2AMiddleware(client)).to.throw();
+    });
+  }
+
+  it('enforces future skew at mount and after a wallclock rollback', async () => {
+    const client = createMockClient();
+    client._agent.generateWellKnownDocumentsSync = () => JSON.stringify(bundle(1, START + 301000));
+    expect(() => jacsA2AMiddleware(client)).to.throw();
+    const fractional = bundle(1);
+    fractional.find((p) => p.path === BINDING).document.compatibilityKeyBinding.issuedAt = '2026-09-14T00:05:00.000000001Z';
+    client._agent.generateWellKnownDocumentsSync = () => JSON.stringify(fractional);
+    expect(() => jacsA2AMiddleware(client)).to.throw();
+    await mount(bundle(1, START + 300000), () => { throw new Error('failed'); });
+    expect((await httpGet(server.port, CARD)).status).to.equal(200);
+    clock.setSystemTime(START - 1000);
+    expect((await httpGet(server.port, CARD)).status).to.equal(503);
+  });
+
+  it('preserves finite expiry on successful refresh and rejects malformed expiry', async () => {
+    const expiry = START + 6 * DAY + 2500;
+    await mount(bundle(1, START, expiry), () => JSON.stringify(bundle(2, Date.now(), expiry)));
+    clock.setSystemTime(START + 6 * DAY);
+    const renewed = await httpGet(server.port, BINDING);
+    expect(renewed.body.compatibilityKeyBinding.expiresAt).to.equal(new Date(expiry).toISOString());
+    expect(renewed.headers['cache-control']).to.equal('public, max-age=2, must-revalidate');
+    for (const expires of [false, 123, 'bad', '2026-02-30T00:00:00Z']) {
+      const client = createMockClient();
+      const pairs = bundle(0);
+      pairs.find((p) => p.path === BINDING).document.compatibilityKeyBinding.expiresAt = expires;
+      client._agent.generateWellKnownDocumentsSync = () => JSON.stringify(pairs);
+      expect(() => jacsA2AMiddleware(client)).to.throw();
+    }
+    clock.setSystemTime(expiry);
+    expect((await httpGet(server.port, CARD)).status).to.equal(503);
+    expect(generator.callCount).to.equal(2);
+  });
+
+  it('uses RFC3339 instants and preserves the signed timestamp strings', async () => {
+    const pairs = bundle(1);
+    const binding = pairs.find((p) => p.path === BINDING).document.compatibilityKeyBinding;
+    binding.issuedAt = '2026-09-13T19:00:00-05:00';
+    binding.expiresAt = '2026-09-14T02:00:02.999999999+02:00';
+    await mount(pairs);
+    const response = await httpGet(server.port, BINDING);
+    expect(response.body.compatibilityKeyBinding).to.deep.equal(binding);
+    expect(response.headers['cache-control']).to.equal('public, max-age=2, must-revalidate');
+    clock.setSystemTime(START + 3000);
+    expect((await httpGet(server.port, CARD)).status).to.equal(503);
+    expect(generator.callCount).to.equal(1);
+  });
+
+  it('rechecks lifetime after a slow failure and starts retry delay at completion', async () => {
+    await mount(bundle(1), () => {
+      clock.setSystemTime(START + 7 * DAY + 1000);
+      throw new Error('PRIVATE slow native failure');
+    });
+    clock.setSystemTime(START + 6 * DAY);
+    const response = await httpGet(server.port, CARD);
+    expect(response.status).to.equal(503);
+    expect(response.headers['cache-control']).to.equal('no-store');
+    expect((await httpGet(server.port, BINDING)).status).to.equal(503);
+    expect(generator.callCount).to.equal(2);
+    generator.callsFake(() => JSON.stringify(bundle(3)));
+    clock.setSystemTime(START + 7 * DAY + 61000);
+    expect((await httpGet(server.port, CARD)).body.snapshot).to.equal(3);
+    expect(generator.callCount).to.equal(3);
+    expect(JSON.stringify(warnings.args)).not.to.include('PRIVATE');
+  });
+});

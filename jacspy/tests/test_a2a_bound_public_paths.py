@@ -1,6 +1,7 @@
 """Regression tests for fail-closed identity-bound A2A discovery wrappers."""
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,7 +42,13 @@ def _bound_pairs() -> list[dict]:
         "/.well-known/jwks.json": {
             "keys": [{"kid": "compat-kid", "alg": "ES256", "use": "sig"}],
         },
-        "/.well-known/jacs-compat-binding.json": {"jacsSha256": "binding-hash"},
+        "/.well-known/jacs-compat-binding.json": {
+            "jacsSha256": "binding-hash",
+            "compatibilityKeyBinding": {
+                "issuedAt": datetime.now(timezone.utc).isoformat(),
+                "expiresAt": None,
+            },
+        },
         "/.well-known/jacs-agent.json": {"agentId": "native-id"},
         "/.well-known/jacs-pubkey.json": {"agentId": "native-id"},
         "/.well-known/jacs-extension.json": {"uri": "urn:jacs:provenance-v1"},

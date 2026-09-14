@@ -300,6 +300,18 @@ but non-empty wrapper-supplied skills now fail immediately. Agent Card skills
 are identity-bearing signed data; persist them through the native agent/card
 configuration before generating or serving discovery documents.
 
+`jacsA2AMiddleware()` caches all six discovery documents together and refreshes
+them on the first request at six days after the binding's signed `issuedAt`.
+Failed refreshes retry at most once per minute. The old snapshot is served only
+within its seven-day Strict lifetime and any earlier `expiresAt`; otherwise
+the routes return a non-cacheable 503. HTTP freshness ends by the six-day renewal
+boundary or earlier expiry. Still-valid snapshots awaiting renewal use
+`no-store`. Finite expiry is never extended: renew authorization and
+remount the middleware to serve a newly authorized binding after expiry.
+Publication is atomic within the process, but separate resource requests can
+straddle renewal. Clients must verify the card/JWKS/binding together and refetch
+on a mismatch; these endpoints are not a transactional bundle.
+
 `signArtifact()` uses the native canonical A2A signer and returns the direct
 `a2a-*` document; it never wraps the result in a generic `jacs_payload` header
 or falls back to `signRequest()`. It rejects incomplete or legacy-v1 signature

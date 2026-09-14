@@ -30,6 +30,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from threading import Lock
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 try:
@@ -46,6 +51,111 @@ if TYPE_CHECKING:
     from .client import JacsClient
 
 logger = logging.getLogger("jacs.a2a_server")
+
+# Serving deadlines from compatibility/binding.rs and exports.rs. The native
+# builder still owns signature, key, scope and rollback validation.
+_DAY = 24 * 60 * 60
+_RETRY_SECONDS = 60
+_FUTURE_SKEW_SECONDS = 5 * 60
+
+
+def _binding_time(value: Any, ceiling: bool = False) -> float:
+    match = isinstance(value, str) and re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:[Zz]|[+-]\d{2}:\d{2})",
+        value,
+    )
+    if not match:
+        raise ValueError("Invalid discovery binding timestamp")
+    # Reject timezone rollover too: fromisoformat otherwise normalizes +01:60.
+    if value[-1:] not in ("Z", "z") and (
+        int(value[-5:-3]) > 23 or int(value[-2:]) > 59
+    ):
+        raise ValueError("Invalid discovery binding timestamp")
+    parsed = datetime.fromisoformat(value.upper().replace("Z", "+00:00"))
+    fraction = match.group(1) or ""
+    milliseconds = int(fraction[:3].ljust(3, "0"))
+    # Native timestamps can carry nanoseconds. Conservatively round deadlines
+    # down and future-skew checks up to the same millisecond precision as JS.
+    if ceiling and any(digit != "0" for digit in fraction[3:]):
+        milliseconds += 1
+    return parsed.replace(microsecond=0).timestamp() + milliseconds / 1000
+
+
+@dataclass(frozen=True)
+class _DiscoverySnapshot:
+    documents: Dict[str, Any]
+    issued: float
+    issued_latest: float
+    expires: float
+
+    @property
+    def until(self) -> float:
+        return min(self.issued + 7 * _DAY, self.expires)
+
+    def valid(self, now: float) -> bool:
+        return now < self.until and self.issued_latest <= now + _FUTURE_SKEW_SECONDS
+
+
+def _discovery_snapshot(documents: Dict[str, Any], now: float) -> _DiscoverySnapshot:
+    binding = documents["/.well-known/jacs-compat-binding.json"][
+        "compatibilityKeyBinding"
+    ]
+    issued = _binding_time(binding.get("issuedAt"))
+    expires = binding.get("expiresAt")
+    snapshot = _DiscoverySnapshot(
+        documents,
+        issued,
+        _binding_time(binding.get("issuedAt"), ceiling=True),
+        float("inf") if expires is None else _binding_time(expires),
+    )
+    if not snapshot.valid(now):
+        raise ValueError("Discovery binding is outside its lifetime")
+    return snapshot
+
+
+class _DiscoveryCache:
+    def __init__(self, build):
+        self._build = build
+        self._snapshot = _discovery_snapshot(build(), time.time())
+        self._lock = Lock()
+        self._retry_at = 0.0
+        self._expiry_logged = False
+
+    @staticmethod
+    def _refresh_due(snapshot: _DiscoverySnapshot, now: float) -> bool:
+        return now >= snapshot.issued + 6 * _DAY or not snapshot.valid(now)
+
+    def get(self) -> _DiscoverySnapshot | None:
+        snapshot = self._snapshot
+        if self._refresh_due(snapshot, time.time()):
+            # Sync FastAPI handlers run concurrently in its threadpool. Check
+            # again after locking, then publish the complete replacement once.
+            with self._lock:
+                now = time.time()
+                snapshot = self._snapshot
+                if now >= snapshot.expires:
+                    if not self._expiry_logged:
+                        logger.warning(
+                            "a2a_discovery_expired: explicit authorization expiry"
+                        )
+                    self._expiry_logged = True
+                    return None
+                if self._refresh_due(snapshot, now) and now >= self._retry_at:
+                    try:
+                        replacement = _discovery_snapshot(self._build(), time.time())
+                        if replacement.expires > snapshot.expires:
+                            raise ValueError("Discovery expiry cannot be extended")
+                        self._snapshot = replacement
+                    except Exception:
+                        # Never include native exceptions, signed payloads or
+                        # private key paths in HTTP responses or these logs.
+                        logger.warning(
+                            "a2a_discovery_refresh_failed: retry deferred for 60 seconds"
+                        )
+                    finally:
+                        self._retry_at = time.time() + _RETRY_SECONDS
+                snapshot = self._snapshot
+        return snapshot if snapshot.valid(time.time()) else None
 
 
 def jacs_a2a_routes(
@@ -64,6 +174,14 @@ def jacs_a2a_routes(
     - ``jacs-extension.json`` — JACS provenance extension descriptor
 
     All responses include CORS headers for cross-origin discovery.
+    The complete snapshot refreshes lazily at six days after signed binding
+    issuance; failures retry at most once per minute. Valid cached documents
+    remain usable until seven days or explicit expiry, then routes return 503.
+    HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
+    awaiting renewal are served with no-store.
+    Explicit expiry requires renewed authorization and remounting. Separate
+    resource requests can straddle renewal: publication is atomic in-process,
+    not a transactional client bundle. Consumers must verify the binding.
 
     Args:
         client: A loaded ``JacsClient`` instance.
@@ -78,7 +196,7 @@ def jacs_a2a_routes(
 
     router = APIRouter(tags=["A2A Discovery"])
 
-    # Build static documents once at mount time.
+    # Keep the native builder and its no-overrides assertions on every refresh.
     integration = JACSA2AIntegration(client)
 
     try:
@@ -95,29 +213,29 @@ def jacs_a2a_routes(
     card = integration.export_agent_card(agent_data)
     # Identity-bearing discovery is an atomic native card/JWKS/binding unit.
     # Never downgrade to an unsigned wrapper card when native generation fails.
-    try:
-        well_known_docs = integration.generate_well_known_documents(
+    def build_documents():
+        documents = integration.generate_well_known_documents(
             agent_card=card,
             jws_signature="",
             public_key_b64="",
             agent_data=agent_data,
         )
-    except Exception as exc:
-        logger.warning(
-            "A2A discovery route initialization failed closed: %s",
-            exc,
-        )
-        raise RuntimeError(
-            f"Cannot build identity-bound A2A routes: {exc}"
-        ) from exc
+        if skills is not None:
+            native_skills = documents["/.well-known/agent-card.json"].get("skills", [])
+            if native_skills != skills:
+                raise RuntimeError(
+                    "Cannot override A2A skills after the Agent Card is signed; configure the "
+                    "agent's skills before generating discovery documents"
+                )
+        return documents
 
-    if skills is not None:
-        native_skills = well_known_docs["/.well-known/agent-card.json"].get("skills", [])
-        if native_skills != skills:
-            raise RuntimeError(
-                "Cannot override A2A skills after the Agent Card is signed; configure the "
-                "agent's skills before generating discovery documents"
-            )
+    try:
+        cache = _DiscoveryCache(build_documents)
+    except Exception:
+        logger.warning(
+            "a2a_discovery_initialization_failed: refusing invalid discovery snapshot"
+        )
+        raise RuntimeError("Cannot build identity-bound A2A routes") from None
 
     # --- Route handlers ---
 
@@ -125,11 +243,28 @@ def jacs_a2a_routes(
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Cache-Control": "public, max-age=3600",
     }
 
-    def _json_response(content: Any) -> JSONResponse:
-        return JSONResponse(content=content, headers=cors_headers)
+    def _json_response(path: str) -> JSONResponse:
+        snapshot = cache.get()
+        now = time.time()
+        remaining = snapshot.until - now if snapshot is not None else 0
+        if remaining <= 0:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "A2A discovery unavailable"},
+                headers={**cors_headers, "Cache-Control": "no-store"},
+            )
+        # HTTP caches must revalidate when another resource can trigger renewal.
+        cache_remaining = min(remaining, snapshot.issued + 6 * _DAY - now)
+        max_age = max(0, min(3600, int(cache_remaining)))
+        cache_control = (
+            f"public, max-age={max_age}, must-revalidate" if max_age else "no-store"
+        )
+        return JSONResponse(
+            content=snapshot.documents[path],
+            headers={**cors_headers, "Cache-Control": cache_control},
+        )
 
     @router.get("/.well-known/agent-card.json")
     def agent_card_endpoint(signed: Optional[str] = Query(default=None)):
@@ -140,34 +275,32 @@ def jacs_a2a_routes(
         changes the response.
         """
         _ = signed
-        return _json_response(well_known_docs["/.well-known/agent-card.json"])
+        return _json_response("/.well-known/agent-card.json")
 
     @router.get("/.well-known/jwks.json")
     def jwks_endpoint():
         """Return the JWK Set for external verifiers."""
-        return _json_response(well_known_docs["/.well-known/jwks.json"])
+        return _json_response("/.well-known/jwks.json")
 
     @router.get("/.well-known/jacs-compat-binding.json")
     def compatibility_binding_endpoint():
         """Return the native-root-signed ES256 compatibility binding."""
-        return _json_response(
-            well_known_docs["/.well-known/jacs-compat-binding.json"]
-        )
+        return _json_response("/.well-known/jacs-compat-binding.json")
 
     @router.get("/.well-known/jacs-agent.json")
     def jacs_agent_endpoint():
         """Return the JACS agent descriptor."""
-        return _json_response(well_known_docs["/.well-known/jacs-agent.json"])
+        return _json_response("/.well-known/jacs-agent.json")
 
     @router.get("/.well-known/jacs-pubkey.json")
     def jacs_pubkey_endpoint():
         """Return the JACS public key document."""
-        return _json_response(well_known_docs["/.well-known/jacs-pubkey.json"])
+        return _json_response("/.well-known/jacs-pubkey.json")
 
     @router.get("/.well-known/jacs-extension.json")
     def jacs_extension_endpoint():
         """Return the JACS provenance extension descriptor."""
-        return _json_response(well_known_docs["/.well-known/jacs-extension.json"])
+        return _json_response("/.well-known/jacs-extension.json")
 
     return router
 
