@@ -586,7 +586,7 @@ class JACSA2AIntegration:
         """Start a minimal HTTP server that publishes the agent card.
 
         Serves all six identity-bound ``/.well-known/`` endpoints required for A2A
-        agent discovery.
+        agent discovery. It does not implement message/task or remote-signing endpoints.
 
         Requires ``uvicorn`` and ``fastapi`` (install with
         ``pip install jacs[a2a-server]``).
@@ -748,12 +748,12 @@ class JACSA2AIntegration:
             "specification": "https://jacs.ai/specs/a2a-extension",
             "capabilities": {
                 "documentSigning": {
-                    "description": "Sign documents with JACS signatures",
+                    "description": "Sign covered document content for key-backed provenance; approval and authority require separate evidence.",
                     "algorithms": self.SUPPORTED_ALGORITHMS,
                     "formats": ["jacs-v1", "jws-detached"]
                 },
                 "documentVerification": {
-                    "description": "Verify JACS signatures on documents",
+                    "description": "Check document integrity against a key; identity attribution and authority require separate evidence.",
                     "offlineCapable": True,
                     "chainOfCustody": True
                 },
@@ -769,12 +769,12 @@ class JACSA2AIntegration:
                 "sign": {
                     "path": "/jacs/sign",
                     "method": "POST",
-                    "description": "Sign a document with JACS"
+                    "description": "Legacy optional host endpoint example for signing; not implemented by discovery routers."
                 },
                 "verify": {
                     "path": "/jacs/verify",
                     "method": "POST",
-                    "description": "Verify a JACS signature"
+                    "description": "Legacy optional host endpoint example for verification; not implemented by discovery routers."
                 },
                 "publicKey": {
                     "path": "/.well-known/jacs-pubkey.json",

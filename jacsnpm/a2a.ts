@@ -512,6 +512,7 @@ export class JACSA2AIntegration {
 
   /**
    * Start a minimal Express discovery server for this agent.
+   * This publishes discovery only, not message/task or remote-signing endpoints.
    *
    * Pass `port = 0` to let the OS pick an available ephemeral port.
    */
@@ -660,12 +661,12 @@ export class JACSA2AIntegration {
       specification: 'https://jacs.ai/specs/a2a-extension',
       capabilities: {
         documentSigning: {
-          description: 'Sign documents with JACS signatures',
+          description: 'Sign covered document content for key-backed provenance; approval and authority require separate evidence.',
           algorithms: [...JACS_ALGORITHMS],
           formats: ['jacs-v1', 'jws-detached'],
         },
         documentVerification: {
-          description: 'Verify JACS signatures on documents',
+          description: 'Check document integrity against a key; identity attribution and authority require separate evidence.',
           offlineCapable: true,
           chainOfCustody: true,
         },
@@ -675,8 +676,8 @@ export class JACSA2AIntegration {
         },
       },
       endpoints: {
-        sign: { path: '/jacs/sign', method: 'POST', description: 'Sign a document with JACS' },
-        verify: { path: '/jacs/verify', method: 'POST', description: 'Verify a JACS signature' },
+        sign: { path: '/jacs/sign', method: 'POST', description: 'Legacy optional host endpoint example for signing; not implemented by discovery routers.' },
+        verify: { path: '/jacs/verify', method: 'POST', description: 'Legacy optional host endpoint example for verification; not implemented by discovery routers.' },
         publicKey: {
           path: '/.well-known/jacs-pubkey.json',
           method: 'GET',

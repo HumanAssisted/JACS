@@ -20,6 +20,7 @@ include = [
     "examples/a2a_agent_example.rs",
     "examples/a2a_complete_example.rs",
     "examples/a2a_simple_example.rs",
+    "examples/email_signing.rs",
     "Cargo.toml",
     "README.md",
     "LICENSE",

@@ -176,6 +176,43 @@
                     <main>
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
 <p>Get a persistent agent identity, sign data, and verify it.</p>
+<h2 id="let-your-agent-sign-documents-with-mcp"><a class="header" href="#let-your-agent-sign-documents-with-mcp">Let your agent sign documents with MCP</a></h2>
+<p>The unified <code>jacs</code> binary includes a stdio-only MCP server. After installing
+it and creating an identity with the <a href="#cli">CLI setup</a>, or selecting an
+existing signed config, explicitly enable local signing:</p>
+<pre><code class="language-bash">jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+</code></pre>
+<p>Configure your MCP client with the same arguments:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
+    }
+  }
+}
+</code></pre>
+<p>Local signing uses the selected config's persistent encrypted keys and its
+<a href="#password-bootstrap">keychain or password source</a>. It grants agent signing
+authority; a signature does not establish a person's approval of the content.
+Key and trust administration are not enabled by this profile.</p>
+<p>To verify documents without creating an identity or unlocking private keys,
+use the default verification-only configuration instead:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp"]
+    }
+  }
+}
+</code></pre>
+<p>The default <code>verify-only</code> profile stays verification-only when a config or
+password is available; selecting <code>local-sign</code> is explicit. Set
+<code>JACS_MCP_BASE_DIR</code> only when you intend to add scoped text/image
+file tools to <code>local-sign</code>; no content directory is granted implicitly. See the
+<a href="../integrations/mcp.html#1-ready-made-server-jacs-mcp">canonical MCP guide</a> for
+file scope, overwrite behavior and the actual tool inventory.</p>
 <h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
 <p>Install the unified CLI/MCP binary:</p>
 <pre><code class="language-bash">cargo install jacs-cli
@@ -235,25 +272,6 @@ jacs verify-image signed.png
 jacs extract-media-signature signed.png
 </code></pre>
 <p>JACS embeds the signature in PNG, JPEG, or WebP metadata. See <a href="../guides/media-signing.html">Image and Media Signatures</a> for overwrite policy, robust mode, and verification details.</p>
-<h2 id="start-the-mcp-server"><a class="header" href="#start-the-mcp-server">Start the MCP server</a></h2>
-<p>The MCP server is built into the <code>jacs</code> binary. It uses stdio transport only.</p>
-<pre><code class="language-bash">JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
-</code></pre>
-<p>Example MCP client config:</p>
-<pre><code class="language-json">{
-  "mcpServers": {
-    "jacs": {
-      "command": "jacs",
-      "args": ["mcp"],
-      "env": {
-        "JACS_CONFIG": "/absolute/path/to/jacs.config.json",
-        "JACS_PASSWORD_FILE": "/absolute/path/to/jacs-password",
-        "JACS_MCP_BASE_DIR": "/absolute/path/to/project"
-      }
-    }
-  }
-}
-</code></pre>
 <h2 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h2>
 <p>The Rust CLI needs a password source before it can sign:</p>
 <pre><code class="language-bash"># CI/server

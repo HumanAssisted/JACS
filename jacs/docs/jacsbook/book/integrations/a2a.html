@@ -175,6 +175,8 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="a2a-interoperability"><a class="header" href="#a2a-interoperability">A2A Interoperability</a></h1>
+<p>The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
+with current released A2A peers remains unproven.</p>
 <p>Use A2A when your agent needs to be discoverable and verifiable by another service, team, or organization. This is the cross-boundary story; MCP is the inside-the-app story.</p>
 <h2 id="what-jacs-adds-to-a2a"><a class="header" href="#what-jacs-adds-to-a2a">What JACS Adds To A2A</a></h2>
 <ul>
@@ -189,7 +191,7 @@
 <pre><code class="language-python">from jacs.client import JacsClient
 
 client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
-card = client.export_agent_card(url="http://localhost:8080")
+card = client.export_agent_card()
 </code></pre>
 <p>Node.js:</p>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
@@ -202,14 +204,17 @@ const client = await JacsClient.quickstart({
 const card = client.exportAgentCard();
 </code></pre>
 <h3 id="2-serve-discovery-documents"><a class="header" href="#2-serve-discovery-documents">2. Serve Discovery Documents</a></h3>
-<p>Python has the strongest first-class server helpers today.</p>
+<p>Python and Node provide discovery-only server helpers. These mounts publish
+well-known documents; they do not implement A2A message/task handling or the
+legacy optional <code>/jacs/sign</code> and <code>/jacs/verify</code> host endpoint examples in the
+extension descriptor. A host application must implement and authorize any
+callable interface separately. Discovery does not grant remote signing access.</p>
 <p>Quick demo server:</p>
 <pre><code class="language-python">from jacs.a2a import JACSA2AIntegration
 
 JACSA2AIntegration.quickstart(
     name="my-agent",
     domain="my-agent.example.com",
-    url="http://localhost:8080",
 ).serve(port=8080)
 </code></pre>
 <p>Production FastAPI mounting:</p>
@@ -228,9 +233,13 @@ app = create_a2a_app(client, title="My A2A Agent")
 import { jacsA2AMiddleware } from '@hai.ai/jacs/a2a-server';
 
 const app = express();
-app.use(jacsA2AMiddleware(client, { url: 'http://localhost:3000' }));
+app.use(jacsA2AMiddleware(client));
 app.listen(3000);
 </code></pre>
+<p>The local listening port does not rewrite the signed public interface URL.
+Configure the advertised domain before generating the signed card and provide
+the host service that interface describes. A reachable discovery route alone
+does not prove that message/task operations exist.</p>
 <h3 id="3-sign-and-verify-artifacts"><a class="header" href="#3-sign-and-verify-artifacts">3. Sign And Verify Artifacts</a></h3>
 <p>Python:</p>
 <pre><code class="language-python">signed = client.sign_artifact({"artifactId": "a-1", "operation": "classify"}, "artifact")
@@ -336,8 +345,14 @@ six days while preserving its scopes and explicit expiry. A self-advertised
 JWKS key by itself can never establish the claimed JACS identity.</p>
 <h2 id="current-runtime-differences"><a class="header" href="#current-runtime-differences">Current Runtime Differences</a></h2>
 <ul>
-<li><strong>Python</strong>: <code>jacs.a2a_server</code> is the clearest full discovery story.</li>
-<li><strong>Node.js</strong>: <code>jacsA2AMiddleware()</code> serves five <code>.well-known</code> routes from Express, but the generated <code>jwks.json</code> and <code>jacs-pubkey.json</code> payloads are still placeholder metadata. <code>listen()</code> is intentionally smaller and only suitable for demos.</li>
+<li><strong>Python and Node.js</strong>: the FastAPI and Express routers serve the six native
+discovery documents, including the signed card, JWKS and compatibility
+binding. They are discovery-only; <code>serve()</code> and <code>listen()</code> are convenience
+hosts, not complete A2A task/message services.</li>
+<li>The mounted routers refresh their complete snapshots lazily at six days from
+binding issuance. HTTP freshness ends at renewal or earlier explicit expiry;
+separate fetches can still straddle replacement. Verify the related documents
+together and refetch on a mismatch. See <a href="../guides/a2a-serve.html">Serve Your Agent Card</a>.</li>
 </ul>
 <h2 id="example-paths-in-this-repo"><a class="header" href="#example-paths-in-this-repo">Example Paths In This Repo</a></h2>
 <ul>

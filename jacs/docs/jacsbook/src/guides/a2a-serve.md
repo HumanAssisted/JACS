@@ -1,8 +1,17 @@
 # Serve Your Agent Card
 
+The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
+with current released A2A peers remains unproven.
+
 {{#include ../_snippets/node-registry-status.md}}
 
 Make your JACS agent discoverable by other A2A agents.
+
+These helpers serve discovery documents only. They do not implement message/task
+handlers or the legacy optional `/jacs/sign` and `/jacs/verify` host examples in
+the extension descriptor. Configure the signed public interface for a service
+your host actually implements; a local discovery listener does not create that
+service or grant remote signing access.
 
 > **Prerequisites:** `pip install jacs[a2a-server]` (Python) or `npm install @hai.ai/jacs express` (Node.js).
 
@@ -15,10 +24,12 @@ Make your JACS agent discoverable by other A2A agents.
 ```python
 from jacs.a2a import JACSA2AIntegration
 
-JACSA2AIntegration.quickstart(url="http://localhost:8080").serve(port=8080)
+JACSA2AIntegration.quickstart(name="my-agent", domain="my-agent.example.com").serve(port=8080)
 ```
 
 Your agent is now discoverable at `http://localhost:8080/.well-known/agent-card.json`.
+
+This local listener does not rewrite the card's signed public interface URL.
 
 ### Production: Mount into Your Own FastAPI App
 
@@ -82,6 +93,12 @@ Strict verifiers accept a compatibility binding for at most seven days after
 its signed `issuedAt`, with five minutes of future clock skew. Generating the
 well-known set refreshes an authentic binding after six days under the shared
 issuance lock, preserving its scopes and any explicit `expiresAt`.
+The FastAPI and Express mounts call the generator lazily at that six-day
+boundary. HTTP freshness ends by renewal or earlier expiry; failed renewal can
+serve a still-valid snapshot with `no-store`, while hard expiry returns 503.
+Finite expiry requires renewed authorization and remounting. Separate resource
+fetches can straddle replacement; verify the card/JWKS/binding together and
+refetch if their references differ.
 
 ## Next Steps
 
