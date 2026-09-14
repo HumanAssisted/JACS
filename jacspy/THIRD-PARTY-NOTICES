@@ -24,7 +24,7 @@ Source graphs: locked all-feature workspace plus excluded publishable crates.
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1021
+Third-party packages: 1023
 License expressions: 46
 Distinct Cargo license files: 4
 
@@ -102,8 +102,8 @@ Used by 51 package(s):
   - prost-types 0.14.4 (https://github.com/tokio-rs/prost)
   - revision 0.30.0 (https://github.com/surrealdb/revision)
   - revision-derive 0.30.0 (https://github.com/surrealdb/revision)
-  - rmcp 3.2.0 (https://github.com/modelcontextprotocol/rust-sdk/)
-  - rmcp-macros 3.2.0 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rmcp 3.3.0 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rmcp-macros 3.3.0 (https://github.com/modelcontextprotocol/rust-sdk/)
   - rpassword 7.5.4 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.5 (https://github.com/conradkleinespel/rtoolbox)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
@@ -213,7 +213,7 @@ Used by 67 package(s):
   - portable-atomic-util 0.2.7 (https://github.com/taiki-e/portable-atomic-util)
   - portable-atomic-util 0.2.8 (https://github.com/taiki-e/portable-atomic-util)
   - primeorder 0.13.6 (https://github.com/RustCrypto/elliptic-curves/tree/master/primeorder)
-  - process-wrap 9.1.0 (https://github.com/watchexec/process-wrap)
+  - process-wrap 10.0.0 (https://github.com/watchexec/process-wrap)
   - rfc6979 0.4.0 (https://github.com/RustCrypto/signatures/tree/master/rfc6979)
   - rustc-hash 2.1.3 (https://github.com/rust-lang/rustc-hash)
   - sec1 0.7.3 (https://github.com/RustCrypto/formats/tree/master/sec1)
@@ -355,7 +355,7 @@ Used by 2 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 192 package(s):
+Used by 194 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -496,7 +496,9 @@ Used by 192 package(s):
   - serde_json_canonicalizer 0.3.2 (https://github.com/evik42/serde-json-canonicalizer)
   - serde_yaml_ng 0.10.0 (https://github.com/acatton/serde-yaml-ng)
   - serial_test 3.5.0 (https://github.com/palfrey/serial_test/)
+  - serial_test 4.0.1 (https://github.com/palfrey/serial_test/)
   - serial_test_derive 3.5.0 (https://github.com/palfrey/serial_test/)
+  - serial_test_derive 4.0.1 (https://github.com/palfrey/serial_test/)
   - sharded-slab 0.1.7 (https://github.com/hawkw/sharded-slab)
   - simd-adler32 0.3.10 (https://github.com/mcountryman/simd-adler32)
   - slab 0.4.12 (https://github.com/tokio-rs/slab)
