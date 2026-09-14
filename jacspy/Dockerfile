@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux_2_28_aarch64@sha256:d2380d927972b39b86041530b86c02c4307c19605afb4fe5ddf89e54f81e3bb6
+FROM quay.io/pypa/manylinux_2_28_aarch64@sha256:bbb43f784ce78a454a9e3351b862a12e7ad5c30972e8aeba092da678918bbba9
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
