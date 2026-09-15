@@ -24,7 +24,7 @@ Source graphs: locked all-feature workspace plus excluded publishable crates.
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1023
+Third-party packages: 1019
 License expressions: 46
 Distinct Cargo license files: 4
 
@@ -150,11 +150,10 @@ Used by 2 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR ISC OR MIT
-Used by 4 package(s):
+Used by 3 package(s):
 
   - hyper-rustls 0.27.9 (https://github.com/rustls/hyper-rustls)
-  - rustls 0.23.42 (https://github.com/rustls/rustls)
-  - rustls 0.23.44 (https://github.com/rustls/rustls)
+  - rustls 0.23.45 (https://github.com/rustls/rustls)
   - rustls-native-certs 0.8.4 (https://github.com/rustls/rustls-native-certs)
 
 -------------------------------------------------------------------------------
@@ -327,13 +326,12 @@ Used by 4 package(s):
 
 -------------------------------------------------------------------------------
 License expression: ISC
-Used by 9 package(s):
+Used by 8 package(s):
 
   - earcutr 0.4.3 (https://github.com/frewsxcv/earcutr/)
   - inotify 0.11.5 (https://github.com/hannobraun/inotify-rs)
   - inotify-sys 0.1.8 (https://github.com/hannobraun/inotify-sys)
   - libloading 0.8.9 (https://github.com/nagisa/rust_libloading/)
-  - rustls-webpki 0.103.13 (https://github.com/rustls/webpki)
   - rustls-webpki 0.103.15 (https://github.com/rustls/webpki)
   - simple_asn1 0.6.4 (https://github.com/acw/simple_asn1)
   - untrusted 0.7.1 (https://github.com/briansmith/untrusted)
@@ -341,16 +339,14 @@ Used by 9 package(s):
 
 -------------------------------------------------------------------------------
 License expression: ISC AND (Apache-2.0 OR ISC)
-Used by 2 package(s):
+Used by 1 package(s):
 
-  - aws-lc-rs 1.17.1 (https://github.com/aws/aws-lc-rs)
   - aws-lc-rs 1.18.1 (https://github.com/aws/aws-lc-rs)
 
 -------------------------------------------------------------------------------
 License expression: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)
-Used by 2 package(s):
+Used by 1 package(s):
 
-  - aws-lc-sys 0.42.0 (https://github.com/aws/aws-lc-rs)
   - aws-lc-sys 0.45.0 (https://github.com/aws/aws-lc-rs)
 
 -------------------------------------------------------------------------------

@@ -35,6 +35,11 @@
 
 ### Security
 
+- **Rustls TLS handshake patch (2026-09-15).** All three audited Cargo locks
+  now use Rustls 0.23.45 for RUSTSEC-2026-0285. The SurrealDB lock also updates
+  the TLS dependencies required by that patch; generated notices are refreshed.
+  Advisory exceptions and security policy remain unchanged. All three advisory/
+  license gates and notice/policy checks pass; native execution is separate.
 - **A2A discovery cache freshness (2026-09-14).** Express and FastAPI refresh
   complete discovery snapshots at six days from signed binding issuance.
   Failed refreshes use bounded retries and retain only still-valid snapshots;
