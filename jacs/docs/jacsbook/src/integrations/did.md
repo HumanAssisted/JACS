@@ -69,9 +69,28 @@ compatibility key only; native-root trust comes from the binding
 (`jacs agent export-compat-binding`) — see the
 [Security Model](../advanced/security.md#compatibility-key-binding-p2).
 
+## JACS-Specific Request Proofs
+
+The request-proof helpers (`jacs_w3c_sign_request` and
+`jacs_w3c_verify_request` in the compiled MCP inventory, backed by the Rust
+`w3c::auth` module) use an experimental JACS-specific JSON format:
+`type: "JacsW3cRequestProof"`, `scheme: "DIDWba"`. This label does not make the
+JSON object an ANP HTTP Message Signatures request or demonstrate interoperability
+with an ANP peer. Existing helper names and fields describe the current JACS
+contract; an ANP wire adapter is a separate integration.
+
+The proof signs canonical request fields, including method, target, claimed
+creation time, nonce and an optional body digest. Verification checks the supplied
+DID document and signing key, timestamp policy and nonce use. To bind verification
+to the request actually received, provide its expected method and URL and its
+body; inspecting only the proof's own method and URL does not establish that
+match. A supplied DID document is not, by itself, trusted identity evidence or
+permission to act. Apply trusted resolution and current authorization policy at
+the receiving application boundary.
+
 ## Where to Combine With Other Standards
 
 - [A2A Interoperability](a2a.md): cross-organization agent discovery and artifact exchange
 - [MCP Overview](mcp.md): signed tool invocation flows
 - [DNS-Based Verification](../rust/dns.md): decentralized public key anchoring
-- [Databases](databases.md): durable storage for signed artifacts and identity metadata
+- [Storage Backends](../advanced/storage.md): durable storage for signed artifacts and identity metadata

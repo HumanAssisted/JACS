@@ -465,50 +465,44 @@ For registry verification endpoints, `JACS_REGISTRY_URL` (legacy `HAI_API_URL`) 
 
 ## Signature Timestamp Validation
 
-JACS signatures include timestamps to prevent replay attacks and ensure temporal integrity.
+A document's signed timestamp records the signer's claimed signing time. It is
+not an independently trusted timestamp or proof that a later request is fresh.
+JACS document and agent-identity signatures are archival: the generic signature
+timestamp validator does not impose a maximum age.
 
-### How It Works
+### What the Timestamp Check Establishes
 
-1. **Timestamp Inclusion**: Every signature includes a UTC timestamp recording when it was created
-2. **Future Timestamp Rejection**: Signatures with timestamps more than 5 minutes in the future are rejected
-3. **Optional Signature Expiration**: Configurable via `JACS_MAX_SIGNATURE_AGE_SECONDS` (disabled by default since JACS documents are designed to be eternal)
-4. **Validation**: Timestamp validation occurs during signature verification
+`validate_signature_timestamp` parses an RFC 3339 timestamp and rejects a date
+more than five minutes **in the future** relative to the verifier's clock.
+Older dates pass this timestamp check; they do not need to fall within five
+minutes of the current time. The signature, content hash and applicable trust
+policy must still be checked separately.
 
-### Configuring Signature Expiration
+`JACS_MAX_SIGNATURE_AGE_SECONDS` is not a supported document-signature setting
+in the current runtime. Applications that need an expiration or current-authority
+policy must evaluate it explicitly; successful archival verification alone does
+not authorize a new action.
 
-By default, signatures do not expire. JACS documents are designed to be idempotent and eternal. For use cases that require expiration:
+### Freshness and Replay Protection
 
-```bash
-# Enable expiration (e.g., 90 days)
-export JACS_MAX_SIGNATURE_AGE_SECONDS=7776000
+A valid timestamp does not prevent copying a signed document or replaying a
+request. Use the [request-bound HTTP authorization](#request-bound-http-authorization)
+contract for actual HTTP actions, with the expected method, URL, body and
+atomic nonce consumption. The
+[replay store](#replay-store-deployment) must cover the service's deployment
+scope; a process-local store does not coordinate multiple replicas.
 
-# Default: no expiration (0)
-export JACS_MAX_SIGNATURE_AGE_SECONDS=0
-```
-
-### Protection Against Replay Attacks
-
-The 5-minute future tolerance window:
-- Allows for reasonable clock skew between systems
-- Prevents attackers from creating signatures with future timestamps
-- Ensures signatures cannot be pre-generated for later fraudulent use
-
-```json
-{
-  "jacsSignature": {
-    "agentID": "550e8400-e29b-41d4-a716-446655440000",
-    "signature": "...",
-    "date": "2024-01-15T10:30:00Z"  // Must be within 5 min of verifier's clock
-  }
-}
-```
+HTTP/RPC payload verification has a separate replay window, controlled by
+`JACS_PAYLOAD_MAX_REPLAY_SECONDS` (default 300 seconds). That window does not
+change archival document-signature age semantics. Strict A2A admission separately
+checks the compatibility binding's issued time and expiry; see
+[Compatibility key binding](#compatibility-key-binding-p2).
 
 ### Clock Synchronization
 
-For reliable timestamp validation across distributed systems:
-- Ensure all agents use NTP or similar time synchronization
-- Monitor for clock drift in production environments
-- Consider the 5-minute tolerance when debugging verification failures
+Keep verifier clocks synchronized. The five-minute future tolerance permits
+bounded clock skew; it does not establish when an artifact was actually created,
+prevent pre-signing, or prove that a past authorization remains current.
 
 ## Verification Claims
 
