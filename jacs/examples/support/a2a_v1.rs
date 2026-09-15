@@ -10,9 +10,12 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub fn fixture(url: &str) -> Result<Value> {
     let scratch = tempfile::tempdir()?;
-    let config = scratch.path().join("jacs.config.json");
-    let keys = scratch.path().join("keys");
-    let data = scratch.path().join("data");
+    // macOS may spell its temporary root through /var, a symlink. Custody
+    // intentionally rejects symlink components; supply the actual owned path.
+    let scratch_root = scratch.path().canonicalize()?;
+    let config = scratch_root.join("jacs.config.json");
+    let keys = scratch_root.join("keys");
+    let data = scratch_root.join("data");
     let password = format!("Synthetic!9aA{:032x}", rand::random::<u128>());
     let (sender, info) = SimpleAgent::create_with_params(
         CreateAgentParams::builder()

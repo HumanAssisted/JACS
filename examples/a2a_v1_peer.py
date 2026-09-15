@@ -496,7 +496,7 @@ async def driver(binary):
     script = Path(__file__).resolve()
     binary_hash = sha(binary.read_bytes())
     with tempfile.TemporaryDirectory(prefix="jacs-a2a-peer-") as temp:
-        work = Path(temp)
+        work = Path(temp).resolve()
         home = work / "native-home"
         home.mkdir(mode=0o700)
         sock = socket.socket()
