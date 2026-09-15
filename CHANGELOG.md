@@ -7,6 +7,8 @@
   to a separate keyless JACS recipient. A real-process CLI regression exercises
   byte preservation, verification and rejection paths with disposable keys;
   it sends no mail and does not infer email identity or approval/authority.
+  The full-history secret scan passes with one exact prose-only false positive
+  recorded in the existing fingerprint list.
 - **Provenance guidance clarified (2026-09-14).** MCP documentation distinguishes
   per-tool execution, signature inspection and policy acceptance. Email guidance
   describes the current JACS envelope and unchecked forwarding ancestors, with

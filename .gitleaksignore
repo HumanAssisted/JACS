@@ -23,3 +23,8 @@
 8571632f92997d58fd2fdcdeba619ac2da875ce3:jacs-core/tests/agreement_v3_security.rs:generic-api-key:303
 8571632f92997d58fd2fdcdeba619ac2da875ce3:jacs-core/tests/agreement_v3_security.rs:generic-api-key:394
 37c24879cc51d0f1df0eae75648b460cd1557f5c:jacs-mcp/README.md:generic-api-key:9
+
+# Reviewed 2026-09-14 with gitleaks 8.30.1. README prose "key,
+# missing/duplicate attachments" is a generic-api-key false positive, not a
+# credential. Suppress only this exact historical finding, not the path/rule.
+b20534e0c19e174d77d3174b95354e3fe0a7dd19:jacs-mcp/README.md:generic-api-key:52
