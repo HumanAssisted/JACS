@@ -271,3 +271,12 @@ native document and root-binding verification still use JACS. The existing
 legacy Strict discovery parser is not a v1 parser, and this stateless bridge
 does not establish rollback history. Key attribution, human approval, current
 contact authority and Agreement-policy acceptance remain separate decisions.
+
+Verification on September 15, 2026 used macOS arm64, Rust 1.98.1, Python
+3.14.7, the pinned SDK, and the reviewed Rustls 0.23.45 lock. The native profile
+regression and existing legacy discovery/restart regression passed. The actual
+peer verified three card vectors and received all 1,201 report bytes unchanged;
+14 peer/native refusals and seven typed-profile refusals passed, along with
+private-workspace and host cleanup. This is selected-feature (`a2a`, without
+default features) example evidence, not an all-platform or general-conformance
+certification.
