@@ -1,5 +1,11 @@
 ## Unreleased
 
+### 2026-09-15 — Opt-in current A2A peer example
+
+- Add a typed A2A 1.0 card projection and finite loopback example using a pinned official Python SDK for discovery, ES256 card verification and exact signed-report transport. Existing legacy discovery and language facade contracts stay unchanged.
+- Keep native-root binding verification and document provenance separate from human approval and current authority. Reject unsupported profile values instead of removing them to accommodate the pinned peer's field-presence limitation. See the A2A integration guide for the explicit profile and runnable verification.
+
+
 ### Changed
 
 - **Local MCP/MIME baseline demo (2026-09-14).** A standard-library Python

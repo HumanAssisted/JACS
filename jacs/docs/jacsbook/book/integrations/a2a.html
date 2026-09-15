@@ -361,6 +361,50 @@ together and refetch on a mismatch. See <a href="../guides/a2a-serve.html">Serve
 <li><code>jacsnpm/examples/a2a-agent-example.js</code></li>
 <li><code>jacs/tests/a2a_cross_language_tests.rs</code></li>
 </ul>
+<h2 id="opt-in-a2a-10-peer-example"><a class="header" href="#opt-in-a2a-10-peer-example">Opt-in A2A 1.0 peer example</a></h2>
+<p>The existing exporters and discovery adapters retain the legacy JACS-labeled
+<code>0.4.0</code> card format. The separate native <code>jacs::a2a::v1</code> projection and
+<code>examples/a2a_v1_peer.py</code> exercise a finite A2A 1.0 JSON-RPC report exchange
+against official <code>a2aproject/a2a-python</code> <strong>1.1.4</strong>, pinned to commit
+<code>2d4d3048b245d2af854bad804f0e722ea9febc08</code>. This example does not enable a new
+production binding, alter the existing language facade APIs, or host a remote
+signer. The SDK version and protocol version are different numbers.</p>
+<p>From the repository root, with Python 3.14 and uv installed:</p>
+<pre><code class="language-sh">uv venv --python python3.14 /tmp/jacs-a2a-peer-env
+uv pip sync --python /tmp/jacs-a2a-peer-env/bin/python examples/a2a_v1_peer_requirements.txt
+cargo build -p jacs --no-default-features --features a2a --example a2a_v1_peer
+/tmp/jacs-a2a-peer-env/bin/python examples/a2a_v1_peer.py --native-bin target/debug/examples/a2a_v1_peer
+</code></pre>
+<p>The test-only lock uses the exact official source commit: PyPI had no 1.1.4
+artifact when checked on September 14, 2026. It pins transitive dependencies
+with distribution hashes. No global package environment is needed.</p>
+<p>A disposable native helper creates an encrypted signing identity, a card,
+its native-root-signed compatibility binding, and a pre-signed synthetic report.
+It removes its private workspace before a separate recipient starts. A finite
+loopback host serves the card and a real SDK JSON-RPC interface. The official
+client follows that returned interface and receives the report as raw
+<code>application/json</code> artifact bytes. The recipient checks exact bytes, uses the
+native public-key-only verifier for the document, and separately validates the
+native binding against an explicitly supplied trusted root before the official
+SDK verifies the ES256 card signature. No email or external network is used.</p>
+<p>The new profile puts native identity and binding references in
+<code>urn:jacs:provenance-v1</code> extension parameters, using the current card's standard
+signature fields. It preserves explicitly supplied optional false booleans and
+omits absent optional fields and ordinary proto defaults. Required strings and
+arrays must be nonempty. It rejects caller-supplied binding parameters,
+duplicate extension URIs, unsupported capability claims, non-object extension
+parameter roots, and empty/null or unsafe numeric extension values instead of silently changing them. Production
+interface URLs require HTTPS; explicit loopback HTTP is permitted for this
+example. The caller must actually implement the declared finite report skill.</p>
+<p>This deliberately bounded profile records a pinned-peer limitation: its
+canonicalizer removes explicit optional empty strings, although the protocol's
+presence rules preserve them. The peer is not patched. Unsupported values are
+rejected by the new typed boundary, and the example does not claim general A2A
+conformance. It tests independent SDK card/JWS handling and message transport;
+native document and root-binding verification still use JACS. The existing
+legacy Strict discovery parser is not a v1 parser, and this stateless bridge
+does not establish rollback history. Key attribution, human approval, current
+contact authority and Agreement-policy acceptance remain separate decisions.</p>
 
                     </main>
 

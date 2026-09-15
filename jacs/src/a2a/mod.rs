@@ -11,6 +11,7 @@ pub mod keys;
 pub mod provenance;
 pub mod simple;
 pub mod trust;
+pub mod v1;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

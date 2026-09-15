@@ -300,9 +300,6 @@ pub(crate) fn export_a2a_agent_card_from(
     key_directory: &str,
     card: crate::a2a::AgentCard,
 ) -> Result<Value, JacsError> {
-    use base64::Engine as _;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-
     let binding = require_identity_scope(agent, key_directory, "a2a-agent-card")?;
     let binding_hash = super::binding::binding_hash(&binding);
     // Missing keys fail (and count) inside the scope gate above.
@@ -334,31 +331,8 @@ pub(crate) fn export_a2a_agent_card_from(
     // card fields are omitted BEFORE canonicalization by the card
     // serializer itself: every optional `AgentCard` field carries
     // `#[serde(skip_serializing_if = "Option::is_none")]`.
-    let payload = jacs_core::canonical::canonicalize_json_try(&unsigned)
-        .map_err(|e| JacsError::ValidationError(format!("JCS canonicalization failed: {e}")))?;
-    let payload = payload.into_bytes();
-
-    let header = json!({
-        "alg": "ES256",
-        "typ": "JOSE",
-        "kid": compat.kid
-    });
-    let header_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header)?);
-    let payload_b64 = URL_SAFE_NO_PAD.encode(&payload);
-    let signing_input = format!("{}.{}", header_b64, payload_b64);
-
-    // Decrypt the ES256 private key with the agent password; the plaintext
-    // PKCS#8 DER lives only in the returned zeroizing buffer.
-    let private_der = super::decrypt_ecosystem_private_key(agent, &compat)?;
-    let signature =
-        crate::crypt::es256::sign_es256_jose(private_der.as_slice(), signing_input.as_bytes())?;
-    let jws = format!(
-        "{}.{}.{}",
-        header_b64,
-        payload_b64,
-        URL_SAFE_NO_PAD.encode(&signature)
-    );
-
+    let (protected, payload, signature) = sign_card_payload(agent, &compat, &unsigned)?;
+    let jws = format!("{protected}.{payload}.{signature}");
     card_value["signatures"] = json!([{ "jws": jws, "keyId": compat.kid }]);
 
     info!(
@@ -371,6 +345,54 @@ pub(crate) fn export_a2a_agent_card_from(
     );
     super::record_export_generated("a2a-agent-card");
     Ok(card_value)
+}
+
+/// The opt-in v1 path uses the same scope gate, custody and private signer.
+#[cfg(feature = "a2a")]
+pub(crate) fn export_a2a_v1_agent_card_from(
+    agent: &mut Agent,
+    key_directory: &str,
+    mut card: crate::a2a::v1::Card,
+) -> Result<Value, JacsError> {
+    let binding = require_identity_scope(agent, key_directory, "a2a-agent-card")?;
+    let binding_hash = super::binding::binding_hash(&binding);
+    let compat = crate::keystore::compat::ecosystem_key_info(key_directory)?;
+    card.bind(agent, &compat.kid, &binding_hash)?;
+    let unsigned = card.signing_value()?;
+    let (protected, _, signature) = sign_card_payload(agent, &compat, &unsigned)?;
+    let mut wire = serde_json::to_value(card)?;
+    wire["signatures"] = json!([{ "protected": protected, "signature": signature }]);
+    info!(event = "ecosystem_export_generated", format = "a2a-agent-card",
+        protocol_version = "1.0", jacs_id = %agent.get_id().unwrap_or_default(),
+        kid = %compat.kid, binding_hash = %binding_hash, "A2A v1 card exported");
+    super::record_export_generated("a2a-agent-card");
+    Ok(wire)
+}
+
+// Shared by the two typed, scope-gated card exporters only. Deliberately private:
+// this is not an arbitrary-JWS signing API or a language binding surface.
+#[cfg(feature = "a2a")]
+fn sign_card_payload(
+    agent: &Agent,
+    compat: &crate::keystore::compat::CompatKeyInfo,
+    unsigned: &Value,
+) -> Result<(String, String, String), JacsError> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    let payload = jacs_core::canonical::canonicalize_json_try(unsigned)
+        .map_err(|e| JacsError::ValidationError(format!("JCS canonicalization failed: {e}")))?;
+    let protected = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({
+        "alg": "ES256", "typ": "JOSE", "kid": compat.kid
+    }))?);
+    let payload = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+    // Plaintext PKCS#8 exists only in the existing zeroizing custody buffer.
+    let private_der = super::decrypt_ecosystem_private_key(agent, compat)?;
+    let signature = crate::crypt::es256::sign_es256_jose(
+        private_der.as_slice(),
+        format!("{protected}.{payload}").as_bytes(),
+    )?;
+    Ok((protected, payload, URL_SAFE_NO_PAD.encode(signature)))
 }
 
 /// Export the current (verified) compatibility key binding document so a
