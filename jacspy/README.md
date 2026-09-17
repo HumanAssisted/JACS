@@ -259,6 +259,19 @@ pip install jacs[a2a]          # A2A protocol
 pip install jacs[all]          # Everything
 ```
 
+`jacs.a2a_server.jacs_a2a_routes()` caches all six discovery documents together
+and refreshes them on the first request at six days after the binding's signed
+`issuedAt`. Concurrent FastAPI handlers share one locked refresh. Failed
+refreshes retry at most once per minute; the old snapshot is served only within
+its seven-day Strict lifetime and any earlier `expiresAt`. Unavailable discovery
+returns a non-cacheable 503. HTTP freshness ends by the six-day renewal boundary
+or earlier expiry. Still-valid snapshots awaiting renewal use `no-store`.
+Finite expiry is never extended: renew authorization and
+remount the router to serve a newly authorized binding after expiry.
+Separate resource requests can straddle renewal even though publication is
+atomic within the process. Clients must verify the card/JWKS/binding together
+and refetch on a mismatch; these endpoints are not a transactional bundle.
+
 ## Instance-based API
 
 For multiple agents in one process:

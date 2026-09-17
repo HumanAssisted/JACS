@@ -22,6 +22,11 @@
 
 ### Security
 
+- **A2A discovery cache freshness (2026-09-14).** Express and FastAPI refresh
+  complete discovery snapshots at six days from signed binding issuance.
+  Failed refreshes use bounded retries and retain only still-valid snapshots;
+  expired discovery returns a non-cacheable 503. HTTP caching ends by the
+  six-day renewal boundary or explicit expiry, which refresh never extends.
 - **MCP visibility labels no longer imply sharing consent.** Returned hints
   describe document-declared visibility as advisory. A caller's `public` label
   cannot grant publication permission. Signing and verification messages
