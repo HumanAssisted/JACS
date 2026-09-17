@@ -622,19 +622,23 @@ stores and emits the canonical Ed25519 wire label as <code>ring-Ed25519</code>:<
 <li><a href="getting-started/../integrations/mcp.html">MCP Overview</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="multi-agent-agreements"><a class="header" href="#multi-agent-agreements">Multi-Agent Agreements</a></h1>
-<p>Agreement v2 is the recommended JACS model for new multi-agent consent workflows. It creates a standalone <code>jacsType: "agreement"</code> document with terms, parties, signature policy, transcript references, notary support, and verifiable status.</p>
-<p>Use it when the question is: "did these agents agree to these terms?"</p>
+<p>Agreement v2 records terms and agent consent signatures in a standalone <code>jacsType: "agreement"</code> document. Its verifier inspects mathematical and structural checks. It does not accept the full authorization policy or prove human approval, even when the supplied quorum produces a <code>final</code> status.</p>
+<p>Use this walkthrough to inspect agent provenance. An application must separately establish the authority and any exact-action human approval required before acting.</p>
 <h2 id="the-lifecycle"><a class="header" href="#the-lifecycle">The Lifecycle</a></h2>
-<pre><code class="language-text">Create agreement -&gt; append transcript refs -&gt; signers consent -&gt; HAI notarizes -&gt; verify final status
+<pre><code class="language-text">Create agreement -&gt; append transcript refs -&gt; collect signer/notary signatures -&gt; inspect math and policy scope
 </code></pre>
 <h2 id="python-2"><a class="header" href="#python-2">Python</a></h2>
+<p>All three demo identities are controlled by this code, including the agent labeled <code>notary</code>; no person or external notary approves anything here.</p>
 <p>The three agents are persistent and share one <code>data_directory</code> so each can resolve the others' public keys when verifying. Independent <code>ephemeral()</code> agents keep keys in memory only and cannot verify each other's signatures.</p>
-<pre><code class="language-python">import tempfile
+<pre><code class="language-python">import os
+import secrets
+import tempfile
 from pathlib import Path
 
 from jacs import SimpleAgent
 
-PASSWORD = "MultiAgentDemo!2026"
+os.environ["JACS_KEYCHAIN_BACKEND"] = "disabled"  # throwaway demo only
+PASSWORD = secrets.token_urlsafe(32)
 workspace = Path(tempfile.mkdtemp(prefix="jacs_multi_agent_"))
 shared_data = workspace / "shared_data"  # all agents share this so keys resolve
 
@@ -653,19 +657,19 @@ def make_agent(name, agent_type="ai"):
 
 
 agent_a, a = make_agent("agent-a")
-agent_b, b = make_agent("agent-b", agent_type="human")
-hai, h = make_agent("hai-notary")
+agent_b, b = make_agent("agent-b")
+notary, n = make_agent("demo-notary")
 
 agreement = agent_a.create_agreement_v2({
     "title": "Bounded refund authorization",
-    "description": "Two parties agree on a bounded refund; HAI notarizes the final state.",
+    "description": "Demo refund terms for agent signature inspection; no refund is authorized.",
     "terms": "Agent B may issue a refund up to $25 for order 123 after Agent A approval.",
     "termsFormat": "text/markdown",
     "status": "proposed",
     "parties": [
         {"agentId": a["agent_id"], "agentType": "ai", "role": "signer"},
-        {"agentId": b["agent_id"], "agentType": "human", "role": "signer"},
-        {"agentId": h["agent_id"], "agentType": "ai", "role": "notary"},
+        {"agentId": b["agent_id"], "agentType": "ai", "role": "signer"},
+        {"agentId": n["agent_id"], "agentType": "ai", "role": "notary"},
     ],
     "signaturePolicy": {
         "partyQuorum": "all",
@@ -673,34 +677,35 @@ agreement = agent_a.create_agreement_v2({
         "notaryRequired": 1,
         "minimumStrength": "classical",
     },
-    "controllers": [a["agent_id"], b["agent_id"], h["agent_id"]],
+    "controllers": [a["agent_id"], b["agent_id"], n["agent_id"]],
 })
 
 agreement = agent_a.sign_agreement_v2(agreement, "signer")
 agreement = agent_b.sign_agreement_v2(agreement, "signer")
-agreement = hai.sign_agreement_v2(agreement, "notary")
+agreement = notary.sign_agreement_v2(agreement, "notary")
 
-# hai resolves agent_a's and agent_b's public keys from the shared data directory.
-report = hai.verify_agreement_v2(agreement)
-assert report["valid"]
-assert report["expectedStatus"] == "final"
+# The demo notary resolves the signers' public keys from shared storage.
+report = notary.verify_agreement_v2(agreement)
+assert report["mathematicalChecksValid"] is True
+assert report["valid"] is False
+assert report["policyAccepted"] is False
+assert report["overallScope"] == "consent_signatures_only"
+assert report["expectedStatus"] == "final"  # structural diagnostic only
 </code></pre>
-<p>For a fuller runnable version with transcript references and adversarial checks:</p>
+<p>This abbreviated snippet leaves its temporary workspace for inspection; remove it when finished. The runnable version includes transcript references and adversarial checks, and cleans up its temporary keys:</p>
 <pre><code class="language-bash">python examples/agreement_v2_three_party.py
 </code></pre>
-<h2 id="what-gets-verified"><a class="header" href="#what-gets-verified">What Gets Verified</a></h2>
+<h2 id="what-the-report-means"><a class="header" href="#what-the-report-means">What the Report Means</a></h2>
 <ul>
-<li><code>jacsAgreementHash</code> matches the terms, parties, policy, and effective dates.</li>
-<li>Signer signatures satisfy <code>partyQuorum</code>.</li>
-<li>Witness and notary signatures satisfy their separate requirements.</li>
-<li>Signatures come from listed parties with matching roles.</li>
-<li>Transcript signatures bind the transcript hash when transcript entries exist.</li>
-<li>Header signature and controller checks prove the emitted version came from an authorized controller.</li>
-<li><code>status</code> is recomputed before callers rely on it.</li>
+<li><code>mathematicalChecksValid</code> covers the native hash, signature and structural checks. Inspect <code>errors</code> for failures and <code>notes</code>, <code>verifiedChainDepth</code> and <code>chainFullyVerified</code> for lineage coverage limits.</li>
+<li>Consent signatures bind the agreement identity and consent hash; signatures made with a nonempty transcript also bind its prefix at signing. Later unsigned transcript entries are not retroactively covered.</li>
+<li>Signer counts, quorum, witness/notary requirements and <code>expectedStatus</code> are diagnostics against the supplied document. Neither a count nor <code>status: "final"</code> is an accepted policy verdict.</li>
+<li>Helpers check membership, role and controller lists. These checks do not establish portable role/controller authority or a person's approval. Changing an agent's label to <code>human</code> does not add human approval evidence.</li>
+<li><code>valid</code> and <code>policyAccepted</code> remain false, including for the successful mathematical inspection above. Do not turn either field into true or treat <code>mathematicalChecksValid</code> as permission to act.</li>
 </ul>
 <h2 id="legacy-sidecar-agreements"><a class="header" href="#legacy-sidecar-agreements">Legacy Sidecar Agreements</a></h2>
-<p>The older <code>create_agreement()</code> / <code>sign_agreement()</code> / <code>check_agreement()</code> API still exists for adding <code>jacsAgreement</code> metadata to an arbitrary signed document. Use it for simple countersignature approval of an existing payload.</p>
-<p>Use Agreement v2 for standalone terms, HAI notarization, transcript evidence, branch handling, or cross-language product workflows.</p>
+<p>The older <code>create_agreement()</code> / <code>sign_agreement()</code> / <code>check_agreement()</code> API still exists for adding <code>jacsAgreement</code> metadata to an arbitrary signed document. It supports signature inspection of an existing payload; those signatures alone do not establish human approval or the complete application policy.</p>
+<p>V2 adds standalone terms, transcript-prefix evidence and branch helpers. Moving to v2 does not create an actionable authorization.</p>
 <h2 id="next-steps-2"><a class="header" href="#next-steps-2">Next Steps</a></h2>
 <ul>
 <li><a href="getting-started/../guides/agreement-v2.html">Agreement v2 Developer Guide</a></li>
@@ -11698,17 +11703,17 @@ def test_large_document():
 <div style="break-before: page; page-break-before: always;"></div><h1 id="mcp-overview"><a class="header" href="#mcp-overview">MCP Overview</a></h1>
 <p>Use MCP when the boundary is model-to-tool inside an application or local workstation. Use <a href="integrations/a2a.html">A2A</a> when the boundary is agent-to-agent across organizations or services.</p>
 <h2 id="choose-the-mcp-path"><a class="header" href="#choose-the-mcp-path">Choose The MCP Path</a></h2>
-<p>There are three supported ways to use JACS with MCP today:</p>
+<p>JACS offers three MCP integration surfaces:</p>
 <ol>
-<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server. The default
-<code>core</code> profile is the safer everyday surface; select <code>--profile full</code> when
-you need the advanced tool families.</li>
+<li><strong>Run <code>jacs mcp</code></strong> for local document verification without signing keys.
+Select <code>--profile local-sign</code> with an existing signed config to let the
+local client sign as that agent.</li>
 <li><strong>Wrap an existing MCP transport</strong> when you already have an MCP server or client and want signed JSON-RPC.</li>
 <li><strong>Register JACS as MCP tools</strong> when you want the model to call signing, verification, agreement, A2A, or trust operations directly.</li>
 </ol>
 <h2 id="best-fit-by-runtime"><a class="header" href="#best-fit-by-runtime">Best Fit By Runtime</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Runtime</th><th>Best starting point</th><th>What it gives you</th></tr></thead><tbody>
-<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Core document, text/media, trust, search, key/agent, A2A discovery, and W3C tools; <code>--profile full</code> adds Agreement v2, A2A artifact, and attestation tools</td></tr>
+<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Verification by default; explicit local signing of documents and Agreement-v2 artifacts, with optional scoped text/image tools</td></tr>
 <tr><td>Python</td><td><code>jacs.mcp</code> or <code>jacs.adapters.mcp</code></td><td>Local SSE transport security or FastMCP tool registration</td></tr>
 <tr><td>Node.js</td><td><code>@hai.ai/jacs/mcp</code></td><td>Transport proxy or MCP tool registration for existing SDK-based servers</td></tr>
 </tbody></table>
@@ -11718,32 +11723,77 @@ you need the advanced tool families.</li>
 <li><strong>Python MCP wrappers are local-only.</strong> <code>JACSMCPClient</code>, <code>JACSMCPServer</code>, and <code>jacs_call()</code> enforce loopback URLs.</li>
 <li><strong>Unsigned fallback is off by default.</strong> Both Python and Node fail closed unless you explicitly allow unsigned fallback.</li>
 <li><strong>Node has two factories.</strong> <code>createJACSTransportProxy()</code> takes a loaded <code>JacsClient</code> or <code>JacsAgent</code>; <code>createJACSTransportProxyAsync()</code> is the config-path variant.</li>
-<li><strong>The Rust server requires explicit agent configuration.</strong> Set <code>JACS_CONFIG</code>
-and exactly one usable private-key password source before startup.</li>
+<li><strong>The native server's profiles do not configure the Python or Node adapters.</strong>
+Those integrations have their own transport, key-loading and authorization
+requirements; the examples below do not inherit the native server's closed
+local-sign inventory.</li>
+<li><strong>Signatures are provenance, not human approval.</strong> Supplied-key verification
+checks integrity; it does not establish truth, identity, authorization,
+publication permission or Agreement policy acceptance.</li>
 </ul>
 <h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs mcp</code></a></h2>
-<p>Install the unified binary and start the MCP server:</p>
+<p>Install the unified binary and start a verification-only server. No identity
+creation or private-key password is required:</p>
 <pre><code class="language-bash">cargo install jacs-cli
-export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
-jacs quickstart --name mcp-agent --domain mcp.local
-export JACS_CONFIG="$PWD/jacs.config.json"
 jacs mcp
 </code></pre>
-<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no
-HTTP). Its default <code>core</code> profile exposes 25 tools. The <code>full</code> profile exposes
-all 42 source-head tools by adding Agreement v2, A2A artifact, and attestation
-families:</p>
-<pre><code class="language-bash">jacs mcp --profile full
-# Equivalent only when --profile is absent:
-JACS_MCP_PROFILE=full jacs mcp
+<p>Configure a compatible MCP client with:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp"]
+    }
+  }
+}
 </code></pre>
+<p>The default <code>verify-only</code> profile exposes only <code>jacs_verify_document</code>; callers
+supply the public key and algorithm. An explicitly supplied <code>--config</code> or
+<code>JACS_CONFIG</code> loads public-only configuration without unlocking private keys.</p>
+<p>To sign, reuse an existing signed config, or run <code>jacs init</code> once in the
+directory where you want to keep the agent identity. Keep using its normal
+keychain/password source and select it explicitly:</p>
+<pre><code class="language-bash">jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+</code></pre>
+<p>Use those same arguments in the MCP client:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
+    }
+  }
+}
+</code></pre>
+<p><code>JACS_CONFIG</code> can supply the config path instead. Local signing requires a
+valid signed config and persistent encrypted keys in filesystem storage; it
+does not discover config implicitly or create a replacement identity. Never
+send a password as a tool argument or embed it in client JSON. Prefer an
+owner-readable <code>JACS_PASSWORD_FILE</code> or the configured OS keychain.</p>
+<p>This profile exposes nine JSON/Agreement-v2 tools when Agreement tools are
+compiled. To add exactly five text/image tools, grant an existing content
+directory explicitly at process startup:</p>
+<pre><code class="language-bash">JACS_MCP_BASE_DIR=/absolute/path/to/content jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+</code></pre>
+<p>There is no implicit working-directory grant. File tools reject traversal and
+symlinks and stay beneath the selected directory. Replacing a distinct existing
+output requires <code>JACS_MCP_OVERWRITE_OK=1</code>; explicit in-place signing remains
+available. Normal backups contain the original plaintext file, so protect them
+alongside the content. A content root never expands <code>verify-only</code>.
+Signing persists ordinary JACS documents under the config directory's
+<code>documents/</code> directory and grants agent signing authority, not human approval.</p>
 <p>An explicit <code>--profile</code> overrides <code>JACS_MCP_PROFILE</code>; unknown values fail
-startup. For production, prefer an owner-readable <code>JACS_PASSWORD_FILE</code> or the
-OS keychain over embedding <code>JACS_PRIVATE_KEY_PASSWORD</code> in client JSON. File
-tools are confined beneath <code>JACS_MCP_BASE_DIR</code> (the launch directory by
-default), reject traversal and symlinks, and refuse overwrite unless the
-operator sets <code>JACS_MCP_OVERWRITE_OK=1</code>. The crate-level MCP README in the repo
-has the complete contract.</p>
+startup. Historical <code>core</code>/<code>full</code> recipes are obsolete; <code>trust-admin</code> and
+compatibility-only <code>legacy-core</code> remain unavailable. Key administration,
+trust management, A2A and attestation tools are not enabled by <code>local-sign</code>.
+The compiled 42-tool contract is not a runtime grant: use <code>tools/list</code> to see
+the process's actual authorized inventory.</p>
+<p>The native server uses stdio only: stdout carries MCP JSON-RPC and diagnostics
+go to stderr. It uses RMCP 3.3.0, supporting date-versioned MCP <code>2026-07-28</code>
+and legacy <code>2025-11-25</code> initialization; these are distinct from SDK major
+versions such as the TypeScript SDK v2. See the
+<a href="https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md">crate MCP README</a>
+for the complete local-signing and response-error contract.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python-4"><a class="header" href="#python-4">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
@@ -11837,9 +11887,14 @@ const client = await JacsClient.quickstart({
 
 registerJacsTools(server, client);
 </code></pre>
-<p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
+<p>Choose the native <code>jacs mcp</code> server for its explicit local-signing boundary.
+Tool registration in an existing Node or Python server is a separate
+integration; review that server's exposed operations and authorization.</p>
 <h3 id="provenance-mcp-tools"><a class="header" href="#provenance-mcp-tools">Provenance MCP tools</a></h3>
-<p>The MCP server exposes tools for inline text and image provenance, covering the same surface as the <a href="integrations/../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="integrations/../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
+<p>With <code>local-sign</code> and an explicit <code>JACS_MCP_BASE_DIR</code>, the native server adds
+the following tools for inline text and image provenance. They cover the
+same surface as the <a href="integrations/../guides/inline-text-signing.html"><code>sign-text</code></a> and
+<a href="integrations/../guides/media-signing.html"><code>sign-image</code></a> CLI verbs:</p>
 <ul>
 <li><code>jacs_sign_text</code> — append a YAML-bodied signature block to a markdown / text file.</li>
 <li><code>jacs_verify_text</code> — verify all signature blocks in a file (permissive default; <code>strict</code> opt-in).</li>
@@ -12588,12 +12643,12 @@ to upstream attestations.</p>
 <p>Use <code>export_attestation_dsse()</code> to generate an in-toto DSSE envelope that
 external systems (SLSA verifiers, Sigstore) can validate independently.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="agreement-v2-developer-guide"><a class="header" href="#agreement-v2-developer-guide">Agreement v2 Developer Guide</a></h1>
-<p>Agreement v2 is a standalone <code>jacsType: "agreement"</code> document for one job: make consent to terms portable and verifiable. Use it when the question is "did these agents agree to these terms?", not merely "was this JSON signed?"</p>
-<p>Rust core is the source of truth. Python, Node.js, Go, CLI, MCP, and WASM expose the same JSON workflow so developers can create in one surface and verify in another.</p>
+<p>Agreement v2 is a standalone <code>jacsType: "agreement"</code> document with consent-signature and signed-transcript-prefix inspection. Its party proofs do not authenticate the full role, quorum, lineage, or finalization policy. A successful mathematical check is not permission to act on the agreement.</p>
+<p>Rust owns the protocol checks; Python, Node.js, Go, CLI, MCP, and WASM expose related JSON workflows. Native <code>verify_agreement_v2</code> reports <code>mathematicalChecksValid</code> separately and always returns <code>valid: false</code>, <code>policyAccepted: false</code>, and <code>overallScope: "consent_signatures_only"</code>. The portable inspection report likewise does not accept application policy. Do not interpret either result as proof of human approval or authority.</p>
 <h2 id="mental-model"><a class="header" href="#mental-model">Mental Model</a></h2>
 <ul>
 <li>The JACS header owns document identity, versioning, authorship signatures, content hash, registration, files, and visibility.</li>
-<li>The agreement body owns consent: <code>title</code>, <code>description</code>, <code>terms</code>, <code>parties</code>, <code>signaturePolicy</code>, <code>agreementSignatures</code>, <code>transcript</code>, <code>links</code>, <code>controllers</code>, and <code>owners</code>.</li>
+<li>The agreement body records terms and consent-signature inputs: <code>title</code>, <code>description</code>, <code>terms</code>, <code>parties</code>, <code>signaturePolicy</code>, <code>agreementSignatures</code>, <code>transcript</code>, <code>links</code>, <code>controllers</code>, and <code>owners</code>.</li>
 <li><code>jacsAgreementHash</code> is the consent hash. It changes when terms, parties, policy, effective dates, or expiry dates change.</li>
 <li>Transcript appends do not change <code>jacsAgreementHash</code>. They change the transcript hash that later agreement signatures bind.</li>
 <li>Links are intentionally slim: only <code>jacsId</code> and <code>jacsVersion</code>. Put relationship meaning in the successor agreement's terms and status.</li>
@@ -12623,14 +12678,14 @@ external systems (SLSA verifiers, Sigstore) can validate independently.</p>
   ]
 }
 </code></pre>
-<p>Roles are deliberately small. <code>signer</code> means consent and obligation. <code>witness</code> means process attestation. <code>notary</code> means notarial attestation, the role HAI uses when it counter-signs. <code>observer</code> may appear in <code>parties</code>, but observers do not sign.</p>
+<p>The schema labels are <code>signer</code>, <code>witness</code>, <code>notary</code>, and <code>observer</code>; observers do not sign. V2 helpers check membership against supplied roles, but that does not establish portable role authority. An <code>agentType: "human"</code> label is metadata: an automated signature with that label is not evidence that a person reviewed or approved the terms.</p>
 <h2 id="workflow"><a class="header" href="#workflow">Workflow</a></h2>
 <ol>
 <li>Create the agreement from the input JSON.</li>
 <li>Append transcript references as negotiation messages, statements, or evidence are emitted as separate JACS documents.</li>
 <li>Update terms only when the actual agreement language changes. This clears prior agreement signatures because <code>jacsAgreementHash</code> changes.</li>
 <li>Sign as <code>signer</code>, <code>witness</code>, or <code>notary</code>.</li>
-<li>Verify before acting on <code>status</code>. The verifier recomputes hashes, role counts, quorum, notary/witness requirements, and transcript tamper evidence.</li>
+<li>Inspect signatures and transcript tamper evidence. Native role counts and <code>expectedStatus</code> are structural diagnostics over the supplied document; neither they nor stored <code>status</code> authorize an action.</li>
 <li>Resolve concurrent branches in Rust core: transcript-only branches auto-merge; terms conflicts require an explicit successor mutation.</li>
 </ol>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
@@ -12643,8 +12698,8 @@ external systems (SLSA verifiers, Sigstore) can validate independently.</p>
 <h2 id="roles-quorum-and-notaries"><a class="header" href="#roles-quorum-and-notaries">Roles, Quorum, and Notaries</a></h2>
 <ul>
 <li><code>signaturePolicy.partyQuorum</code> is <code>all</code> or an integer M (M-of-N signer parties).</li>
-<li><code>witnessRequired</code> and <code>notaryRequired</code> are separate counts; a <code>notary</code> (the role HAI uses) attests the final state and is counted independently of signer quorum.</li>
-<li><code>controllers</code> lists agents allowed to emit new versions; <code>owners</code> are soft copyright claims. Keep them distinct from <code>parties</code>.</li>
+<li><code>witnessRequired</code> and <code>notaryRequired</code> are separate inputs to structural status calculation; their presence does not authenticate a witness or notary role.</li>
+<li><code>controllers</code> is the supplied list checked by mutation helpers; the header signature does not prove that the parties authorized that controller list. <code>owners</code> are soft copyright claims. Keep both distinct from <code>parties</code>.</li>
 </ul>
 <h2 id="mutations"><a class="header" href="#mutations">Mutations</a></h2>
 <p>All public surfaces accept the same mutation JSON:</p>
@@ -12675,7 +12730,9 @@ agreement = agent.create_agreement_v2({
 
 signed = agent.sign_agreement_v2(agreement, "signer")
 report = agent.verify_agreement_v2(signed)
-assert report["valid"] is True
+assert report["mathematicalChecksValid"] is True
+assert report["valid"] is False
+assert report["policyAccepted"] is False
 </code></pre>
 <h2 id="nodejs-6"><a class="header" href="#nodejs-6">Node.js</a></h2>
 <p>This single-agent example self-signs and self-verifies, so the agent resolves its own key. For multiple distinct agents, see the multi-agent walkthrough, which shares key storage so each agent can resolve the others' public keys.</p>
@@ -12697,7 +12754,8 @@ async function main() {
 
   const signed = await agent.signAgreementV2(agreement, "signer");
   const report = await agent.verifyAgreementV2(signed);
-  console.log("valid:", report.valid);
+  console.log("mathematical checks:", report.mathematicalChecksValid);
+  console.log("policy accepted:", report.policyAccepted); // always false for v2
 }
 
 main();
@@ -12708,6 +12766,7 @@ jacs agreement-v2 create --input agreement-input.json &gt; agreement.json
 jacs agreement-v2 sign --agreement agreement.json --role signer &gt; signed.json
 jacs agreement-v2 verify --agreement signed.json
 </code></pre>
+<p>The verify command emits the inspection report and exits non-zero because v2 does not produce an accepted policy verdict. This is the expected result even when the mathematical checks pass.</p>
 <p>For branch handling:</p>
 <pre><code class="language-bash">jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
 jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
@@ -12724,10 +12783,10 @@ jacs agreement-v2 merge-transcript --base base.json --left left.json --right rig
 jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
 </code></pre>
 <h2 id="golden-example"><a class="header" href="#golden-example">Golden Example</a></h2>
-<p>The repository includes a three-party Python example that matches the core product scenario:</p>
+<p>The repository includes a three-party Python example of the v2 consent-signature workflow:</p>
 <pre><code class="language-bash">python examples/agreement_v2_three_party.py
 </code></pre>
-<p>It creates Agent A and Agent B as signer parties, HAI as a <code>notary</code>, and Agent X as an outsider. The example appends transcript references, rejects outsider mutation/signing, collects two signer signatures plus the HAI notary signature, and verifies the final agreement.</p>
+<p>It creates Agent A and Agent B as signer parties, a local demo agent labeled <code>notary</code>, and Agent X as an outsider. The example appends transcript references, rejects outsider mutation/signing, collects two signer signatures plus the demo notary signature, and inspects their mathematical validity. The resulting v2 report does not establish a portable finalization or human-approval verdict. The example checks <code>mathematicalChecksValid: true</code> while requiring <code>valid: false</code> and <code>policyAccepted: false</code>, and rejects transcript and signature tampering.</p>
 <h2 id="mcp-and-wasm"><a class="header" href="#mcp-and-wasm">MCP and WASM</a></h2>
 <p>MCP tools mirror the CLI:</p>
 <ul>
@@ -12743,15 +12802,15 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 <h2 id="devex-rules"><a class="header" href="#devex-rules">DevEx Rules</a></h2>
 <ul>
 <li>Use core helpers instead of hand-editing agreement JSON. The helpers maintain <code>jacsAgreementHash</code>, <code>allPreviousVersions</code>, <code>jacsPreviousVersion</code>, and status transitions.</li>
-<li>Keep <code>parties</code>, <code>controllers</code>, and <code>owners</code> separate. Parties consent or attest; controllers can propose versions; owners are soft copyright claims.</li>
-<li>Treat stored <code>status</code> as a cache. Always verify before acting on an agreement.</li>
+<li>Keep <code>parties</code>, <code>controllers</code>, and <code>owners</code> separate. Party signatures record agent provenance; controllers are checked by version helpers; owners are soft copyright claims. None of those labels establishes human approval.</li>
+<li>Treat stored <code>status</code> as a cache. V2 inspection cannot establish authority to act on that status; the application must separately establish its authorization policy.</li>
 <li>Use transcript entries for process evidence and links for agreement lineage. Links stay <code>{jacsId, jacsVersion}</code> by design.</li>
 <li>For post-final terms changes, create a successor agreement or explicit conflict resolution rather than mutating a final agreement in place.</li>
-<li>Delegated signing is reserved for a future feature. In v2 core, the agent that signs must be listed in <code>parties</code> with the matching role.</li>
+<li>Principal delegation (one agent signing on behalf of another party) is unsupported and unscheduled. The signing agent must be listed in <code>parties</code> with the matching role; <code>delegatedBy</code> and <code>delegationChain</code> are rejected. This does not change ES256 export-key delegation through compatibility key bindings, or SDK forwarding of calls to Rust.</li>
 </ul>
 <h2 id="migrating-from-v1-agreements"><a class="header" href="#migrating-from-v1-agreements">Migrating from v1 agreements</a></h2>
-<p>JACS still ships the original v1 "sidecar" agreement: a <code>jacsAgreement</code> field attached to an <em>existing</em> signed document, with separate <code>create_agreement</code> / <code>sign_agreement</code> / <code>check_agreement</code> calls and an <code>AgreementOptions</code> struct. v1 answers "did these agents approve this existing payload?" Agreement v2 answers "did these agents consent to <em>these terms</em>, under <em>this policy</em>, with <em>this process record</em>?" - it is a self-contained <code>jacsType: "agreement"</code> document with its own content hash, version chain, parties, roles, signature policy, notary, and transcript.</p>
-<p>v1 is still supported but legacy; new work should use v2.</p>
+<p>JACS still ships the original v1 "sidecar" agreement: a <code>jacsAgreement</code> field attached to an existing signed document, with separate <code>create_agreement</code> / <code>sign_agreement</code> / <code>check_agreement</code> calls and an <code>AgreementOptions</code> struct. V1 and v2 both permit mathematical signature inspection without proving the complete authorization policy. V2 additionally supplies a standalone identity, terms hash, transcript-prefix binding, and version/branch helpers. The presence of parties, roles, and <code>signaturePolicy</code> fields does not mean all of those claims are authenticated by each party proof.</p>
+<p>V1 and v2 remain available for compatibility and inspection. Moving a payload to v2 does not make it an actionable authorization.</p>
 <h3 id="conceptual-difference"><a class="header" href="#conceptual-difference">Conceptual difference</a></h3>
 <ul>
 <li><strong>v1 sidecar</strong>: signatures over a referenced document. The agreement is a field bolted onto some other JSON. No standalone identity, no roles beyond "must sign", no transcript, no notary, no branch handling.</li>
@@ -12778,22 +12837,23 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 <ul>
 <li>Roles: <code>signer</code>, <code>witness</code>, <code>notary</code>, <code>observer</code> (v1 has only "agents that must sign").</li>
 <li>Notary and witness requirements (<code>signaturePolicy.notaryRequired</code>, <code>signaturePolicy.witnessRequired</code>), counted independently of signer quorum.</li>
-<li>A <code>transcript</code> of process evidence whose tampering is detectable.</li>
+<li>A <code>transcript</code> with tamper evidence for each signature's covered prefix.</li>
 <li>Branch merge / conflict resolution for concurrent successor versions.</li>
-<li>A top-level <code>valid</code> verdict from <code>verify_agreement_v2</code> (the report also carries <code>expectedStatus</code>).</li>
-<li>Fail-closed CLI: <code>jacs agreement-v2 verify</code> exits non-zero when the agreement is not valid.</li>
+<li>A diagnostic report from <code>verify_agreement_v2</code>: <code>mathematicalChecksValid</code>, <code>expectedStatus</code>, errors, and chain coverage. The retained <code>valid</code> and <code>policyAccepted</code> fields are always false.</li>
+<li>Fail-closed CLI: <code>jacs agreement-v2 verify</code> exits non-zero for v2 because no accepted policy verdict is produced.</li>
 </ul>
 <p>For the full v2 walkthrough, see the <a href="guides/agreement-v2.html#workflow">Workflow</a>, <a href="guides/agreement-v2.html#python">Python</a>, <a href="guides/agreement-v2.html#nodejs">Node.js</a>, and <a href="guides/agreement-v2.html#cli">CLI</a> sections above and the <a href="guides/../rust/agreements.html">Rust core / legacy comparison</a>.</p>
 <h2 id="verification-matrix"><a class="header" href="#verification-matrix">Verification Matrix</a></h2>
+<p>This is a source-test inventory, not evidence that every published SDK has been exercised together. It does not establish all-language discovery parity.</p>
 <div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Coverage</th></tr></thead><tbody>
 <tr><td>Create standalone Agreement v2</td><td>Rust core tests, binding parity fixture, CLI/MCP/WASM tests</td></tr>
-<tr><td>Signer quorum</td><td>Rust core tests and shared parity fixture</td></tr>
-<tr><td>HAI-style <code>notaryRequired</code></td><td>Rust core tests and language parity tests</td></tr>
-<tr><td>Human <code>agentType</code> parties</td><td>Rust core tests</td></tr>
+<tr><td>Structural signer-count/quorum calculation; not portable policy acceptance</td><td>Rust core tests and shared parity fixture</td></tr>
+<tr><td>Structural <code>notaryRequired</code> calculation; not authenticated notary authority</td><td>Rust core tests and language parity tests</td></tr>
+<tr><td>Human <code>agentType</code> labels; not human-approval evidence</td><td>Rust core tests</td></tr>
 <tr><td>Outsider cannot mutate</td><td>Rust core authorization tests</td></tr>
 <tr><td>Outsider cannot sign</td><td>Rust core role-membership tests</td></tr>
 <tr><td>Transcript append preserves <code>jacsAgreementHash</code></td><td>Rust core tests</td></tr>
-<tr><td>Transcript tamper/reorder/substitution detection</td><td>Rust core tests</td></tr>
+<tr><td>Signed-prefix tamper/reorder/substitution detection; no per-entry hash chain</td><td>Rust core tests</td></tr>
 <tr><td>Terms edit changes <code>jacsAgreementHash</code> and clears signatures</td><td>Rust core tests</td></tr>
 <tr><td><code>effectiveFrom</code> and <code>expiresAt</code></td><td>Rust core tests</td></tr>
 <tr><td><code>allPreviousVersions</code> chain reconciliation</td><td>Rust core tests</td></tr>
@@ -12801,7 +12861,7 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 <tr><td>Transcript-only branch auto-merge</td><td>Rust core, binding parity, CLI, MCP, WASM tests</td></tr>
 <tr><td>Terms conflict requires explicit resolution</td><td>Rust core, binding parity, CLI, MCP, WASM tests</td></tr>
 <tr><td>Key rotation / <code>agentVersion</code> matching</td><td>Rust core tests</td></tr>
-<tr><td>Cross-language JSON workflow parity</td><td>Python, Node.js, Go, CLI, MCP, and WASM parity tests</td></tr>
+<tr><td>Shared agreement workflow fixtures</td><td>Python, Node.js, Go, CLI, MCP, and WASM parity tests</td></tr>
 </tbody></table>
 </div>
 <p>The fixture <code>binding-core/tests/fixtures/agreement_v2_scenarios.json</code> is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.</p>
@@ -12830,9 +12890,9 @@ native-root-signed compatibility key binding (<code>jacs agent export-compat-bin
 Verifying incoming VCs is out of scope for JACS in P2.</p>
 <h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
 <ul>
-<li><code>report.valid</code> is false with a signature error: the verifier could not resolve a signer's key. Confirm all agents share a <code>data_directory</code>, or that the signer published a reachable public key.</li>
+<li><code>report.valid</code> and <code>report.policyAccepted</code> are always false for v2. To diagnose mathematical failures, inspect <code>mathematicalChecksValid</code> and <code>errors</code>; a missing signer key is one possible failure, not the reason for the unconditional policy rejection.</li>
 <li>"outsider" rejection on sign/apply: the acting agent is not listed in <code>parties</code> with the matching role. Add it to <code>parties</code> (and to <code>controllers</code> for mutations).</li>
-<li>Status looks wrong: treat stored <code>status</code> as a cache and always call verify; the report carries the recomputed <code>expectedStatus</code>.</li>
+<li>Status looks wrong: <code>expectedStatus</code> is a structural diagnostic. Neither it nor stored <code>status</code> is an accepted authorization verdict.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="tutorial-add-attestations-to-your-workflow"><a class="header" href="#tutorial-add-attestations-to-your-workflow">Tutorial: Add Attestations to Your Workflow</a></h1>
 <p>This step-by-step tutorial walks you through adding attestation support to an

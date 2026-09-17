@@ -45,6 +45,14 @@ jobs:
       - name: Check THIRD-PARTY-NOTICES freshness
         run: python3 scripts/third_party_notices.py --check
 
+      - name: Set up Node for the schema-generation regression
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Install pinned schema documentation generator
+        run: npm install --global --ignore-scripts @adobe/jsonschema2md@8.0.2
+
       - name: Test release and security policy contracts
         run: python -m unittest discover -s scripts/tests -p 'test_*.py'
 

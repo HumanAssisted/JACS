@@ -177,17 +177,17 @@
                         <h1 id="mcp-overview"><a class="header" href="#mcp-overview">MCP Overview</a></h1>
 <p>Use MCP when the boundary is model-to-tool inside an application or local workstation. Use <a href="a2a.html">A2A</a> when the boundary is agent-to-agent across organizations or services.</p>
 <h2 id="choose-the-mcp-path"><a class="header" href="#choose-the-mcp-path">Choose The MCP Path</a></h2>
-<p>There are three supported ways to use JACS with MCP today:</p>
+<p>JACS offers three MCP integration surfaces:</p>
 <ol>
-<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server. The default
-<code>core</code> profile is the safer everyday surface; select <code>--profile full</code> when
-you need the advanced tool families.</li>
+<li><strong>Run <code>jacs mcp</code></strong> for local document verification without signing keys.
+Select <code>--profile local-sign</code> with an existing signed config to let the
+local client sign as that agent.</li>
 <li><strong>Wrap an existing MCP transport</strong> when you already have an MCP server or client and want signed JSON-RPC.</li>
 <li><strong>Register JACS as MCP tools</strong> when you want the model to call signing, verification, agreement, A2A, or trust operations directly.</li>
 </ol>
 <h2 id="best-fit-by-runtime"><a class="header" href="#best-fit-by-runtime">Best Fit By Runtime</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Runtime</th><th>Best starting point</th><th>What it gives you</th></tr></thead><tbody>
-<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Core document, text/media, trust, search, key/agent, A2A discovery, and W3C tools; <code>--profile full</code> adds Agreement v2, A2A artifact, and attestation tools</td></tr>
+<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Verification by default; explicit local signing of documents and Agreement-v2 artifacts, with optional scoped text/image tools</td></tr>
 <tr><td>Python</td><td><code>jacs.mcp</code> or <code>jacs.adapters.mcp</code></td><td>Local SSE transport security or FastMCP tool registration</td></tr>
 <tr><td>Node.js</td><td><code>@hai.ai/jacs/mcp</code></td><td>Transport proxy or MCP tool registration for existing SDK-based servers</td></tr>
 </tbody></table>
@@ -197,32 +197,77 @@ you need the advanced tool families.</li>
 <li><strong>Python MCP wrappers are local-only.</strong> <code>JACSMCPClient</code>, <code>JACSMCPServer</code>, and <code>jacs_call()</code> enforce loopback URLs.</li>
 <li><strong>Unsigned fallback is off by default.</strong> Both Python and Node fail closed unless you explicitly allow unsigned fallback.</li>
 <li><strong>Node has two factories.</strong> <code>createJACSTransportProxy()</code> takes a loaded <code>JacsClient</code> or <code>JacsAgent</code>; <code>createJACSTransportProxyAsync()</code> is the config-path variant.</li>
-<li><strong>The Rust server requires explicit agent configuration.</strong> Set <code>JACS_CONFIG</code>
-and exactly one usable private-key password source before startup.</li>
+<li><strong>The native server's profiles do not configure the Python or Node adapters.</strong>
+Those integrations have their own transport, key-loading and authorization
+requirements; the examples below do not inherit the native server's closed
+local-sign inventory.</li>
+<li><strong>Signatures are provenance, not human approval.</strong> Supplied-key verification
+checks integrity; it does not establish truth, identity, authorization,
+publication permission or Agreement policy acceptance.</li>
 </ul>
 <h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs mcp</code></a></h2>
-<p>Install the unified binary and start the MCP server:</p>
+<p>Install the unified binary and start a verification-only server. No identity
+creation or private-key password is required:</p>
 <pre><code class="language-bash">cargo install jacs-cli
-export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
-jacs quickstart --name mcp-agent --domain mcp.local
-export JACS_CONFIG="$PWD/jacs.config.json"
 jacs mcp
 </code></pre>
-<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no
-HTTP). Its default <code>core</code> profile exposes 25 tools. The <code>full</code> profile exposes
-all 42 source-head tools by adding Agreement v2, A2A artifact, and attestation
-families:</p>
-<pre><code class="language-bash">jacs mcp --profile full
-# Equivalent only when --profile is absent:
-JACS_MCP_PROFILE=full jacs mcp
+<p>Configure a compatible MCP client with:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp"]
+    }
+  }
+}
 </code></pre>
+<p>The default <code>verify-only</code> profile exposes only <code>jacs_verify_document</code>; callers
+supply the public key and algorithm. An explicitly supplied <code>--config</code> or
+<code>JACS_CONFIG</code> loads public-only configuration without unlocking private keys.</p>
+<p>To sign, reuse an existing signed config, or run <code>jacs init</code> once in the
+directory where you want to keep the agent identity. Keep using its normal
+keychain/password source and select it explicitly:</p>
+<pre><code class="language-bash">jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+</code></pre>
+<p>Use those same arguments in the MCP client:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
+    }
+  }
+}
+</code></pre>
+<p><code>JACS_CONFIG</code> can supply the config path instead. Local signing requires a
+valid signed config and persistent encrypted keys in filesystem storage; it
+does not discover config implicitly or create a replacement identity. Never
+send a password as a tool argument or embed it in client JSON. Prefer an
+owner-readable <code>JACS_PASSWORD_FILE</code> or the configured OS keychain.</p>
+<p>This profile exposes nine JSON/Agreement-v2 tools when Agreement tools are
+compiled. To add exactly five text/image tools, grant an existing content
+directory explicitly at process startup:</p>
+<pre><code class="language-bash">JACS_MCP_BASE_DIR=/absolute/path/to/content jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+</code></pre>
+<p>There is no implicit working-directory grant. File tools reject traversal and
+symlinks and stay beneath the selected directory. Replacing a distinct existing
+output requires <code>JACS_MCP_OVERWRITE_OK=1</code>; explicit in-place signing remains
+available. Normal backups contain the original plaintext file, so protect them
+alongside the content. A content root never expands <code>verify-only</code>.
+Signing persists ordinary JACS documents under the config directory's
+<code>documents/</code> directory and grants agent signing authority, not human approval.</p>
 <p>An explicit <code>--profile</code> overrides <code>JACS_MCP_PROFILE</code>; unknown values fail
-startup. For production, prefer an owner-readable <code>JACS_PASSWORD_FILE</code> or the
-OS keychain over embedding <code>JACS_PRIVATE_KEY_PASSWORD</code> in client JSON. File
-tools are confined beneath <code>JACS_MCP_BASE_DIR</code> (the launch directory by
-default), reject traversal and symlinks, and refuse overwrite unless the
-operator sets <code>JACS_MCP_OVERWRITE_OK=1</code>. The crate-level MCP README in the repo
-has the complete contract.</p>
+startup. Historical <code>core</code>/<code>full</code> recipes are obsolete; <code>trust-admin</code> and
+compatibility-only <code>legacy-core</code> remain unavailable. Key administration,
+trust management, A2A and attestation tools are not enabled by <code>local-sign</code>.
+The compiled 42-tool contract is not a runtime grant: use <code>tools/list</code> to see
+the process's actual authorized inventory.</p>
+<p>The native server uses stdio only: stdout carries MCP JSON-RPC and diagnostics
+go to stderr. It uses RMCP 3.3.0, supporting date-versioned MCP <code>2026-07-28</code>
+and legacy <code>2025-11-25</code> initialization; these are distinct from SDK major
+versions such as the TypeScript SDK v2. See the
+<a href="https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md">crate MCP README</a>
+for the complete local-signing and response-error contract.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
@@ -316,9 +361,14 @@ const client = await JacsClient.quickstart({
 
 registerJacsTools(server, client);
 </code></pre>
-<p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
+<p>Choose the native <code>jacs mcp</code> server for its explicit local-signing boundary.
+Tool registration in an existing Node or Python server is a separate
+integration; review that server's exposed operations and authorization.</p>
 <h3 id="provenance-mcp-tools"><a class="header" href="#provenance-mcp-tools">Provenance MCP tools</a></h3>
-<p>The MCP server exposes tools for inline text and image provenance, covering the same surface as the <a href="../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
+<p>With <code>local-sign</code> and an explicit <code>JACS_MCP_BASE_DIR</code>, the native server adds
+the following tools for inline text and image provenance. They cover the
+same surface as the <a href="../guides/inline-text-signing.html"><code>sign-text</code></a> and
+<a href="../guides/media-signing.html"><code>sign-image</code></a> CLI verbs:</p>
 <ul>
 <li><code>jacs_sign_text</code> — append a YAML-bodied signature block to a markdown / text file.</li>
 <li><code>jacs_verify_text</code> — verify all signature blocks in a file (permissive default; <code>strict</code> opt-in).</li>
