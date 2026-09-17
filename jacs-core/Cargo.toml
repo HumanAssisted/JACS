@@ -41,17 +41,18 @@ serde_json_canonicalizer = "0.3.2"
 thiserror = "2"
 # Embedded $ref resolution for jsonschema. `default-features = false` keeps
 # `resolve-http` and `resolve-file` (both native-only) out of the wasm tree.
-jsonschema = { version = "0.29", default-features = false }
-phf = { version = "0.11.3", features = ["macros"] }
+jsonschema = { version = "0.56", default-features = false }
+phf = { version = "0.13.1", features = ["macros"] }
 # Encrypted private-key envelope (V2 Argon2id + legacy PBKDF2 — both
 # pure-Rust and wasm-friendly per WASM_FINDINGS). See PRD §4.6.
-aes-gcm = "0.10.3"
-argon2 = "0.5"
-pbkdf2 = "0.12"
-sha2 = "0.10.8"
-rand = "0.9"
+aes-gcm = "0.11.1"
+argon2 = "0.6"
+pbkdf2 = "0.13"
+sha2 = "0.11.0"
+rand = "0.10"
 zeroize = "1.8"
-base64 = "0.22"
+base64 = "0.23"
+hex = "0.4"
 # Exact compatibility with legacy native public-key hashing (pure Rust).
 encoding_rs = "0.8.35"
 # Same pure-Rust HTTP target normalization as native request-auth-v2.
@@ -61,11 +62,10 @@ url = "2"
 fips204 = "0.4.6"
 # Ed25519. Replaces `ring` in the protocol layer so jacs-core compiles for
 # wasm32. `pkcs8` reads the v1 + v2 PKCS#8 byte formats that the native
-# `ring` path emits; `zeroize` wipes the private key on drop; `rand_core`
-# wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
-# §4.5.
-ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "pkcs8"] }
+# `ring` path emits; `zeroize` wipes the private key on drop. Key generation
+# fills a zeroizing seed buffer with rand 0.10's fallible SysRng. See PRD §4.5.
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std", "pkcs8"] }
 # `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
 # already a transitive dep of native jacs. See PRD §4.2.
 secrecy = "0.10.3"
@@ -82,16 +82,14 @@ chrono = { version = "0.4", default-features = false, features = ["std", "now", 
 serde_json = "1.0"
 # For the envelope tests' legacy-fixture synthesizer and the CoreAgent
 # raw-key unlock helper.
-aes-gcm = "0.10.3"
-base64 = "0.22"
-rand = "0.9"
+aes-gcm = "0.11.1"
+base64 = "0.23"
+rand = "0.10"
 secrecy = "0.10.3"
 
-# Browser RNG wiring. Transitive deps need two flavors of `getrandom` on
-# wasm32: jsonschema → ahash brings getrandom 0.3 (needs `wasm_js`), and
-# aes-gcm / rand → getrandom 0.2 (needs `js`). Both must be enabled or
-# wasm32 compilation hits the `compile_error!` in getrandom's lib.rs. See
-# PRD §4.7.
+# Browser RNG wiring for rand / RustCrypto (0.4), jsonschema's transitive
+# dependencies (0.3), and the FIPS implementations (0.2).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }

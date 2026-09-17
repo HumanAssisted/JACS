@@ -319,7 +319,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Native JACS historical key fingerprint. This hashes the BOM-aware lossy
