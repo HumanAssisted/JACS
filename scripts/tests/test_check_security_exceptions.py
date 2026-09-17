@@ -196,6 +196,24 @@ License text (the SHA-256 above identifies the source bytes):
 
         security_exceptions.require_all_features_cargo_deny(workflow, "workflow.yml")
 
+    def test_cargo_deny_rejects_config_before_check(self) -> None:
+        for option in ["--config archive/native/deny.toml", "--config=archive/native/deny.toml", "-c archive/native/deny.toml"]:
+            with self.subTest(option=option):
+                command = f"cargo deny --manifest-path archive/native/jacs-surrealdb/Cargo.toml {option} --all-features check advisories licenses"
+                with self.assertRaisesRegex(ValueError, "--config must follow check"):
+                    security_exceptions.require_all_features_cargo_deny(command, "workflow.yml")
+
+    def test_cargo_deny_accepts_config_after_check(self) -> None:
+        for manifest in ["jacs-surrealdb", "jacs/examples/observability"]:
+            with self.subTest(manifest=manifest):
+                command = f"cargo deny --manifest-path archive/native/{manifest}/Cargo.toml --all-features check --config archive/native/deny.toml advisories licenses"
+                security_exceptions.require_all_features_cargo_deny(command, "workflow.yml")
+
+    def test_cargo_deny_checks_config_across_shell_continuations(self) -> None:
+        command = "cargo deny --all-features --config archive/native/deny.toml \\\n  check advisories licenses"
+        with self.assertRaisesRegex(ValueError, "--config must follow check"):
+            security_exceptions.require_all_features_cargo_deny(command, "workflow.yml")
+
     def test_object_store_s3_isolation_accepts_opt_in_cloud_features(self) -> None:
         manifest = {
             "dependencies": {
