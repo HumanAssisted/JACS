@@ -3,6 +3,12 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 fail() { echo "jacs-mobile iOS build: $*" >&2; exit 1; }
+reuse_bindings=false
+if [[ "${1:-}" == --reuse-bindings && $# == 1 ]]; then
+    reuse_bindings=true
+elif [[ $# != 0 ]]; then
+    fail "Usage: $0 [--reuse-bindings] (reuse only bindings generated from this checkout)."
+fi
 [[ "$(uname -s)" == Darwin ]] || fail "Run on macOS with full Xcode installed."
 for program in cargo rustup xcodebuild xcrun; do
     command -v "$program" >/dev/null || fail "Missing $program. Install the documented prerequisites first."
@@ -20,9 +26,16 @@ stage="$repo_root/jacs-mobile/generated/ios-package"
 export CARGO_TARGET_DIR="$repo_root/target"
 export CARGO_INCREMENTAL=0
 export IPHONEOS_DEPLOYMENT_TARGET=13.0
-bash jacs-mobile/scripts/generate-bindings.sh
+if [[ "$reuse_bindings" == true ]]; then
+    for filename in JacsMobile.swift JacsMobileFFI.h JacsMobileFFI.modulemap; do
+        [[ -f "jacs-mobile/generated/swift/$filename" ]] || \
+            fail "Generate current Swift bindings before using --reuse-bindings."
+    done
+else
+    bash jacs-mobile/scripts/generate-bindings.sh
+fi
 for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
-    cargo build -p jacs-mobile --release --target "$target"
+    cargo build -p jacs-mobile --release --locked --target "$target"
 done
 mkdir -p "$stage/Sources/JacsMobile" "$stage/Sources/JacsMobilePlatform" \
     "$stage/build/headers" "$stage/build/device" "$stage/build/simulator"
@@ -40,6 +53,7 @@ xcodebuild -create-xcframework \
     -library "$stage/build/device/libJacsMobileFFI.a" -headers "$stage/build/headers" \
     -library "$stage/build/simulator/libJacsMobileFFI.a" -headers "$stage/build/headers" \
     -output "$stage/JacsMobileFFI.xcframework"
+xcrun swift package --package-path "$stage" dump-package >/dev/null
 echo "Swift package: $stage"
 echo "Add this directory as a local Swift Package in Xcode. Import JacsMobile and JacsMobilePlatform."
 echo "Assembly does not validate Swift source compilation or device biometrics; build your consuming app and run device tests."
