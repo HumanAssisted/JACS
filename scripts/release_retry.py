@@ -66,40 +66,15 @@ class ReleasePlan(NamedTuple):
 
 
 SURFACES = {
-    "crate": SurfaceSpec("jacs/Cargo.toml", "crate/v", ("package", "version")),
-    "pypi": SurfaceSpec("jacspy/pyproject.toml", "pypi/v", ("project", "version")),
-    "cli": SurfaceSpec("jacs/Cargo.toml", "cli/v", ("package", "version")),
-    "npm": SurfaceSpec("jacsnpm/package.json", "npm/v", ("version",)),
+    "crate": SurfaceSpec("jacs-core/Cargo.toml", "crate/v", ("package", "version")),
+    "cli": SurfaceSpec("jacs-cli/Cargo.toml", "cli/v", ("package", "version")),
     "wasm": SurfaceSpec("jacs-wasm/package.template.json", "wasm-v", ("version",)),
-    "jacsgo": SurfaceSpec("jacsgo/lib/Cargo.toml", "jacsgo/v", ("package", "version")),
 }
-RELEASE_ORDER = ("crate", "pypi", "cli", "npm", "wasm", "jacsgo")
-STORAGE_CRATES = (
-    "jacs-duckdb",
-    "jacs-redb",
-    "jacs-surrealdb",
-    "jacs-postgresql",
-)
-RUST_CRATES = (
-    "jacs-core",
-    "jacs-media",
-    "jacs",
-    "jacs-binding-core",
-    "jacs-mcp",
-    "jacs-cli",
-)
-RUST_CRATE_MANIFESTS = {
-    "jacs-core": "jacs-core/Cargo.toml",
-    "jacs-media": "jacs-media/Cargo.toml",
-    "jacs": "jacs/Cargo.toml",
-    "jacs-binding-core": "binding-core/Cargo.toml",
-    "jacs-mcp": "jacs-mcp/Cargo.toml",
-    "jacs-cli": "jacs-cli/Cargo.toml",
-}
-GITHUB_RELEASES = {
-    "cli": "HumanAssisted/JACS/.github/workflows/release-cli.yml",
-    "jacsgo": "HumanAssisted/JACS/.github/workflows/release-jacsgo.yml",
-}
+RELEASE_ORDER = ("crate", "cli", "wasm")
+
+RUST_CRATES = ("jacs-core", "jacs-mcp", "jacs-cli")
+RUST_CRATE_MANIFESTS = {crate: f"{crate}/Cargo.toml" for crate in RUST_CRATES}
+GITHUB_RELEASES = {"cli": "HumanAssisted/JACS/.github/workflows/release-cli.yml"}
 
 
 CommandRunner = Callable[[list[str], int], subprocess.CompletedProcess[str]]
@@ -166,10 +141,7 @@ def validate_tag(tag: str) -> str:
     """Accept only JACS's exact release tag grammars."""
 
     ref = f"refs/tags/{tag}"
-    if tag.startswith("crate/jacs-"):
-        parse_release_ref("storage", ref)
-        return tag
-    for surface in ("crate", "pypi", "cli", "npm", "wasm", "jacsgo"):
+    for surface in RELEASE_ORDER:
         prefix = SURFACES[surface].tag_prefix
         if tag.startswith(prefix):
             parse_release_ref(surface, ref)
@@ -210,14 +182,6 @@ def _surface_version(surface: str, root: Path) -> str:
 def surface_tag(surface: str, root: Path = DEFAULT_ROOT) -> str:
     spec = SURFACES[surface]
     return validate_tag(f"{spec.tag_prefix}{_surface_version(surface, root)}")
-
-
-def storage_tag(crate: str, root: Path = DEFAULT_ROOT) -> str:
-    if crate not in STORAGE_CRATES:
-        raise ValueError(f"unsupported storage crate: {crate!r}")
-    manifest = root / crate / "Cargo.toml"
-    version = _nested_string(_manifest_data(manifest), ("package", "version"), manifest)
-    return validate_tag(f"crate/{crate}/v{version}")
 
 
 def local_tag_state(
@@ -583,10 +547,6 @@ def _surface_entries(
     return entries
 
 
-def _storage_entries(root: Path) -> list[tuple[str, None]]:
-    return [(storage_tag(crate, root), None) for crate in STORAGE_CRATES]
-
-
 def _plan_release_entries(
     entries: Iterable[tuple[str, str | None]],
     *,
@@ -638,19 +598,8 @@ def release_all(
     run: CommandRunner = _run_command,
     timeout_seconds: int = DEFAULT_GIT_TIMEOUT_SECONDS,
 ) -> None:
-    entries = _surface_entries(RELEASE_ORDER, root) + _storage_entries(root)
+    entries = _surface_entries(RELEASE_ORDER, root)
     _execute_release_entries(entries, run=run, timeout_seconds=timeout_seconds)
-
-
-def release_storage(
-    root: Path = DEFAULT_ROOT,
-    *,
-    run: CommandRunner = _run_command,
-    timeout_seconds: int = DEFAULT_GIT_TIMEOUT_SECONDS,
-) -> None:
-    _execute_release_entries(
-        _storage_entries(root), run=run, timeout_seconds=timeout_seconds
-    )
 
 
 def _probe_url(
@@ -753,16 +702,7 @@ def probe_retry_surfaces(
     if rust_missing:
         missing.append("crate")
 
-    pypi_version = _surface_version("pypi", root)
-    if not _probe_url(
-        f"https://pypi.org/pypi/jacs/{pypi_version}/json",
-        f"PyPI jacs {pypi_version}",
-        open_url=open_url,
-        timeout_seconds=http_timeout_seconds,
-    ):
-        missing.append("pypi")
-
-    for surface, package in (("npm", "@hai.ai/jacs"), ("wasm", "@jacs/wasm")):
+    for surface, package in (("wasm", "@jacs/wasm"),):
         version = _surface_version(surface, root)
         encoded = urllib.parse.quote(package, safe="@")
         if not _probe_url(
@@ -773,7 +713,7 @@ def probe_retry_surfaces(
         ):
             missing.append(surface)
 
-    for surface in ("cli", "jacsgo"):
+    for surface in ("cli",):
         tag = surface_tag(surface, root)
         encoded_tag = urllib.parse.quote(tag, safe="")
         exists = _probe_url(
@@ -875,7 +815,7 @@ def _parser() -> argparse.ArgumentParser:
         child = subparsers.add_parser(command)
         child.add_argument("--surface", required=True, choices=tuple(SURFACES))
         child.add_argument("--execute", action="store_true")
-    for command in ("release-storage", "release-all", "retry-everything"):
+    for command in ("release-all", "retry-everything"):
         child = subparsers.add_parser(command)
         child.add_argument("--execute", action="store_true")
     subparsers.add_parser("check-worktree")
@@ -904,13 +844,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{tag}: {outcome}")
             else:
                 print_release_plan(plan_release_tag(tag, timeout_seconds=git_timeout))
-        elif args.command in {"release-storage", "release-all"}:
-            entries = (
-                _storage_entries(args.root)
-                if args.command == "release-storage"
-                else _surface_entries(RELEASE_ORDER, args.root)
-                + _storage_entries(args.root)
-            )
+        elif args.command == "release-all":
+            entries = _surface_entries(RELEASE_ORDER, args.root)
             if args.execute:
                 _execute_release_entries(
                     entries, run=_run_command, timeout_seconds=git_timeout

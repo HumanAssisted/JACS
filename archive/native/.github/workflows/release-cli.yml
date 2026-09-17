@@ -1,0 +1,406 @@
+name: Release CLI Binaries
+
+on:
+  push:
+    tags:
+      - 'cli/v*'
+
+permissions: {}
+
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  security-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/rust.yml
+
+  verify-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate and extract release tag
+        id: extract
+        run: python3 scripts/release_tag.py --surface cli
+
+      - name: Check Cargo.toml versions match tag
+        env:
+          TAG_VERSION: ${{ steps.extract.outputs.version }}
+        run: |
+          set -euo pipefail
+          for dir in jacs jacs-mcp jacs-cli; do
+            CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            echo "$dir version: $CARGO_VERSION, tag: $TAG_VERSION"
+            if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+              echo "::error::Version mismatch! $dir/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+              exit 1
+            fi
+          done
+
+  build:
+    needs: [verify-version, functional-gate]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_suffix: darwin-arm64
+            archive_ext: tar.gz
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            asset_suffix: darwin-x64
+            archive_ext: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_suffix: linux-x64
+            archive_ext: tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset_suffix: linux-arm64
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_suffix: windows-x64
+            archive_ext: zip
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.verify-version.outputs.version }}
+      CLI_ASSET_NAME: jacs-cli-${{ needs.verify-version.outputs.version }}-${{ matrix.asset_suffix }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        if: runner.os != 'Windows'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Stage source tree (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'jacs-cli-source.tar.gz'
+          $manifest = Join-Path $env:RUNNER_TEMP 'jacs-cli-source-files.txt'
+          $workspace = $env:GITHUB_WORKSPACE
+
+          Invoke-WebRequest `
+            -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN"; "X-GitHub-Api-Version" = "2022-11-28" } `
+            -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tarball/$env:GITHUB_SHA" `
+            -OutFile $archive
+
+          $entries = tar -tf $archive
+          $prefix = ($entries | Select-Object -First 1).TrimEnd('/')
+
+          $requiredFiles = $entries | Where-Object {
+            $_ -eq "$prefix/Cargo.toml" -or
+            $_ -eq "$prefix/Cargo.lock" -or
+            $_ -eq "$prefix/README.md" -or
+            $_ -eq "$prefix/LICENSE" -or
+            $_ -eq "$prefix/LICENSE-APACHE" -or
+            $_ -eq "$prefix/THIRD-PARTY-NOTICES" -or
+            $_ -eq "$prefix/scripts/check_release_artifact_licenses.py" -or
+            $_ -eq "$prefix/scripts/smoke-cli-installers.py" -or
+            $_ -eq "$prefix/binding-core/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-core/Cargo.toml" -or
+            $_ -like "$prefix/jacs-core/src/*" -or
+            $_ -like "$prefix/jacs-core/schemas/*" -or
+            $_ -eq "$prefix/jacs-wasm/Cargo.toml" -or
+            $_ -like "$prefix/jacs-wasm/src/*" -or
+            $_ -eq "$prefix/jacs/Cargo.toml" -or
+            $_ -eq "$prefix/jacs/README.md" -or
+            $_ -eq "$prefix/jacs/LICENSE" -or
+            $_ -eq "$prefix/jacs/build.rs" -or
+            $_ -like "$prefix/jacs/benches/*" -or
+            $_ -like "$prefix/jacs/examples/*.rs" -or
+            $_ -like "$prefix/jacs/examples/*.json" -or
+            $_ -eq "$prefix/jacs-cli/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-mcp/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-mcp/README.md" -or
+            $_ -eq "$prefix/jacsnpm/Cargo.toml" -or
+            $_ -eq "$prefix/jacsnpm/package.json" -or
+            $_ -eq "$prefix/jacsnpm/scripts/install-cli.js" -or
+            $_ -eq "$prefix/jacsnpm/bin/jacs-cli.js" -or
+            $_ -eq "$prefix/jacsnpm/src/lib.rs" -or
+            $_ -eq "$prefix/jacspy/Cargo.toml" -or
+            $_ -eq "$prefix/jacspy/pyproject.toml" -or
+            $_ -eq "$prefix/jacspy/python/jacs/cli_runner.py" -or
+            $_ -eq "$prefix/jacspy/src/lib.rs" -or
+            $_ -eq "$prefix/jacsgo/lib/Cargo.toml" -or
+            $_ -eq "$prefix/jacsgo/lib/src/lib.rs" -or
+            $_ -eq "$prefix/jacs-duckdb/Cargo.toml" -or
+            $_ -like "$prefix/jacs-duckdb/src/*" -or
+            $_ -eq "$prefix/jacs-redb/Cargo.toml" -or
+            $_ -like "$prefix/jacs-redb/src/*" -or
+            $_ -eq "$prefix/jacs-surrealdb/Cargo.toml" -or
+            $_ -like "$prefix/jacs-surrealdb/src/*" -or
+            $_ -eq "$prefix/jacs-postgresql/Cargo.toml" -or
+            $_ -like "$prefix/jacs-postgresql/src/*" -or
+            $_ -eq "$prefix/jacs-media/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-media/README.md" -or
+            $_ -like "$prefix/jacs-media/src/*" -or
+            $_ -like "$prefix/binding-core/src/*" -or
+            $_ -like "$prefix/binding-core/examples/*.rs" -or
+            $_ -like "$prefix/jacs-mcp/examples/*.rs" -or
+            $_ -like "$prefix/jacs/src/*" -or
+            $_ -like "$prefix/jacs/schemas/*" -or
+            $_ -like "$prefix/jacs-cli/src/*" -or
+            $_ -like "$prefix/jacs-mcp/src/*"
+          }
+
+          if (-not $requiredFiles) {
+            throw 'Failed to determine the Windows source file subset for CLI builds.'
+          }
+
+          $requiredFiles | Set-Content -Path $manifest
+          tar -xf $archive -C $workspace --strip-components 1 -T $manifest
+
+      - name: Install system dependencies (D-Bus for keychain support)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
+        with:
+          # Exact version: rust-toolchain.toml pins 1.97.0, which rustup treats as a
+          # different install from the partial "1.97"; extra targets must land there.
+          toolchain: "1.97.0"
+          targets: ${{ matrix.target }}
+
+      - name: Build binaries
+        run: |
+          cargo build --locked --release -p jacs-cli --target ${{ matrix.target }}
+
+      - name: Smoke test (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ./target/${{ matrix.target }}/release/jacs --version
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\target\${{ matrix.target }}\release\jacs.exe --version
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          # Stage in a scratch directory: the repository root already holds the
+          # jacs-cli/ crate directory, so `cp ... jacs-cli` would drop the binary
+          # inside it and tar would ship the crate sources instead of a binary.
+          staging="$(mktemp -d)"
+          cp "target/${{ matrix.target }}/release/jacs" "${staging}/jacs-cli"
+          cp LICENSE-APACHE THIRD-PARTY-NOTICES "${staging}/"
+          tar czf "${CLI_ASSET_NAME}.tar.gz" -C "${staging}" jacs-cli LICENSE-APACHE THIRD-PARTY-NOTICES
+          python3 scripts/check_release_artifact_licenses.py \
+            --license LICENSE-APACHE \
+            --notices THIRD-PARTY-NOTICES \
+            "${CLI_ASSET_NAME}.tar.gz"
+          shasum -a 256 "${CLI_ASSET_NAME}.tar.gz" > "${CLI_ASSET_NAME}.tar.gz.sha256"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "target/${{ matrix.target }}/release/jacs.exe" "jacs-cli.exe"
+          Compress-Archive -Path "jacs-cli.exe", "LICENSE-APACHE", "THIRD-PARTY-NOTICES" -DestinationPath "${env:CLI_ASSET_NAME}.zip"
+          python scripts/check_release_artifact_licenses.py `
+            --license LICENSE-APACHE `
+            --notices THIRD-PARTY-NOTICES `
+            "${env:CLI_ASSET_NAME}.zip"
+          Get-FileHash "${env:CLI_ASSET_NAME}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${env:CLI_ASSET_NAME}.zip" } | Out-File "${env:CLI_ASSET_NAME}.zip.sha256" -Encoding ascii
+
+      - name: Smoke staged Python and Node installers (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          # Serve only an aggregate sha256sums.txt, matching the release layout.
+          python3 scripts/smoke-cli-installers.py \
+            --asset "${CLI_ASSET_NAME}.tar.gz" \
+            --checksum "${CLI_ASSET_NAME}.tar.gz.sha256"
+
+      - name: Smoke staged Python and Node installers (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Serve only an aggregate sha256sums.txt, matching the release layout.
+          python scripts/smoke-cli-installers.py `
+            --asset "${env:CLI_ASSET_NAME}.zip" `
+            --checksum "${env:CLI_ASSET_NAME}.zip.sha256"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: binaries-${{ matrix.asset_suffix }}
+          path: |
+            ${{ env.CLI_ASSET_NAME }}.*
+
+  prepare-release:
+    needs: [verify-version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+
+      - name: Collect checksums
+        run: |
+          set -euo pipefail
+          mapfile -d '' checksum_files < <(find artifacts -type f -name '*.sha256' -print0 | sort -z)
+          if [[ "${#checksum_files[@]}" -ne 5 ]]; then
+            echo "::error::expected 5 CLI checksum files, found ${#checksum_files[@]}"
+            exit 1
+          fi
+          : > sha256sums.txt
+          for checksum_file in "${checksum_files[@]}"; do
+            (
+              cd "$(dirname "$checksum_file")"
+              sha256sum -c "$(basename "$checksum_file")"
+            )
+            cat "$checksum_file" >> sha256sums.txt
+          done
+          sort -k2 -o sha256sums.txt sha256sums.txt
+          test "$(wc -l < sha256sums.txt | tr -d ' ')" = 5
+          cat sha256sums.txt
+
+      - name: Generate SPDX SBOM for release artifacts
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: artifacts
+          format: spdx-json
+          output-file: jacs-cli.spdx.json
+          artifact-name: jacs-cli-${{ needs.verify-version.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.46.0
+
+      - name: Validate CLI SPDX SBOM
+        run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacs-cli.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacs-cli.spdx.json >/dev/null
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacs-cli-${{ needs.verify-version.outputs.version }}-release-bundle
+          path: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256
+            sha256sums.txt
+            jacs-cli.spdx.json
+          if-no-files-found: error
+
+  release:
+    needs: [security-gate, verify-version, prepare-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacs-cli-${{ needs.verify-version.outputs.version }}-release-bundle
+
+      - name: Attest CLI artifacts, checksums, and SBOM
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256
+            sha256sums.txt
+            jacs-cli.spdx.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: cli/v${{ needs.verify-version.outputs.version }}
+          name: JACS CLI v${{ needs.verify-version.outputs.version }}
+          body: |
+            ## JACS CLI v${{ needs.verify-version.outputs.version }}
+
+            Unified `jacs` binary with CLI + built-in MCP server.
+
+            ### Install
+
+            **From crates.io:**
+            ```bash
+            cargo install jacs-cli
+            ```
+
+            **From prebuilt binary:**
+            ```bash
+            # macOS (Apple Silicon)
+            curl -LO https://github.com/HumanAssisted/JACS/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-darwin-arm64.tar.gz
+            tar xzf jacs-cli-*.tar.gz
+            sudo mv jacs-cli /usr/local/bin/jacs
+
+            # Linux (x86_64)
+            curl -LO https://github.com/HumanAssisted/JACS/releases/download/cli/v${{ needs.verify-version.outputs.version }}/jacs-cli-${{ needs.verify-version.outputs.version }}-linux-x64.tar.gz
+            tar xzf jacs-cli-*.tar.gz
+            sudo mv jacs-cli /usr/local/bin/jacs
+            ```
+
+            **Start MCP server (stdio):**
+            ```bash
+            jacs mcp
+            ```
+
+            ### Verify checksums
+            ```bash
+            shasum -a 256 -c sha256sums.txt
+            ```
+
+            GitHub build provenance is attached to every binary, checksum
+            manifest, and SBOM. Verify a downloaded artifact with:
+            ```bash
+            gh attestation verify <artifact> --repo HumanAssisted/JACS
+            ```
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256
+            sha256sums.txt
+            jacs-cli.spdx.json
+
+  verify-release-attestations:
+    needs: [verify-version, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download and verify every public CLI release asset attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: cli/v${{ needs.verify-version.outputs.version }}
+        run: |
+          python3 scripts/verify_github_release_attestations.py \
+            "$RELEASE_TAG" \
+            "HumanAssisted/JACS/.github/workflows/release-cli.yml"

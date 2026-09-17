@@ -3,58 +3,34 @@ name = "jacs-mcp"
 version = "0.13.0"
 edition = "2024"
 rust-version = "1.97"
-description = "MCP server for JACS: data provenance and cryptographic signing"
-readme = "README.md"
+description = "Local MCP signing and verification with the portable JACS core"
 license = "Apache-2.0"
-homepage = "https://humanassisted.github.io/JACS"
+readme = "README.md"
 repository = "https://github.com/HumanAssisted/JACS"
-authors = ["JACS Contributors"]
-keywords = ["mcp", "jacs", "ai", "agents", "signing"]
-categories = ["cryptography", "development-tools"]
 
 [features]
-default = ["mcp", "attestation", "core-tools"]
-mcp = ["dep:rmcp", "dep:tokio"]
-attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
-
-# Tool family feature flags (Issue 010 / TASK_039).
-# core-tools enables all standard tool families by default.
-core-tools = ["document-tools", "trust-tools", "search-tools", "key-tools"]
-document-tools = []
-trust-tools = []
-search-tools = []
-key-tools = []
-
-# Advanced tool families — require explicit opt-in via feature flag or runtime profile.
-agreement-tools = ["jacs/agreements", "jacs-binding-core/agreements"]
-a2a-tools = ["jacs/a2a"]
-attestation-tools = ["attestation"]
-
-# Everything: all core + advanced families.
-full-tools = ["core-tools", "agreement-tools", "a2a-tools", "attestation-tools"]
+default = ["mcp"]
+mcp = ["dep:rmcp", "dep:tokio", "dep:tracing-subscriber"]
 
 [dependencies]
-anyhow = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-rmcp = { version = "3.0.0", features = ["client", "server", "transport-io", "transport-child-process", "macros"], optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"], optional = true }
-jacs = { version = "0.13.0", path = "../jacs", default-features = true }
-jacs-binding-core = { version = "0.13.0", path = "../binding-core", features = ["a2a"] }
+jacs-core = { version = "0.13.0", path = "../jacs-core" }
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-schemars = "1.0"
-uuid = { version = "1", features = ["v4"] }
-sha2 = "0.10.8"
-chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+zeroize = "1.8"
+tempfile = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"], optional = true }
+rmcp = { version = "3.0.0", default-features = false, features = ["server", "transport-io"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync"], optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
-assert_cmd = "2"
-predicates = "3.1"
-tempfile = "3"
-# Used by tests/inline_media_envelope.rs to build in-memory PNG/JPEG/WebP fixtures.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
-anyhow = "1"
-# Required by `path_policy.rs` lib tests to serialise process-wide env-var
-# manipulation (see Issue 024).
-serial_test = "3.2.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync"] }
+
+[[example]]
+name = "print_contract"
+required-features = ["mcp"]

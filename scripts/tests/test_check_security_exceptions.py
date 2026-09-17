@@ -13,11 +13,41 @@ SPEC = importlib.util.spec_from_file_location("check_security_exceptions", SCRIP
 assert SPEC is not None and SPEC.loader is not None
 security_exceptions = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(security_exceptions)
-ROOT = SCRIPT.parents[1]
+ROOT = SCRIPT.parents[1] / "archive/native"
 REVIEWED_CLARIFICATIONS = ROOT / "scripts/third_party_license_clarifications.toml"
 
 
 class SecurityExceptionPolicyTests(unittest.TestCase):
+    def test_active_graph_has_no_exception_contract(self) -> None:
+        active = SCRIPT.parents[1]
+        policy = tomllib.loads((active / "deny.toml").read_text())
+        reviewed = security_exceptions.load_reviewed_license_clarifications(
+            active / "scripts/third_party_license_clarifications.toml"
+        )
+        security_exceptions.require_no_active_exceptions(policy, reviewed)
+
+    def test_active_graph_rejects_all_exception_surfaces(self) -> None:
+        for section, key in (("advisories", "ignore"), ("licenses", "exceptions"), ("licenses", "clarify")):
+            with self.subTest(section=section, key=key):
+                with self.assertRaisesRegex(ValueError, "active portable graph"):
+                    security_exceptions.require_no_active_exceptions({section: {key: ["unexpected"]}}, {})
+        with self.assertRaisesRegex(ValueError, "reviewed license"):
+            security_exceptions.require_no_active_exceptions({}, {"unexpected": {}})
+
+    def test_workflow_waiver_is_bound_to_exact_archived_lock(self) -> None:
+        valid = "cargo audit --file archive/native/jacs-surrealdb/Cargo.lock \\\n  --ignore RUSTSEC-2023-0071"
+        security_exceptions.require_archive_scoped_workflow_ignores(valid)
+        for invalid in (
+            valid.replace("archive/native/jacs-surrealdb/Cargo.lock", "Cargo.lock"),
+            valid.replace("archive/native/jacs-surrealdb/Cargo.lock", "archive/native/Cargo.lock"),
+            "cargo audit --ignore RUSTSEC-2023-0071",
+            valid + "; cargo audit --ignore RUSTSEC-2023-0071",
+            valid.replace("RUSTSEC-2023-0071", "RUSTSEC-2099-9999"),
+        ):
+            with self.subTest(command=invalid):
+                with self.assertRaisesRegex(ValueError, "archived SurrealDB lock"):
+                    security_exceptions.require_archive_scoped_workflow_ignores(invalid)
+
     @staticmethod
     def notice_source(
         *,

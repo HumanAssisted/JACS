@@ -5,8 +5,8 @@
 `jacs-core` is the compile-anywhere protocol crate for [JACS](https://github.com/HumanAssisted/JACS).
 It holds the cryptographic primitives, canonical JSON serializer, embedded
 schemas, encrypted-key envelope codec, and agreement payload helpers that
-both the native [`jacs`](https://crates.io/crates/jacs) crate and the
-browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
+the active browser, mobile, CLI and MCP boundaries share. The archived native
+facade can also depend on this core for compatibility.
 
 ## What it is
 
@@ -33,13 +33,14 @@ browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
 - **Not an observability layer.** No env-var-driven logging,
   no `tracing` subscriber wiring, no metrics export.
 - **Not a CLI or MCP server.** Those live in
-  [`jacs-cli`](https://crates.io/crates/jacs-cli) and
-  [`jacs-mcp`](https://crates.io/crates/jacs-mcp), both built on `jacs`.
+  [`jacs-cli`](../jacs-cli/README.md) and
+  [`jacs-mcp`](../jacs-mcp/README.md), both using this portable core.
 
-If you want the full native JACS experience (storage backends, A2A,
-attestation, MCP, observability), use `jacs`. If you want to sign or verify a
-JACS document in the browser, build `@jacs/wasm` from source; it was not yet
-published on npm at the 2026-07-09 distribution baseline.
+The active workspace builds the portable primitive and thin platform boundaries.
+Historical storage, A2A, email and other native integrations are retained in
+[`archive/native`](../archive/native/README.md), outside the active dependency
+graph and publication set. Build browser bindings from source; see the current
+[release status](../docs/release-status.md) before relying on registry packages.
 
 ## Quick start
 
@@ -128,6 +129,37 @@ transfer secret, not a claim of 128-bit post-quantum confidentiality. Encryption
 uses AES-256-GCM with Argon2id; its protection also depends on the wrapping
 secret. ML-DSA signatures do not upgrade TLS, passkeys, or a weak password.
 
+## Staged key rotation
+
+`CoreAgent::prepare_key_rotation(None)` creates a new PQ2025 key and a signed
+candidate without changing the active identity. An explicit algorithm is
+supported; a PQ2025 identity cannot downgrade to Ed25519 or ES256. The opaque
+`PreparedKeyRotation` exposes its public identity/proof and password-encrypted
+material. It never exposes a private key. `prepare_key_rotation_with_signer`
+accepts hardware/platform callbacks, including non-exportable keys.
+
+Persist the encrypted candidate atomically and obtain any required registry
+admission before calling `commit_key_rotation`. Commit rejects a stale or foreign
+stage, verifies the complete transition again, checks that the candidate provider
+still controls the prepared key, then clears and drops the old signer. Dropping
+an uncommitted stage clears its candidate signer. Registry HTTP, filesystem
+transactions and recovery policy belong to the caller.
+
+The embedded `jacsKeyRotationProof` uses **`jacs-key-rotation-v2`**. The old key
+signs a domain-separated canonical context binding the stable agent ID, both
+identity versions, both canonical raw public-key hashes, both algorithms, the
+exact old identity, the complete unsigned new identity and its timestamp. The
+new key signs the complete candidate, including that proof. The new version
+links to `jacsPreviousVersion`; original identity provenance is preserved.
+
+`verify_key_rotation` requires an independently trusted old identity, key and
+algorithm. `CoreAgent::verify_key_rotation` uses its existing trusted identity
+and remains available while locked. Do not derive the old trust anchor from
+self-asserted proof data. The archived native `JACS_KEY_ROTATION:` proof did not
+bind both versions or the complete candidate; V2 deliberately rejects it.
+Registries must explicitly adopt the V2 verifier rather than falling back to
+legacy verification when V2 fails. The archived native verifier is unchanged.
+
 ## Numeric compatibility profiles
 
 `parse_strict_json` and its byte/typed counterparts use
@@ -184,9 +216,10 @@ as malformed legacy PBKDF2 noise.
 
 ## Where to go next
 
-- [`jacs`](../jacs/README.md) — native facade. Filesystem, DNS, HTTP, MCP, CLI, storage.
+- [`jacs-mobile`](../jacs-mobile/README.md) — mobile bindings and biometric vaults.
+- [`jacs-cli`](../jacs-cli/README.md) and [`jacs-mcp`](../jacs-mcp/README.md) — thin host boundaries.
+- [`archive/native`](../archive/native/README.md) — historical native compatibility source.
 - [`jacs-wasm`](../jacs-wasm/README.md) — browser bindings that wrap `jacs-core` with a TypeScript API.
-- [PRD](../docs/jacs/JACS_WASM_PRD.md) — full design + scope of the native/wasm split (HAI internal).
 
 ## License
 

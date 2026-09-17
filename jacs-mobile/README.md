@@ -11,7 +11,7 @@ base64 JSON fields and V2 envelope as `jacs-wasm`.
 and propagates any error. There is no silent fallback to Ed25519 or ES256.
 The explicit `create(algorithm)` constructor remains available for compatibility.
 
-## Two custody modes
+## Custody modes
 
 | Mode | Protection | Transfer |
 | --- | --- | --- |
@@ -30,26 +30,25 @@ can be unlocked and transferred between Android, iOS and the browser. The
 native ES256 callback adapters are retained for explicit compatibility and are
 never selected automatically if post-quantum creation or unlocking fails.
 
-Native creation quickstarts (run off the UI thread):
+Use `JacsBiometricVault` for new native integrations. The Android vault owns the
+activity prompt, encrypted atomic record, worker and unlocked session; the iOS
+vault owns the biometric Keychain record and returns an invalidatable session.
+Both create only PQ2025 identities, require biometric authorization, and reject
+late results after cancellation, backgrounding or logout. Neither exposes its
+local wrapping password or an unlocked handle that can outlive its session.
 
-```kotlin
-val agent = MobileAgent.createDefault() // always PQ2025
-val store = JacsKeystore("jacs-agent-wrapping-key")
-store.createWrappingKey()
-// Authenticate store.prepareProtect() with BiometricPrompt, then call
-// store.finishProtect(agent, authenticatedCipher) and persist the ciphertext.
-```
+Follow the [Android vault guide](platforms/android/README.md) or
+[iOS vault guide](platforms/ios/README.md) for creation, unlock, signing, encrypted
+transfer, recovery and lifecycle calls. Android construction and prompt calls
+belong on the main thread; the vault performs crypto and persistence on its
+worker. The Swift vault also performs crypto and Keychain work on a worker queue.
 
-```swift
-let agent = try MobileAgent.createDefault() // always pq2025
-let store = JacsKeychain(service: "ai.hai.jacs")
-let material = try store.protect(agent: agent, account: "agent-id")
-// Persist encrypted material; call agent.clearSecrets() when the session ends.
-```
-
-Imports retain and verify their declared algorithm. Applications that require
-post-quantum identities must require `Pq2025` in their trusted registration and
-`importPinned` expectations; a legacy identity is not silently converted.
+The lower-level `MobileAgent`, `JacsKeystore` and `JacsKeychain` APIs remain for
+explicit compatibility integrations. Such integrations must own their prompts,
+persistence and lifecycle clearing. Their availability does not make an ordinary
+software handle biometric-protected. Low-level imports retain and verify their
+declared algorithm; the default vaults reject non-PQ material. Pin PQ2025 in the
+trusted registration when the deployment requires post-quantum identities.
 
 ## Build and generate Kotlin/Swift
 
@@ -73,24 +72,24 @@ rustup target add aarch64-linux-android x86_64-linux-android
 cargo ndk -t arm64-v8a -t x86_64 --platform 30 -o jacs-mobile/generated/jniLibs build -p jacs-mobile --release
 ```
 
-Add the generated Kotlin, `platforms/android/JacsKeystore.kt`, native `.so`
-files and UniFFI's JNA Android runtime dependency to the app. The application
-supplies `androidx.biometric` and the `USE_BIOMETRIC` permission. For the
-transferable mode, call `prepareProtect`/`prepareUnlock`, authenticate their
-Cipher using `BiometricPrompt.CryptoObject`, then pass the authenticated Cipher
-to `finishProtect`/`finishUnlock` on a worker thread. Persist the returned
-`WrappedMaterial` atomically in app-private storage. Never persist the password.
-Exclude these device-bound records from Android backup or treat restoration
-without their wrapping key as a recoverable missing-key condition.
+Prefer the package assembly scripts below: they include all platform sources,
+generated bindings, native libraries, permissions and dependency metadata.
+For a manual Android integration, include all files under `platforms/android/`,
+the generated Kotlin and native `.so` files, JNA's Android runtime, and the
+`USE_BIOMETRIC` permission. The default vault uses Android's platform
+`BiometricPrompt` on API 30+; it does not require an AndroidX biometric UI.
+Its encrypted records live in `noBackupFilesDir`. Restoring a device-bound
+record without its wrapping key cannot recover the identity.
 
-On macOS, build `jacs-mobile` for `aarch64-apple-ios` and
-`aarch64-apple-ios-sim`; package the static libraries and generated header in an
-XCFramework with `xcodebuild -create-xcframework`. Add generated Swift and
-`platforms/ios/JacsKeychain.swift`. The Keychain path uses
-`WhenUnlockedThisDeviceOnly` and `biometryCurrentSet`; set the app's
-`NSFaceIDUsageDescription`. Biometric enrollment changes intentionally invalidate
-access. Keep a separate, explicitly protected recovery/transfer copy if recovery
-is required. Simulator success does not validate Secure Enclave behavior.
+For iOS, use the generated local Swift package or include all Swift platform
+sources and the generated binding/native library. Set
+`NSFaceIDUsageDescription`. The default vault uses `biometryCurrentSet` and
+`WhenPasscodeSetThisDeviceOnly` for one atomic device-local record. Enrollment
+changes or passcode removal can invalidate access. Keep a separate, explicitly
+protected recovery/transfer copy if recovery is required. Simulator success
+does not validate physical-device biometric or Secure Enclave behavior.
+
+### Explicit ES256 hardware compatibility
 
 `JacsSecureEnclaveSigner` calls `.ecdsaSignatureMessageX962SHA256`.
 `JacsKeystoreSigner` calls `SHA256withECDSA`; complete biometric authentication
@@ -127,9 +126,10 @@ yarn ubrn build ios --and-generate
 ```
 
 The generator creates TypeScript and C++/JSI plus native module installation.
-The application still must wire the Swift/Kotlin biometric adapters to its
-native module: do not put key custody callbacks in JavaScript or send plaintext
-keys through a JS bridge. Initialize the generated module before calling it.
+The application still must connect the Swift/Kotlin biometric vault/session
+APIs to its native module. Generating the Rust `MobileAgent` bindings alone does
+not expose these native vault wrappers or protect a software handle. Keep key
+custody callbacks native and never send plaintext keys through a JS bridge. Initialize the generated module before calling it.
 See the [upstream setup guide](https://jhugman.github.io/uniffi-bindgen-react-native/guides/rn/getting-started.html)
 and [configuration reference](https://jhugman.github.io/uniffi-bindgen-react-native/reference/config-yaml.html).
 
@@ -149,12 +149,22 @@ not mean an Android native library can be loaded as browser WASM.
 
 ## Transfer and trust
 
+The vaults provide local `createTransfer` and pinned `receive` operations.
+`createTransfer` clears the source session before delivering the code and
+ciphertext. It does not create a relay session, sign a HAI upload, or send HTTP.
+Application integration must construct and authenticate the complete transfer
+protocol inside its native session boundary; an exported blob alone is not a
+HAI `signed_transfer`. The public HAI client contracts describe that protocol.
+
+For a low-level integration that explicitly owns its unlocked handle:
+
 1. Obtain an authenticated, short-lived receiver-bound relay session and the
    expected registered agent ID/public key independently of the transfer blob.
 2. Unlock on the phone, call `generateTransferCode`, then `exportEncryptedAgent`.
-   Display the code only on the phone; send only `materialToJson` ciphertext to
-   the authenticated relay. Authenticate requests with `buildRequestAuthHeader`
-   over their exact method, URL, transmitted body bytes and expected audience.
+   Display the code only on the phone. Bind `materialToJson` ciphertext to the
+   intended session in the relay protocol, then authenticate its exact method,
+   URL, transmitted body bytes and audience with `buildRequestAuthHeader`. Send
+   the signed ciphertext bundle and authorization, never the code.
 3. Receive the ciphertext once. Call `importPinned` to check the expected agent
    ID/key/algorithm, or `reencryptTransferredMaterial` to validate and immediately
    rewrap using the destination storage password without keeping a live handle.
@@ -175,7 +185,8 @@ or interrupted request leaves the active identity unchanged. `updateAgent`
 performs an immediate local update and is intended for workflows that do not
 need this registry acceptance step.
 
-Run KDF and biometric operations off the UI thread. Rust erases owned password
+Run low-level KDF work off the UI thread and follow the platform prompt API
+threading rules. The default vaults handle that scheduling. Rust erases owned password
 buffers and decrypted private-key state, but Kotlin/Swift/JavaScript strings and
 FFI copies cannot be guaranteed erased. Do not log material passwords, transfer
 codes, PRF outputs, callback messages or private state. Relock on app background,
@@ -201,15 +212,17 @@ The Gradle/JDK/API versions follow the pinned
 [Android Gradle plugin 8.7 compatibility requirements](https://developer.android.com/build/releases/agp-8-7-0-release-notes).
 
 Output is `generated/android-project/library/build/outputs/aar/library-release.aar`,
-containing generated Kotlin, `JacsKeystore`, `arm64-v8a`/`x86_64` Rust libraries,
+containing generated Kotlin, the biometric vault/state/Keystore sources,
+`arm64-v8a`/`x86_64` Rust libraries,
 the biometric manifest permission and consumer R8 rules. The script also
 produces a **local** Maven repository at
 `generated/android-project/library/build/maven`, with coordinate
 `ai.hai:jacs-mobile:0.13.0` and the transitive JNA Android dependency. Consume
 that Maven bundle to retain dependency metadata. When importing the bare AAR,
 also declare `implementation("net.java.dev.jna:jna:5.18.1@aar")` in the app;
-an AAR does not embed its Maven dependencies. The app provides its own
-`androidx.biometric` UI and calls the CryptoObject flow described above.
+an AAR does not embed its Maven dependencies. The vault provides the platform
+biometric prompt; the app supplies operation titles, error/recovery UI and
+foreground lifecycle integration as described in the Android guide.
 
 **iOS XCFramework and Swift package:** run on macOS with full Xcode selected,
 the iPhoneOS/iPhoneSimulator SDKs, and Rust targets `aarch64-apple-ios`,
@@ -221,7 +234,8 @@ bash jacs-mobile/scripts/build-ios-xcframework.sh
 
 Output `generated/ios-package` is a local SwiftPM package containing the Rust
 `JacsMobileFFI.xcframework` (arm64 device and arm64/x86_64 simulator slices), its
-C header/modulemap, generated Swift and the native Keychain adapter. Add that
+C header/modulemap, generated Swift, biometric vault/session classes and native
+Keychain/Secure Enclave adapters. Add that
 directory in Xcode, select the `JacsMobile` package product, and use
 `import JacsMobile` for generated APIs and `import JacsMobilePlatform` for the
 Keychain/Secure Enclave classes. Set the app's Face ID usage description.
@@ -246,19 +260,21 @@ independently installed SDK's public API jar instead. Output is
 
 On an Xcode-equipped macOS machine, run
 `bash jacs-mobile/scripts/check-ios-source.sh` after generation to compile both
-Swift modules against the simulator SDK. Both SDK source gates passed on
-September 17, 2026: [Android SDK compilation](https://github.com/HumanAssisted/JACS/actions/runs/35276917844/job/105389654795)
-and [iOS simulator SDK compilation](https://github.com/HumanAssisted/JACS/actions/runs/35276917844/job/105389654510).
+Swift modules against the simulator SDK. Source compilation is a separate
+gate from package assembly, simulator tests and physical-device acceptance.
 
 The `mobile-bindings.yml` workflow also assembles both native distribution
 packages on pull requests and uploads build artifacts for review. It reuses
 the bindings generated and compiled earlier in each job. Android uses the
 runner's existing SDK/NDK and JDK, checksum-pinned Gradle 8.9, and version-pinned
-`cargo-ndk` 4.1.2; the workflow never accepts SDK licenses or downloads SDK
-packages. The macOS job builds arm64 device and both simulator Rust archives
+`cargo-ndk` 4.1.2. Assembly uses provisioned SDKs. The separate instrumentation
+script may download a fixed emulator image using already provisioned licenses;
+it never accepts SDK terms. The macOS job builds arm64 device and both simulator Rust archives
 before assembling the XCFramework. Neither job publishes packages to a registry.
-Package assembly gates must pass on the current commit; source compilation
-alone does not establish packaging or device runtime behavior.
+Package and simulator/emulator gates must pass on the current commit; source
+compilation alone does not establish packaging or device runtime behavior.
+Actual HAI API deployment and consuming mobile app integration are explicitly
+deferred; these libraries do not enable production linking by themselves.
 
 ## Verification scope
 

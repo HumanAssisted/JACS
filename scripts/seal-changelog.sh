@@ -5,7 +5,7 @@ set -euo pipefail
 #   ./scripts/seal-changelog.sh seal    [VERSION]   # flip (unreleased) -> Released YYYY-MM-DD
 #   ./scripts/seal-changelog.sh check   [VERSION]   # fail if block still says (unreleased)
 #
-# VERSION defaults to the version in jacs/Cargo.toml.
+# VERSION defaults to the version in jacs-core/Cargo.toml.
 # Idempotent: re-running seal on an already-sealed block is a no-op.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,7 +17,11 @@ if [[ "$MODE" != "seal" && "$MODE" != "check" ]]; then
   exit 2
 fi
 
-VERSION="${2:-$(grep '^version' jacs/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')}"
+VERSION="${2:-$(grep '^version' jacs-core/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')}"
+if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "ERROR: VERSION must be an ordinary X.Y.Z release" >&2
+  exit 2
+fi
 CHANGELOG="CHANGELOG.md"
 
 if [[ ! -f "$CHANGELOG" ]]; then
@@ -26,7 +30,7 @@ if [[ ! -f "$CHANGELOG" ]]; then
 fi
 
 # Confirm the version block exists.
-if ! grep -q "^## ${VERSION}\$" "$CHANGELOG"; then
+if ! grep -Fqx -- "## ${VERSION}" "$CHANGELOG"; then
   echo "ERROR: $CHANGELOG has no '## ${VERSION}' section" >&2
   exit 1
 fi
@@ -78,7 +82,7 @@ case "$MODE" in
       echo "  ✓ CHANGELOG.md ## ${VERSION} is sealed"
     else
       echo "ERROR: CHANGELOG.md ## ${VERSION} still says '(unreleased)'." >&2
-      echo "  Run 'make seal-changelog' (and commit) before releasing." >&2
+      echo "  Run './scripts/seal-changelog.sh seal ${VERSION}' before releasing." >&2
       exit 1
     fi
     ;;

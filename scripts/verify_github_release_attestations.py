@@ -675,13 +675,13 @@ def verify_release(
 
 
 def recorded_release_specs(matrix: object) -> list[ReleaseSpec]:
-    """Select published CLI/Go releases recorded by the shipped matrix."""
+    """Select published CLI releases recorded by the shipped matrix."""
 
     if not isinstance(matrix, dict) or not isinstance(matrix.get("artifacts"), dict):
         raise ValueError("shipped-artifact matrix must contain an artifacts object")
     artifacts = matrix["artifacts"]
     specs: list[ReleaseSpec] = []
-    for surface, prefix in (("cli", "cli/v"), ("go", "jacsgo/v")):
+    for surface, prefix in (("cli", "cli/v"),):
         artifact = artifacts.get(surface)
         if not isinstance(artifact, dict):
             raise ValueError(f"shipped-artifact matrix is missing {surface!r}")
@@ -739,7 +739,7 @@ def main() -> int:
     parser.add_argument(
         "--matrix",
         type=Path,
-        help="reverify every published CLI/Go release recorded in this matrix",
+        help="reverify every published CLI release recorded in this matrix",
     )
     args = parser.parse_args()
     if args.matrix is not None:

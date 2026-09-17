@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cryptographically reverify recorded PyPI and npm releases."""
+"""Cryptographically reverify recorded browser-WASM npm releases."""
 
 from __future__ import annotations
 
@@ -14,19 +14,14 @@ from pathlib import Path
 
 try:
     from release_tag import validate_semver
-    import verify_pypi_release_attestations as pypi_verifier
 except ModuleNotFoundError:  # Imported through the scripts namespace in tests.
     from scripts.release_tag import validate_semver
-    from scripts import verify_pypi_release_attestations as pypi_verifier
 
 
 MATRIX_LIMIT_BYTES = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 300
 DIAGNOSTIC_LIMIT_CHARS = 4096
-NPM_PACKAGES = {
-    "@hai.ai/jacs": Path("@hai.ai") / "jacs",
-    "@jacs/wasm": Path("@jacs") / "wasm",
-}
+NPM_PACKAGES = {"@jacs/wasm": Path("@jacs") / "wasm"}
 
 
 def _run_command(
@@ -67,8 +62,6 @@ def recorded_registry_releases(matrix: object) -> list[tuple[str, str, str]]:
     artifacts = matrix["artifacts"]
     releases: list[tuple[str, str, str]] = []
     for surface, package in (
-        ("python", "jacs"),
-        ("node", "@hai.ai/jacs"),
         ("wasm", "@jacs/wasm"),
     ):
         artifact = artifacts.get(surface)
@@ -145,11 +138,6 @@ def verify_npm_release(
         _require_success(audit, f"npm signature audit for {package}@{version}")
 
 
-def verify_pypi_release(version: str) -> None:
-    metadata = pypi_verifier.fetch_metadata(version)
-    pypi_verifier.verify_release(version, metadata)
-
-
 def _load_matrix(path: Path) -> object:
     with path.open("rb") as matrix_file:
         body = matrix_file.read(MATRIX_LIMIT_BYTES + 1)
@@ -161,16 +149,12 @@ def _load_matrix(path: Path) -> object:
 def verify_recorded_releases(
     matrix_path: Path,
     *,
-    verify_pypi: Callable[[str], None] = verify_pypi_release,
     verify_npm: Callable[[str, str], None] = verify_npm_release,
 ) -> None:
     releases = recorded_registry_releases(_load_matrix(matrix_path))
     for surface, package, version in releases:
-        if surface == "python":
-            verify_pypi(version)
-        else:
-            verify_npm(package, version)
-    print(f"Cryptographically reverified {len(releases)} PyPI/npm release(s).")
+        verify_npm(package, version)
+    print(f"Cryptographically reverified {len(releases)} WASM npm release(s).")
 
 
 def main() -> int:

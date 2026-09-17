@@ -11,7 +11,7 @@ Fixture files and both encrypted key bundles are generated in a temporary direct
 ## Prerequisites
 
 - A matching `jacs-mobile` host library and generated Python binding. Use `jacs-mobile/scripts/generate-bindings.sh` and the mobile build instructions.
-- A release browser package at `jacs-wasm/pkg`, built with the documented WASM stack configuration (`make build-wasm`).
+- A release browser package at `jacs-wasm/pkg`, built with the documented WASM stack configuration (`cd jacs-wasm && wasm-pack build --target web --release . --locked && bash scripts/finalize-pkg.sh`).
 - Node.js 18+, Python 3, Playwright, and a Chromium executable. Install browser dependencies separately; the harness does not install or publish anything.
 
 ```sh

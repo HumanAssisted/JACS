@@ -26,25 +26,8 @@ class DurableReleaseEvidenceTests(unittest.TestCase):
             "jacs-rust-${{ needs.verify-version.outputs.version }}-sha256sums.txt",
             "publish",
         ),
-        "release-storage-crate.yml": (
-            "storage-crate.spdx.json",
-            "storage-crate-sha256sums.txt",
-            "publish",
-        ),
-        "release-npm.yml": (
-            "jacsnpm.spdx.json",
-            ".tgz.sha256",
-            "post-publish-smoke",
-        ),
-        "release-pypi.yml": (
-            "jacspy.spdx.json",
-            "jacspy-${{ needs.verify-version.outputs.version }}-sha256sums.txt",
-            "post-publish-smoke",
-        ),
         "release-wasm.yml": (
-            "jacs-wasm.spdx.json",
-            ".tgz.sha256",
-            "post-publish-smoke",
+            "jacs-wasm.spdx.json", ".tgz.sha256", "post-publish-smoke",
         ),
     }
 
@@ -76,17 +59,12 @@ class DurableReleaseEvidenceTests(unittest.TestCase):
         crate = (
             ROOT / ".github/workflows/release-crate.yml"
         ).read_text(encoding="utf-8")
-        storage = (
-            ROOT / ".github/workflows/release-storage-crate.yml"
-        ).read_text(encoding="utf-8")
 
         self.assertIn("jacs-rust-${VERSION}-sha256sums.txt", crate)
-        self.assertIn("storage-crate-sha256sums.txt", storage)
         self.assertIn("sha256sum", crate)
-        self.assertIn("sha256sum", storage)
 
     def test_npm_evidence_consumers_use_upload_artifacts_preserved_path(self) -> None:
-        for workflow_name in ("release-npm.yml", "release-wasm.yml"):
+        for workflow_name in ("release-wasm.yml",):
             with self.subTest(workflow=workflow_name):
                 workflow = (
                     ROOT / ".github" / "workflows" / workflow_name

@@ -339,7 +339,7 @@ impl CoreAgent {
         Ok(prepared.clone())
     }
 
-    fn sign_identity_document(&self, document: &mut Value) -> Result<(), CoreError> {
+    pub(crate) fn sign_identity_document(&self, document: &mut Value) -> Result<(), CoreError> {
         let id = required_identity_string(document, "jacsId")?.to_owned();
         let version = required_identity_string(document, "jacsVersion")?.to_owned();
         let object = document.as_object_mut().expect("validated identity");

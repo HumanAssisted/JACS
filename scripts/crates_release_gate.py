@@ -24,18 +24,7 @@ except ModuleNotFoundError:  # Imported through the scripts namespace in tests.
     from scripts.release_tag import validate_semver
 
 
-ALLOWED_CRATES = (
-    "jacs-core",
-    "jacs-media",
-    "jacs",
-    "jacs-binding-core",
-    "jacs-mcp",
-    "jacs-cli",
-    "jacs-duckdb",
-    "jacs-redb",
-    "jacs-surrealdb",
-    "jacs-postgresql",
-)
+ALLOWED_CRATES = ("jacs-core", "jacs-mcp", "jacs-cli")
 CRATES_API = "https://crates.io/api/v1/crates"
 METADATA_LIMIT = 1024 * 1024
 MAX_CRATE_BYTES = 512 * 1024 * 1024

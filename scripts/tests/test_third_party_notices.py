@@ -20,21 +20,9 @@ sys.path.pop(0)
 START_MARKER = "===== BEGIN GENERATED CARGO DEPENDENCY INVENTORY ====="
 END_MARKER = "===== END GENERATED CARGO DEPENDENCY INVENTORY ====="
 STATIC_SUFFIX = "FULL LICENSE TEXTS\n\nLICENSE BODY MUST REMAIN BYTE-EXACT\n"
-REQUIRED_CRATE_DIRS = (
-    "jacs",
-    "jacs-core",
-    "jacs-mobile",
-    "jacs-media",
-    "binding-core",
-    "jacs-mcp",
-    "jacs-cli",
-    "jacs-duckdb",
-    "jacs-redb",
-    "jacs-surrealdb",
-    "jacs-postgresql",
-)
-REQUIRED_BINDING_DIRS = ("jacsnpm", "jacspy", "jacspy/python/jacs")
-REQUIRED_PACKAGE_DIRS = REQUIRED_CRATE_DIRS + REQUIRED_BINDING_DIRS
+REQUIRED_CRATE_DIRS = ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli")
+REQUIRED_BINDING_DIRS = ("jacs-wasm", "jacs-mobile")
+REQUIRED_PACKAGE_DIRS = REQUIRED_CRATE_DIRS
 
 
 def package(
@@ -101,6 +89,15 @@ def prepare_notice(repo: Path, content: bytes | None = None) -> Path:
 
 
 class ThirdPartyNoticesTests(unittest.TestCase):
+    def test_explicit_no_clarifications_contract_is_valid_but_missing_is_not(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            contract = Path(directory) / "clarifications.toml"
+            contract.write_text("reviewed = []\n")
+            self.assertEqual(notices.load_reviewed_license_clarifications(contract), {})
+            contract.write_text("# missing reviewed declaration\n")
+            with self.assertRaisesRegex(ValueError, "must contain a reviewed array"):
+                notices.load_reviewed_license_clarifications(contract)
+
     def run_script(
         self,
         repo: Path,
@@ -138,6 +135,20 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             capture_output=True,
             check=False,
         )
+
+    def test_default_inventory_uses_only_active_graph_and_preserves_archive(self) -> None:
+        self.assertEqual(notices.SEPARATE_MANIFESTS, ())
+        self.assertEqual({p.parent.as_posix() for p in notices.REQUIRED_PACKAGE_COPIES}, set(REQUIRED_CRATE_DIRS))
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            prepare_notice(repo)
+            archive = repo / "archive/native/jacs/THIRD-PARTY-NOTICES"
+            archive.parent.mkdir(parents=True)
+            historical = b"historical native dependency license snapshot\n"
+            archive.write_bytes(historical)
+            result = self.run_script(repo, metadata([], workspace_members=[]))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(archive.read_bytes(), historical)
 
     def test_generation_is_deterministic_and_excludes_workspace_members(self) -> None:
         first_party_id = "path+file:///repo/jacs#0.11.4"
@@ -441,7 +452,7 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
             generated = self.run_script(repo, value)
             self.assertEqual(generated.returncode, 0, generated.stderr)
 
-            original_parent = repo / "jacs"
+            original_parent = repo / "jacs-core"
             original_identity = original_parent.stat()
             moved_parent = repo / "jacs-held"
             replacement_parent = repo / "jacs-replacement"
@@ -497,7 +508,7 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
             generated = self.run_script(repo, value)
             self.assertEqual(generated.returncode, 0, generated.stderr)
 
-            original_parent = repo / "jacs"
+            original_parent = repo / "jacs-core"
             original_copy = original_parent / "THIRD-PARTY-NOTICES"
             original_copy.write_bytes(b"stale notice\n")
             original_identity = original_parent.stat()
@@ -563,7 +574,7 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
             generated = self.run_script(repo, first_value)
             self.assertEqual(generated.returncode, 0, generated.stderr)
 
-            preserved_copy = repo / "jacs" / "THIRD-PARTY-NOTICES"
+            preserved_copy = repo / "jacs-mobile" / "THIRD-PARTY-NOTICES"
             missing_copy = repo / "jacs-core" / "THIRD-PARTY-NOTICES"
             output.chmod(0o640)
             preserved_copy.chmod(0o600)
@@ -608,7 +619,7 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             prepare_notice(repo)
-            linked_parent = repo / "jacs"
+            linked_parent = repo / "jacs-core"
             (linked_parent / "THIRD-PARTY-NOTICES").unlink()
             linked_parent.rmdir()
             target_parent = repo / "outside-copy-parent"
@@ -680,7 +691,7 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
             fresh = self.run_script(repo, value, "--check")
             self.assertEqual(fresh.returncode, 0, fresh.stderr)
 
-    def test_write_creates_and_check_verifies_python_and_node_copies(self) -> None:
+    def test_write_creates_and_check_verifies_active_binding_copies(self) -> None:
         dependency_id = "registry+index#dependency@1.0.0"
         value = metadata(
             [package(dependency_id, "dependency", "1.0.0", "MIT")],
@@ -697,10 +708,10 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
                 self.assertEqual(copy.read_bytes(), output.read_bytes())
             self.assertEqual(self.run_script(repo, value, "--check").returncode, 0)
 
-            (repo / "jacspy" / "THIRD-PARTY-NOTICES").write_text("stale copy\n")
+            (repo / "jacs-wasm" / "THIRD-PARTY-NOTICES").write_text("stale copy\n")
             mismatch = self.run_script(repo, value, "--check")
             self.assertNotEqual(mismatch.returncode, 0)
-            self.assertIn("jacspy/THIRD-PARTY-NOTICES", mismatch.stderr)
+            self.assertIn("jacs-wasm/THIRD-PARTY-NOTICES", mismatch.stderr)
             self.assertIn("does not exactly match", mismatch.stderr)
 
     @unittest.skipIf(
@@ -796,11 +807,11 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
     def test_makefile_and_security_workflow_block_stale_notices(self) -> None:
         makefile = (ROOT / "Makefile").read_text()
         self.assertIn(
-            "third-party-notices:\n\t@python3 scripts/third_party_notices.py --write",
+            "third-party-notices:\n\tpython3 scripts/third_party_notices.py --write",
             makefile,
         )
         self.assertIn(
-            "check-third-party-notices:\n\t@python3 scripts/third_party_notices.py --check",
+            "check-third-party-notices:\n\tpython3 scripts/third_party_notices.py --check",
             makefile,
         )
         release_preflight = next(
@@ -808,7 +819,9 @@ sha256 = "{hashlib.sha256(license_text.encode()).hexdigest()}"
             for line in makefile.splitlines()
             if line.startswith("release-preflight:")
         )
-        self.assertIn("check-third-party-notices", release_preflight)
+        self.assertIn("check", release_preflight.split())
+        check_dependencies = next(line for line in makefile.splitlines() if line.startswith("check:"))
+        self.assertIn("check-third-party-notices", check_dependencies.split())
 
         security = (ROOT / ".github" / "workflows" / "security.yml").read_text()
         self.assertIn("Check THIRD-PARTY-NOTICES freshness", security)

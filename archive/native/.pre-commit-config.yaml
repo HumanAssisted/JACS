@@ -1,0 +1,44 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all
+        language: system
+        always_run: true
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: bash -c 'cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features && cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        always_run: true
+        pass_filenames: false
+
+      - id: json-format
+        name: format JSON schemas
+        entry: bash -c 'for file in jacs/schemas/*/*/*.json jacs/schemas/components/*/*/*.json; do [ -f "$file" ] && jq "." "$file" > temp.json && mv temp.json "$file"; done; rm -f temp.json; git add jacs/schemas/.'
+        language: system
+        always_run: true
+        pass_filenames: false
+
+      - id: schema-docs
+        name: generate schema docs
+        entry: bash -c 'jsonschema2md -d jacs/schemas -o jacs/docs/schema -x - && git add jacs/docs/.'
+        language: system
+        always_run: true
+        pass_filenames: false
+
+      - id: mdbook
+        name: build mdbook
+        entry: bash -c 'mdbook build jacs/docs/jacsbook && git add jacs/docs/.'
+        language: system
+        always_run: true
+        pass_filenames: false
+
+      - id: sloc
+        name: Update lines of code
+        entry: bash -c './sloc.sh && git add LINES_OF_CODE.md'
+        language: system
+        always_run: true
+        pass_filenames: false

@@ -10,6 +10,7 @@ use jacs_core::envelope::{
     PBKDF2_ITERATIONS_LEGACY, PBKDF2_SALT_SIZE, decrypt_private_key, derive_key_with_iterations,
     encrypt_private_key,
 };
+use jacs_core::sign::{DetachedSigner, Ed25519DalekSigner};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -20,12 +21,12 @@ use std::time::{Duration, Instant};
 
 const TEST_PASSWORD: &str = "Test#Password!2026";
 const FIXTURE_PASSWORD: &str = "Test#Password!2026"; // matches Task 001 regenerator
-const FIXTURE_PKCS8: &[u8] =
-    include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.pkcs8.bin");
+const FIXTURE_PUBLIC: &[u8] =
+    include_bytes!("../../tests/fixtures/native_compat/wasm_compat/ed25519.public.bin");
 const FIXTURE_ARGON2ID: &[u8] =
-    include_bytes!("../../jacs/tests/fixtures/wasm_compat/argon2id.encrypted.json");
+    include_bytes!("../../tests/fixtures/native_compat/wasm_compat/argon2id.encrypted.json");
 const FIXTURE_PBKDF2: &[u8] =
-    include_bytes!("../../jacs/tests/fixtures/wasm_compat/pbkdf2.encrypted.bin");
+    include_bytes!("../../tests/fixtures/native_compat/wasm_compat/pbkdf2.encrypted.bin");
 
 #[test]
 fn argon2id_v2_encrypt_decrypt_roundtrip() {
@@ -218,14 +219,16 @@ fn oversized_legacy_input_is_rejected_before_pbkdf2_or_aead_work() {
 fn fixture_argon2id_envelope_decrypts_in_core() {
     let decrypted = decrypt_private_key(FIXTURE_ARGON2ID, FIXTURE_PASSWORD)
         .expect("Task 001 fixture decrypts via jacs-core");
-    assert_eq!(decrypted.as_slice(), FIXTURE_PKCS8);
+    let signer = Ed25519DalekSigner::from_pkcs8(decrypted.as_slice()).expect("native PKCS#8");
+    assert_eq!(signer.public_key(), FIXTURE_PUBLIC);
 }
 
 #[test]
 fn fixture_pbkdf2_envelope_decrypts_in_core() {
     let decrypted = decrypt_private_key(FIXTURE_PBKDF2, FIXTURE_PASSWORD)
         .expect("Task 001 legacy fixture decrypts via jacs-core");
-    assert_eq!(decrypted.as_slice(), FIXTURE_PKCS8);
+    let signer = Ed25519DalekSigner::from_pkcs8(decrypted.as_slice()).expect("native PKCS#8");
+    assert_eq!(signer.public_key(), FIXTURE_PUBLIC);
 }
 
 #[test]
@@ -296,7 +299,8 @@ fn argon2id_fixture_still_decrypts_after_magic_guard() {
     // touch them. This is the cross-compat oracle.
     let decrypted = decrypt_private_key(FIXTURE_ARGON2ID, FIXTURE_PASSWORD)
         .expect("Argon2id fixture must still decrypt after the magic-prefix guard");
-    assert_eq!(decrypted.as_slice(), FIXTURE_PKCS8);
+    let signer = Ed25519DalekSigner::from_pkcs8(decrypted.as_slice()).expect("native PKCS#8");
+    assert_eq!(signer.public_key(), FIXTURE_PUBLIC);
 }
 
 #[test]
@@ -305,7 +309,8 @@ fn pbkdf2_fixture_still_decrypts_after_magic_guard() {
     // reserved magic prefix; the guard must let it through.
     let decrypted = decrypt_private_key(FIXTURE_PBKDF2, FIXTURE_PASSWORD)
         .expect("PBKDF2 fixture must still decrypt after the magic-prefix guard");
-    assert_eq!(decrypted.as_slice(), FIXTURE_PKCS8);
+    let signer = Ed25519DalekSigner::from_pkcs8(decrypted.as_slice()).expect("native PKCS#8");
+    assert_eq!(signer.public_key(), FIXTURE_PUBLIC);
 }
 
 #[test]

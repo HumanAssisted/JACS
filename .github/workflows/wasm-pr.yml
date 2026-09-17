@@ -88,12 +88,8 @@ jobs:
 
       # ------------------------------------------------------------------
       # 2. cargo check (warnings = errors) for the wasm-portable crates.
-      # Native check is limited to `jacs-core` (the shared portable
-      # crate); the rest of the workspace (jacs / jacs-binding-core /
-      # jacs-mcp / jacs-cli) pulls in keyring → libdbus-sys on Linux and
-      # is already covered by the main Rust PR workflow which installs
-      # the required system deps. wasm32 checks run on both portable
-      # crates so wasm-pack doesn't have to be the first failure signal.
+      # Native workspace coverage runs in rust.yml. These target checks ensure
+      # the core and browser adapter remain portable before wasm-pack runs.
       # ------------------------------------------------------------------
       - name: cargo check (warnings = errors)
         env:

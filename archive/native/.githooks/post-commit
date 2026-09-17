@@ -1,0 +1,30 @@
+#!/bin/bash
+# Sync JACS schemas to the hai.ai static site after each commit.
+# Requires: hai repo checked out as a sibling at ../hai
+# Setup: git config core.hooksPath .githooks
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+HAI_SYNC="$REPO_ROOT/../hai/scripts/sync-schemas.sh"
+
+if [ -x "$HAI_SYNC" ]; then
+    JACS_SCHEMA_SOURCE="$REPO_ROOT/jacs/schemas" "$HAI_SYNC"
+else
+    # Inline sync if hai repo sync script not available
+    JACS_SCHEMAS="$REPO_ROOT/jacs/schemas"
+    HAI_SCHEMAS="${JACS_SCHEMA_TARGET:-$REPO_ROOT/../hai/public/hai.ai/public/schemas}"
+
+    if [ ! -d "$JACS_SCHEMAS" ]; then
+        exit 0
+    fi
+
+    if [ -d "$(dirname "$HAI_SCHEMAS")" ]; then
+        mkdir -p "$HAI_SCHEMAS"
+        rsync -av --delete \
+            --include='*/' \
+            --include='*.json' \
+            --exclude='*' \
+            "$JACS_SCHEMAS/" "$HAI_SCHEMAS/"
+        echo "Schemas synced to $HAI_SCHEMAS"
+    fi
+fi

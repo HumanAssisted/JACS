@@ -1,0 +1,56 @@
+#!/bin/sh
+
+# Prevent accidental cross-language fixture churn.
+# Regeneration is intentionally gated to explicit runs:
+#   UPDATE_CROSS_LANG_FIXTURES=1 <regen commands>
+CROSS_LANG_FIXTURE_DIR="jacs/tests/fixtures/cross-language"
+STAGED_CROSS_LANG_FIXTURES="$(git diff --cached --name-only -- "$CROSS_LANG_FIXTURE_DIR")"
+if [ -n "$STAGED_CROSS_LANG_FIXTURES" ] && [ "${UPDATE_CROSS_LANG_FIXTURES:-0}" != "1" ]; then
+  echo "ERROR: Cross-language fixtures are staged, but UPDATE_CROSS_LANG_FIXTURES is not set."
+  echo "Staged fixture files:"
+  echo "$STAGED_CROSS_LANG_FIXTURES"
+  echo "If intentional, rerun commit with UPDATE_CROSS_LANG_FIXTURES=1."
+  exit 1
+fi
+
+# Run cargo fmt for all workspace members
+cargo fmt --all
+
+# format all json
+for file in ./jacs/schemas/*/*/*.json; do
+  echo "formatting $file"
+  jq  '.' "$file" > temp.json && mv temp.json "$file"
+done
+
+# format all json
+for file in ./jacs/schemas/components/*/*/*.json; do
+  echo "formatting $file"
+  jq  '.' "$file" > temp.json && mv temp.json "$file"
+done
+
+rm temp.json
+
+# create json schema docs
+# npm install -g @adobe/jsonschema2md
+# todo -r "https://hai.ai/schemas/=schemas/"  or -i schemas fails because of resolving version of json schema
+jsonschema2md -d jacs/schemas  -o jacs/docs/schema -x -
+
+mdbook build jacs/docs/jacsbook
+
+# Add the formatted files to the staging area
+git add jacs/docs/.
+git add jacs/schemas/.
+# git add jacs/examples/.
+git add jacs/src/.
+git add jacs/tests/.
+git add jacs/benches/.
+
+# Add workspace members
+git add jacs-mcp/src/.
+git add jacspy/src/.
+
+# Add workspace configuration
+git add Cargo.toml
+
+# Continue with the commit
+exit 0

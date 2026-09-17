@@ -1,7 +1,7 @@
 //! Tests for `CoreAgent::sign_message`, `verify`, and `verify_with_key` (Task 013).
 //!
 //! All tests run natively; cross-compat with `jacs` is tested in
-//! `jacs/tests/wasm_compat_cross.rs`.
+//! `archive/native/jacs/tests/wasm_compat_cross.rs`.
 
 use jacs_core::{CoreAgent, CoreError, SigningAlgorithm};
 use serde_json::json;

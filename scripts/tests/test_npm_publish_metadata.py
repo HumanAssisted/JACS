@@ -18,7 +18,6 @@ SPEC.loader.exec_module(metadata)
 class NpmPublishMetadataTests(unittest.TestCase):
     def test_release_manifests_match_trusted_publisher_repository(self) -> None:
         for relative in (
-            "jacsnpm/package.json",
             "jacs-wasm/package.template.json",
         ):
             with self.subTest(package=relative):
@@ -46,9 +45,8 @@ class NpmPublishMetadataTests(unittest.TestCase):
                 metadata.package_errors(package)[0],
             )
 
-    def test_both_npm_release_workflows_use_the_shared_validator(self) -> None:
+    def test_wasm_release_uses_the_shared_validator(self) -> None:
         cases = {
-            "release-npm.yml": "jacsnpm/package.json",
             "release-wasm.yml": "jacs-wasm/package.template.json",
         }
         for workflow, package in cases.items():
@@ -58,6 +56,11 @@ class NpmPublishMetadataTests(unittest.TestCase):
                     f"python3 scripts/check_npm_publish_metadata.py {package}",
                     text,
                 )
+
+    def test_archived_native_npm_package_cannot_publish(self) -> None:
+        package = json.loads((ROOT / "archive/native/jacsnpm/package.json").read_text())
+        self.assertIs(package.get("private"), True)
+        self.assertFalse((ROOT / ".github/workflows/release-npm.yml").exists())
 
 
 if __name__ == "__main__":

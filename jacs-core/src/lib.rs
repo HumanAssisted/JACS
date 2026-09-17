@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub mod material;
 pub mod request_auth;
 pub mod response_context;
+pub mod rotation;
 pub mod schema;
 pub mod sign;
 pub mod signing;
@@ -31,6 +32,7 @@ pub mod verify;
 pub use agent::CoreAgent;
 pub use errors::CoreError;
 pub use material::{AgentMaterial, UnlockSecret};
+pub use rotation::{PreparedKeyRotation, verify_key_rotation};
 pub use sign::{DetachedSigner, Ed25519DalekSigner, P256Signer, Pq2025Signer, SigningAlgorithm};
 pub use signing::{
     AuthorityClassifiedPreparedDocumentV1, MediaCanonicalizationV1, MediaClaimFormatV1,

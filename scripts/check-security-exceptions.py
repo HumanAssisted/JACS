@@ -134,6 +134,30 @@ def require_all_features_cargo_deny(text: str, source: str) -> None:
             )
 
 
+def require_no_active_exceptions(policy: dict, reviewed: dict) -> None:
+    """The portable dependency graph has no reviewed exception surface."""
+    for section, key in (("advisories", "ignore"), ("licenses", "exceptions"), ("licenses", "clarify")):
+        if policy.get(section, {}).get(key, []):
+            raise ValueError(f"active portable graph must not contain {section}.{key}")
+    if reviewed:
+        raise ValueError("active portable graph must not contain reviewed license clarifications")
+
+
+def require_archive_scoped_workflow_ignores(text: str) -> None:
+    """An archived advisory waiver must never suppress an active audit."""
+    # Join shell continuations so a waiver on the following line remains
+    # associated with the exact audit command and manifest being reviewed.
+    logical_lines = re.sub(r"\\\s*\n\s*", " ", text).splitlines()
+    for line in logical_lines:
+        if not WORKFLOW_IGNORE_PATTERN.search(line):
+            continue
+        if not re.fullmatch(
+            r"\s*(?:run:\s*)?cargo audit --file archive/native/jacs-surrealdb/Cargo\.lock"
+            r"\s+--ignore RUSTSEC-2023-0071\s*", line
+        ):
+            raise ValueError("workflow advisory ignores must be scoped to the archived SurrealDB lock")
+
+
 def notice_license_sources(
     notice_text: str,
 ) -> dict[str, set[tuple[str, int, str]]]:
@@ -291,11 +315,13 @@ def require_object_store_s3_isolation(manifest: dict) -> None:
 
 def main() -> int:
     try:
-        audit_text = (ROOT / "SECURITY_AUDIT.md").read_text()
+        archive = ROOT / "archive/native"
+        audit_text = (archive / "SECURITY_AUDIT.md").read_text()
         deadlines = documented_deadlines(audit_text)
         require_unexpired(deadlines, DOCUMENTED_EXCEPTIONS)
 
         workflow_text = (ROOT / ".github/workflows/security.yml").read_text()
+        require_archive_scoped_workflow_ignores(workflow_text)
         workflow_ignores = set(WORKFLOW_IGNORE_PATTERN.findall(workflow_text))
         if workflow_ignores != BLOCKING_IGNORES:
             raise ValueError(
@@ -309,6 +335,17 @@ def main() -> int:
         )
 
         with (ROOT / "deny.toml").open("rb") as handle:
+            active_deny = tomllib.load(handle)
+        active_reviewed = load_reviewed_license_clarifications(
+            ROOT / "scripts/third_party_license_clarifications.toml"
+        )
+        require_no_active_exceptions(active_deny, active_reviewed)
+        require_source_bound_license_clarifications(
+            active_deny.get("licenses", {}).get("clarify", []),
+            (ROOT / "THIRD-PARTY-NOTICES").read_text(encoding="utf-8"),
+            active_reviewed,
+        )
+        with (archive / "deny.toml").open("rb") as handle:
             deny = tomllib.load(handle)
         deny_ignores = set(deny.get("advisories", {}).get("ignore", []))
         if deny_ignores != CARGO_DENY_IGNORES:
@@ -318,20 +355,21 @@ def main() -> int:
             )
         require_source_bound_license_clarifications(
             deny.get("licenses", {}).get("clarify", []),
-            (ROOT / "THIRD-PARTY-NOTICES").read_text(encoding="utf-8"),
+            (archive / "THIRD-PARTY-NOTICES").read_text(encoding="utf-8"),
             load_reviewed_license_clarifications(
-                ROOT / "scripts/third_party_license_clarifications.toml"
+                archive / "scripts/third_party_license_clarifications.toml"
             ),
         )
 
-        with (ROOT / "jacs/Cargo.toml").open("rb") as handle:
+        with (archive / "jacs/Cargo.toml").open("rb") as handle:
             jacs_manifest = tomllib.load(handle)
         require_object_store_s3_isolation(jacs_manifest)
 
         # These parent sets are the machine-checked reachability assumptions
         # behind the human dispositions in SECURITY_AUDIT.md. Any new parent
         # is a new exposure and blocks CI until reviewed explicitly.
-        require_exact_parents(ROOT / "Cargo.lock", "quick-xml", {"object_store"})
+        require_exact_parents(archive / "Cargo.lock", "quick-xml", {"object_store"})
+        require_exact_parents(ROOT / "Cargo.lock", "quick-xml", set())
         # Standalone-lock exceptions must never silently broaden into the
         # primary workspace graph merely because deny.toml is shared.
         for standalone_only in (
@@ -341,13 +379,13 @@ def main() -> int:
         ):
             require_exact_parents(ROOT / "Cargo.lock", standalone_only, set())
         require_exact_parents(
-            ROOT / "jacs-surrealdb/Cargo.lock", "rsa", {"jsonwebtoken"}
+            archive / "jacs-surrealdb/Cargo.lock", "rsa", {"jsonwebtoken"}
         )
         require_exact_parents(
-            ROOT / "jacs-surrealdb/Cargo.lock", "atomic-polyfill", {"heapless"}
+            archive / "jacs-surrealdb/Cargo.lock", "atomic-polyfill", {"heapless"}
         )
         require_exact_parents(
-            ROOT / "jacs-surrealdb/Cargo.lock", "bincode", {"surrealmx"}
+            archive / "jacs-surrealdb/Cargo.lock", "bincode", {"surrealmx"}
         )
     except (OSError, KeyError, tomllib.TOMLDecodeError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

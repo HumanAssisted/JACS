@@ -67,13 +67,13 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "platforms": ["test target"],
                     "evidence": "runtime smoke passed",
                 }
-                for surface in ("rust", "cli", "python", "node", "wasm", "go")
+                for surface in ("crate", "cli", "wasm")
             }
         }
         rendered = release_matrix.render_documentation_matrix(matrix)
         self.assertIn(release_matrix.DOC_MATRIX_START, rendered)
-        self.assertIn("Node (`@hai.ai/jacs`)", rendered)
-        self.assertEqual(rendered.count("runtime smoke passed"), 6)
+        self.assertIn("Browser (`@jacs/wasm`)", rendered)
+        self.assertEqual(rendered.count("runtime smoke passed"), 3)
 
     def test_deployment_header_matches_inventory_observation_date(self) -> None:
         matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
@@ -93,13 +93,50 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "platforms": ["test target"],
                     "evidence": "runtime smoke passed",
                 }
-                for surface in ("rust", "cli", "python", "node", "wasm", "go")
+                for surface in ("crate", "cli", "wasm")
             }
         }
         broken = copy.deepcopy(matrix)
-        del broken["artifacts"]["node"]["evidence"]
+        del broken["artifacts"]["wasm"]["evidence"]
         with self.assertRaises(ValueError):
             release_matrix.render_documentation_matrix(broken)
+
+    def test_active_inventory_rejects_archived_surfaces(self) -> None:
+        matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
+        matrix["artifacts"]["node"] = copy.deepcopy(matrix["artifacts"]["wasm"])
+        with self.assertRaisesRegex(ValueError, "active artifact scope"):
+            release_matrix.render_documentation_matrix(matrix)
+
+    def test_registry_queries_all_three_crates_and_browser_package(self) -> None:
+        urls = []
+
+        def metadata(url, **_options):
+            urls.append(url)
+            if "crates.io" in url:
+                return {"crate": {"max_version": "0.13.0"}}
+            return {"version": "0.13.0"}
+
+        with mock.patch.object(release_matrix, "get_json", side_effect=metadata):
+            self.assertEqual(
+                release_matrix.registry_versions(),
+                {"crate": "0.13.0", "cli": "0.13.0", "wasm": "0.13.0"},
+            )
+        self.assertEqual(urls, [
+            "https://crates.io/api/v1/crates/jacs-core",
+            "https://crates.io/api/v1/crates/jacs-mcp",
+            "https://crates.io/api/v1/crates/jacs-cli",
+            "https://registry.npmjs.org/@jacs%2Fwasm/latest",
+        ])
+
+    def test_disagreeing_crate_versions_fail_closed(self) -> None:
+        responses = [
+            {"crate": {"max_version": "0.13.0"}},
+            {"crate": {"max_version": "0.12.0"}},
+            {"crate": {"max_version": "0.13.0"}},
+        ]
+        with mock.patch.object(release_matrix, "get_json", side_effect=responses):
+            with self.assertRaisesRegex(ValueError, "different recorded registry"):
+                release_matrix.registry_versions()
 
     def test_cli_platforms_map_to_exact_release_assets(self) -> None:
         assets = release_matrix.expected_cli_assets(
@@ -119,38 +156,6 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
             },
         )
 
-    def test_python_platforms_require_matching_wheel_tags(self) -> None:
-        missing = release_matrix.missing_python_platforms(
-            [
-                "jacs-0.11.4-cp310-abi3-macosx_11_0_arm64.whl",
-                "jacs-0.11.4-cp310-abi3-manylinux_2_38_x86_64.whl",
-            ],
-            [
-                "macOS arm64",
-                "Linux x86_64 manylinux_2_38",
-                "Linux x86_64 musllinux",
-            ],
-        )
-        self.assertEqual(missing, ["Linux x86_64 musllinux"])
-
-    def test_node_native_binaries_must_be_at_package_root(self) -> None:
-        platform = ["Linux x86_64 glibc"]
-        required = "/jacs.linux-x64-gnu.node"
-        self.assertEqual(
-            release_matrix.missing_node_platforms([required], platform), []
-        )
-        self.assertEqual(
-            release_matrix.missing_node_platforms(
-                ["jacs.linux-x64-gnu.node"], platform
-            ),
-            [],
-        )
-        self.assertEqual(
-            release_matrix.missing_node_platforms(
-                ["/nested/jacs.linux-x64-gnu.node"], platform
-            ),
-            platform,
-        )
 
     def test_unknown_published_platform_label_fails_closed(self) -> None:
         with self.assertRaises(ValueError):
@@ -164,7 +169,7 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "status": "unpublished",
                     "platforms": [],
                 }
-                for surface in ("cli", "python", "node", "wasm", "go")
+                for surface in ("crate", "cli", "wasm")
             }
         }
         matrix["artifacts"]["wasm"] = {
@@ -201,7 +206,7 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "status": "unpublished",
                     "platforms": [],
                 }
-                for surface in ("cli", "python", "node", "wasm", "go")
+                for surface in ("crate", "cli", "wasm")
             }
         }
         matrix["artifacts"]["cli"] = {
@@ -240,29 +245,6 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                 release_matrix.validate_online_asset_evidence(matrix, failures)
         self.assertIn(
             "CLI GitHub release asset missing: jacs-cli.spdx.json", failures
-        )
-
-    def test_published_go_with_malformed_version_fails_closed(self) -> None:
-        matrix = {
-            "artifacts": {
-                surface: {
-                    "version": None,
-                    "status": "unpublished",
-                    "platforms": [],
-                }
-                for surface in ("cli", "python", "node", "wasm", "go")
-            }
-        }
-        matrix["artifacts"]["go"] = {
-            "version": "not-semver",
-            "status": "published-current",
-            "platforms": ["Linux x86_64 glibc"],
-        }
-        failures: list[str] = []
-        with redirect_stderr(io.StringIO()):
-            release_matrix.validate_online_asset_evidence(matrix, failures)
-        self.assertTrue(
-            any("published Go version" in failure for failure in failures), failures
         )
 
 
