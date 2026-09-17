@@ -70,7 +70,7 @@ targets, then build the native libraries (API 30 minimum for these adapters):
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
-cargo ndk -t arm64-v8a -t x86_64 -p 30 -o jacs-mobile/generated/jniLibs build -p jacs-mobile --release
+cargo ndk -t arm64-v8a -t x86_64 --platform 30 -o jacs-mobile/generated/jniLibs build -p jacs-mobile --release
 ```
 
 Add the generated Kotlin, `platforms/android/JacsKeystore.kt`, native `.so`
