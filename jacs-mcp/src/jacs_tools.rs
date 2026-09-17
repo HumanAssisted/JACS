@@ -1518,7 +1518,7 @@ impl JacsMcpServer {
                     content_hash: Some(hash),
                     jacs_document_id: doc_id,
                     message:
-                        "Content signed by the configured local agent; this is not human approval"
+                        "Content signed by the configured local agent; this is provenance, not human approval or proof that the content is true"
                             .to_string(),
                     error: None,
                 };
@@ -1552,6 +1552,12 @@ impl JacsMcpServer {
         Parameters(params): Parameters<VerifyDocumentParams>,
     ) -> String {
         if params.document.is_empty() {
+            tracing::warn!(
+                event = "mcp_verification_failed",
+                tool = "jacs_verify_document",
+                reason = "empty_document",
+                "MCP document verification rejected"
+            );
             let result = VerifyDocumentResult {
                 success: false,
                 valid: false,
@@ -1576,6 +1582,14 @@ impl JacsMcpServer {
         });
         match verification {
             Ok(report) => {
+                if !report.integrity_valid {
+                    tracing::warn!(
+                        event = "mcp_verification_failed",
+                        tool = "jacs_verify_document",
+                        reason = "integrity_check_failed",
+                        "MCP document verification failed"
+                    );
+                }
                 // Try to extract signer ID from the document
                 let signer_id = jacs::strict_json::parse_strict_json(&params.document)
                     .ok()
@@ -1591,7 +1605,7 @@ impl JacsMcpServer {
                     valid: report.integrity_valid,
                     signer_id,
                     message: if report.integrity_valid {
-                        "Document verified successfully".to_string()
+                        "Document integrity verified with the supplied key; identity, trust, authorization, human approval, truth, freshness and revocation are not established".to_string()
                     } else {
                         "Document signature verification failed".to_string()
                     },
@@ -1600,6 +1614,12 @@ impl JacsMcpServer {
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
             Err(e) => {
+                tracing::warn!(
+                    event = "mcp_verification_failed",
+                    tool = "jacs_verify_document",
+                    reason = "verification_rejected",
+                    "MCP document verification rejected"
+                );
                 let result = VerifyDocumentResult {
                     success: false,
                     valid: false,
@@ -3248,10 +3268,25 @@ impl ServerHandler for JacsMcpServer {
         let active = self.active_tools();
         let tool_allowed = active.iter().any(|t| t.name == request.name);
         if !tool_allowed {
+            // Never log arbitrary client strings or arguments: an unknown tool
+            // name can contain content or credentials just like its arguments.
+            // RMCP also logs returned JSON-RPC errors at WARN, so the wire error
+            // must use the same safe name as our own diagnostic.
+            let known_tool = Self::tools()
+                .into_iter()
+                .find(|tool| tool.name == request.name)
+                .map(|tool| tool.name);
+            tracing::warn!(
+                event = "mcp_tool_scope_denied",
+                tool = known_tool.as_deref().unwrap_or("unknown"),
+                profile = self.profile().as_str(),
+                reason = "tool_not_in_active_scope",
+                "MCP tool call rejected before dispatch"
+            );
             return Err(rmcp::model::ErrorData::invalid_params(
                 format!(
-                    "Tool '{}' is not available in the '{}' profile. Local JSON/Agreement signing requires an explicitly loaded signed config; key/trust administration and file tools are outside that scope.",
-                    request.name,
+                    "Tool '{}' is not available in the '{}' profile. Use tools/list for the authorized inventory. Local signing requires an explicitly loaded signed config; file tools additionally require JACS_MCP_BASE_DIR at startup. Key/trust administration is unavailable.",
+                    known_tool.as_deref().unwrap_or("unknown"),
                     self.profile().as_str(),
                 ),
                 None,

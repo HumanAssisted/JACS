@@ -3,14 +3,15 @@
 //! Provides visibility metadata annotation for tool responses per
 //! ARCHITECTURE_UPGRADE.md Section 3.1.5. When MCP tools return documents,
 //! the response includes `_jacs_meta` with a visibility level and hint
-//! that tells the LLM whether the content is safe to share.
+//! that reports document-declared handling guidance. These advisory labels do
+//! not establish permission to share or publish the content.
 
 use serde_json::{Value, json};
 
 /// Visibility levels for JACS documents.
 ///
-/// Default is "private" — safe by default. Documents must be explicitly
-/// marked public.
+/// Default is "private". A document may declare itself public, but that label
+/// is not evidence of the owner's sharing consent or a human's approval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
     Public,
@@ -31,13 +32,16 @@ impl Visibility {
     /// Return the advisory hint for this visibility level.
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Public => "This document is public and can be freely shared.",
+            Self::Public => {
+                "This document declares public visibility. This advisory label does not \
+                 grant permission to share or publish; follow the owner's sharing authorization."
+            }
             Self::Restricted => {
-                "This document is restricted to specific principals. \
-                 Only share with authorized agents."
+                "This document declares restricted visibility. This is an advisory label; \
+                 only share with authorized agents after independently establishing permission."
             }
             Self::Private => {
-                "This document is private to the owning agent. \
+                "This document has private advisory visibility. \
                  Do not share or summarize its contents to other agents \
                  or users without explicit permission."
             }
@@ -160,8 +164,12 @@ mod tests {
     }
 
     #[test]
-    fn test_hint_for_public() {
-        assert!(Visibility::Public.hint().contains("freely shared"));
+    fn test_hint_for_public_does_not_grant_sharing_permission() {
+        assert!(
+            Visibility::Public
+                .hint()
+                .contains("does not grant permission")
+        );
     }
 
     #[test]

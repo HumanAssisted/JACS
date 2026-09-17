@@ -807,7 +807,8 @@ pub fn build_cli() -> Command {
                             "Security profile: 'verify-only' (default) or 'local-sign'. Local signing \
                              requires --config or JACS_CONFIG pointing to an existing signed config; \
                              it enables only offline JSON/Agreement signing as that local agent, not \
-                             human approval. File tools and key/trust administration remain unavailable. \
+                             human approval. File tools additionally require JACS_MCP_BASE_DIR at startup; \
+                             key/trust administration remains unavailable. \
                              When omitted, JACS_MCP_PROFILE is used before falling back to verify-only. \
                              Reserved 'trust-admin' and 'legacy-core' profiles refuse startup.",
                         ),
