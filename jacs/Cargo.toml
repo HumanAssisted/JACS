@@ -21,6 +21,8 @@ include = [
     "examples/a2a_complete_example.rs",
     "examples/a2a_simple_example.rs",
     "examples/email_signing.rs",
+    "examples/a2a_v1_peer.rs",
+    "examples/support/a2a_v1.rs",
     "Cargo.toml",
     "README.md",
     "LICENSE",
@@ -285,3 +287,7 @@ required-features = ["a2a"]
 
 [package.metadata.dev-requirements]
 cargo-audit = "0.22.1"
+
+[[example]]
+name = "a2a_v1_peer"
+required-features = ["a2a"]

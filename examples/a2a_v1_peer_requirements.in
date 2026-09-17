@@ -1,0 +1,3 @@
+a2a-sdk[http-server,signing] @ git+https://github.com/a2aproject/a2a-python@2d4d3048b245d2af854bad804f0e722ea9febc08
+cryptography
+uvicorn
