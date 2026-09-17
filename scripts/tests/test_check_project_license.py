@@ -25,6 +25,7 @@ CONTRACT_FILES = (
     "jacs/Cargo.toml",
     "jacs/LICENSE",
     "jacs-core/Cargo.toml",
+    "jacs-mobile/Cargo.toml",
     "jacs-media/Cargo.toml",
     "jacs-wasm/Cargo.toml",
     "binding-core/Cargo.toml",

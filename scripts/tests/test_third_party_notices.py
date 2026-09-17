@@ -23,6 +23,7 @@ STATIC_SUFFIX = "FULL LICENSE TEXTS\n\nLICENSE BODY MUST REMAIN BYTE-EXACT\n"
 REQUIRED_CRATE_DIRS = (
     "jacs",
     "jacs-core",
+    "jacs-mobile",
     "jacs-media",
     "binding-core",
     "jacs-mcp",

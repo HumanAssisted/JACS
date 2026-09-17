@@ -228,9 +228,30 @@ Keychain/Secure Enclave classes. Set the app's Face ID usage description.
 The script refuses to overwrite an existing XCFramework; move an old output
 aside before rebuilding. No artifact is uploaded or published externally.
 
-These packaging scripts have syntax and prerequisite-failure checks only in
-this environment. AAR/XCFramework assembly and native adapter compilation
-require the SDK-equipped builders above and remain release validation steps.
+The Android adapter and generated Kotlin compile with Kotlin 2.0.21 against
+Android 15/API 35 classes and the actual JNA Android AAR. The independent host
+test verifies 32 DER-to-P1363 conversions with Java's signature verifier and
+rejects five malformed DER inputs. Reproduce this source check after generation:
+
+```sh
+python3 jacs-mobile/scripts/check-android-source.py
+```
+
+The command downloads checksum-pinned open-source Maven artifacts (about
+240 MB); it neither installs Android SDK tools nor accepts SDK license terms.
+It uses published AOSP API classes by default. Supply
+`--api-jar "$ANDROID_HOME/platforms/android-35/android.jar"` to check against an
+independently installed SDK's public API jar instead. Output is
+`generated/android-typecheck.jar`; this is a compiled source test, not an AAR.
+
+On an Xcode-equipped macOS machine, run
+`bash jacs-mobile/scripts/check-ios-source.sh` after generation to compile both
+Swift modules against the simulator SDK. The `mobile-bindings.yml` workflow
+adds Android and macOS source gates; its manual iOS package option also assembles
+the XCFramework/Swift package. That new macOS gate has not been run from this
+Linux environment. AAR/XCFramework assembly and device biometric tests remain
+release validation steps; SDK/device runtime behavior is not established by
+the successful Android source compilation.
 
 ## Verification scope
 

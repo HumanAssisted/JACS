@@ -6,10 +6,11 @@
 //!   fixture are denied by default and remain available only through explicit
 //!   compatibility/migration mode;
 //! * the native signature schema enum stays exactly
-//!   `["ring-Ed25519", "pq2025"]` — the jacs-core lowercase `"ed25519"`
+//!   `["ring-Ed25519", "pq2025", "es256"]` — the jacs-core lowercase `"ed25519"`
 //!   wire form remains an intentional, pinned gap;
-//! * ES256 is never creatable, schema-valid, or verifiable as a NATIVE
-//!   signing algorithm (it exists only as the ecosystem compatibility key);
+//! * native key creation still rejects ES256; portable/platform ES256 keys
+//!   verify natively only with the canonical `"es256"` wire spelling and the
+//!   explicitly trusted public key; uppercase/ring aliases remain schema-invalid;
 //! * native documents never carry a `jacsProjections` field, and the
 //!   targeted content exporters (AP2 mandate, Agreement-v2-as-VC) never
 //!   mutate the native document.
@@ -33,7 +34,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The one and only native signature algorithm enum, pinned.
-const NATIVE_SIGNING_ALGORITHMS: [&str; 2] = ["ring-Ed25519", "pq2025"];
+const NATIVE_SIGNING_ALGORITHMS: [&str; 3] = ["ring-Ed25519", "pq2025", "es256"];
 
 /// The jacs crate's copy of the signature component schema (the jacs-core
 /// copy is compared against it in `legacy_lowercase_ed25519_wire_form_is_pinned`).
@@ -331,7 +332,7 @@ fn legacy_lowercase_ed25519_wire_form_is_pinned() {
     assert_eq!(
         jacs_schema["properties"]["signingAlgorithm"]["enum"],
         json!(NATIVE_SIGNING_ALGORITHMS),
-        "native signature schema enum must stay exactly ring-Ed25519 | pq2025"
+        "native verification schema enum must stay exactly ring-Ed25519 | pq2025 | es256"
     );
     let core_schema_str = jacs_core::schema::DEFAULT_SCHEMA_STRINGS
         .get("schemas/components/signature/v1/signature.schema.json")
@@ -344,7 +345,8 @@ fn legacy_lowercase_ed25519_wire_form_is_pinned() {
 }
 
 // ---------------------------------------------------------------------------
-// 4 — ES256 is not available for NEW native signing identities, at any layer.
+// 4 — the legacy native key-creation API still excludes ES256. Portable
+// CoreAgent and platform signers own ES256 creation.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -469,7 +471,7 @@ fn create_agent_and_load_honors_configured_ed25519() {
 }
 
 // ---------------------------------------------------------------------------
-// 5 — the native schema never accepts an ES256 signingAlgorithm.
+// 5 — native ES256 verification requires the canonical lowercase spelling.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -527,7 +529,7 @@ fn native_verify_rejects_non_native_signing_algorithm() {
     // for an ecosystem algorithm before any signature bytes are examined.
     let doc = json!({
         "jacsSignature": {
-            "signingAlgorithm": "ES256",
+            "signingAlgorithm": "ES384",
             "signature": "AAAA",
             "fields": [],
         }
@@ -538,25 +540,25 @@ fn native_verify_rejects_non_native_signing_algorithm() {
         SigningAlgorithm::Pq2025,
         "jacsSignature",
     )
-    .expect_err("jacs-core must reject ES256");
+    .expect_err("jacs-core must reject ES384");
     assert!(
         matches!(err, CoreError::UnsupportedAlgorithm(_)),
         "expected CoreError::UnsupportedAlgorithm, got {err:?}"
     );
 
     // Wall (b): the jacs crate rejects a signed document whose
-    // signingAlgorithm was mutated to "ES256" with its own typed error —
+    // signingAlgorithm was mutated to "ES384" with its own typed error —
     // DocumentMalformed from the schema wall, naming the field.
     let (agent, _info) = SimpleAgent::ephemeral(None).expect("ephemeral agent");
     let signed = agent
         .sign_message(&json!({ "guardrail": "verify" }))
         .expect("sign");
     let mut mutated: Value = serde_json::from_str(&signed.raw).expect("signed doc parses");
-    mutated["jacsSignature"]["signingAlgorithm"] = json!("ES256");
+    mutated["jacsSignature"]["signingAlgorithm"] = json!("ES384");
 
     let err = agent
         .verify(&mutated.to_string())
-        .expect_err("native verification of an ES256-labelled document must fail");
+        .expect_err("native verification of an ES384-labelled document must fail");
     assert!(
         matches!(err, JacsError::DocumentMalformed { .. }),
         "expected JacsError::DocumentMalformed, got {err:?}"
@@ -568,97 +570,115 @@ fn native_verify_rejects_non_native_signing_algorithm() {
 }
 
 // ---------------------------------------------------------------------------
-// 7 — native verification NEVER dispatches to ES256: even a genuinely valid
-// ES256 signature over the exact canonical payload is rejected.
+// 7 — portable ES256 signatures verify natively with an explicitly trusted key.
+// Wire aliases, wrong algorithm expectations, wrong keys and tampering fail.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn native_verify_never_dispatches_to_es256() {
+fn native_es256_verification_preserves_algorithm_key_and_schema_boundaries() {
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD;
+    use jacs_core::{DetachedSigner, P256Signer};
 
     let (agent, _info) = SimpleAgent::ephemeral(None).expect("ephemeral agent");
     let signed = agent
         .sign_message(&json!({ "guardrail": "dispatch" }))
         .expect("sign");
     let mut doc: Value = serde_json::from_str(&signed.raw).expect("signed doc parses");
+    let signer = P256Signer::generate().expect("portable ES256 signer");
+    let public_key = signer.public_key().to_vec();
 
-    // Relabel the signature as ES256 and OVER-SIGN it for real: produce a
-    // valid ES256 signature (compat-style P-256 key) over the exact v2
-    // canonical payload a dispatching verifier would reconstruct from the
-    // mutated metadata.
-    doc["jacsSignature"]["signingAlgorithm"] = json!("ES256");
+    // Preserve a complete native document while replacing its signature with
+    // portable ES256. Native metadata pins its established fingerprint profile.
+    doc["jacsSignature"]["signingAlgorithm"] = json!("es256");
+    doc["jacsSignature"]["publicKeyHash"] = json!(jacs::crypt::hash::hash_public_key(&public_key));
     let fields: Vec<String> = doc["jacsSignature"]["fields"]
         .as_array()
         .expect("signed fields")
         .iter()
-        .filter_map(|v| v.as_str().map(str::to_string))
+        .map(|field| field.as_str().expect("field name").to_owned())
         .collect();
-    let canonical = jacs_core::verify::build_signature_content_v2(
-        &doc,
-        &fields,
-        "jacsSignature",
-        &doc["jacsSignature"],
-    )
-    .expect("canonical payload for the mutated metadata");
-
-    // `jacs::crypt::es256::generate_es256_keypair` is pub(crate) (issue
-    // 014): build the compat-style P-256 key directly from the same
-    // RustCrypto stack the module uses — this guardrail only needs *a*
-    // genuinely valid ES256 signature, not JACS's keygen.
-    use p256::pkcs8::EncodePublicKey as _;
-    let signing_key = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
-    let verifying_key = p256::ecdsa::VerifyingKey::from(&signing_key);
-    let public_spki_pem = verifying_key
-        .to_public_key_pem(p256::pkcs8::LineEnding::LF)
-        .expect("SPKI PEM encodes");
-    let public_sec1_uncompressed = verifying_key.to_encoded_point(false).as_bytes().to_vec();
-    let es256_signature: Vec<u8> = {
-        use p256::ecdsa::signature::Signer;
-        let sig: p256::ecdsa::Signature = signing_key.sign(canonical.as_bytes());
-        sig.to_bytes().to_vec()
+    let resign = |document: &mut Value| {
+        let canonical = jacs_core::verify::build_signature_content_v2(
+            document,
+            &fields,
+            "jacsSignature",
+            &document["jacsSignature"],
+        )
+        .expect("canonical payload");
+        let signature = signer.sign(canonical.as_bytes()).expect("ES256 signature");
+        P256Signer::verify(&public_key, canonical.as_bytes(), &signature)
+            .expect("valid fixture signature");
+        document["jacsSignature"]["signature"] = json!(STANDARD.encode(signature));
+        document["jacsSha256"] =
+            json!(jacs_core::document_hash_v1(document).expect("document hash"));
     };
-    // Sanity: this IS a valid ES256 signature over the payload — the
-    // rejection below cannot be blamed on bad signature bytes.
-    jacs::crypt::es256::verify_es256_jose(&public_spki_pem, canonical.as_bytes(), &es256_signature)
-        .expect("the crafted ES256 signature is genuinely valid");
-    doc["jacsSignature"]["signature"] = json!(STANDARD.encode(&es256_signature));
+    resign(&mut doc);
 
-    // Keep the document internally consistent (fresh jacsSha256) so the
-    // hash wall cannot mask the algorithm wall.
-    let mut hash_input = doc.clone();
-    hash_input.as_object_mut().unwrap().remove("jacsSha256");
-    doc["jacsSha256"] = json!(jacs::crypt::hash::hash_string(
-        &jacs::protocol::canonicalize_json(&hash_input)
-    ));
-
-    // Native verification rejects at the schema wall — before any ES256
-    // code could examine (let alone accept) the valid signature.
-    let err = agent
-        .verify(&doc.to_string())
-        .expect_err("a valid ES256 signature must still be rejected natively");
+    let native = agent
+        .verify_with_key(&doc.to_string(), public_key.clone())
+        .expect("native ES256 verification");
+    assert!(native.valid, "native ES256 errors: {:?}", native.errors);
+    let portable = CoreAgent::verify_with_key(&doc, &public_key, SigningAlgorithm::Es256)
+        .expect("portable ES256 verification");
     assert!(
-        matches!(err, JacsError::DocumentMalformed { .. }),
-        "expected JacsError::DocumentMalformed, got {err:?}"
-    );
-    assert!(
-        err.to_string().contains("signingAlgorithm"),
-        "rejection happens at the signingAlgorithm wall: {err}"
+        portable.valid,
+        "portable ES256 errors: {:?}",
+        portable.errors
     );
 
-    // Second, independent wall: even if the schema layer were bypassed,
-    // jacs-core dispatch refuses the algorithm before touching bytes.
-    let err = jacs_core::verify::verify_document(
-        &doc,
-        &public_sec1_uncompressed,
-        SigningAlgorithm::Pq2025,
-        "jacsSignature",
-    )
-    .expect_err("jacs-core dispatch must also refuse ES256");
+    let mismatch = CoreAgent::verify_with_key(&doc, &public_key, SigningAlgorithm::Pq2025)
+        .expect_err("an ES256 document must not satisfy a PQ algorithm expectation");
     assert!(
-        matches!(err, CoreError::UnsupportedAlgorithm(_)),
-        "expected CoreError::UnsupportedAlgorithm, got {err:?}"
+        matches!(mismatch, CoreError::AlgorithmMismatch { .. }),
+        "typed algorithm mismatch: {mismatch:?}"
     );
+
+    let wrong_key = P256Signer::generate()
+        .expect("different signer")
+        .public_key()
+        .to_vec();
+    let wrong_key_result = agent
+        .verify_with_key(&doc.to_string(), wrong_key)
+        .expect("non-strict verifier reports the key failure");
+    assert!(!wrong_key_result.valid);
+    assert_eq!(wrong_key_result.data, Value::Null);
+    assert!(
+        wrong_key_result
+            .errors
+            .iter()
+            .any(|error| error.contains("Incorrect public key"))
+    );
+
+    let mut tampered = doc.clone();
+    tampered["content"]["guardrail"] = json!("tampered");
+    // Recompute the public checksum so signature verification itself must reject.
+    tampered["jacsSha256"] = json!(jacs_core::document_hash_v1(&tampered).expect("tampered hash"));
+    let tamper_result = agent
+        .verify_with_key(&tampered.to_string(), public_key.clone())
+        .expect("non-strict verifier reports signature failure");
+    assert!(!tamper_result.valid);
+    assert_eq!(tamper_result.data, Value::Null);
+    assert!(!tamper_result.errors.is_empty());
+
+    // Uppercase ES256 is a recognized portable alias but not the native wire
+    // spelling. Re-sign correctly so the native rejection proves the schema wall.
+    let mut alias = doc.clone();
+    alias["jacsSignature"]["signingAlgorithm"] = json!("ES256");
+    resign(&mut alias);
+    assert!(
+        CoreAgent::verify_with_key(&alias, &public_key, SigningAlgorithm::Es256)
+            .expect("portable alias verification")
+            .valid
+    );
+    let alias_error = agent
+        .verify(&alias.to_string())
+        .expect_err("native ES256 alias must fail schema validation");
+    assert!(
+        matches!(alias_error, JacsError::DocumentMalformed { .. }),
+        "typed schema failure: {alias_error:?}"
+    );
+    assert!(alias_error.to_string().contains("signingAlgorithm"));
 }
 
 // ---------------------------------------------------------------------------
