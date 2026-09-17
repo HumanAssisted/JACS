@@ -42,7 +42,7 @@ function boundWellKnownPairs(options = {}) {
       capabilities: {
         signing: true,
         verification: true,
-        verificationAlgorithms: ['ring-Ed25519', 'pq2025'],
+        verificationAlgorithms: ['ring-Ed25519', 'pq2025', 'es256'],
         postQuantum: keyAlgorithm === 'pq2025',
       },
       schemas: {
@@ -61,7 +61,7 @@ function boundWellKnownPairs(options = {}) {
       capabilities: {
         documentSigning: { signingAlgorithm: keyAlgorithm },
         documentVerification: {
-          algorithms: ['ring-Ed25519', 'pq2025'],
+          algorithms: ['ring-Ed25519', 'pq2025', 'es256'],
           offlineCapable: true,
         },
         postQuantumCrypto: { algorithms: ['pq2025'] },

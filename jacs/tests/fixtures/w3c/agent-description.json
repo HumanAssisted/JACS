@@ -28,7 +28,8 @@
     "publicKeyHash": "7872a5e1df5011294953517e04a9f2d068e3ddba0204ec33ad241d7fe378989b",
     "verificationAlgorithms": [
       "ring-Ed25519",
-      "pq2025"
+      "pq2025",
+      "es256"
     ]
   },
   "name": "agent-ed25519",
