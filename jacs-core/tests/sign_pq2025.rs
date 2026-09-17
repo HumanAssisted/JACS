@@ -102,14 +102,19 @@ fn pq2025_signer_malformed_signature_length_rejected() {
 // =========================================================================
 // P2 Task 001 — native PQ signing policy / algorithm wall.
 //
-// ES256 exists in JACS only as an ecosystem compatibility key; it is never
-// a native signing algorithm. These tests pin the parser and verify layers
-// of that wall (the schema layer is pinned in tests/schema.rs).
+// ES256 is a portable signing algorithm. Algorithm substitution must still
+// fail before signature bytes are interpreted.
 // =========================================================================
 
 #[test]
-fn signing_algorithm_parser_does_not_accept_es256() {
-    for rejected in ["es256", "ES256", "ring-ES256", "ecdsa", "P-256"] {
+fn signing_algorithm_parser_accepts_es256_and_rejects_ambiguous_aliases() {
+    for accepted in ["es256", "ES256"] {
+        assert_eq!(
+            SigningAlgorithm::from_wire_str(accepted),
+            Some(SigningAlgorithm::Es256)
+        );
+    }
+    for rejected in ["ring-ES256", "ecdsa", "P-256"] {
         assert!(
             SigningAlgorithm::from_wire_str(rejected).is_none(),
             "'{rejected}' must not parse as a native signing algorithm"
@@ -131,11 +136,8 @@ fn signing_algorithm_parser_does_not_accept_es256() {
 }
 
 #[test]
-fn core_verify_rejects_es256_with_unsupported_algorithm() {
-    // Layer pin: a native document claiming an ecosystem algorithm fails in
-    // jacs-core with UnsupportedAlgorithm (the unrecognized-algorithm
-    // variant) BEFORE any signature bytes are examined — the ES256 verifier
-    // is unreachable from native verification dispatch.
+fn core_verify_rejects_es256_pq_algorithm_substitution() {
+    // An ES256 document cannot verify under a caller-pinned post-quantum key.
     let doc = serde_json::json!({
         "jacsSignature": {
             "signingAlgorithm": "ES256",
@@ -151,8 +153,8 @@ fn core_verify_rejects_es256_with_unsupported_algorithm() {
     )
     .expect_err("ES256 must be rejected");
     assert!(
-        matches!(err, CoreError::UnsupportedAlgorithm(_)),
-        "must fail with UnsupportedAlgorithm, got {err:?}"
+        matches!(err, CoreError::AlgorithmMismatch { .. }),
+        "must fail with AlgorithmMismatch, got {err:?}"
     );
 }
 

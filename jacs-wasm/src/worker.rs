@@ -34,7 +34,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 
-use crate::agent_handle::{create_ephemeral, import_encrypted_agent};
+use crate::agent_handle::{
+    create_ephemeral, generate_transfer_code, import_encrypted_agent,
+    import_encrypted_agent_pinned, reencrypt_transferred_agent,
+};
 
 // ---------------------------------------------------------------------------
 // Worker-local handle registry. `RefCell` (not `Mutex`) because every
@@ -119,7 +122,7 @@ fn reply_to_js_value(reply: &WorkerReply) -> Result<JsValue, JsError> {
 /// Error payload returned in `reply.error`. Same `{ code, message }`
 /// wire contract as `CoreError` so JS callers can use a single
 /// dispatcher across the synchronous and worker APIs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WorkerError {
     code: String,
     message: String,
@@ -143,11 +146,23 @@ impl WorkerError {
         }
     }
 
-    /// Lift the JSON body of a JS error string written by
-    /// `map_core_err` into a `WorkerError`. JsErrors are opaque on
-    /// non-wasm targets and even on wasm we can't unwrap their JSON
-    /// payload directly, so we instead route every call through
-    /// helpers below that produce `CoreError` ahead of time.
+    /// Preserve the core error discriminator across the worker boundary.
+    fn from_js(err: JsError) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let value: JsValue = err.into();
+            if let Ok(message) = js_sys::Reflect::get(&value, &JsValue::from_str("message"))
+                && let Some(message) = message.as_string()
+                && let Ok(error) = serde_json::from_str(&message)
+            {
+                return error;
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = err;
+        Self::new("WorkerOperationFailed", "WASM operation failed")
+    }
+
     fn malformed_input(message: impl Into<String>) -> Self {
         Self::new("MalformedDocument", message)
     }
@@ -175,6 +190,21 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
         "signMessage" => op_sign_message(req.args),
         "verify" => op_verify(req.args),
         "importEncryptedAgent" => op_import_encrypted_agent(req.args),
+        "importEncryptedAgentPinned" => op_import_encrypted_agent_pinned(req.args),
+        "reencryptTransferredAgent" => op_reencrypt_transferred_agent(req.args),
+        "generateTransferCode" => generate_transfer_code()
+            .map(|code| json!({ "code": code }))
+            .map_err(WorkerError::from_js),
+        "signString"
+        | "buildRequestAuthHeader"
+        | "updateAgent"
+        | "prepareAgentUpdate"
+        | "commitAgentUpdate"
+        | "exportAgent"
+        | "exportEncryptedAgent"
+        | "getPublicKeyPem"
+        | "getPublicKeyPemBase64"
+        | "getPublicKeyHash" => op_agent_method(&req.op, req.args),
         "clearSecrets" => op_clear_secrets(req.args),
         "dropHandle" => op_drop_handle(req.args),
         other => Err(WorkerError::unsupported_op(other)),
@@ -218,7 +248,7 @@ fn op_create_ephemeral(args: Value) -> Result<Value, WorkerError> {
     // here to produce a structured `CoreError` for the failure path.
     let _algo = jacs_core::SigningAlgorithm::from_wire_str(algorithm).ok_or_else(|| {
         WorkerError::from_core(CoreError::UnsupportedAlgorithm(format!(
-            "unknown signing algorithm '{}' (expected one of: ed25519, pq2025)",
+            "unknown signing algorithm '{}' (expected one of: ed25519, pq2025, es256)",
             algorithm
         )))
     })?;
@@ -291,6 +321,78 @@ fn op_import_encrypted_agent(args: Value) -> Result<Value, WorkerError> {
         "publicKeyBase64": public_key_base64,
         "algorithm": algorithm,
     }))
+}
+
+fn op_import_encrypted_agent_pinned(args: Value) -> Result<Value, WorkerError> {
+    let handle = import_encrypted_agent_pinned(
+        require_str(&args, "materialJson")?,
+        require_str(&args, "password")?.to_string(),
+        require_str(&args, "expectedAgentId")?,
+        require_str(&args, "expectedPublicKeyBase64")?,
+        require_str(&args, "expectedAlgorithm")?,
+    )
+    .map_err(WorkerError::from_js)?;
+    let public_key_base64 = handle
+        .get_public_key_base64()
+        .map_err(WorkerError::from_js)?;
+    let algorithm = handle.algorithm().map_err(WorkerError::from_js)?;
+    let handle_id = store_handle(handle);
+    Ok(
+        json!({ "handleId": handle_id, "publicKeyBase64": public_key_base64, "algorithm": algorithm }),
+    )
+}
+
+fn op_reencrypt_transferred_agent(args: Value) -> Result<Value, WorkerError> {
+    let material = reencrypt_transferred_agent(
+        require_str(&args, "materialJson")?,
+        require_str(&args, "code")?.to_string(),
+        require_str(&args, "expectedAgentId")?,
+        require_str(&args, "expectedPublicKeyBase64")?,
+        require_str(&args, "expectedAlgorithm")?,
+        require_str(&args, "storagePassword")?.to_string(),
+    )
+    .map_err(WorkerError::from_js)?;
+    Ok(json!({ "materialJson": material }))
+}
+
+fn op_agent_method(op: &str, args: Value) -> Result<Value, WorkerError> {
+    let handle_id = require_u32(&args, "handleId")?;
+    with_handle(handle_id, |handle| {
+        let value = match op {
+            "signString" => handle.sign_string(require_str(&args, "message")?),
+            "buildRequestAuthHeader" => {
+                let body: Vec<u8> = serde_json::from_value(
+                    args.get("body")
+                        .cloned()
+                        .ok_or_else(|| WorkerError::malformed_input("missing 'body' bytes"))?,
+                )
+                .map_err(|_| WorkerError::malformed_input("'body' must be an array of bytes"))?;
+                handle.build_request_auth_header(
+                    require_str(&args, "method")?,
+                    require_str(&args, "url")?,
+                    &body,
+                    require_str(&args, "audience")?,
+                )
+            }
+            "updateAgent" => handle.update_agent_json(require_str(&args, "agentJson")?),
+            "prepareAgentUpdate" => {
+                handle.prepare_agent_update_json(require_str(&args, "updatesJson")?)
+            }
+            "commitAgentUpdate" => {
+                handle.commit_agent_update_json(require_str(&args, "preparedJson")?)
+            }
+            "exportAgent" => handle.export_agent(),
+            "exportEncryptedAgent" => {
+                handle.export_encrypted_agent(require_str(&args, "password")?.to_string())
+            }
+            "getPublicKeyHash" => handle.get_public_key_hash(),
+            "getPublicKeyPem" => handle.get_public_key_pem(),
+            "getPublicKeyPemBase64" => handle.get_public_key_pem_base64(),
+            other => return Err(WorkerError::unsupported_op(other)),
+        }
+        .map_err(WorkerError::from_js)?;
+        Ok(json!({ "value": value }))
+    })
 }
 
 fn op_clear_secrets(args: Value) -> Result<Value, WorkerError> {

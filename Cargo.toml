@@ -1,9 +1,13 @@
 [workspace]
+# The portable primitive is the default build. Legacy native integrations stay
+# explicitly selectable during migration; none is a dependency of these crates.
+default-members = ["jacs-core", "jacs-wasm", "jacs-mobile"]
 members = [
     "jacs",
     "jacs-cli",
     "jacs-core",
     "jacs-wasm",
+    "jacs-mobile",
     "jacs-duckdb",
     "jacs-postgresql",
     "jacs-redb",

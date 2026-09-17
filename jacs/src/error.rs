@@ -703,7 +703,7 @@ impl From<jacs_core::CoreError> for JacsError {
             CE::InvalidPassword | CE::InvalidPasswordFormat(_) => {
                 JacsError::KeyDecryptionFailed { reason: msg }
             }
-            CE::Locked => JacsError::CryptoError(msg),
+            CE::Locked | CE::NotExportable | CE::SignerUnavailable(_) => JacsError::CryptoError(msg),
             CE::AlgorithmMismatch { .. } | CE::UnsupportedAlgorithm(_) => {
                 JacsError::CryptoError(msg)
             }

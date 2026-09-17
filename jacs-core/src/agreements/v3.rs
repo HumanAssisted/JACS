@@ -84,9 +84,8 @@ pub enum AuthorizationRequirementV3 {
     AgentPlusHumanSeal,
 }
 
-/// Closed portable algorithm vocabulary for Agreement v3 evidence. ES256 is
-/// verification-only for the native CoreAgent today, but is required for OS
-/// broker and managed-authority evidence produced by mobile platforms.
+/// Closed portable algorithm vocabulary for Agreement v3 evidence, including
+/// ES256 for OS broker and managed-authority evidence from mobile platforms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgreementAlgorithmV3 {
@@ -110,6 +109,7 @@ impl From<SigningAlgorithm> for AgreementAlgorithmV3 {
         match value {
             SigningAlgorithm::Ed25519 => Self::Ed25519,
             SigningAlgorithm::Pq2025 => Self::Pq2025,
+            SigningAlgorithm::Es256 => Self::Es256,
         }
     }
 }

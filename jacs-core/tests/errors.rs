@@ -66,6 +66,8 @@ fn every_variant_has_distinct_code_and_serializes_cleanly() {
         CoreError::InvalidPassword,
         CoreError::InvalidPasswordFormat("empty".into()),
         CoreError::Locked,
+        CoreError::NotExportable,
+        CoreError::SignerUnavailable("callback unavailable".into()),
         CoreError::AlgorithmMismatch {
             expected: "ed25519".into(),
             actual: "pq2025".into(),

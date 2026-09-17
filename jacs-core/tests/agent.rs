@@ -176,8 +176,9 @@ fn core_agent_from_encrypted_material_correct_password_unlocks() {
         algorithm: SigningAlgorithm::Ed25519,
     };
 
-    let agent = CoreAgent::from_encrypted_material(material, UnlockSecret::Password(password))
-        .expect("unlock with correct password");
+    let agent =
+        CoreAgent::from_legacy_encrypted_material(material, UnlockSecret::Password(password))
+            .expect("unlock with correct password");
 
     assert_eq!(agent.algorithm(), SigningAlgorithm::Ed25519);
     assert_eq!(agent.public_key(), pk.as_slice());
@@ -202,8 +203,9 @@ fn core_agent_raw_private_key_unlock_works() {
     };
 
     let secret = SecretBox::new(Box::new(pkcs8));
-    let agent = CoreAgent::from_encrypted_material(material, UnlockSecret::RawPrivateKey(secret))
-        .expect("unlock with raw private key");
+    let agent =
+        CoreAgent::from_legacy_encrypted_material(material, UnlockSecret::RawPrivateKey(secret))
+            .expect("unlock with raw private key");
 
     assert!(agent.is_unlocked());
     assert_eq!(agent.public_key(), pk.as_slice());

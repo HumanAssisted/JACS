@@ -18,7 +18,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type Algorithm = "ed25519" | "pq2025";
+export type Algorithm = "ed25519" | "pq2025" | "es256";
 
 export interface JacsWorkerError {
   code: string;
@@ -38,8 +38,6 @@ interface WorkerReply {
   error?: JacsWorkerError;
 }
 
-const DEFAULT_WORKER_URL = new URL("./jacs-worker.js", import.meta.url);
-
 let nextRequestId = 1;
 const pending: Map<number, PendingCall> = new Map();
 let worker: Worker | null = null;
@@ -55,8 +53,11 @@ function failAllPending(error: JacsWorkerError): void {
 /** Open (or reuse) the shared worker. */
 function ensureWorker(workerUrl?: URL | string): Worker {
   if (worker) return worker;
-  const url = workerUrl ?? DEFAULT_WORKER_URL;
-  const w = new Worker(url, { type: "module" });
+  // Keep the literal URL adjacent to the Worker constructor so Vite/Rollup
+  // can build the worker's imports and WASM asset as a separate entry point.
+  const w = workerUrl
+    ? new Worker(workerUrl, { type: "module" })
+    : new Worker(new URL("./jacs-worker.js", import.meta.url), { type: "module" });
   w.addEventListener("message", (event: MessageEvent<WorkerReply>) => {
     const reply = event.data;
     if (!reply || typeof reply.id !== "number") return;
@@ -153,6 +154,80 @@ export class WorkerAgentHandle {
     return result.signedJson;
   }
 
+  async signString(message: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("signString", {
+      handleId: this.handleId, message,
+    });
+    return result.value;
+  }
+
+  async buildRequestAuthHeader(
+    method: string, url: string, body: Uint8Array, audience: string,
+  ): Promise<string> {
+    const result = await dispatch<{ value: string }>("buildRequestAuthHeader", {
+      handleId: this.handleId, method, url, body: Array.from(body), audience,
+    });
+    return result.value;
+  }
+
+  async getPublicKeyHash(): Promise<string> {
+    const result = await dispatch<{ value: string }>("getPublicKeyHash", {
+      handleId: this.handleId,
+    });
+    return result.value;
+  }
+
+  async getPublicKeyPem(): Promise<string> {
+    const result = await dispatch<{ value: string }>("getPublicKeyPem", {
+      handleId: this.handleId,
+    });
+    return result.value;
+  }
+
+  async getPublicKeyPemBase64(): Promise<string> {
+    const result = await dispatch<{ value: string }>("getPublicKeyPemBase64", {
+      handleId: this.handleId,
+    });
+    return result.value;
+  }
+
+  async exportAgent(): Promise<string> {
+    const result = await dispatch<{ value: string }>("exportAgent", {
+      handleId: this.handleId,
+    });
+    return result.value;
+  }
+
+  async updateAgentJson(agentJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("updateAgent", {
+      handleId: this.handleId, agentJson,
+    });
+    return result.value;
+  }
+
+  /** Sign an update while retaining the current version for request auth. */
+  async prepareAgentUpdateJson(updatesJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("prepareAgentUpdate", {
+      handleId: this.handleId, updatesJson,
+    });
+    return result.value;
+  }
+
+  /** Adopt the prepared successor after registration succeeds. */
+  async commitAgentUpdateJson(preparedJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("commitAgentUpdate", {
+      handleId: this.handleId, preparedJson,
+    });
+    return result.value;
+  }
+
+  async exportEncryptedAgent(password: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("exportEncryptedAgent", {
+      handleId: this.handleId, password,
+    });
+    return result.value;
+  }
+
   async verify(signedJson: string): Promise<string> {
     const result = await dispatch<{ outcomeJson: string }>("verify", {
       handleId: this.handleId,
@@ -177,7 +252,7 @@ export class WorkerAgentHandle {
 // ---------------------------------------------------------------------------
 
 export async function createEphemeralInWorker(
-  algorithm: Algorithm,
+  algorithm: Algorithm = "pq2025",
   options?: { workerUrl?: URL | string },
 ): Promise<WorkerAgentHandle> {
   const result = await dispatch<{
@@ -199,4 +274,45 @@ export async function importEncryptedAgentInWorker(
     algorithm: Algorithm;
   }>("importEncryptedAgent", { materialJson, password }, options?.workerUrl);
   return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+/** Import only after comparing pins obtained from a trusted key registry. */
+export async function importEncryptedAgentPinnedInWorker(
+  materialJson: string,
+  password: string,
+  expectedAgentId: string,
+  expectedPublicKeyBase64: string,
+  expectedAlgorithm: Algorithm,
+  options?: { workerUrl?: URL | string },
+): Promise<WorkerAgentHandle> {
+  const result = await dispatch<{
+    handleId: number; publicKeyBase64: string; algorithm: Algorithm;
+  }>("importEncryptedAgentPinned", {
+    materialJson, password, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
+  }, options?.workerUrl);
+  return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+export async function generateTransferCodeInWorker(
+  options?: { workerUrl?: URL | string },
+): Promise<string> {
+  const result = await dispatch<{ code: string }>("generateTransferCode", {}, options?.workerUrl);
+  return result.code;
+}
+
+/** Rewrap transferred material without retaining an unlocked worker handle. */
+export async function reencryptTransferredAgentInWorker(
+  materialJson: string,
+  code: string,
+  expectedAgentId: string,
+  expectedPublicKeyBase64: string,
+  expectedAlgorithm: Algorithm,
+  storagePassword: string,
+  options?: { workerUrl?: URL | string },
+): Promise<string> {
+  const result = await dispatch<{ materialJson: string }>("reencryptTransferredAgent", {
+    materialJson, code, expectedAgentId, expectedPublicKeyBase64,
+    expectedAlgorithm, storagePassword,
+  }, options?.workerUrl);
+  return result.materialJson;
 }

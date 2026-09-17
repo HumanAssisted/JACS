@@ -22,7 +22,8 @@ pub mod worker;
 
 pub use agent_handle::{
     CoreAgentHandle, create_agreement_json, create_ephemeral, create_verifier,
-    import_encrypted_agent, import_encrypted_agent_files,
+    generate_transfer_code, import_encrypted_agent, import_encrypted_agent_files,
+    import_encrypted_agent_pinned, reencrypt_transferred_agent,
 };
 
 // `local_store` (Task 017) — JS-facing free functions are exported under
@@ -78,7 +79,7 @@ pub use jacs_core::SigningAlgorithm;
 pub fn signing_algorithm_to_js(algorithm: &str) -> Result<JsValue, JsError> {
     let parsed = jacs_core::SigningAlgorithm::from_wire_str(algorithm).ok_or_else(|| {
         JsError::new(&format!(
-            "unsupported signing algorithm '{}' (expected one of: ed25519, pq2025)",
+            "unsupported signing algorithm '{}' (expected one of: ed25519, pq2025, es256)",
             algorithm
         ))
     })?;

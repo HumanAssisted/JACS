@@ -270,6 +270,27 @@ pub fn decrypt_v2_envelope(
     if first_non_ws != Some(b'{') {
         return Ok(None);
     }
+    let (envelope, salt, nonce, ciphertext) = parse_validated_v2_envelope(encrypted_data)?;
+    let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
+    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher = Aes256Gcm::new(cipher_key);
+    key.zeroize();
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
+        .map_err(|_| CoreError::InvalidPassword)?;
+    Ok(Some(plaintext))
+}
+
+/// Validate a V2 encrypted private-key envelope without deriving a key or decrypting.
+/// Device-link relays use this to reject plaintext and hostile work factors.
+/// Legacy binary envelopes are intentionally not eligible for new transfers.
+pub fn validate_encrypted_private_key(encrypted_data: &[u8]) -> Result<(), CoreError> {
+    parse_validated_v2_envelope(encrypted_data).map(|_| ())
+}
+
+type ParsedV2Envelope = (EncryptedPrivateKeyEnvelope, Vec<u8>, Vec<u8>, Vec<u8>);
+
+fn parse_validated_v2_envelope(encrypted_data: &[u8]) -> Result<ParsedV2Envelope, CoreError> {
     if encrypted_data.len() > MAX_V2_ENVELOPE_BYTES {
         return Err(CoreError::MalformedEnvelope(format!(
             "V2 envelope exceeds the {} byte limit",
@@ -329,14 +350,12 @@ pub fn decrypt_v2_envelope(
             MAX_V2_CIPHERTEXT_BYTES
         )));
     }
-    let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    key.zeroize();
-    let plaintext = cipher
-        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
-        .map_err(|_| CoreError::InvalidPassword)?;
-    Ok(Some(plaintext))
+    if ciphertext.len() < 16 {
+        return Err(CoreError::MalformedEnvelope(
+            "ciphertext is missing its authentication tag".into(),
+        ));
+    }
+    Ok((envelope, salt, nonce, ciphertext))
 }
 
 // =========================================================================

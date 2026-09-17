@@ -75,13 +75,13 @@ const bridge = await import(BRIDGE_URL);
 await (async function matched_reply_resolves() {
   // `createEphemeralInWorker` is async — start it, capture the request
   // the bridge posted, and reply with a matching id.
-  const promise = bridge.createEphemeralInWorker("ed25519");
+  const promise = bridge.createEphemeralInWorker();
   // Yield one microtask so the bridge can post the message.
   await Promise.resolve();
   assert.ok(lastWorker, "bridge must construct a Worker");
   const request = lastWorker.posted.at(-1);
   assert.equal(request.op, "createEphemeral");
-  assert.equal(request.args.algorithm, "ed25519");
+  assert.equal(request.args.algorithm, "pq2025");
   const id = request.id;
   // Reply with success.
   lastWorker.emitMessage({
@@ -90,12 +90,12 @@ await (async function matched_reply_resolves() {
     result: {
       handleId: 7,
       publicKeyBase64: "AAA=",
-      algorithm: "ed25519",
+      algorithm: "pq2025",
     },
   });
   const handle = await promise;
   assert.equal(handle.handleId, 7);
-  assert.equal(handle.algorithm, "ed25519");
+  assert.equal(handle.algorithm, "pq2025");
   // Clean up shared bridge state — terminateWorker drops the pending
   // table + nulls the singleton worker.
   bridge.terminateWorker();
@@ -154,6 +154,43 @@ await (async function worker_error_event_fails_all_pending() {
   });
   bridge.terminateWorker();
   console.log("worker-bridge.test: worker_error_event_fails_all_pending OK");
+})();
+
+await (async function pinned_transfer_and_rewrap_forward_trusted_pins() {
+  const promise = bridge.importEncryptedAgentPinnedInWorker(
+    "ciphertext", "six random transfer words go here", "registered-id", "trusted-key", "es256",
+  );
+  await Promise.resolve();
+  const request = lastWorker.posted.at(-1);
+  assert.equal(request.op, "importEncryptedAgentPinned");
+  assert.deepEqual(request.args, {
+    materialJson: "ciphertext", password: "six random transfer words go here",
+    expectedAgentId: "registered-id", expectedPublicKeyBase64: "trusted-key", expectedAlgorithm: "es256",
+  });
+  lastWorker.emitMessage({ id: request.id, ok: true, result: {
+    handleId: 8, publicKeyBase64: "trusted-key", algorithm: "es256",
+  } });
+  const handle = await promise;
+
+  const sign = handle.signString("HAI: café 🗝");
+  const signRequest = lastWorker.posted.at(-1);
+  assert.equal(signRequest.op, "signString");
+  assert.equal(signRequest.args.message, "HAI: café 🗝");
+  lastWorker.emitMessage({ id: signRequest.id, ok: true, result: { value: "signature" } });
+  assert.equal(await sign, "signature");
+
+  const rewrap = bridge.reencryptTransferredAgentInWorker(
+    "ciphertext", "transfer-code", "registered-id", "trusted-key", "es256", "local-secret",
+  );
+  const rewrapRequest = lastWorker.posted.at(-1);
+  assert.equal(rewrapRequest.op, "reencryptTransferredAgent");
+  assert.equal(rewrapRequest.args.expectedPublicKeyBase64, "trusted-key");
+  assert.equal(rewrapRequest.args.storagePassword, "local-secret");
+  lastWorker.emitMessage({ id: rewrapRequest.id, ok: false,
+    error: { code: "MalformedKey", message: "transfer key mismatch" } });
+  await assert.rejects(rewrap, (error) => error.code === "MalformedKey");
+  bridge.terminateWorker();
+  console.log("worker-bridge.test: pinned_transfer_and_rewrap_forward_trusted_pins OK");
 })();
 
 console.log("worker-bridge.test: PASS");

@@ -18,6 +18,9 @@ import __wbg_init, {
   createEphemeral as _createEphemeralRaw,
   createVerifier as _createVerifierRaw,
   importEncryptedAgent as _importEncryptedAgentRaw,
+  importEncryptedAgentPinned as _importEncryptedAgentPinnedRaw,
+  generateTransferCode as _generateTransferCodeRaw,
+  reencryptTransferredAgent as _reencryptTransferredAgentRaw,
   importEncryptedAgentFiles as _importEncryptedAgentFilesRaw,
   initJacsWasm as initJacsWasmInner,
   localStoreClearAll,
@@ -57,7 +60,7 @@ export async function initJacsWasm(
 }
 
 /** JS-facing algorithm tag. */
-export type Algorithm = "ed25519" | "pq2025";
+export type Algorithm = "ed25519" | "pq2025" | "es256";
 
 /**
  * Stable wire shape of every error thrown by `@jacs/wasm`. The `code`
@@ -95,9 +98,10 @@ export { CoreAgentHandle, createAgreementJson };
 // guarantee in PRD §3.1).
 // ---------------------------------------------------------------------------
 
-/** Generate a fresh ephemeral agent for the given algorithm. */
+/** Generate a fresh agent with ML-DSA-87 (pq2025) by default. Classical
+ * algorithms require an explicit compatibility choice; failures never fall back. */
 export async function createEphemeral(
-  algorithm: Algorithm,
+  algorithm: Algorithm = "pq2025",
 ): Promise<CoreAgentHandle> {
   await initJacsWasm();
   return _createEphemeralRaw(algorithm);
@@ -113,10 +117,49 @@ export async function importEncryptedAgent(
   return _importEncryptedAgentRaw(materialJson, password);
 }
 
+/** Generate a transfer secret on the sending device. Never send this code
+ * to the relay or derive it from user-selected words. */
+export async function generateTransferCode(): Promise<string> {
+  await initJacsWasm();
+  return _generateTransferCodeRaw();
+}
+
+/** Verify independently trusted identity/key/algorithm pins before unlocking
+ * a received transfer. Pins must come from an authenticated key registry. */
+export async function importEncryptedAgentPinned(
+  materialJson: string,
+  password: string,
+  expectedAgentId: string,
+  expectedPublicKeyBase64: string,
+  expectedAlgorithm: Algorithm,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _importEncryptedAgentPinnedRaw(
+    materialJson, password, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
+  );
+}
+
+/** Validate, unlock, and immediately rewrap a transfer using a fresh local
+ * secret (password or encoded passkey PRF output), clearing the temporary key. */
+export async function reencryptTransferredAgent(
+  materialJson: string,
+  code: string,
+  expectedAgentId: string,
+  expectedPublicKeyBase64: string,
+  expectedAlgorithm: Algorithm,
+  storagePassword: string,
+): Promise<string> {
+  await initJacsWasm();
+  return _reencryptTransferredAgentRaw(
+    materialJson, code, expectedAgentId, expectedPublicKeyBase64,
+    expectedAlgorithm, storagePassword,
+  );
+}
+
 /**
  * Import an encrypted agent from four separate file-shaped buffers
  * (browser file pickers). The algorithm is derived from
- * `publicKeyBytes.length` (32 → ed25519, otherwise → pq2025).
+ * `publicKeyBytes.length` (32 → ed25519, 65 → es256, 2592 → pq2025).
  *
  * PRD §4.3 declares the surface as `(files, password)` — no positional
  * algorithm parameter — so the algorithm is inferred from the key
@@ -151,8 +194,8 @@ export async function createVerifier(
 }
 
 /** Map raw public-key length to the algorithm tag. Ed25519 keys are
- * 32 bytes; ML-DSA-87 (pq2025) public keys are 2592 bytes. Any other
- * length is unknown.
+ * 32 bytes; canonical uncompressed SEC1 P-256 keys are 65 bytes; ML-DSA-87 (pq2025)
+ * public keys are 2592 bytes. Any other length is unknown.
  *
  * Throws a `JacsWasmError`-shaped Error before crossing the wasm
  * boundary so callers get a typed error without a Rust round-trip.
@@ -162,11 +205,13 @@ export async function createVerifier(
 export function algorithmFromPublicKeyLength(length: number): Algorithm {
   // 32-byte ed25519 public key (raw, no SPKI wrapper).
   if (length === 32) return "ed25519";
+  // Canonical SEC1 uncompressed P-256 public keys (es256).
+  if (length === 65) return "es256";
   // 2592-byte ML-DSA-87 public key (pq2025).
   if (length === 2592) return "pq2025";
   const err: JacsWasmError = {
     code: "UnsupportedAlgorithm",
-    message: `cannot infer signing algorithm from public-key length ${length} (expected 32 for ed25519 or 2592 for pq2025)`,
+    message: `cannot infer signing algorithm from public-key length ${length} (expected 32 for ed25519, 65 for es256, or 2592 for pq2025)`,
   };
   // `JacsWasmError` is the wire shape; throw a plain Error whose
   // message is the JSON form so callers can parse it the same way they
