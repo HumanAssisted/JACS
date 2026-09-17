@@ -6,6 +6,7 @@ fail() { echo "jacs-mobile iOS tests: $*" >&2; exit 1; }
 stage="$repo_root/jacs-mobile/generated/ios-package"
 [[ -d "$stage/JacsMobileFFI.xcframework" ]] || fail "Assemble the current XCFramework first."
 [[ -f "$stage/Tests/JacsMobilePlatformTests/JacsBiometricVaultTests.swift" ]] || fail "Reassemble the package with the current XCTest sources."
+python3 -m unittest discover -s "$repo_root/jacs-mobile/scripts/tests" -p 'test_*.py'
 simulator_id="${JACS_IOS_TEST_SIMULATOR_ID:-}"
 if [[ -z "$simulator_id" ]]; then
     simulator_id="$(xcrun simctl list devices available --json | python3 -c '
@@ -23,9 +24,10 @@ test_args=(-project "$stage/test-host/JacsMobileTests.xcodeproj" -scheme JacsMob
     -destination "platform=iOS Simulator,id=$simulator_id" -configuration Release
     -parallel-testing-enabled NO -derivedDataPath "$stage/test-build" ENABLE_TESTABILITY=YES)
 xcodebuild "${test_args[@]}" build-for-testing
-# Xcode embeds simulator entitlements in the Mach-O executable; ordinary
-# codesign entitlements describe the macOS host process instead.
-# Check the signed build output, with no developer or production identity.
+# Verify the signed app and the actual simulator entitlement sections. Xcode
+# keeps iOS Simulator Keychain entitlements in the executable's __TEXT section,
+# separately from the macOS host-process entitlements shown by codesign.
+# No developer account, production identity or provisioning profile is used.
 test_app="$stage/test-build/Build/Products/Release-iphonesimulator/JacsMobileTestHost.app"
 codesign --verify --strict "$test_app"
 python3 "$repo_root/jacs-mobile/scripts/check-ios-simulator-entitlements.py" \
