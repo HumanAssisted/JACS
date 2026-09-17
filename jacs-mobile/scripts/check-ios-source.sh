@@ -27,7 +27,7 @@ xcrun --sdk iphonesimulator swiftc -swift-version 5 -parse-as-library \
 xcrun --sdk iphonesimulator swiftc -swift-version 5 -parse-as-library \
     -emit-module -module-name JacsMobilePlatform -sdk "$sdk" \
     -target "$architecture-apple-ios13.0-simulator" -I "$stage" -I "$stage/headers" \
-    jacs-mobile/platforms/ios/JacsKeychain.swift \
+    jacs-mobile/platforms/ios/*.swift \
     -emit-module-path "$stage/JacsMobilePlatform.swiftmodule"
-echo "PASS: generated Swift and Keychain/Secure Enclave adapter compile against the iOS simulator SDK."
+echo "PASS: generated Swift, biometric vault/session, and Keychain/Secure Enclave adapters compile against the iOS simulator SDK."
 echo "This source check does not link an XCFramework or exercise device biometrics."

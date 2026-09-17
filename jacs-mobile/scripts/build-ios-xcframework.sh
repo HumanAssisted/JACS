@@ -38,10 +38,12 @@ for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
     cargo build -p jacs-mobile --release --locked --target "$target"
 done
 mkdir -p "$stage/Sources/JacsMobile" "$stage/Sources/JacsMobilePlatform" \
+    "$stage/Tests/JacsMobilePlatformTests" \
     "$stage/build/headers" "$stage/build/device" "$stage/build/simulator"
 cp jacs-mobile/distribution/ios/Package.swift "$stage/Package.swift"
 cp jacs-mobile/generated/swift/JacsMobile.swift "$stage/Sources/JacsMobile/"
-cp jacs-mobile/platforms/ios/JacsKeychain.swift "$stage/Sources/JacsMobilePlatform/"
+cp jacs-mobile/platforms/ios/*.swift "$stage/Sources/JacsMobilePlatform/"
+cp jacs-mobile/tests/ios/*.swift "$stage/Tests/JacsMobilePlatformTests/"
 cp jacs-mobile/generated/swift/JacsMobileFFI.h "$stage/build/headers/"
 cp jacs-mobile/generated/swift/JacsMobileFFI.modulemap "$stage/build/headers/module.modulemap"
 cp target/aarch64-apple-ios/release/libjacs_mobile.a "$stage/build/device/libJacsMobileFFI.a"

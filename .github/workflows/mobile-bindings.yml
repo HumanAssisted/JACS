@@ -27,7 +27,7 @@ jobs:
   android-source:
     name: Android source tests and native AAR assembly
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -62,6 +62,16 @@ jobs:
         run: bash jacs-mobile/scripts/prepare-android-ci.sh
       - name: Assemble Android AAR and local Maven bundle
         run: bash jacs-mobile/scripts/build-android-aar.sh --reuse-bindings
+      - name: Run Android Keystore instrumentation on API 35
+        run: bash jacs-mobile/scripts/run-android-instrumented.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: android-instrumentation-results
+          path: |
+            jacs-mobile/generated/android-emulator.log
+            jacs-mobile/generated/android-project/library/build/reports/androidTests/
+            jacs-mobile/generated/android-project/library/build/outputs/apk/androidTest/debug/library-debug-androidTest.apk
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jacs-mobile-android-package
@@ -73,7 +83,7 @@ jobs:
   ios-source:
     name: iOS source tests and native XCFramework assembly
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -89,11 +99,14 @@ jobs:
         run: bash jacs-mobile/scripts/check-ios-source.sh
       - name: Assemble iOS XCFramework and Swift package
         run: bash jacs-mobile/scripts/build-ios-xcframework.sh --reuse-bindings
+      - name: Run biometric lifecycle and Keychain tests in the iOS simulator
+        run: bash jacs-mobile/scripts/check-ios-tests.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jacs-mobile-ios-package
           path: |
             jacs-mobile/generated/ios-package/Package.swift
             jacs-mobile/generated/ios-package/Sources/
+            jacs-mobile/generated/ios-package/Tests/
             jacs-mobile/generated/ios-package/JacsMobileFFI.xcframework/
           if-no-files-found: error

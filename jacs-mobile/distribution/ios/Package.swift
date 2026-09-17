@@ -26,6 +26,7 @@ let package = Package(
                 .linkedFramework("LocalAuthentication"),
                 .linkedFramework("CryptoKit")
             ]
-        )
+        ),
+        .testTarget(name: "JacsMobilePlatformTests", dependencies: ["JacsMobilePlatform", "JacsMobile"])
     ]
 )
