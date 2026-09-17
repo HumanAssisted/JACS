@@ -82,9 +82,30 @@ permission to publish or share; that permission must be established separately.
 
 Clients must inspect each response layer. A tool outside the active inventory
 returns JSON-RPC `-32602`. Invalid tool arguments return an MCP tool result with
-`isError: true`. Dispatched JACS operations retain their JSON text result:
-check `success` and, for verification, `valid`, even when the MCP envelope has
-`isError: false`. Neither transport completion nor signature integrity is an
+`isError: true`. A dispatched tool can return `isError: false` while its JACS
+operation fails. Current handlers return JSON in an MCP `content` item with
+`type: "text"`; parse that item's `text` to obtain the per-tool payload. Do not
+treat the JSON-RPC `result` or a client-rendered structured view as the JACS
+payload itself, and do not assume every tool has a `valid` field.
+
+| Tool | Fields in the parsed JACS payload | Meaning |
+|------|----------------------------------|---------|
+| `jacs_sign_document` | `success`, `signed_document`, optional `error` | Signing completed and returned a signed JSON string; this is agent-key provenance, not human approval. |
+| `jacs_verify_document` | `success`, `valid`, optional `error` | Execution and supplied-key document integrity, respectively; neither establishes identity or authority. |
+| Agreement-v2 create/apply/sign/merge/resolve tools | `success`, `agreement`, optional `error` | A document operation completed; its output is not a policy verdict. |
+| `jacs_verify_agreement_v2` | `success`, `valid`, `result`, optional `error` | `success` means inspection executed. `valid` stays **false**. Mathematical coverage is `result.cryptographicResult` (`"valid"` or `"invalid"`) and the per-proof entries in `result.partyProofs`. |
+| `jacs_detect_agreement_v2_branch_conflict` | `success`, `result`, optional `error` | Branch analysis, not consent or authorization. |
+| `jacs_verify_text` | `success`, `status`, `signatures[].status`, optional `error` | Inspect each signature's status. Permissive missing-signature inspection can succeed without a signature. |
+| `jacs_verify_image` | `success`, `status`, optional `error` | `status: "valid"` reports image-signature verification; there is no generic top-level `valid` boolean. |
+
+In this table, `result.cryptographicResult` is relative to the **parsed text
+payload**, not the JSON-RPC envelope. The Agreement-v2 coverage report has
+`overallScope: "consent_signatures_only"` and explicitly unauthenticated role,
+quorum, lineage and notary bindings. It does not return a top-level
+`mathematicalChecksValid` or a policy-acceptance decision. A mathematically valid
+proof, status label or signature count cannot authorize an action. Other tools
+retain their own result types; extraction success, for example, is not
+verification. Neither transport completion nor signature integrity is an
 authorization decision.
 
 To also work with local text and images, explicitly select an existing content

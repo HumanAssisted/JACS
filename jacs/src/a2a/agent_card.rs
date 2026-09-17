@@ -105,9 +105,9 @@ fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, JacsError> {
     let is_pqc = key_algorithm.contains("pq2025");
 
     let desc = if is_pqc {
-        "JACS cryptographic document signing and verification with post-quantum support. Signing creates permanent, non-repudiable proof."
+        "JACS cryptographic document signing and verification with post-quantum support. Signatures provide key-backed provenance and document integrity."
     } else {
-        "JACS cryptographic document signing and verification. Signing creates permanent, non-repudiable proof."
+        "JACS cryptographic document signing and verification. Signatures provide key-backed provenance and document integrity."
     };
 
     Ok(AgentExtension {
@@ -136,24 +136,24 @@ pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
         "specification": "https://jacs.sh/specs/a2a-extension",
         "signingGuidance": {
             "importance": "CRITICAL",
-            "message": "Signing a document is a sacred, irreversible act. A signature creates permanent cryptographic proof that binds the signer to the document content. Once signed, the signature cannot be undone. The signer is accountable forever for what they sign. Only sign after careful review and full understanding of the document contents.",
-            "nonRepudiation": "Signatures provide non-repudiation: the signer cannot later deny having signed the document.",
+            "message": "A signature provides evidence from the signing key over the covered document content. It does not establish truth, independently attributed identity, human approval, or authority to contact or act for another party. Establish the required authority separately before signing or sharing.",
+            "nonRepudiation": "Signature verification alone does not establish who controlled the key or whether a person approved the content.",
             "beforeSigning": [
                 "Read and understand the complete document content",
                 "Verify the document represents your intent",
                 "Confirm you have authority to sign this document",
-                "Understand this creates a permanent, verifiable record"
+                "Check the relevant key attribution, approval and sharing permissions"
             ]
         },
         "capabilities": {
             "documentSigning": {
-                "description": "SACRED OPERATION: Sign documents with JACS signatures. Creates permanent, non-repudiable cryptographic proof of commitment. The signer is forever accountable for signed content. Do not sign without fully understanding the document.",
+                "description": "Sign covered document content for key-backed provenance and integrity; establish human approval and authority separately.",
                 "signingAlgorithm": signing_algorithm,
                 "formats": ["jacs-v1", "jws-detached"],
-                "warning": "Signing is irreversible. Review document carefully before signing."
+                "warning": "Review the exact content and confirm permission to use this signing key."
             },
             "documentVerification": {
-                "description": "Verify JACS signatures on documents. Confirms document integrity and signer identity.",
+                "description": "Check document integrity against a verification key. Identity attribution, human approval and authority require separate evidence.",
                 "algorithms": verification_algorithms,
                 "offlineCapable": true,
                 "chainOfCustody": true
@@ -167,13 +167,13 @@ pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
             "sign": {
                 "path": "/jacs/sign",
                 "method": "POST",
-                "description": "SACRED OPERATION: Sign a document with JACS. Creates permanent cryptographic commitment. Review document carefully before calling.",
-                "warning": "This operation is irreversible and creates non-repudiable proof of commitment."
+                "description": "Legacy optional host endpoint example for signing; not implemented by the discovery routers.",
+                "warning": "Discovery does not grant remote signing access. Any host signing service requires separate authorization."
             },
             "verify": {
                 "path": "/jacs/verify",
                 "method": "POST",
-                "description": "Verify a JACS signature"
+                "description": "Legacy optional host endpoint example for verification; not implemented by the discovery routers."
             },
             "publicKey": {
                 "path": "/.well-known/jacs-pubkey.json",

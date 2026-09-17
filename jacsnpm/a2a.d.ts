@@ -222,6 +222,7 @@ export declare class JACSA2AIntegration {
     static quickstart(options?: A2AQuickstartOptions): Promise<JACSA2AIntegration>;
     /**
      * Start a minimal Express discovery server for this agent.
+     * This publishes discovery only, not message/task or remote-signing endpoints.
      *
      * Pass `port = 0` to let the OS pick an available ephemeral port.
      */

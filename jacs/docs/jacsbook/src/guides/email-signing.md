@@ -1,10 +1,12 @@
 # Email Signing and Verification
 
-JACS provides a detached-signature model for email. Your agent signs a raw
-RFC 5322 `.eml` file and the result is the same email with a
-`jacs-signature.json` MIME attachment. The recipient extracts that attachment,
-verifies the cryptographic signature, and compares content hashes to detect
-tampering.
+JACS signs selected canonicalized fields from an RFC 5322 `.eml` input and
+returns email bytes with a `jacs-signature.json` MIME attachment. That attachment
+is an ordinary signed JACS document containing the email hash payload. The
+recipient verifies it with an explicitly supplied public key, then compares
+the received email's covered fields and attachments against the signed hashes.
+This does not assert byte-identical preservation of the entire `.eml`, mailbox
+ownership, truth, human approval or permission to contact a recipient.
 
 JACS also exposes migration helpers for HAI's HTML-inline signed email
 transport. In that mode, the signature material travels in the HTML body and
@@ -12,12 +14,32 @@ inline logo instead of as user-visible signature attachments. Core signing and
 verification still stay in JACS; SDKs and servers should call these helpers
 rather than reimplementing email hashing, MIME parsing, or media extraction.
 
-There are only two functions you need:
+The primary attachment-mode APIs are:
 
 | Action     | Function                       | What you supply                                     | What you get back                           |
 |------------|--------------------------------|-----------------------------------------------------|---------------------------------------------|
 | **Sign**   | `jacs::email::sign_email()`    | raw `.eml` bytes + a `JacsSigner`                   | `.eml` bytes with `jacs-signature.json`     |
 | **Verify** | `jacs::email::verify_email()`  | signed `.eml` bytes + sender's public key + verifier | `ContentVerificationResult` (pass/fail per field) |
+
+## Runnable local example
+
+From a source checkout, run:
+
+```bash
+JACS_KEYCHAIN_BACKEND=disabled JACS_ALLOW_NETWORK=false cargo run --locked -p jacs --no-default-features --example email_signing
+```
+
+The example creates two disposable `SimpleAgent::ephemeral` instances and a
+synthetic multipart email with one attachment. It passes the sender's public
+key directly to the recipient, signs and verifies the email, prints the actual
+JACS attachment, checks body tampering and a wrong key, and inspects a forwarding
+chain. It sends no mail, reads no user keys and writes no files. `jacs::email`
+is available without an optional email feature. This is a local JACS-to-JACS
+example, not an independent implementation or mailbox-identity test.
+
+```rust,no_run
+{{#include ../../../../examples/email_signing.rs}}
+```
 
 ## Signing an email
 
@@ -59,8 +81,8 @@ The signing algorithm is read from your JACS agent at runtime and recorded in th
 1. Parses and canonicalizes the email headers and body
 2. Computes SHA-256 hashes for each header, body part, and attachment
 3. Builds the JACS email signature payload
-4. Canonicalizes the payload via RFC 8785 (JCS)
-5. Calls `sign_message()` to create a real signed JACS document
+4. Places the hash payload in `content` via `sign_message()`
+5. Uses the normal JACS document canonicalization, hashing and signing pipeline
 6. Attaches the result as `jacs-signature.json`
 
 You do not need to know any of this to use it — it is a single function call.
@@ -74,7 +96,14 @@ another agent), `sign_email` automatically:
 2. Computes a `parent_signature_hash` linking to the previous signature
 3. Signs the email with a new `jacs-signature.json`
 
-This builds a verifiable forwarding chain. No extra code needed.
+The new signature covers the hash link and the retained attachment bytes.
+It does not verify the earlier signers' cryptographic signatures. The current
+one-key verifier records ancestors with `chain[].valid: false` because their
+keys were not supplied; this also keeps the overall result false even if the
+current signature and all covered fields pass. Treat those ancestors as
+unchecked, not as proven tampering. Verify their signatures with independently
+selected keys before an application relies on the chain; do not turn these
+flags true based only on a matching hash or claimed signer label.
 
 ## Verifying an email
 
@@ -92,12 +121,13 @@ let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
 let result = verify_email(&signed_eml, &agent, &sender_public_key)?;
 
 if result.valid {
-    println!("Email is authentic and unmodified");
+    println!("Covered email fields match a JACS signature checked with the supplied key");
 } else {
-    // Inspect which fields failed
+    // Inspect field failures and any unchecked forwarding ancestors
     for field in &result.field_results {
         println!("{}: {:?}", field.field, field.status);
     }
+    println!("Chain inspection: {:?}", result.chain);
 }
 ```
 
@@ -106,12 +136,12 @@ if result.valid {
 1. Extracts `jacs-signature.json` from the email
 2. Removes it (the signature covers the email *without* itself)
 3. Verifies the JACS document signature against the sender's public key
-4. Compares every hash in the JACS document against the actual email content
-5. Returns per-field results
+4. Compares covered canonicalized headers, body parts, attachments and MIME hashes
+5. Returns per-field and forwarding-chain results; Message-ID is stored but not verified
 
 ### Two-step API (when you need the JACS document)
 
-If you need to inspect the JACS document metadata (issuer, timestamps)
+If you need a parsed email DTO and JACS metadata (issuer, timestamps)
 before doing the content comparison:
 
 ```rust
@@ -120,7 +150,7 @@ use jacs::simple::SimpleAgent;
 
 let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
 
-// Step 1: Verify the cryptographic signature — returns the trusted JACS document
+// Step 1: Verify the current JACS signature, then project its email DTO
 let (doc, parts) = verify_email_document(&signed_eml, &agent, &sender_public_key)?;
 
 // Inspect the document
@@ -143,13 +173,22 @@ entry per field:
 
 | Status          | Meaning                                                       |
 |-----------------|---------------------------------------------------------------|
-| `Pass`          | Hash matches — field is authentic                             |
+| `Pass`          | Covered hash matches the signed value; no independent mailbox attribution |
 | `Modified`      | Hash mismatch but case-insensitive email address match (address headers only) |
 | `Fail`          | Content does not match the signed hash                        |
 | `Unverifiable`  | Field absent or not verifiable (e.g. Message-ID may change in transit) |
 
-Fields checked: `from`, `to`, `cc`, `subject`, `date`, `message_id`,
-`in_reply_to`, `references`, `body_plain`, `body_html`, and all attachments.
+Headers covered include `from`, `to`, `subject`, `date` and, when present, `cc`,
+`in_reply_to` and `references`. `message_id` is stored in the signed payload but
+always reported `Unverifiable`, since transit can change it. Inspect every
+field status; overall `valid` does not mean every field was checked.
+
+Body hashing uses decoded/canonicalized text, including charset, line-ending
+and trailing-whitespace normalization. Attachment hashes include the normalized
+filename, lowercased content type and extracted content bytes; body and attachment
+MIME structural headers have separate hashes. Equivalent normalized content
+can verify despite changes to its wire representation. Uncovered headers and
+transport metadata are outside this claim.
 
 ## HTML-inline signed email migration helpers
 
@@ -193,45 +232,33 @@ the `verify_email_*` compatibility APIs.
 
 ## The JACS signature document
 
-The `jacs-signature.json` attachment has this structure:
+The primary signed attachment uses the normal JACS envelope. The runnable
+example above prints its actual generated JSON; do not construct a signature
+by filling in a sample object.
 
-```json
-{
-  "version": "1.0",
-  "document_type": "email_signature",
-  "payload": {
-    "headers": {
-      "from":       { "value": "agent@example.com", "hash": "sha256:..." },
-      "to":         { "value": "recipient@example.com", "hash": "sha256:..." },
-      "subject":    { "value": "Hello", "hash": "sha256:..." },
-      "date":       { "value": "Fri, 28 Feb 2026 12:00:00 +0000", "hash": "sha256:..." },
-      "message_id": { "value": "<msg@example.com>", "hash": "sha256:..." }
-    },
-    "body_plain": { "content_hash": "sha256:..." },
-    "body_html":  null,
-    "attachments": [
-      { "filename": "report.pdf", "content_hash": "sha256:..." }
-    ],
-    "parent_signature_hash": null
-  },
-  "metadata": {
-    "issuer": "agent-jacs-id:v1",
-    "document_id": "uuid",
-    "created_at": "2026-02-28T12:00:00Z",
-    "hash": "sha256:..."
-  },
-  "signature": {
-    "key_id": "agent-key-id",
-    "algorithm": "ed25519",
-    "signature": "base64...",
-    "signed_at": "2026-02-28T12:00:00Z"
-  }
-}
-```
+| Path in the signed attachment | Meaning |
+|-------------------------------|---------|
+| `content.headers` | Selected canonicalized header values and hashes |
+| `content.body_plain`, `content.body_html` | Present body parts' content and MIME-header hashes |
+| `content.attachments` | Attachment filenames, content hashes and MIME-header hashes |
+| `content.parent_signature_hash` | When forwarding, hash of the previous signature attachment bytes |
+| `jacsId`, `jacsVersion`, `jacsSha256` | Normal JACS document identifiers and document hash |
+| `jacsSignature` | Normal signature metadata, including `agentID`, `date`, `signingAlgorithm` and `signature` |
 
-`metadata.hash` is the SHA-256 of the RFC 8785 canonical JSON of `payload`.
-`signature.signature` is the cryptographic signature over that same canonical
-JSON. The algorithm is always read from the agent — never hardcoded.
+`verify_email_document()` first verifies this envelope, then returns a
+`JacsEmailSignatureDocument` **DTO** with `payload`, `metadata` and `signature`
+fields for compatibility. That DTO is not the serialized attachment format:
+`payload` comes from `content`; `metadata.issuer` comes from
+`jacsSignature.agentID`; `metadata.hash` comes from `jacsSha256`. Its legacy
+`signature.key_id`, `signature.algorithm` and `signature.signature` fields are
+empty in this projection. Inspect the original attachment with
+`get_jacs_attachment()` for the actual signature metadata or re-verification.
+
+The historical `version: "1.0"` / `payload` / `metadata` / `signature` layout is
+not what current `sign_email()` emits. Parsing such a layout in an ancestor is
+compatibility inspection, not cryptographic verification. Neither the DTO nor
+the attachment establishes that a key belongs to the address in `From`; that
+attribution and any human/contact authority require separate evidence.
 
 ## Public API summary
 
@@ -258,7 +285,7 @@ jacs::email::SignedEmailTransport         // AttachmentJacs | HtmlInline
 jacs::email::VerificationMode             // Strict | Degraded
 jacs::email::FieldResult                  // per-field status
 jacs::email::FieldStatus                  // Pass | Modified | Fail | Unverifiable
-jacs::email::JacsEmailSignatureDocument   // the full signature document
+jacs::email::JacsEmailSignatureDocument   // parsed compatibility DTO, not raw attachment JSON
 jacs::email::EmailError                   // error type
 
 // Attachment helpers (for advanced use)

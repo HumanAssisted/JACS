@@ -98,8 +98,16 @@ jacs mcp --profile local-sign --config ./jacs.config.json
 
 This uses the existing encrypted key/password source and a closed offline tool
 set; documents persist under `<config directory>/documents`. It signs as the
-local agent, not as evidence of per-action human approval. File text/image
-tools and administrative profiles remain unavailable. See the [MCP local scope
+local agent, not as evidence of per-action human approval. To enable the five
+scoped file tools, also select an existing content directory at startup:
+
+```bash
+JACS_MCP_BASE_DIR=/path/to/content jacs mcp --profile local-sign --config ./jacs.config.json
+```
+
+This adds `jacs_sign_text`, `jacs_verify_text`, `jacs_sign_image`,
+`jacs_verify_image`, and `jacs_extract_media_signature`. The content root does
+not expand `verify-only`; trust/admin capabilities remain unavailable. See the [MCP local scope
 and remaining limitations](jacs-mcp/README.md#explicit-local-signing).
 
 ## Use cases
@@ -128,20 +136,20 @@ JACS is most useful when signed data leaves the process, service, team, or organ
 
 The CLI and MCP server are the recommended starting points. Native APIs are available when you need direct library integration:
 
-> **Shipped versions observed 2026-07-11:** source is `0.13.0`, while crates.io
-> and PyPI publish `0.11.3`, npm publishes `@hai.ai/jacs@0.10.1`, and
-> `@jacs/wasm` is not published. The Go module has only a pseudo-version and no
-> matching native-library release. Do not assume source-head API parity from an
-> unpinned install. The machine-readable evidence is
-> [`release/shipped-artifacts.json`](release/shipped-artifacts.json).
+> **Committed release ledger dated 2026-09-10:**
+> [`release/shipped-artifacts.json`](release/shipped-artifacts.json) records
+> Rust, CLI and Python `0.13.0`, Go `v0.13.0` with native libraries, Node
+> `@hai.ai/jacs@0.10.1`, and no published `@jacs/wasm` package. These are dated
+> ledger entries, not a fresh registry check. See the ledger for platform and
+> verification limits; an unpinned install does not imply source-head API parity.
 
 | Language | Install | Notes |
 |----------|---------|-------|
-| Rust | `cargo add jacs` | Registry `0.11.3`; deepest API surface, including `jacs::email`, `jacs::text`, and `jacs::media`. |
-| Python | `pip install jacs` | Registry `0.11.3`; simple API, framework adapters, text/image signing. |
-| Node.js | `npm install @hai.ai/jacs` | Registry `0.10.1`; it does **not** contain every API documented on this `0.13.0` branch. |
-| Go | See [`jacsgo/README.md`](jacsgo/README.md) | `go get` alone cannot link. Build the full repository today; after a semantic release exists, install its checksum-verified native library. |
-| Browser | Source build only | `@jacs/wasm` is not yet available from npm. |
+| Rust | `cargo add jacs` | Ledger: `0.13.0`; includes `jacs::email`, `jacs::text`, and `jacs::media`. |
+| Python | `pip install jacs` | Ledger: `0.13.0`; simple API, framework adapters, text/image signing. |
+| Node.js | `npm install @hai.ai/jacs` | Ledger: `0.10.1`; it does **not** contain every API documented on this `0.13.0` branch. |
+| Go | See [`jacsgo/README.md`](jacsgo/README.md) | Ledger: `v0.13.0` and native libraries. `go get` alone cannot link; use the matching checksum-verified library and check the recorded platform limits. |
+| Browser | Source build only | Ledger: no published `@jacs/wasm` package. |
 
 ## HTTP trust-boundary protocol
 

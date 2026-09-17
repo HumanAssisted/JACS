@@ -2,6 +2,12 @@
 
 ### Changed
 
+- **Provenance guidance clarified (2026-09-14).** MCP documentation distinguishes
+  per-tool execution, signature inspection and policy acceptance. Email guidance
+  describes the current JACS envelope and unchecked forwarding ancestors, with
+  an isolated Rust signing/verification example. A2A descriptor wording now
+  describes key-backed provenance and labels optional host endpoints; discovery
+  routers do not implement message/task or remote-signing services.
 - **Agreement v2 documentation and example distinguish signature inspection
   from policy acceptance.** Mathematical checks and structural status do not
   establish human approval or authority; `valid` and `policyAccepted` remain

@@ -1,5 +1,8 @@
 # A2A Interoperability
 
+The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
+with current released A2A peers remains unproven.
+
 Use A2A when your agent needs to be discoverable and verifiable by another service, team, or organization. This is the cross-boundary story; MCP is the inside-the-app story.
 
 ## What JACS Adds To A2A
@@ -19,7 +22,7 @@ Python:
 from jacs.client import JacsClient
 
 client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
-card = client.export_agent_card(url="http://localhost:8080")
+card = client.export_agent_card()
 ```
 
 Node.js:
@@ -37,7 +40,11 @@ const card = client.exportAgentCard();
 
 ### 2. Serve Discovery Documents
 
-Python has the strongest first-class server helpers today.
+Python and Node provide discovery-only server helpers. These mounts publish
+well-known documents; they do not implement A2A message/task handling or the
+legacy optional `/jacs/sign` and `/jacs/verify` host endpoint examples in the
+extension descriptor. A host application must implement and authorize any
+callable interface separately. Discovery does not grant remote signing access.
 
 Quick demo server:
 
@@ -47,7 +54,6 @@ from jacs.a2a import JACSA2AIntegration
 JACSA2AIntegration.quickstart(
     name="my-agent",
     domain="my-agent.example.com",
-    url="http://localhost:8080",
 ).serve(port=8080)
 ```
 
@@ -71,9 +77,14 @@ import express from 'express';
 import { jacsA2AMiddleware } from '@hai.ai/jacs/a2a-server';
 
 const app = express();
-app.use(jacsA2AMiddleware(client, { url: 'http://localhost:3000' }));
+app.use(jacsA2AMiddleware(client));
 app.listen(3000);
 ```
+
+The local listening port does not rewrite the signed public interface URL.
+Configure the advertised domain before generating the signed card and provide
+the host service that interface describes. A reachable discovery route alone
+does not prove that message/task operations exist.
 
 ### 3. Sign And Verify Artifacts
 
@@ -191,8 +202,14 @@ JWKS key by itself can never establish the claimed JACS identity.
 
 ## Current Runtime Differences
 
-- **Python**: `jacs.a2a_server` is the clearest full discovery story.
-- **Node.js**: `jacsA2AMiddleware()` serves five `.well-known` routes from Express, but the generated `jwks.json` and `jacs-pubkey.json` payloads are still placeholder metadata. `listen()` is intentionally smaller and only suitable for demos.
+- **Python and Node.js**: the FastAPI and Express routers serve the six native
+  discovery documents, including the signed card, JWKS and compatibility
+  binding. They are discovery-only; `serve()` and `listen()` are convenience
+  hosts, not complete A2A task/message services.
+- The mounted routers refresh their complete snapshots lazily at six days from
+  binding issuance. HTTP freshness ends at renewal or earlier explicit expiry;
+  separate fetches can still straddle replacement. Verify the related documents
+  together and refetch on a mismatch. See [Serve Your Agent Card](../guides/a2a-serve.md).
 
 ## Example Paths In This Repo
 

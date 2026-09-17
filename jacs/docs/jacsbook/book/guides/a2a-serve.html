@@ -175,6 +175,8 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="serve-your-agent-card"><a class="header" href="#serve-your-agent-card">Serve Your Agent Card</a></h1>
+<p>The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
+with current released A2A peers remains unproven.</p>
 <blockquote>
 <p><strong>Registry status (observed 2026-07-11):</strong> npm serves
 <code>@hai.ai/jacs@0.10.1</code>, while these pages describe source <code>0.11.4</code>. The
@@ -183,6 +185,11 @@ inspect its exports; use a source build only when that is an explicit
 deployment choice.</p>
 </blockquote>
 <p>Make your JACS agent discoverable by other A2A agents.</p>
+<p>These helpers serve discovery documents only. They do not implement message/task
+handlers or the legacy optional <code>/jacs/sign</code> and <code>/jacs/verify</code> host examples in
+the extension descriptor. Configure the signed public interface for a service
+your host actually implements; a local discovery listener does not create that
+service or grant remote signing access.</p>
 <blockquote>
 <p><strong>Prerequisites:</strong> <code>pip install jacs[a2a-server]</code> (Python) or <code>npm install @hai.ai/jacs express</code> (Node.js).</p>
 </blockquote>
@@ -193,9 +200,10 @@ deployment choice.</p>
 <div class="content">
 <pre><code class="language-python">from jacs.a2a import JACSA2AIntegration
 
-JACSA2AIntegration.quickstart(url="http://localhost:8080").serve(port=8080)
+JACSA2AIntegration.quickstart(name="my-agent", domain="my-agent.example.com").serve(port=8080)
 </code></pre>
 <p>Your agent is now discoverable at <code>http://localhost:8080/.well-known/agent-card.json</code>.</p>
+<p>This local listener does not rewrite the card's signed public interface URL.</p>
 <h3 id="production-mount-into-your-own-fastapi-app"><a class="header" href="#production-mount-into-your-own-fastapi-app">Production: Mount into Your Own FastAPI App</a></h3>
 <pre><code class="language-python">from fastapi import FastAPI
 from jacs.client import JacsClient
@@ -251,7 +259,13 @@ fetching is otherwise denied.</p>
 <p>Strict verifiers accept a compatibility binding for at most seven days after
 its signed <code>issuedAt</code>, with five minutes of future clock skew. Generating the
 well-known set refreshes an authentic binding after six days under the shared
-issuance lock, preserving its scopes and any explicit <code>expiresAt</code>.</p>
+issuance lock, preserving its scopes and any explicit <code>expiresAt</code>.
+The FastAPI and Express mounts call the generator lazily at that six-day
+boundary. HTTP freshness ends by renewal or earlier expiry; failed renewal can
+serve a still-valid snapshot with <code>no-store</code>, while hard expiry returns 503.
+Finite expiry requires renewed authorization and remounting. Separate resource
+fetches can straddle replacement; verify the card/JWKS/binding together and
+refetch if their references differ.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><strong><a href="a2a-discover.html">Discover &amp; Trust Remote Agents</a></strong> -- Find other agents and assess their trustworthiness</li>
