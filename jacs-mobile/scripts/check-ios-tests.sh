@@ -6,6 +6,7 @@ fail() { echo "jacs-mobile iOS tests: $*" >&2; exit 1; }
 stage="$repo_root/jacs-mobile/generated/ios-package"
 [[ -d "$stage/JacsMobileFFI.xcframework" ]] || fail "Assemble the current XCFramework first."
 [[ -f "$stage/Tests/JacsMobilePlatformTests/JacsBiometricVaultTests.swift" ]] || fail "Reassemble the package with the current XCTest sources."
+python3 -m unittest discover -s "$repo_root/jacs-mobile/scripts/tests" -p 'test_*.py'
 simulator_id="${JACS_IOS_TEST_SIMULATOR_ID:-}"
 if [[ -z "$simulator_id" ]]; then
     simulator_id="$(xcrun simctl list devices available --json | python3 -c '
@@ -23,19 +24,14 @@ test_args=(-project "$stage/test-host/JacsMobileTests.xcodeproj" -scheme JacsMob
     -destination "platform=iOS Simulator,id=$simulator_id" -configuration Release
     -parallel-testing-enabled NO -derivedDataPath "$stage/test-build" ENABLE_TESTABILITY=YES)
 xcodebuild "${test_args[@]}" build-for-testing
-# Assert the actual runner app has its fixed simulator-only Keychain identity.
+# Verify the signed app and the actual simulator entitlement sections. Xcode
+# keeps iOS Simulator Keychain entitlements in the executable's __TEXT section,
+# separately from the macOS host-process entitlements shown by codesign.
 # No developer account, production identity or provisioning profile is used.
 test_app="$stage/test-build/Build/Products/Release-iphonesimulator/JacsMobileTestHost.app"
-codesign --display --entitlements :- "$test_app" > "$stage/test-host/signed-entitlements.plist"
-python3 - "$stage/test-host/signed-entitlements.plist" <<'PY'
-import plistlib, sys
-with open(sys.argv[1], 'rb') as handle:
-    entitlements = plistlib.load(handle)
-group = 'JACSTEST01.ai.hai.jacs.simulator-tests'
-assert entitlements.get('application-identifier') == group, 'Test host lacks its synthetic application identity'
-assert entitlements.get('keychain-access-groups') == [group], 'Test host lacks its isolated Keychain group'
-print('PASS: signed simulator test host has the expected isolated Keychain entitlements.')
-PY
+codesign --verify --strict "$test_app"
+python3 "$repo_root/jacs-mobile/scripts/check-ios-simulator-entitlements.py" \
+    "$test_app/JacsMobileTestHost"
 xcodebuild "${test_args[@]}" test-without-building
 echo "PASS: Swift lifecycle/cancellation XCTest and noninteractive simulator Keychain policy tests."
 echo "Physical-device biometric acceptance remains a separate interactive check."
