@@ -2061,7 +2061,8 @@ fn validate_native_header_if_declared(document: &Value) -> Result<(), CoreError>
     validator.validate(&schema_input).map_err(|error| {
         CoreError::SchemaInvalid(format!(
             "native header schema validation failed at '{}': {}",
-            error.instance_path, error
+            error.instance_path(),
+            error
         ))
     })
 }

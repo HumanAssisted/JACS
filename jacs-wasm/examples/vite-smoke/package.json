@@ -10,9 +10,9 @@
     "test": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.45.0",
-    "typescript": "^5.4.0",
-    "vite": "^6.4.2",
+    "@playwright/test": "^1.63.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
     "vite-plugin-wasm": "^3.3.0"
   }
 }
