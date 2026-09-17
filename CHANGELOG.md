@@ -1,5 +1,10 @@
 ## Unreleased
 
+### 2026-09-15 — Trust and timestamp documentation boundaries
+
+- Correct archival-signature timestamp guidance: the validator limits future skew, has no maximum-age setting, and does not replace request-bound nonce/replay checks. Distinguish signing-key provenance from authorship or human approval.
+- Label the existing DID request-proof JSON as JACS-specific and experimental, with actual-request and trust requirements; it is not an ANP wire adapter. Runtime contracts remain unchanged; source-traced documentation and generated-book checks cover this correction.
+
 ### 2026-09-15 — Opt-in current A2A peer example
 
 - Add a typed A2A 1.0 card projection and finite loopback example using a pinned official Python SDK for discovery, ES256 card verification and exact signed-report transport. Existing legacy discovery and language facade contracts stay unchanged.

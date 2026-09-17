@@ -10,7 +10,7 @@ JACS organizes trust into three distinct layers. Each layer has a clear scope an
 
 **APIs:** `sign_message()`, `verify()`, `verify_standalone()`
 
-This is the foundation. Every JACS document carries a cryptographic signature that proves which agent created it and that the content hasn't changed. Layer A answers: *"Is this signature valid?"*
+This is the foundation. A valid JACS signature links the covered content to the signing key and detects changes to that content. Binding the key to an agent or person requires trusted identity evidence; the signature alone does not establish who created the content, whether its claims are true, or whether a person approved it. Layer A answers: *"Is this signature valid?"*
 
 **Crypto status values:** `Verified` · `SelfSigned` · `Unverified` · `Invalid`
 

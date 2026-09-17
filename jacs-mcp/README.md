@@ -219,8 +219,14 @@ actual process surface.
 | `jacs_w3c_export_did_document` | Export the local agent's W3C DID document |
 | `jacs_w3c_export_agent_description` | Export the local agent's W3C agent description |
 | `jacs_w3c_generate_well_known` | Generate W3C discovery documents keyed by path |
-| `jacs_w3c_sign_request` | Create a request-bound DID authentication proof |
-| `jacs_w3c_verify_request` | Verify a request-bound DID authentication proof, optionally against the actual method and URL |
+| `jacs_w3c_sign_request` | Create a JACS-specific request-proof JSON object |
+| `jacs_w3c_verify_request` | Verify the JACS-specific proof, optionally against the actual method and URL |
+
+The request helpers use the experimental `JacsW3cRequestProof` JSON format with
+`scheme: "DIDWba"`. They do not emit the ANP HTTP Message Signatures wire format.
+For actual-request verification, supply the expected method, URL and body and
+apply trusted identity and authorization policy; see the
+[DID request-proof boundary](../jacs/docs/jacsbook/src/integrations/did.md#jacs-specific-request-proofs).
 
 ### Trust Store
 
