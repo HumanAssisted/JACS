@@ -28,6 +28,53 @@ is enabled. See [upgrade evidence](../docs/RMCP_3_UPGRADE_SPIKE.md).
 
 Ecosystem compatibility exports (ES256 JWKS, the native-root-signed compatibility key binding, ES256-signed A2A agent cards, AP2 mandates, and Agreement-v2 Verifiable Credentials) are CLI and language-binding surfaces only — by design there are no MCP tools for them.
 
+### Local MCP → MIME → separate recipient example
+
+[`examples/mcp_mime_demo.py`](../examples/mcp_mime_demo.py) is a Python 3.10+
+standard-library demo for POSIX hosts, using an explicitly selected,
+source-matched `jacs` executable:
+
+```bash
+python3 examples/mcp_mime_demo.py --jacs-bin /absolute/path/to/source-built/jacs --json
+```
+
+It creates disposable encrypted Ed25519 identities with the public CLI, signs
+a synthetic report through a real `local-sign` MCP process, and attaches the
+returned `signed_document` UTF-8 bytes unchanged as `application/json`, filename
+`signed-report.jacs.json`. Both identity directories are deleted before a
+separate Python recipient parses the MIME message and starts a keyless
+`verify-only` MCP process. The recipient gets only public test inputs: reference
+document bytes and an explicitly selected trusted public key/algorithm outside
+the message. That local key handoff is the demo's trust assumption, not mailbox
+identity discovery or independent attribution.
+
+The demo checks byte equality/SHA256, real verification, modified payload and
+signature rejection, an unrelated key, missing/duplicate attachments and
+verify-only signing refusal. It also changes outer email headers/body: the
+unchanged attachment still verifies. The attachment signature does **not** sign
+the email, authenticate `From`, prove human approval, accept Agreement policy
+or authorize contact. The fixture deliberately includes such claims as signed
+caller data; they are not promoted into verification decisions.
+
+No SMTP, provider calls, remote key lookup or user keys are used. Child
+environments exclude ambient config/password/legacy overrides; keychain and
+network opt-ins are disabled. RPC frames, request timeouts, total runtime and
+shutdown waits are bounded. Temporary files and processes are cleaned on
+completion or handled failure. This separates process data and key custody on
+a trusted local host; it is not an OS security sandbox against that host.
+
+Output records the executable version/SHA256, harness SHA256 and public
+results; `--expected-bin-sha256` can pin a previously recorded build digest.
+Record source revision, dirty-diff hash, Cargo.lock, features and toolchain when
+building that executable: a digest alone does not establish source provenance.
+The CLI regression `mcp_mime_demo` supplies Cargo's actual built binary and runs
+this complete journey. This is process/protocol interoperability using the same
+JACS implementation, not independent crypto, browser/A2A peer interoperability,
+published-wheel verification or evidence of mail delivery. Native
+[`email_signing.rs`](../jacs/examples/email_signing.rs) demonstrates the separate
+`sign_email` API and its canonicalized email-hash envelope; this example does
+not call that API or add an email MCP tool.
+
 ## What can it do?
 
 The default `verify-only` profile exposes only explicit-key document integrity

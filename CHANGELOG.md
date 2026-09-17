@@ -2,6 +2,13 @@
 
 ### Changed
 
+- **Local MCP/MIME baseline demo (2026-09-14).** A standard-library Python
+  example carries an MCP-signed JSON report unchanged through a MIME attachment
+  to a separate keyless JACS recipient. A real-process CLI regression exercises
+  byte preservation, verification and rejection paths with disposable keys;
+  it sends no mail and does not infer email identity or approval/authority.
+  The full-history secret scan passes with one exact prose-only false positive
+  recorded in the existing fingerprint list.
 - **Provenance guidance clarified (2026-09-14).** MCP documentation distinguishes
   per-tool execution, signature inspection and policy acceptance. Email guidance
   describes the current JACS envelope and unchecked forwarding ancestors, with
@@ -28,6 +35,11 @@
 
 ### Security
 
+- **Rustls TLS handshake patch (2026-09-15).** All three audited Cargo locks
+  now use Rustls 0.23.45 for RUSTSEC-2026-0285. The SurrealDB lock also updates
+  the TLS dependencies required by that patch; generated notices are refreshed.
+  Advisory exceptions and security policy remain unchanged. All three advisory/
+  license gates and notice/policy checks pass; native execution is separate.
 - **A2A discovery cache freshness (2026-09-14).** Express and FastAPI refresh
   complete discovery snapshots at six days from signed binding issuance.
   Failed refreshes use bounded retries and retain only still-valid snapshots;
