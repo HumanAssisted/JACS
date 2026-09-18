@@ -641,12 +641,14 @@ impl KeyManager for Agent {
             .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
 
         // Determine the algorithm type
-        let algo = match public_key_enc_type {
+        let algo_str = match public_key_enc_type {
             Some(ref enc_type) => {
                 debug!(algorithm = %enc_type, "Using explicit algorithm from signature");
-                CryptoSigningAlgorithm::from_str(enc_type).map_err(|_| {
-                    JacsError::CryptoError(format!("Unknown signing algorithm: {}", enc_type))
-                })?
+                // Verification supports portable/platform algorithms that the
+                // native private-key creation enum intentionally does not.
+                // The shared verifier validates this explicit algorithm; never
+                // substitute an algorithm based on the supplied key's shape.
+                enc_type.clone()
             }
             None => {
                 let allow_legacy_detection = crate::storage::jenv::get_env_var(
@@ -677,7 +679,7 @@ impl KeyManager for Agent {
                         let refined =
                             detect_algorithm_from_signature(&signature_bytes, &detected_algo);
                         debug!(detected = %refined, "Auto-detected algorithm from public key");
-                        refined
+                        refined.to_string()
                     }
                     Err(_) => {
                         // Fall back to the agent's configured algorithm if auto-detection fails
@@ -687,18 +689,19 @@ impl KeyManager for Agent {
                             .ok_or("Agent config not initialized for algorithm fallback")?;
                         let key_algorithm = config.get_key_algorithm()?;
                         debug!(fallback = %key_algorithm, "Using config fallback for algorithm detection");
-                        CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
-                            JacsError::CryptoError(format!(
-                                "Unknown signing algorithm: {}",
-                                key_algorithm
-                            ))
-                        })?
+                        CryptoSigningAlgorithm::from_str(&key_algorithm)
+                            .map_err(|_| {
+                                JacsError::CryptoError(format!(
+                                    "Unknown signing algorithm: {}",
+                                    key_algorithm
+                                ))
+                            })?
+                            .to_string()
                     }
                 }
             }
         };
 
-        let algo_str = algo.to_string();
         let result = verify_string_with_algorithm(public_key, data, signature_base64, &algo_str);
 
         let verify_duration_ms = verify_start.elapsed().as_millis() as u64;

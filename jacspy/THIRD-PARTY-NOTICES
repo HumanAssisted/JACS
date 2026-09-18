@@ -14,6 +14,29 @@ for use in the OpenSSL Toolkit. (http://www.openssl.org/)
 This product includes cryptographic software written by
 Eric Young (eay@cryptsoft.com)
 
+BIP-39 English word list, from https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+Authors: Marek Palatinus, Pavol Rusnak, Aaron Voisine, Sean Bowe.
+Source specification: https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
+The specification and its word lists are licensed under the MIT License.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
 ===============================================================================
 
 THIRD-PARTY COMPONENT LICENSES
@@ -24,7 +47,7 @@ Source graphs: locked all-feature workspace plus excluded publishable crates.
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1019
+Third-party packages: 1049
 License expressions: 46
 Distinct Cargo license files: 4
 
@@ -351,7 +374,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 194 package(s):
+Used by 202 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -364,6 +387,7 @@ Used by 194 package(s):
   - bitvec 1.1.1 (https://github.com/bitvecto-rs/bitvec)
   - boxcar 0.2.14 (https://github.com/ibraheemdev/boxcar)
   - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
+  - cargo_metadata 0.19.2 (https://github.com/oli-obk/cargo_metadata)
   - castaway 0.2.4 (https://github.com/sagebind/castaway)
   - cfg_aliases 0.2.1 (https://github.com/katharostech/cfg_aliases)
   - cfg_aliases 0.2.2 (https://github.com/katharostech/cfg_aliases)
@@ -405,6 +429,7 @@ Used by 194 package(s):
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
   - geographiclib-rs 0.2.7 (https://github.com/georust/geographiclib-rs)
   - getset 0.1.7 (https://github.com/jbaublitz/getset)
+  - goblin 0.8.2 (https://github.com/m4b/goblin)
   - h2 0.4.19 (https://github.com/hyperium/h2)
   - handlebars 6.4.4 (https://github.com/sunng87/handlebars-rust)
   - headers 0.4.1 (https://github.com/hyperium/headers)
@@ -487,6 +512,8 @@ Used by 194 package(s):
   - schemars 0.9.0 (https://github.com/GREsau/schemars)
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
+  - scroll 0.12.0 (https://github.com/m4b/scroll)
+  - scroll_derive 0.12.1 (https://github.com/m4b/scroll)
   - seize 0.5.1 (https://github.com/ibraheemdev/seize)
   - serde-wasm-bindgen 0.6.5 (https://github.com/RReverser/serde-wasm-bindgen)
   - serde_json_canonicalizer 0.3.2 (https://github.com/evik42/serde-json-canonicalizer)
@@ -498,6 +525,7 @@ Used by 194 package(s):
   - sharded-slab 0.1.7 (https://github.com/hawkw/sharded-slab)
   - simd-adler32 0.3.10 (https://github.com/mcountryman/simd-adler32)
   - slab 0.4.12 (https://github.com/tokio-rs/slab)
+  - smawk 0.3.3 (https://github.com/mgeisler/smawk)
   - spin 0.10.1 (https://github.com/mvdnes/spin-rs.git)
   - spin 0.9.9 (https://github.com/mvdnes/spin-rs.git)
   - strsim 0.11.1 (https://github.com/rapidfuzz/strsim-rs)
@@ -508,6 +536,7 @@ Used by 194 package(s):
   - tap 1.0.1 (https://github.com/myrrlyn/tap)
   - termtree 0.5.1 (https://github.com/rust-cli/termtree)
   - testcontainers-modules 0.15.0 (https://github.com/testcontainers/testcontainers-rs-modules-community)
+  - textwrap 0.16.4 (https://github.com/mgeisler/textwrap)
   - tokio 1.52.3 (https://github.com/tokio-rs/tokio)
   - tokio 1.53.1 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.0 (https://github.com/tokio-rs/tokio)
@@ -543,6 +572,8 @@ Used by 194 package(s):
   - vsimd 0.8.0 (https://github.com/Nugine/simd)
   - want 0.3.1 (https://github.com/seanmonstar/want)
   - wasmtimer 0.4.3 (https://github.com/whizsid/wasmtimer-rs)
+  - weedle2 5.0.0 (https://github.com/mozilla/uniffi-rs)
+  - winnow 0.7.15 (https://github.com/winnow-rs/winnow)
   - winnow 1.0.4 (https://github.com/winnow-rs/winnow)
   - wyz 0.5.1 (https://github.com/myrrlyn/wyz)
   - zip 6.0.0 (https://github.com/zip-rs/zip2.git)
@@ -562,7 +593,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 489 package(s):
+Used by 502 package(s):
 
   - aead 0.5.2 (https://github.com/RustCrypto/traits)
   - aes 0.8.4 (https://github.com/RustCrypto/block-ciphers)
@@ -583,6 +614,9 @@ Used by 489 package(s):
   - argon2 0.5.3 (https://github.com/RustCrypto/password-hashes/tree/master/argon2)
   - arrayvec 0.7.8 (https://github.com/bluss/arrayvec)
   - as-slice 0.1.5 (https://github.com/japaric/as-slice)
+  - askama 0.14.0 (https://github.com/askama-rs/askama)
+  - askama_derive 0.14.0 (https://github.com/askama-rs/askama)
+  - askama_parser 0.14.0 (https://github.com/askama-rs/askama)
   - asn1-rs 0.6.2 (https://github.com/rusticata/asn1-rs.git)
   - asn1-rs-derive 0.5.1 (https://github.com/rusticata/asn1-rs.git)
   - assert_cmd 2.2.2 (https://github.com/assert-rs/assert_cmd.git)
@@ -594,6 +628,7 @@ Used by 489 package(s):
   - base64 0.21.7 (https://github.com/marshallpierce/rust-base64)
   - base64 0.22.1 (https://github.com/marshallpierce/rust-base64)
   - base64 0.23.1 (https://github.com/marshallpierce/rust-base64)
+  - basic-toml 0.1.10 (https://github.com/dtolnay/basic-toml)
   - bitflags 2.13.0 (https://github.com/bitflags/bitflags)
   - bitflags 2.13.2 (https://github.com/bitflags/bitflags)
   - blake2 0.10.6 (https://github.com/RustCrypto/hashes)
@@ -604,6 +639,8 @@ Used by 489 package(s):
   - borsh 1.7.0 (https://github.com/near/borsh-rs)
   - bstr 1.13.1 (https://github.com/BurntSushi/bstr)
   - bumpalo 3.20.3 (https://github.com/fitzgen/bumpalo)
+  - camino 1.2.6 (https://github.com/camino-rs/camino)
+  - cargo-platform 0.1.9 (https://github.com/rust-lang/cargo)
   - cast 0.3.0 (https://github.com/japaric/cast.rs)
   - cc 1.2.67 (https://github.com/rust-lang/cc-rs)
   - cc 1.4.5 (https://github.com/rust-lang/cc-rs)
@@ -711,6 +748,7 @@ Used by 489 package(s):
   - getrandom 0.3.4 (https://github.com/rust-random/getrandom)
   - getrandom 0.4.3 (https://github.com/rust-random/getrandom)
   - gimli 0.32.3 (https://github.com/gimli-rs/gimli)
+  - glob 0.3.4 (https://github.com/rust-lang/glob)
   - half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   - hash32 0.1.1 (https://github.com/japaric/hash32)
   - hash32 0.2.1 (https://github.com/japaric/hash32)
@@ -906,6 +944,7 @@ Used by 489 package(s):
   - serde_json 1.0.151 (https://github.com/serde-rs/json)
   - serde_path_to_error 0.1.20 (https://github.com/dtolnay/path-to-error)
   - serde_repr 0.1.21 (https://github.com/dtolnay/serde-repr)
+  - serde_spanned 1.1.1 (https://github.com/toml-rs/toml)
   - serde_with 3.23.0 (https://github.com/jonasbb/serde_with/)
   - serde_with_macros 3.23.0 (https://github.com/jonasbb/serde_with/)
   - sha1 0.10.7 (https://github.com/RustCrypto/hashes)
@@ -927,6 +966,7 @@ Used by 489 package(s):
   - sqlx-postgres 0.8.6 (https://github.com/launchbadge/sqlx)
   - sqlx-sqlite 0.8.6 (https://github.com/launchbadge/sqlx)
   - stable_deref_trait 1.2.1 (https://github.com/storyyeller/stable_deref_trait)
+  - static_assertions 1.1.0 (https://github.com/nvzqz/static-assertions-rs)
   - string_cache 0.8.9 (https://github.com/servo/string-cache)
   - string_cache 0.9.0 (https://github.com/servo/string-cache)
   - string_cache_codegen 0.5.4 (https://github.com/servo/string-cache)
@@ -957,9 +997,13 @@ Used by 489 package(s):
   - tiny_http 0.12.0 (https://github.com/tiny-http/tiny-http)
   - tokio-rustls 0.26.4 (https://github.com/rustls/tokio-rustls)
   - tokio-rustls 0.26.5 (https://github.com/rustls/tokio-rustls)
+  - toml 0.9.12+spec-1.1.0 (https://github.com/toml-rs/toml)
+  - toml_datetime 0.7.5+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_datetime 1.1.1+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_edit 0.25.13+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_parser 1.1.2+spec-1.1.0 (https://github.com/toml-rs/toml)
+  - toml_parser 1.1.3+spec-1.1.0 (https://github.com/toml-rs/toml)
+  - toml_writer 1.1.2+spec-1.1.0 (https://github.com/toml-rs/toml)
   - topological-sort 0.2.2 (https://github.com/gifnksm/topological-sort-rs)
   - tungstenite 0.28.0 (https://github.com/snapview/tungstenite-rs)
   - tungstenite 0.29.0 (https://github.com/snapview/tungstenite-rs)
@@ -1092,7 +1136,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 64 package(s):
+Used by 65 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
   - affinitypool 0.7.0 (https://github.com/surrealdb/affinitypool)
@@ -1110,6 +1154,7 @@ Used by 64 package(s):
   - filetime 0.2.29 (https://github.com/alexcrichton/filetime)
   - foreign-types 0.3.2 (https://github.com/sfackler/foreign-types)
   - foreign-types-shared 0.1.1 (https://github.com/sfackler/foreign-types)
+  - fs-err 2.11.0 (https://github.com/andrewhickman/fs-err)
   - group 0.13.0 (https://github.com/zkcrypto/group)
   - ident_case 1.0.1 (https://github.com/TedDriggs/ident_case)
   - ipconfig 0.3.4 (https://github.com/liranringel/ipconfig)
@@ -1167,13 +1212,21 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MPL-2.0
-Used by 9 package(s):
+Used by 17 package(s):
 
   - base64urlsafedata 0.5.5 (https://github.com/kanidm/webauthn-rs)
   - cssparser 0.37.0 (https://github.com/servo/rust-cssparser)
   - dtoa-short 0.3.5 (https://github.com/upsuper/dtoa-short)
   - mdbook 0.4.52 (https://github.com/rust-lang/mdBook)
   - option-ext 0.2.0 (https://github.com/soc/option-ext.git)
+  - uniffi 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_bindgen 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_core 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_internal_macros 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_macros 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_meta 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_pipeline 0.31.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_udl 0.31.2 (https://github.com/mozilla/uniffi-rs)
   - webauthn-attestation-ca 0.5.5 (https://github.com/kanidm/webauthn-rs)
   - webauthn-rs 0.5.5 (https://github.com/kanidm/webauthn-rs)
   - webauthn-rs-core 0.5.5 (https://github.com/kanidm/webauthn-rs)

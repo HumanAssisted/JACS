@@ -4,6 +4,8 @@ version = "0.13.0"
 edition = "2024"
 rust-version = "1.97"
 description = "JACS portable UniFFI bindings for Android, iOS and React Native"
+# Distributed through generated platform bindings; crates.io release is separate.
+publish = false
 license = "Apache-2.0"
 repository = "https://github.com/HumanAssisted/JACS"
 

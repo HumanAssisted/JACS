@@ -33,6 +33,7 @@ DEFAULT_CLARIFICATIONS = ROOT / "scripts/third_party_license_clarifications.toml
 REQUIRED_PACKAGE_COPIES = (
     Path("jacs/THIRD-PARTY-NOTICES"),
     Path("jacs-core/THIRD-PARTY-NOTICES"),
+    Path("jacs-mobile/THIRD-PARTY-NOTICES"),
     Path("jacs-media/THIRD-PARTY-NOTICES"),
     Path("binding-core/THIRD-PARTY-NOTICES"),
     Path("jacs-mcp/THIRD-PARTY-NOTICES"),
