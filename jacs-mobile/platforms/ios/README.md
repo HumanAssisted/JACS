@@ -103,8 +103,9 @@ bash jacs-mobile/scripts/check-ios-tests.sh
 The XCTest sources use fake biometric callbacks for deterministic
 cancellation/state tests and real noninteractive simulator Keychain queries
 to reject weak or missing records. The script generates a minimal simulator
-app host linked to the assembled Swift package, then checks the signed app's
-isolated test-only Keychain entitlements before running all tests. A hostless
+app host linked to the assembled Swift package, then verifies the app signature
+and each built executable slice's embedded simulator Keychain entitlements
+before running all tests. A hostless
 SwiftPM test process lacks the application identity required by Keychain.
 No developer account or production signing credentials are needed. These tests
 do not claim that a simulator proves Face ID, Secure Enclave, or physical-device

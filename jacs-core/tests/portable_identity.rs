@@ -291,7 +291,7 @@ fn es256_wire_encoding_is_canonical_and_matches_independent_verifier() {
     assert_eq!(secret.len(), 32);
     assert_eq!(signature.len(), 64);
     let parsed = p256::ecdsa::Signature::from_slice(&signature).unwrap();
-    assert!(parsed.normalize_s().is_none());
+    assert_eq!(parsed.normalize_s(), parsed);
     let verify_key = p256::ecdsa::VerifyingKey::from_sec1_bytes(&public).unwrap();
     verify_key.verify(b"hardware-compatible", &parsed).unwrap();
     P256Signer::verify(&public, b"hardware-compatible", &signature).unwrap();
@@ -301,7 +301,7 @@ fn es256_wire_encoding_is_canonical_and_matches_independent_verifier() {
     );
     assert!(
         P256Signer::verify(
-            verify_key.to_encoded_point(true).as_bytes(),
+            verify_key.to_sec1_point(true).as_bytes(),
             b"hardware-compatible",
             &signature
         )
@@ -330,7 +330,7 @@ fn es256_wire_encoding_is_canonical_and_matches_independent_verifier() {
 #[test]
 fn public_key_pem_preserves_native_registration_formats() {
     use base64::Engine as _;
-    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    use p256::elliptic_curve::sec1::ToSec1Point;
     use p256::pkcs8::DecodePublicKey;
     for algorithm in [
         SigningAlgorithm::Ed25519,
@@ -350,7 +350,7 @@ fn public_key_pem_preserves_native_registration_formats() {
             .unwrap();
         if algorithm == SigningAlgorithm::Es256 {
             let key = p256::PublicKey::from_public_key_der(&decoded).unwrap();
-            assert_eq!(key.to_encoded_point(false).as_bytes(), agent.public_key());
+            assert_eq!(key.to_sec1_point(false).as_bytes(), agent.public_key());
         } else {
             assert_eq!(decoded, agent.public_key());
         }

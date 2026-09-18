@@ -5,7 +5,7 @@
 //! receiving identity and rewrap the key before it reaches persistent storage.
 
 use crate::{AgentMaterial, CoreAgent, CoreError, SigningAlgorithm, UnlockSecret};
-use aes_gcm::aead::rand_core::{OsRng, RngCore};
+use rand::{TryRng, rngs::SysRng};
 use zeroize::Zeroizing;
 
 /// Device linking is for small identity/key bundles, not attached documents.
@@ -28,11 +28,11 @@ pub fn generate_transfer_code() -> Result<Zeroizing<String>, CoreError> {
         ));
     }
     let mut random = Zeroizing::new([0u8; TRANSFER_CODE_WORD_COUNT * 2]);
-    OsRng
+    SysRng
         .try_fill_bytes(random.as_mut())
         .map_err(|_| CoreError::EncryptionFailed("secure randomness unavailable".into()))?;
     let mut code = Zeroizing::new(String::with_capacity(64));
-    for (position, bytes) in random.chunks_exact(2).enumerate() {
+    for (position, bytes) in random.as_chunks::<2>().0.iter().enumerate() {
         // The vocabulary size is a power of two, so masking introduces no bias.
         let index = usize::from(u16::from_le_bytes([bytes[0], bytes[1]]) & 2047);
         if position != 0 {
