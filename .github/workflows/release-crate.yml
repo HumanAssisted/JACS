@@ -120,7 +120,7 @@ jobs:
           test "$actual" = 3
 
       - name: Generate pre-publish Rust candidate SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           path: security-candidates/extracted
           format: spdx-json
@@ -281,7 +281,7 @@ jobs:
           done
 
       - name: Generate packaged Rust-crate SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           path: packaged-crates/extracted
           format: spdx-json
