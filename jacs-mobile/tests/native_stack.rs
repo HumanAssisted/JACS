@@ -65,6 +65,25 @@ fn small_stack_child() {
                 .unwrap();
             assert!(restored.verify_json(signed).unwrap().valid);
             restored.clear_secrets().unwrap();
+            println!("human creation and generated recovery");
+            let human = MobileAgent::create_human().unwrap();
+            let identity: serde_json::Value =
+                serde_json::from_str(&human.export_agent_json().unwrap()).unwrap();
+            let recovery = human.export_recovery().unwrap();
+            let recovered = MobileAgent::import_recovery(
+                recovery.material,
+                recovery.code,
+                identity["jacsId"].as_str().unwrap().into(),
+                human.public_key().unwrap(),
+                jacs_mobile::MobileAlgorithm::Pq2025,
+            )
+            .unwrap();
+            assert_eq!(
+                human.export_agent_json().unwrap(),
+                recovered.export_agent_json().unwrap()
+            );
+            human.clear_secrets().unwrap();
+            recovered.clear_secrets().unwrap();
             println!("complete");
         })
         .unwrap()

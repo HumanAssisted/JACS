@@ -104,6 +104,13 @@ impl From<AgentMaterial> for EncryptedAgentMaterial {
     }
 }
 
+/// Explicit display/input only. Do not log, persist or send the code to storage.
+#[derive(uniffi::Record)]
+pub struct MobileRecoveryExport {
+    pub code: String,
+    pub material: EncryptedAgentMaterial,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MobileVerification {
     pub valid: bool,
@@ -242,6 +249,12 @@ impl MobileAgent {
         Self::create(MobileAlgorithm::Pq2025)
     }
 
+    /// Human identity, self-signed as human in its first version; PQ only.
+    #[uniffi::constructor]
+    pub fn create_human() -> Result<Arc<Self>, MobileError> {
+        Ok(Self::wrap(CoreAgent::create_human()?))
+    }
+
     /// Explicit algorithm selection for compatibility. Prefer create_default
     /// for new portable identities.
     #[uniffi::constructor]
@@ -297,6 +310,35 @@ impl MobileAgent {
             &expected_public_key,
             expected_algorithm.into(),
         )?))
+    }
+
+    /// Durable recovery import. Pins come from trusted registration, not material.
+    #[uniffi::constructor]
+    pub fn import_recovery(
+        material: EncryptedAgentMaterial,
+        code: String,
+        expected_agent_id: String,
+        expected_public_key: Vec<u8>,
+        expected_algorithm: MobileAlgorithm,
+    ) -> Result<Arc<Self>, MobileError> {
+        let code = Zeroizing::new(code);
+        Ok(Self::wrap(jacs_core::recovery::import_recovery(
+            material.try_into()?,
+            &code,
+            &expected_agent_id,
+            &expected_public_key,
+            expected_algorithm.into(),
+        )?))
+    }
+
+    /// The owned native vault calls this; never expose MobileAgent through an app bridge.
+    pub fn export_recovery(&self) -> Result<MobileRecoveryExport, MobileError> {
+        let agent = self.lock()?;
+        let recovery = jacs_core::recovery::export_recovery(&agent)?;
+        Ok(MobileRecoveryExport {
+            code: recovery.code.to_string(),
+            material: recovery.material.into(),
+        })
     }
 
     pub fn algorithm(&self) -> Result<MobileAlgorithm, MobileError> {
@@ -436,6 +478,12 @@ pub fn material_from_json(json: String) -> Result<EncryptedAgentMaterial, Mobile
         return Err(CoreError::MalformedDocument("material JSON exceeds 1 MiB".into()).into());
     }
     Ok(jacs_core::strict_json::deserialize_strict_json::<AgentMaterial>(&json)?.into())
+}
+
+/// Durable recovery code: 128 CSPRNG bits, distinct from device transfer.
+#[uniffi::export]
+pub fn generate_recovery_code() -> Result<String, MobileError> {
+    Ok(jacs_core::recovery::generate_recovery_code()?.to_string())
 }
 
 /// Six independently sampled words (66 bits); display only on the sending device.

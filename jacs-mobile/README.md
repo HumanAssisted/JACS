@@ -298,3 +298,24 @@ PYTHONPATH=jacs-mobile/generated/python python3 jacs-mobile/tests/ffi_smoke.py
 
 This exercises actual cross-language calls, callback signatures, typed callback
 failures and secret eviction, but makes no claim about device biometrics.
+
+### Human signing and generated recovery
+
+`MobileAgent.createHuman()` generates an ML-DSA-87 human identity in its first
+self-signed version. Apps should use the owned `JacsBiometricVault.createHuman`
+entry point on iOS/Android, retaining biometric custody and lifecycle guards.
+No `MobileAgent` signing handle crosses an application bridge.
+
+For durable recovery, use iOS `session.createRecovery` or Android
+`vault.createRecovery`. The result contains a generated 128-bit code and encrypted
+`AgentMaterial`; owned sessions lock before delivery and reject late results.
+`vault.receiveRecovery` pins the expected ID/public key from authenticated
+registration, normalizes pasted code formatting, rewraps behind local biometric
+protection and refuses to replace any existing record. Wrong input leaves a
+working record unchanged. Local restore alone never authorizes an application action.
+
+The underlying UniFFI `exportRecovery()` returns `MobileRecoveryExport { code,
+material }`; `importRecovery` takes the material, code and ID/key/algorithm pins.
+These APIs expose no plaintext private key or OS wrapping secret. Display/input
+copies of a recovery code are host-managed strings: never log or persist them,
+and discard them on background. The six-word transfer APIs remain separate.

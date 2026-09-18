@@ -136,12 +136,14 @@ internal final class SystemVaultRecordStore: JacsVaultRecordStore {
 
 internal protocol JacsVaultAgentFactory {
     func create() throws -> JacsSessionAgent
+    func createHuman() throws -> JacsSessionAgent
     func restore(materialJSON: String, password: String) throws -> JacsSessionAgent
     func serialize(_ material: EncryptedAgentMaterial) throws -> String
 }
 
 internal struct RustVaultAgentFactory: JacsVaultAgentFactory {
     func create() throws -> JacsSessionAgent { RustSessionAgent(try MobileAgent.createDefault()) }
+    func createHuman() throws -> JacsSessionAgent { RustSessionAgent(try MobileAgent.createHuman()) }
     func restore(materialJSON: String, password: String) throws -> JacsSessionAgent {
         let material = try materialFromJson(json: materialJSON)
         guard material.algorithm == .pq2025 else { throw JacsBiometricError.unsupportedAlgorithm }
@@ -234,6 +236,13 @@ public final class JacsBiometricVault {
         open(account: account, reason: reason, create: { try self.factory.create() }, completion: completion)
     }
 
+    /// Create a human in its first signed version. Never replaces an existing record.
+    @discardableResult
+    public func createHuman(account: String, reason: String,
+        completion: @escaping (Result<JacsBiometricSession, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        open(account: account, reason: reason, create: { try self.factory.createHuman() }, completion: completion)
+    }
+
     /// Consumes this handle: it is cleared on success, failure, or cancellation.
     /// On success the session owns a separately imported Rust handle. This also
     /// relocks other references to the supplied MobileAgent.
@@ -262,6 +271,21 @@ public final class JacsBiometricVault {
         open(account: account, reason: reason, create: {
             guard material.algorithm == .pq2025 else { throw JacsBiometricError.unsupportedAlgorithm }
             return RustSessionAgent(try MobileAgent.importPinned(material: material, code: code,
+                expectedAgentId: expectedAgentID, expectedPublicKey: expectedPublicKey,
+                expectedAlgorithm: .pq2025))
+        }, completion: completion)
+    }
+
+    /// Restore a generated-code backup through owned custody. Existing records
+    /// remain untouched on wrong code, wrong pin, malformed input or cancellation.
+    @discardableResult
+    public func receiveRecovery(material: EncryptedAgentMaterial, code: String,
+                        expectedAgentID: String, expectedPublicKey: Data,
+                        account: String, reason: String,
+        completion: @escaping (Result<JacsBiometricSession, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        open(account: account, reason: reason, create: {
+            guard material.algorithm == .pq2025 else { throw JacsBiometricError.unsupportedAlgorithm }
+            return RustSessionAgent(try MobileAgent.importRecovery(material: material, code: code,
                 expectedAgentId: expectedAgentID, expectedPublicKey: expectedPublicKey,
                 expectedAlgorithm: .pq2025))
         }, completion: completion)

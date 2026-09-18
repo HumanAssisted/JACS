@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 # These passwords protect disposable test keys only. Never use them for real identities.
+RECOVERY = os.environ.get("JACS_INTEROP_RECOVERY") == "1"
 TO_BROWSER_PASSWORD = "JacsInterop-MobileToBrowser-TestOnly-7pQ!"
 TO_MOBILE_PASSWORD = "JacsInterop-BrowserToMobile-TestOnly-9rS!"
 
@@ -33,13 +34,19 @@ def write_private_json(path, value):
 
 
 def create_fixture(binding, path):
-    agent = binding.MobileAgent.create(binding.MobileAlgorithm.PQ2025)
+    agent = binding.MobileAgent.create_human() if RECOVERY else binding.MobileAgent.create(binding.MobileAlgorithm.PQ2025)
     try:
         require(agent.algorithm() == binding.MobileAlgorithm.PQ2025, "source algorithm")
         document = json.loads(agent.export_agent_json())
         challenge = {"test": "jacs-portable-pq-interop", "direction": "mobile-to-browser", "nonce": document["jacsId"]}
         signed_challenge = agent.sign_message_json(json.dumps(challenge))
-        material_json = binding.material_to_json(agent.export_encrypted_agent(TO_BROWSER_PASSWORD))
+        if RECOVERY:
+            require(document["jacsAgentType"] == "human", "human first version")
+            require(document["jacsVersion"] == document["jacsOriginalVersion"], "no AI predecessor")
+            recovery = agent.export_recovery()
+            material_json = binding.material_to_json(recovery.material)
+        else:
+            material_json = binding.material_to_json(agent.export_encrypted_agent(TO_BROWSER_PASSWORD))
         write_private_json(path, {
             "algorithm": "pq2025",
             "agent_id": document["jacsId"],
@@ -49,7 +56,8 @@ def create_fixture(binding, path):
             "material_json": material_json,
             "signed_challenge": signed_challenge,
             "challenge": challenge,
-            "transfer_password": TO_BROWSER_PASSWORD,
+            "recovery": RECOVERY,
+            "transfer_password": recovery.code if RECOVERY else TO_BROWSER_PASSWORD,
             "return_password": TO_MOBILE_PASSWORD,
         })
     finally:
@@ -67,7 +75,15 @@ def verify_return(binding, fixture_path, returned_path):
     require(returned["verified_mobile"] is True, "browser verified source")
     material = binding.material_from_json(returned["material_json"])
     public_key = base64.b64decode(fixture["public_key_base64"], validate=True)
-    agent = binding.MobileAgent.import_pinned(material, fixture["return_password"], fixture["agent_id"], public_key, binding.MobileAlgorithm.PQ2025)
+    if RECOVERY:
+        agent = binding.MobileAgent.import_recovery(material, returned["recovery_code"], fixture["agent_id"], public_key, binding.MobileAlgorithm.PQ2025)
+        for document in returned["created_humans"]:
+            key = base64.b64decode(document["public_key_base64"], validate=True)
+            outcome = binding.verify_with_key(document["signed_identity"], key, binding.MobileAlgorithm.PQ2025)
+            require(outcome.valid, "native verifies web and worker human constructors")
+            require(json.loads(document["signed_identity"])["jacsAgentType"] == "human", "created human type")
+    else:
+        agent = binding.MobileAgent.import_pinned(material, fixture["return_password"], fixture["agent_id"], public_key, binding.MobileAlgorithm.PQ2025)
     try:
         require(agent.is_unlocked(), "mobile return unlock")
         require(agent.algorithm() == binding.MobileAlgorithm.PQ2025, "mobile return algorithm")

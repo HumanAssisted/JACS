@@ -70,6 +70,7 @@ public final class JacsBiometricOperation {
 
 internal protocol JacsSessionAgent: AnyObject {
     func sign(_ json: String) throws -> String
+    func recovery() throws -> MobileRecoveryExport
     func export(_ password: String) throws -> EncryptedAgentMaterial
     func requestAuth(method: String, url: String, body: Data, audience: String) throws -> String
     func identity() throws -> String
@@ -80,6 +81,7 @@ internal final class RustSessionAgent: JacsSessionAgent {
     let agent: MobileAgent
     init(_ agent: MobileAgent) { self.agent = agent }
     func sign(_ json: String) throws -> String { try agent.signMessageJson(json: json) }
+    func recovery() throws -> MobileRecoveryExport { try agent.exportRecovery() }
     func export(_ password: String) throws -> EncryptedAgentMaterial {
         try agent.exportEncryptedAgent(password: password)
     }
@@ -97,7 +99,7 @@ internal final class RustSessionAgent: JacsSessionAgent {
 public final class JacsBiometricSession {
     private let lock = NSLock()
     private var active = true
-    private var pendingTransfer: UUID?
+    private var pendingExport: UUID?
     private let agent: JacsSessionAgent
     private let worker: DispatchQueue
     private let callbacks: DispatchQueue
@@ -117,7 +119,7 @@ public final class JacsBiometricSession {
         lock.lock()
         let wasActive = active
         active = false
-        pendingTransfer = nil
+        pendingExport = nil
         lock.unlock()
         if wasActive { worker.async { [agent] in agent.clear() } }
     }
@@ -158,27 +160,41 @@ public final class JacsBiometricSession {
     /// delivery. Background/logout/cancellation still suppress queued results.
     public func createTransfer(
         completion: @escaping (Result<JacsBiometricTransfer, JacsBiometricError>) -> Void) {
+        exportAndClose({ agent in
+            let code = try generateTransferCode()
+            return JacsBiometricTransfer(code: code, material: try agent.export(code))
+        }, completion: completion)
+    }
+
+    /// Generate a durable 128-bit recovery secret in Rust. Lock before returning;
+    /// expose the code only for explicit display and never persist it with material.
+    public func createRecovery(
+        completion: @escaping (Result<MobileRecoveryExport, JacsBiometricError>) -> Void) {
+        exportAndClose({ try $0.recovery() }, completion: completion)
+    }
+
+    private func exportAndClose<T>(_ operation: @escaping (JacsSessionAgent) throws -> T,
+        completion: @escaping (Result<T, JacsBiometricError>) -> Void) {
         worker.async { [self] in
-            let result: Result<JacsBiometricTransfer, JacsBiometricError>
+            let result: Result<T, JacsBiometricError>
             if !isActive {
                 result = .failure(.inactive)
             } else {
                 do {
-                    let code = try generateTransferCode()
-                    result = .success(JacsBiometricTransfer(code: code, material: try agent.export(code)))
+                    result = .success(try operation(agent))
                 } catch { result = .failure(.cryptographyFailed) }
             }
             let delivery = UUID()
             lock.lock()
             let allowed = active
             active = false
-            pendingTransfer = allowed ? delivery : nil
+            pendingExport = allowed ? delivery : nil
             lock.unlock()
             agent.clear()
             callbacks.async { [self] in
                 lock.lock()
-                let deliver = pendingTransfer == delivery
-                if deliver { pendingTransfer = nil }
+                let deliver = pendingExport == delivery
+                if deliver { pendingExport = nil }
                 lock.unlock()
                 completion(deliver ? result : .failure(.inactive))
             }

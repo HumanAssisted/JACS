@@ -414,6 +414,24 @@ impl CoreAgentHandle {
         })
     }
 
+    /// Generate a 128-bit recovery secret and return JSON {code, materialJson}.
+    /// The caller owns display copies and must discard them on background.
+    /// No local state or backup is replaced. Lock the handle after completing work.
+    #[wasm_bindgen(js_name = exportRecovery)]
+    pub fn export_recovery(&self) -> Result<String, JsError> {
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?;
+        let recovery = jacs_core::recovery::export_recovery(&agent).map_err(map_core_err)?;
+        let material_json = serde_json::to_string(&recovery.material)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))?;
+        serde_json::to_string(
+            &serde_json::json!({ "code": recovery.code.as_str(), "materialJson": material_json }),
+        )
+        .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))
+    }
+
     /// Export this unlocked agent as a password-encrypted `AgentMaterial`
     /// JSON string suitable for `localStore.saveEncryptedAgent` and
     /// `importEncryptedAgent`.
@@ -969,6 +987,17 @@ pub fn create_ephemeral(algorithm: &str) -> Result<CoreAgentHandle, JsError> {
     })
 }
 
+/// Create a self-signed human identity using ML-DSA-87, without an AI version.
+#[wasm_bindgen(js_name = createHuman)]
+pub fn create_human() -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(CoreAgent::create_human().map_err(map_core_err)?)),
+        verifier_override: None,
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
+    })
+}
+
 /// Import an encrypted agent from a JSON-serialized `AgentMaterial` blob +
 /// password.
 #[wasm_bindgen(js_name = importEncryptedAgent)]
@@ -986,6 +1015,41 @@ pub fn import_encrypted_agent(
         })?;
     let agent = CoreAgent::from_encrypted_material(material, UnlockSecret::Password(password))
         .map_err(map_core_err)?;
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(agent)),
+        verifier_override: None,
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
+    })
+}
+
+/// Durable recovery code, 128 bits. The host must discard JS copies on background.
+#[wasm_bindgen(js_name = generateRecoveryCode)]
+pub fn generate_recovery_code() -> Result<String, JsError> {
+    init_jacs_wasm();
+    jacs_core::recovery::generate_recovery_code()
+        .map(|code| code.to_string())
+        .map_err(map_core_err)
+}
+
+/// Restore generated-code material using independent registration pins.
+#[wasm_bindgen(js_name = importRecovery)]
+pub fn import_recovery(
+    material_json: &str,
+    code: String,
+    expected_agent_id: &str,
+    expected_public_key_base64: &str,
+    expected_algorithm: &str,
+) -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    let code = zeroize::Zeroizing::new(code);
+    let agent = jacs_core::recovery::import_recovery(
+        parse_material(material_json)?,
+        &code,
+        expected_agent_id,
+        &decode_public_key(expected_public_key_base64)?,
+        parse_algorithm(expected_algorithm)?,
+    )
+    .map_err(map_core_err)?;
     Ok(CoreAgentHandle {
         inner: Arc::new(Mutex::new(agent)),
         verifier_override: None,

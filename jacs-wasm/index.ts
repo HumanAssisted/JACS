@@ -16,6 +16,9 @@ import __wbg_init, {
   CoreAgentHandle,
   createAgreementJson,
   createEphemeral as _createEphemeralRaw,
+  createHuman as _createHumanRaw,
+  importRecovery as _importRecoveryRaw,
+  generateRecoveryCode as _generateRecoveryCodeRaw,
   createVerifier as _createVerifierRaw,
   importEncryptedAgent as _importEncryptedAgentRaw,
   importEncryptedAgentPinned as _importEncryptedAgentPinnedRaw,
@@ -105,6 +108,27 @@ export async function createEphemeral(
 ): Promise<CoreAgentHandle> {
   await initJacsWasm();
   return _createEphemeralRaw(algorithm);
+}
+
+/** Create a human identity in its first signed version, ML-DSA-87 only. */
+export async function createHuman(): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _createHumanRaw();
+}
+
+/** Generate 128 random recovery bits. Never persist/upload the plaintext code. */
+export async function generateRecoveryCode(): Promise<string> {
+  await initJacsWasm();
+  return _generateRecoveryCodeRaw();
+}
+
+/** Durable recovery with independent identity/key pins; accepts grouped pasted codes. */
+export async function importRecovery(
+  materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _importRecoveryRaw(materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm);
 }
 
 /** Import an encrypted agent from a JSON-serialized `AgentMaterial`

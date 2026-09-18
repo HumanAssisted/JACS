@@ -30,6 +30,8 @@ class JacsVaultRequest internal constructor(private val cancelAction: () -> Unit
 
 data class JacsVaultIdentity(val agentJson: String, val publicKeyBase64: String)
 data class JacsEncryptedTransfer(val code: String, val materialJson: String)
+/** Deliberately no data-class toString/copy: code must not appear in diagnostics. */
+class JacsEncryptedRecovery(val code: String, val materialJson: String)
 
 /** Owns the unlocked Rust handle; callers never receive an escapable private-key
  * handle. Construct on the main thread, normally from Activity.onCreate, and call
@@ -77,6 +79,10 @@ class JacsBiometricVault(
     fun create(title: String, callback: JacsVaultCallback<JacsVaultIdentity>): JacsVaultRequest =
         provision(title, callback) { MobileAgent.create(MobileAlgorithm.PQ2025) }
 
+    /** Creates a human first version using ML-DSA-87, within owned custody. */
+    fun createHuman(title: String, callback: JacsVaultCallback<JacsVaultIdentity>): JacsVaultRequest =
+        provision(title, callback) { MobileAgent.createHuman() }
+
     /** Receive an encrypted transfer after obtaining its expected identity/key
      * from authenticated registration. Classical material is rejected. */
     fun receive(
@@ -89,6 +95,21 @@ class JacsBiometricVault(
             if (material.algorithm != MobileAlgorithm.PQ2025)
                 throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
             MobileAgent.importPinned(material, transferCode, expectedAgentId, expectedKey, MobileAlgorithm.PQ2025)
+        }
+    }
+
+    /** Durable recovery; pins must come from authenticated registration.
+     * Never overwrites an existing record, including on malformed or wrong input. */
+    fun receiveRecovery(
+        materialJson: String, code: String, expectedAgentId: String,
+        expectedPublicKey: ByteArray, title: String, callback: JacsVaultCallback<JacsVaultIdentity>,
+    ): JacsVaultRequest {
+        val expectedKey = expectedPublicKey.copyOf()
+        return provision(title, callback) {
+            val material = materialFromJson(materialJson)
+            if (material.algorithm != MobileAlgorithm.PQ2025)
+                throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
+            MobileAgent.importRecovery(material, code, expectedAgentId, expectedKey, MobileAlgorithm.PQ2025)
         }
     }
 
@@ -139,6 +160,14 @@ class JacsBiometricVault(
         useSession(callback, lockAfter = true) {
             val code = generateTransferCode()
             JacsEncryptedTransfer(code, materialToJson(it.exportEncryptedAgent(code)))
+        }
+
+    /** 128-bit durable recovery, separate from the six-word transfer format.
+     * Locks before callback; background/cancel discards late results. */
+    fun createRecovery(callback: JacsVaultCallback<JacsEncryptedRecovery>): JacsVaultRequest =
+        useSession(callback, lockAfter = true) {
+            val recovery = it.exportRecovery()
+            JacsEncryptedRecovery(recovery.code, materialToJson(recovery.material))
         }
 
     private fun <T> useSession(callback: JacsVaultCallback<T>, lockAfter: Boolean = false,

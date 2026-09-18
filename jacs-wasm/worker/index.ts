@@ -221,6 +221,13 @@ export class WorkerAgentHandle {
     return result.value;
   }
 
+  /** Generated 128-bit code and ciphertext; display code only on explicit request.
+   * The host must clear visible copies and lock/drop on completion or background. */
+  async exportRecovery(): Promise<{ code: string; materialJson: string }> {
+    const result = await dispatch<{ value: string }>("exportRecovery", { handleId: this.handleId });
+    return JSON.parse(result.value);
+  }
+
   async exportEncryptedAgent(password: string): Promise<string> {
     const result = await dispatch<{ value: string }>("exportEncryptedAgent", {
       handleId: this.handleId, password,
@@ -250,6 +257,37 @@ export class WorkerAgentHandle {
 // ---------------------------------------------------------------------------
 // Constructors.
 // ---------------------------------------------------------------------------
+
+/** First-version human metadata; ML-DSA-87 only. */
+export async function createHumanInWorker(
+  options?: { workerUrl?: URL | string },
+): Promise<WorkerAgentHandle> {
+  const result = await dispatch<{
+    handleId: number; publicKeyBase64: string; algorithm: Algorithm;
+  }>("createHuman", {}, options?.workerUrl);
+  return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+/** Pins come from authenticated registration, never from the backup itself. */
+export async function importRecoveryInWorker(
+  materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm,
+  options?: { workerUrl?: URL | string },
+): Promise<WorkerAgentHandle> {
+  const result = await dispatch<{
+    handleId: number; publicKeyBase64: string; algorithm: Algorithm;
+  }>("importRecovery", {
+    materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
+  }, options?.workerUrl);
+  return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+export async function generateRecoveryCodeInWorker(
+  options?: { workerUrl?: URL | string },
+): Promise<string> {
+  const result = await dispatch<{ code: string }>("generateRecoveryCode", {}, options?.workerUrl);
+  return result.code;
+}
 
 export async function createEphemeralInWorker(
   algorithm: Algorithm = "pq2025",

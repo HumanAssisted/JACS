@@ -42,6 +42,10 @@ private final class FakeAgent: JacsSessionAgent {
         XCTAssertFalse(cleared)
         return "signed:" + json
     }
+    func recovery() throws -> MobileRecoveryExport {
+        return MobileRecoveryExport(code: "0123-4567-89AB-CDEF-0123-4567-89AB-CDEF",
+            material: try export("one two three four five six"))
+    }
     func export(_ password: String) throws -> EncryptedAgentMaterial {
         XCTAssertTrue(Data(base64Encoded: password)?.count == 32 || password.split(separator: " ").count == 6)
         return EncryptedAgentMaterial(configJson: "{}", agentJson: "{}", publicKey: Data([1]),
@@ -59,6 +63,7 @@ private final class FakeFactory: JacsVaultAgentFactory {
     func create() throws -> JacsSessionAgent {
         let agent = FakeAgent(); created.append(agent); return agent
     }
+    func createHuman() throws -> JacsSessionAgent { try create() }
     func restore(materialJSON: String, password: String) throws -> JacsSessionAgent {
         XCTAssertEqual(materialJSON, "encrypted-pq-material")
         XCTAssertEqual(Data(base64Encoded: password)?.count, 32)
@@ -247,6 +252,101 @@ final class JacsBiometricVaultTests: XCTestCase {
         wait(for: [done], timeout: 5)
         worker.sync {}
         XCTAssertTrue(factory.restored[0].cleared)
+    }
+
+    func testOwnedHumanRecoveryWithRealRustPreservesWorkingRecordOnFailures() throws {
+        let realVault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+        defer { realVault.invalidate(); worker.sync {} }
+        var source: JacsBiometricSession?
+        let created = expectation(description: "human created in owned vault")
+        realVault.createHuman(account: "source", reason: "Set up") {
+            if case .success(let value) = $0 { source = value } else { XCTFail("human creation failed") }
+            created.fulfill()
+        }
+        auth.succeed()
+        wait(for: [created], timeout: 15)
+        var recovery: MobileRecoveryExport?
+        let exported = expectation(description: "generated recovery")
+        source!.createRecovery {
+            if case .success(let value) = $0 { recovery = value } else { XCTFail("recovery export failed") }
+            exported.fulfill()
+        }
+        wait(for: [exported], timeout: 15)
+        let backup = try XCTUnwrap(recovery)
+        let identity = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(backup.material.agentJson.utf8)) as? [String: Any])
+        XCTAssertEqual(identity["jacsAgentType"] as? String, "human")
+        let id = try XCTUnwrap(identity["jacsId"] as? String)
+        let original = store.records["source"]
+        var malformed = backup.material
+        malformed.encryptedPrivateKey = Data([0])
+        for (account, material, code, expectedID) in [
+            ("wrong-code", backup.material, "0000-0000-0000-0000-0000-0000-0000-0000", id),
+            ("wrong-id", backup.material, backup.code, "wrong"),
+            ("malformed", malformed, backup.code, id),
+            ("source", backup.material, backup.code, id)
+        ] {
+            auth = FakeAuthorization()
+            let refused = expectation(description: "recovery refused")
+            realVault.receiveRecovery(material: material, code: code,
+                expectedAgentID: expectedID, expectedPublicKey: backup.material.publicKey,
+                account: account, reason: "Restore") {
+                if case .failure = $0 {} else { XCTFail("invalid recovery replaced record") }
+                refused.fulfill()
+            }
+            auth.succeed()
+            wait(for: [refused], timeout: 15)
+            XCTAssertEqual(store.records["source"], original)
+            XCTAssertEqual(store.records.count, 1)
+        }
+        auth = FakeAuthorization()
+        let restored = expectation(description: "same identity restored")
+        realVault.receiveRecovery(material: backup.material, code: backup.code.lowercased(),
+            expectedAgentID: id, expectedPublicKey: backup.material.publicKey,
+            account: "destination", reason: "Restore") { result in
+            guard case .success(let session) = result else { XCTFail("restore failed"); restored.fulfill(); return }
+            session.exportIdentityJSON {
+                if case .success(let json) = $0 { XCTAssertEqual(json, backup.material.agentJson) }
+                else { XCTFail("restored identity unavailable") }
+                session.close()
+                restored.fulfill()
+            }
+        }
+        auth.succeed()
+        wait(for: [restored], timeout: 15)
+        XCTAssertNotNil(store.records["destination"])
+    }
+
+    func testRecoveryLocksBeforeDeliveryAndCancellationSuppressesCode() {
+        let session = createSession()
+        callbacks.suspend()
+        let done = expectation(description: "recovery result invalidated")
+        session.createRecovery {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late recovery code escaped") }
+            done.fulfill()
+        }
+        worker.sync {}
+        XCTAssertFalse(session.isActive)
+        XCTAssertTrue(factory.restored[0].cleared)
+        session.close()
+        callbacks.resume()
+        wait(for: [done], timeout: 5)
+    }
+
+    func testRecoveryReturnsOnlyCodeAndEncryptedMaterialAfterLock() {
+        let session = createSession()
+        let originalRecord = store.records["agent"]
+        let done = expectation(description: "recovery returned locked")
+        session.createRecovery {
+            guard case .success(let result) = $0 else { XCTFail("recovery failed"); done.fulfill(); return }
+            XCTAssertEqual(result.code.count, 39)
+            XCTAssertEqual(result.material.encryptedPrivateKey, Data([2]))
+            XCTAssertFalse(session.isActive)
+            XCTAssertTrue(self.factory.restored[0].cleared)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        XCTAssertEqual(store.records["agent"], originalRecord)
     }
 
     func testClosingTransferBeforeQueuedDeliverySuppressesTheCode() {

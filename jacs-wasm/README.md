@@ -303,3 +303,23 @@ The active CLI and MCP are thin Rust consumers of `jacs-core`.
 ## License
 
 Apache-2.0. See [`LICENSE-APACHE`](../LICENSE-APACHE).
+
+### Human creation and generated-code recovery
+
+Use `await createHuman()` or `await createHumanInWorker()` for a first-version,
+self-signed human identity (ML-DSA-87 only). Existing `createEphemeral` behavior
+is unchanged. `handle.exportRecovery()` returns a JSON string containing
+`{ code, materialJson }`; `WorkerAgentHandle.exportRecovery()` returns that
+object directly. The code contains 128 generated bits in eight hexadecimal
+groups. Show it only after an explicit recovery action and never send it to the
+backup service. The ciphertext uses the existing `AgentMaterial` wire shape.
+
+`await importRecovery(materialJson, code, expectedAgentId,
+expectedPublicKeyBase64, expectedAlgorithm)` and `importRecoveryInWorker(...)`
+restore with independently authenticated registration pins. Spaces/hyphens and
+case are normalized; short transfer codes are rejected. Errors keep core codes,
+including `InvalidPasswordFormat`, `InvalidPassword`, `MalformedKey`,
+`MalformedEnvelope` and `Locked`. A failed import leaves other handles intact.
+After completing work, call `clearSecrets()`/`drop()`; discard late results after
+background/cancel/account change and erase displayed code copies in the host.
+The worker provides responsiveness, not protection against same-origin scripts.

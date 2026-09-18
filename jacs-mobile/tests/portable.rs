@@ -284,3 +284,82 @@ fn hardware_high_s_signatures_are_normalized_and_verified_before_release() {
         .unwrap();
     assert!(agent.verify_json(document).unwrap().valid);
 }
+
+#[test]
+fn human_recovery_interoperates_with_core_and_rejects_wrong_pins() {
+    let mobile = MobileAgent::create_human().unwrap();
+    let identity: serde_json::Value =
+        serde_json::from_str(&mobile.export_agent_json().unwrap()).unwrap();
+    let id = identity["jacsId"].as_str().unwrap().to_string();
+    assert_eq!(identity["jacsAgentType"], "human");
+    assert_eq!(mobile.algorithm().unwrap(), MobileAlgorithm::Pq2025);
+    assert!(mobile.verify_json(identity.to_string()).unwrap().valid);
+    let backup = mobile.export_recovery().unwrap();
+    let wire = material_to_json(backup.material.clone()).unwrap();
+    let core = jacs_core::recovery::import_recovery(
+        serde_json::from_str(&wire).unwrap(),
+        &backup.code,
+        &id,
+        &mobile.public_key().unwrap(),
+        SigningAlgorithm::Pq2025,
+    )
+    .unwrap();
+    assert_eq!(core.export_agent(), identity);
+    let core_backup = jacs_core::recovery::export_recovery(&core).unwrap();
+    let restored = MobileAgent::import_recovery(
+        core_backup.material.into(),
+        core_backup.code.to_lowercase(),
+        id.clone(),
+        mobile.public_key().unwrap(),
+        MobileAlgorithm::Pq2025,
+    )
+    .unwrap();
+    let signed = restored
+        .sign_message_json(r#"{"human":"restored"}"#.into())
+        .unwrap();
+    assert!(
+        core.verify(&serde_json::from_str(&signed).unwrap())
+            .unwrap()
+            .valid
+    );
+    assert!(
+        MobileAgent::import_recovery(
+            backup.material.clone(),
+            generate_recovery_code().unwrap(),
+            id.clone(),
+            mobile.public_key().unwrap(),
+            MobileAlgorithm::Pq2025
+        )
+        .is_err()
+    );
+    assert!(
+        MobileAgent::import_recovery(
+            backup.material.clone(),
+            backup.code.clone(),
+            "wrong-id".into(),
+            mobile.public_key().unwrap(),
+            MobileAlgorithm::Pq2025
+        )
+        .is_err()
+    );
+    let mut malformed = backup.material;
+    malformed.encrypted_private_key.truncate(2);
+    assert!(
+        MobileAgent::import_recovery(
+            malformed,
+            backup.code,
+            id,
+            mobile.public_key().unwrap(),
+            MobileAlgorithm::Pq2025
+        )
+        .is_err()
+    );
+    assert!(
+        mobile
+            .verify_json(mobile.sign_message_json("{}".into()).unwrap())
+            .unwrap()
+            .valid
+    );
+    mobile.clear_secrets().unwrap();
+    assert!(mobile.export_recovery().is_err());
+}

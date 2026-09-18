@@ -21,9 +21,10 @@ pub mod local_store;
 pub mod worker;
 
 pub use agent_handle::{
-    CoreAgentHandle, create_agreement_json, create_ephemeral, create_verifier,
-    generate_transfer_code, import_encrypted_agent, import_encrypted_agent_files,
-    import_encrypted_agent_pinned, reencrypt_transferred_agent,
+    CoreAgentHandle, create_agreement_json, create_ephemeral, create_human, create_verifier,
+    generate_recovery_code, generate_transfer_code, import_encrypted_agent,
+    import_encrypted_agent_files, import_encrypted_agent_pinned, import_recovery,
+    reencrypt_transferred_agent,
 };
 
 // `local_store` (Task 017) — JS-facing free functions are exported under

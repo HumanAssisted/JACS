@@ -31,6 +31,8 @@ export class CoreAgentHandle {
   clearSecrets(): void;
   exportAgent(): string;
   exportEncryptedAgent(password: string): string;
+  /** JSON {code, materialJson}; code is for explicit display only. */
+  exportRecovery(): string;
   getPublicKeyBase64(): string;
   getPublicKeyHash(): string;
   getPublicKeyPem(): string;
@@ -80,6 +82,10 @@ export class CoreAgentHandle {
 }
 
 export function createEphemeral(algorithm: string): CoreAgentHandle;
+export function createHuman(): CoreAgentHandle;
+export function generateRecoveryCode(): string;
+export function importRecovery(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: string): CoreAgentHandle;
 
 export function createVerifier(
   public_key_base64: string,

@@ -48,7 +48,7 @@ try {
   const fixture = JSON.parse(await readFile(fixturePath, 'utf8'));
 
   // Serve only public WASM files. Neither test passwords nor fixtures are HTTP routes.
-  const publicFiles = new Set(['index.js', 'jacs_wasm.js', 'jacs_wasm_bg.wasm']);
+  const publicFiles = new Set(['index.js', 'jacs_wasm.js', 'jacs_wasm_bg.wasm', 'worker/index.js', 'worker/jacs-worker.js']);
   server = createServer(async (request, response) => {
     try {
       const name = new URL(request.url, 'http://localhost').pathname.slice(1);
@@ -91,7 +91,8 @@ try {
         const jacs = await import('/index.js');
         await jacs.initJacsWasm();
         phase = 'pinned-import';
-        agent = await jacs.importEncryptedAgentPinned(fixture.material_json, fixture.transfer_password, fixture.agent_id, fixture.public_key_base64, 'pq2025');
+        const importAgent = fixture.recovery ? jacs.importRecovery : jacs.importEncryptedAgentPinned;
+        agent = await importAgent(fixture.material_json, fixture.transfer_password, fixture.agent_id, fixture.public_key_base64, 'pq2025');
         require(agent.algorithm() === 'pq2025' && agent.isUnlocked(), 'PQ unlock');
         require(agent.getPublicKeyBase64() === fixture.public_key_base64, 'public key pin');
         require(agent.getPublicKeyHash() === fixture.public_key_hash, 'public key hash');
@@ -104,14 +105,60 @@ try {
         phase = 'sign-browser';
         const signedResponse = agent.signMessageJson(JSON.stringify({ test: 'jacs-portable-pq-interop', direction: 'browser-to-mobile', reply_to: fixture.challenge.nonce }));
         phase = 'reencrypt';
-        const materialJson = agent.exportEncryptedAgent(fixture.return_password);
+        const recovery = fixture.recovery ? JSON.parse(agent.exportRecovery()) : null;
+        const materialJson = recovery?.materialJson ?? agent.exportEncryptedAgent(fixture.return_password);
         const material = JSON.parse(materialJson);
         require(material.algorithm === 'pq2025' && material.public_key === fixture.public_key_base64, 'rewrap identity');
         require(material.encrypted_private_key !== JSON.parse(fixture.material_json).encrypted_private_key, 'fresh envelope');
+        let createdHumans = [];
+        if (fixture.recovery) {
+          phase = 'human-worker-recovery';
+          const human = await jacs.createHuman();
+          try {
+            const identity = JSON.parse(human.exportAgent());
+            require(identity.jacsAgentType === 'human' && identity.jacsVersion === identity.jacsOriginalVersion, 'human constructor');
+            createdHumans.push({ signed_identity: human.exportAgent(), public_key_base64: human.getPublicKeyBase64() });
+          } finally { human.clearSecrets(); human.free(); }
+          const worker = await import('/worker/index.js');
+          const workerHuman = await worker.createHumanInWorker();
+          let workerRestored;
+          try {
+            const identityJson = await workerHuman.exportAgent();
+            const identity = JSON.parse(identityJson);
+            require(identity.jacsAgentType === 'human', 'worker human constructor');
+            createdHumans.push({ signed_identity: identityJson, public_key_base64: workerHuman.publicKeyBase64 });
+            const backup = await workerHuman.exportRecovery();
+            workerRestored = await worker.importRecoveryInWorker(backup.materialJson, backup.code.toLowerCase().replaceAll('-', ' '),
+              identity.jacsId, workerHuman.publicKeyBase64, 'pq2025');
+            require(await workerRestored.exportAgent() === identityJson, 'worker recovery identity');
+            for (const [blob, code, id, expectedError] of [
+              [backup.materialJson, await worker.generateRecoveryCodeInWorker(), identity.jacsId, 'InvalidPassword'],
+              [backup.materialJson, backup.code, 'wrong-identity', 'MalformedKey'],
+              ['{}', backup.code, identity.jacsId, 'MalformedDocument'],
+              [backup.materialJson, 'one two three four five six', identity.jacsId, 'InvalidPasswordFormat'],
+            ]) {
+              let rejected = false;
+              try { await worker.importRecoveryInWorker(blob, code, id, workerHuman.publicKeyBase64, 'pq2025'); }
+              catch (error) { rejected = error.code === expectedError; }
+              require(rejected, 'worker recovery rejects invalid input');
+            }
+            // A failed import never clears/replaces an existing worker key.
+            const signed = await workerHuman.signMessage('{}');
+            require(JSON.parse(await workerRestored.verify(signed)).valid, 'working handle preserved');
+            await workerRestored.clearSecrets();
+            let locked = false;
+            try { await workerRestored.exportRecovery(); } catch (error) { locked = error.code === 'Locked'; }
+            require(locked, 'locked worker cannot export');
+          } finally {
+            await workerHuman.drop();
+            await workerRestored?.drop();
+            worker.terminateWorker();
+          }
+        }
         phase = 'clear';
         agent.clearSecrets();
         require(!agent.isUnlocked(), 'browser key cleared');
-        return { ok: true, algorithm: 'pq2025', agent_id: fixture.agent_id, public_key_base64: fixture.public_key_base64, material_json: materialJson, signed_response: signedResponse, verified_mobile: true };
+        return { ok: true, recovery_code: recovery?.code, created_humans: createdHumans, algorithm: 'pq2025', agent_id: fixture.agent_id, public_key_base64: fixture.public_key_base64, material_json: materialJson, signed_response: signedResponse, verified_mobile: true };
       } catch {
         return { ok: false, phase };
       } finally {
@@ -127,7 +174,7 @@ try {
   await writeFile(returnPath, JSON.stringify(result), { mode: 0o600, flag: 'wx' });
   phase = 'mobile-import-and-verify';
   mobile('verify', binding, fixturePath, returnPath);
-  console.log('PASS: native UniFFI -> browser WASM -> native UniFFI PQ interoperability');
+  console.log(fixture.recovery ? 'PASS: human creation and 128-bit recovery through native UniFFI, Chromium WASM and Web Worker; wrong-code/pin/material rejection' : 'PASS: native UniFFI -> browser WASM -> native UniFFI PQ interoperability');
 } catch {
   console.error(`FAIL: PQ interoperability at ${phase}`);
   process.exitCode = 1;

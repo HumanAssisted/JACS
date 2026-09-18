@@ -182,12 +182,24 @@ impl CoreAgent {
     /// Generate a new self-signed identity and software keypair. The same
     /// exported identity can be imported and verified on every target.
     pub fn ephemeral(algorithm: SigningAlgorithm) -> Result<Self, CoreError> {
+        Self::create_identity(algorithm, "ai")
+    }
+
+    /// Create a human's first self-signed identity with ML-DSA-87. The type is
+    /// part of the initial signed bytes; it is not a post-signing JSON edit.
+    /// This declares identity metadata, not authenticated human authority.
+    pub fn create_human() -> Result<Self, CoreError> {
+        Self::create_identity(SigningAlgorithm::Pq2025, "human")
+    }
+
+    fn create_identity(algorithm: SigningAlgorithm, agent_type: &str) -> Result<Self, CoreError> {
         let signer: Box<dyn DetachedSigner> = match algorithm {
             SigningAlgorithm::Ed25519 => Box::new(Ed25519DalekSigner::generate()?),
             SigningAlgorithm::Pq2025 => Box::new(Pq2025Signer::generate()?),
             SigningAlgorithm::Es256 => Box::new(P256Signer::generate()?),
         };
-        let agent_json = ephemeral_agent_json(algorithm, signer.public_key());
+        let mut agent_json = ephemeral_agent_json(algorithm, signer.public_key());
+        agent_json["jacsAgentType"] = json!(agent_type);
         Self::from_signer(signer, agent_json)
     }
 

@@ -224,3 +224,23 @@ as malformed legacy PBKDF2 noise.
 ## License
 
 Apache-2.0. See [`LICENSE-APACHE`](../LICENSE-APACHE).
+
+### Human identity and durable recovery
+
+`CoreAgent::create_human()` creates an ML-DSA-87 identity whose first self-signed
+version has `jacsAgentType: "human"`. Existing AI constructors are unchanged.
+The type is metadata; applications must independently bind a human to an account.
+
+`recovery::export_recovery(&agent)` generates 128 CSPRNG bits, formatted as eight
+four-digit hexadecimal groups, and returns `RecoveryExport { code, material }`.
+It uses the ordinary `AgentMaterial` and Argon2id/AES-GCM envelope. It does not
+change the active identity, persist a backup, or lock the caller's handle.
+`recovery::import_recovery(material, code, expected_id, expected_key, algorithm)`
+accepts case-insensitive pasted codes with ASCII whitespace/hyphens, verifies the
+independently trusted registration pins and restores the same signed identity.
+Wrong secrets, pins or malformed material fail. The six-word, 66-bit transfer
+code is a separate short-lived protocol and is not a durable recovery code.
+
+Keep the code separate from its ciphertext, never log either, and clear displayed
+codes and unlocked handles on background/logout. Server backup generations,
+read-back, save acknowledgment and key replacement are application responsibilities.

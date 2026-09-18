@@ -34,3 +34,11 @@ Every external path is configurable:
 For a custom Chromium distribution, set its executable and optional launch-configuration module. The harness does not disable browser web security or site isolation. It binds HTTP to loopback on an ephemeral port and runs the browser/server in the same process environment.
 
 A pass proves native UniFFI/WASM key-envelope and signature interoperability. It does not replace Android/iOS application packaging, physical-device biometric, or hardware-keystore tests. Host UniFFI uses the same Rust mobile API, but this harness does not run on a phone.
+
+Run `JACS_INTEROP_RECOVERY=1 node tests/portable-interop/run.mjs` for generated
+128-bit recovery instead of the compatibility test passwords. This additionally
+creates human identities via UniFFI, browser WASM and a real Web Worker, verifies
+browser/worker identities in native UniFFI, and checks worker rejection of wrong
+codes, wrong pins, malformed material, short transfer codes and locked exports.
+Recovery codes exist only in mode-0600 disposable fixtures which are deleted by
+the harness; none appear in status output or HTTP routes.
