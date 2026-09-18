@@ -24,7 +24,7 @@ def load_module():
 
 
 class RecordedRegistryProvenanceTests(unittest.TestCase):
-    def test_selects_only_published_python_and_npm_releases(self) -> None:
+    def test_does_not_select_unpublished_wasm_or_archived_surfaces(self) -> None:
         module = load_module()
         matrix = {
             "artifacts": {
@@ -35,10 +35,7 @@ class RecordedRegistryProvenanceTests(unittest.TestCase):
         }
         self.assertEqual(
             module.recorded_registry_releases(matrix),
-            [
-                ("python", "jacs", "0.11.4"),
-                ("node", "@hai.ai/jacs", "0.11.4"),
-            ],
+            [],
         )
 
     def test_verifies_each_recorded_release_with_exact_verifier(self) -> None:
@@ -56,14 +53,11 @@ class RecordedRegistryProvenanceTests(unittest.TestCase):
             path.write_text(json.dumps(matrix), encoding="utf-8")
             module.verify_recorded_releases(
                 path,
-                verify_pypi=lambda version: calls.append(("pypi", version)),
                 verify_npm=lambda package, version: calls.append((package, version)),
             )
         self.assertEqual(
             calls,
             [
-                ("pypi", "0.11.4"),
-                ("@hai.ai/jacs", "0.11.4"),
                 ("@jacs/wasm", "0.11.4"),
             ],
         )
@@ -75,23 +69,23 @@ class RecordedRegistryProvenanceTests(unittest.TestCase):
         def run(command: list[str], cwd: Path, timeout_seconds: int):
             calls.append(command)
             if command[1] == "install":
-                package_root = cwd / "node_modules" / "@hai.ai" / "jacs"
+                package_root = cwd / "node_modules" / "@jacs" / "wasm"
                 package_root.mkdir(parents=True)
                 (package_root / "package.json").write_text(
-                    '{"name":"@hai.ai/jacs","version":"0.11.4"}',
+                    '{"name":"@jacs/wasm","version":"0.11.4"}',
                     encoding="utf-8",
                 )
             return subprocess.CompletedProcess(command, 0, "", "")
 
         module.verify_npm_release(
-            "@hai.ai/jacs",
+            "@jacs/wasm",
             "0.11.4",
             run=run,
             timeout_seconds=17,
         )
         self.assertEqual(calls[0][0:2], ["npm", "install"])
         self.assertIn("--ignore-scripts", calls[0])
-        self.assertIn("@hai.ai/jacs@0.11.4", calls[0])
+        self.assertIn("@jacs/wasm@0.11.4", calls[0])
         self.assertEqual(calls[1], ["npm", "audit", "signatures"])
 
 

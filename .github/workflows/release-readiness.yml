@@ -5,17 +5,14 @@ on:
     workflows:
       - "Release CLI Binaries"
       - "Release crates.io"
-      - "Release PyPI"
-      - "Release npm"
       - "Release @jacs/wasm"
-      - "Release jacsgo Native Libraries"
     types: [completed]
   schedule:
     - cron: "41 9 * * 1"
   workflow_dispatch:
     inputs:
       require_parity:
-        description: "Fail unless Rust, CLI, Python, Node, WASM, and Go all match source"
+        description: "Fail unless the portable Rust crates, CLI and WASM match source"
         type: boolean
         default: false
 
@@ -46,10 +43,6 @@ jobs:
           set -euo pipefail
           npm install --global npm@11.18.0
           test "$(npm --version)" = "11.18.0"
-          python3 -m venv /tmp/jacs-registry-provenance
-          /tmp/jacs-registry-provenance/bin/pip install \
-            --disable-pip-version-check \
-            "pypi-attestations==0.0.29"
       - name: Verify observed registry matrix
         if: ${{ !inputs.require_parity }}
         run: ./scripts/check-release-matrix.py --online
@@ -62,8 +55,7 @@ jobs:
         run: >-
           python3 scripts/verify_github_release_attestations.py
           --matrix release/shipped-artifacts.json
-      - name: Cryptographically reverify recorded PyPI and npm releases
+      - name: Cryptographically reverify recorded WASM npm release
         run: >-
-          env PATH="/tmp/jacs-registry-provenance/bin:$PATH"
           python3 scripts/verify_recorded_registry_provenance.py
           release/shipped-artifacts.json

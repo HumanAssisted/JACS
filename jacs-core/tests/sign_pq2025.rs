@@ -9,9 +9,9 @@ use jacs_core::CoreError;
 use jacs_core::sign::{DetachedSigner, Pq2025Signer, SigningAlgorithm};
 
 const FIXTURE_PUBLIC: &[u8] =
-    include_bytes!("../../jacs/tests/fixtures/wasm_compat/pq2025.public.bin");
+    include_bytes!("../../tests/fixtures/native_compat/wasm_compat/pq2025.public.bin");
 const FIXTURE_SIGNED_JSON: &str =
-    include_str!("../../jacs/tests/fixtures/wasm_compat/pq2025.signed.json");
+    include_str!("../../tests/fixtures/native_compat/wasm_compat/pq2025.signed.json");
 
 #[test]
 fn pq2025_signer_sign_verify_roundtrip() {

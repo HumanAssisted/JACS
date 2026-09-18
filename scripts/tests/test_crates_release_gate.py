@@ -15,20 +15,12 @@ SCRIPT = ROOT / "scripts" / "crates_release_gate.py"
 
 MAIN_CRATES = {
     "jacs-core": "jacs-core/Cargo.toml",
-    "jacs-media": "jacs-media/Cargo.toml",
-    "jacs": "jacs/Cargo.toml",
-    "jacs-binding-core": "binding-core/Cargo.toml",
     "jacs-mcp": "jacs-mcp/Cargo.toml",
     "jacs-cli": "jacs-cli/Cargo.toml",
 }
-STORAGE_CRATES = {
-    "jacs-duckdb": "jacs-duckdb/Cargo.toml",
-    "jacs-redb": "jacs-redb/Cargo.toml",
-    "jacs-surrealdb": "jacs-surrealdb/Cargo.toml",
-    "jacs-postgresql": "jacs-postgresql/Cargo.toml",
-}
-PUBLISHABLE_CRATES = MAIN_CRATES | STORAGE_CRATES
+PUBLISHABLE_CRATES = MAIN_CRATES
 IGNORED_MANIFEST_PARTS = {
+    "archive",
     ".git",
     ".venv",
     "node_modules",
@@ -195,7 +187,7 @@ class CratesReleaseGateTests(unittest.TestCase):
             raise urllib.error.HTTPError(request.full_url, 404, "missing", {}, None)
 
         self.assertFalse(
-            module.probe_exact_version("jacs", "0.11.4", open_url=missing, attempts=1)
+            module.probe_exact_version("jacs-core", "0.11.4", open_url=missing, attempts=1)
         )
 
         for status in (400, 403, 429, 500):
@@ -209,7 +201,7 @@ class CratesReleaseGateTests(unittest.TestCase):
 
                 with self.assertRaises(module.ReleaseGateError):
                     module.probe_exact_version(
-                        "jacs", "0.11.4", open_url=failed, attempts=1
+                        "jacs-core", "0.11.4", open_url=failed, attempts=1
                     )
 
     def test_transient_transport_failure_retries_with_a_bound(self) -> None:
@@ -225,7 +217,7 @@ class CratesReleaseGateTests(unittest.TestCase):
             return FakeResponse(
                 {
                     "version": {
-                        "crate": "jacs",
+                        "crate": "jacs-core",
                         "num": "0.11.4",
                         "checksum": "a" * 64,
                     }
@@ -234,7 +226,7 @@ class CratesReleaseGateTests(unittest.TestCase):
 
         self.assertTrue(
             module.probe_exact_version(
-                "jacs",
+                "jacs-core",
                 "0.11.4",
                 open_url=flaky,
                 attempts=3,
@@ -258,7 +250,7 @@ class CratesReleaseGateTests(unittest.TestCase):
             FakeResponse(
                 {
                     "version": {
-                        "crate": "jacs",
+                        "crate": "jacs-core",
                         "num": "9.9.9",
                         "checksum": "a" * 64,
                     }
@@ -267,7 +259,7 @@ class CratesReleaseGateTests(unittest.TestCase):
             FakeResponse(
                 {
                     "version": {
-                        "crate": "jacs",
+                        "crate": "jacs-core",
                         "num": "0.11.4",
                         "checksum": "not-a-checksum",
                     }
@@ -279,7 +271,7 @@ class CratesReleaseGateTests(unittest.TestCase):
             with self.subTest(body=response.body[:40]):
                 with self.assertRaises((module.ReleaseGateError, ValueError)):
                     module.probe_exact_version(
-                        "jacs",
+                        "jacs-core",
                         "0.11.4",
                         open_url=lambda request, timeout, response=response: response,
                         attempts=1,
@@ -308,7 +300,7 @@ class CratesReleaseGateTests(unittest.TestCase):
 
     def test_invalid_crate_and_version_are_rejected_before_network(self) -> None:
         module = load_module()
-        for crate, version in (("../../oops", "0.11.4"), ("jacs", "01.2.3")):
+        for crate, version in (("../../oops", "0.11.4"), ("jacs-core", "01.2.3")):
             with self.subTest(crate=crate, version=version):
                 with self.assertRaises(ValueError):
                     module.probe_exact_version(
@@ -322,11 +314,11 @@ class CratesReleaseGateTests(unittest.TestCase):
         body = b"immutable crate candidate"
         expected = hashlib.sha256(body).hexdigest()
         with TemporaryDirectory() as directory:
-            archive = Path(directory) / "jacs-0.11.4.crate"
+            archive = Path(directory) / "jacs-core-0.11.4.crate"
             archive.write_bytes(body)
             self.assertEqual(
                 module.verify_archive_checksum(
-                    "jacs",
+                    "jacs-core",
                     "0.11.4",
                     archive,
                     fetch_checksum=lambda *_args, **_kwargs: expected,
@@ -335,37 +327,25 @@ class CratesReleaseGateTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(module.ReleaseGateError, "checksum mismatch"):
                 module.verify_archive_checksum(
-                    "jacs",
+                    "jacs-core",
                     "0.11.4",
                     archive,
                     fetch_checksum=lambda *_args, **_kwargs: "b" * 64,
                 )
 
-    def test_release_workflow_uses_shared_exact_gate_for_all_six_crates(self) -> None:
+    def test_release_workflow_uses_shared_exact_gate_for_all_three_crates(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-crate.yml").read_text()
         self.assertNotIn("max_version", workflow)
         self.assertNotIn("https://crates.io/api/v1/crates/", workflow)
-        self.assertEqual(workflow.count("scripts/crates_release_gate.py check"), 6)
-        self.assertEqual(workflow.count("scripts/crates_release_gate.py wait"), 6)
+        self.assertEqual(workflow.count("scripts/crates_release_gate.py check"), 3)
+        self.assertEqual(workflow.count("scripts/crates_release_gate.py wait"), 3)
         self.assertIn("scripts/crates_release_gate.py verify", workflow)
         for crate in (
             "jacs-core",
-            "jacs-media",
-            "jacs",
-            "jacs-binding-core",
             "jacs-mcp",
             "jacs-cli",
         ):
             self.assertIn(f"--crate {crate}", workflow)
-
-    def test_storage_release_uses_shared_exact_gate_and_checksum_verifier(self) -> None:
-        workflow = (
-            ROOT / ".github/workflows/release-storage-crate.yml"
-        ).read_text(encoding="utf-8")
-        self.assertNotIn("max_version", workflow)
-        self.assertIn("scripts/crates_release_gate.py check", workflow)
-        self.assertIn("scripts/crates_release_gate.py wait", workflow)
-        self.assertIn("scripts/crates_release_gate.py verify", workflow)
 
 
 if __name__ == "__main__":

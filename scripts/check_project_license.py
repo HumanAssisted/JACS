@@ -15,15 +15,21 @@ from typing import Any, Sequence
 EXPECTED_SPDX = "Apache-2.0"
 CANONICAL_LICENSE = "LICENSE-APACHE"
 EXACT_LICENSE_COPIES = (
-    "jacs/LICENSE",
-    "jacsnpm/LICENSE",
-    "jacspy/LICENSE-APACHE",
+    "jacs-core/LICENSE-APACHE",
+    "jacs-wasm/LICENSE-APACHE",
+    "jacs-mobile/LICENSE-APACHE",
+    "jacs-mcp/LICENSE-APACHE",
+    "jacs-cli/LICENSE-APACHE",
+    "archive/native/LICENSE-APACHE",
+    "archive/native/jacs/LICENSE",
+    "archive/native/jacsnpm/LICENSE",
+    "archive/native/jacspy/LICENSE-APACHE",
 )
-STANDALONE_CARGO_PACKAGES = ("jacs/examples/observability",)
 NODE_MANIFESTS = (
-    "jacsnpm/package.json",
+    "archive/native/jacsnpm/package.json",
     "jacs-wasm/package.template.json",
 )
+
 
 
 def _relative(path: Path, root: Path) -> str:
@@ -135,54 +141,57 @@ def _cargo_license_claim(
     )
 
 
-def _cargo_manifest_paths(
-    root: Path,
-    workspace: dict[str, Any],
-    errors: list[str],
-) -> list[Path]:
-    paths: list[Path] = []
-    workspace_table = workspace.get("workspace")
-    if not isinstance(workspace_table, dict):
-        errors.append("Cargo.toml is missing a [workspace] table")
-        return paths
-
-    for field in ("members", "exclude"):
-        entries = workspace_table.get(field, [])
-        if not isinstance(entries, list) or not all(
-            isinstance(entry, str) for entry in entries
-        ):
-            errors.append(f"Cargo.toml workspace.{field} must be a list of paths")
-            continue
-        paths.extend(root / entry / "Cargo.toml" for entry in entries)
-
-    paths.extend(root / entry / "Cargo.toml" for entry in STANDALONE_CARGO_PACKAGES)
-    return sorted(set(paths), key=lambda path: _relative(path, root))
-
-
 def _check_cargo_manifests(
     root: Path,
     workspace: dict[str, Any],
     errors: list[str],
 ) -> None:
-    workspace_table = workspace.get("workspace")
-    workspace_package = (
-        workspace_table.get("package") if isinstance(workspace_table, dict) else None
-    )
-    workspace_license = (
-        workspace_package.get("license")
-        if isinstance(workspace_package, dict)
-        else None
-    )
-    if workspace_license != EXPECTED_SPDX:
-        errors.append(
-            "Cargo.toml declares workspace package license "
-            f"{workspace_license!r}; expected '{EXPECTED_SPDX}'"
-        )
+    """Validate nested workspaces under their own license inheritance scope.
 
-    for manifest in _cargo_manifest_paths(root, workspace, errors):
-        document = _load_toml(manifest, root, errors)
-        if document is not None:
-            _cargo_license_claim(manifest, document, workspace_license, root, errors)
+    Excluded paths may be independent virtual workspaces, not packages. Walk
+    their declared members/exclusions without treating their [workspace] table
+    as a package or inheriting the active workspace's license into the archive.
+    """
+    visited: set[Path] = set()
+
+    def visit(manifest: Path, document: dict[str, Any], inherited: str | None) -> None:
+        if manifest in visited:
+            return
+        visited.add(manifest)
+        label = _relative(manifest, root)
+        table = document.get("workspace")
+        package = document.get("package")
+        license_claim = inherited
+        if isinstance(table, dict):
+            metadata = table.get("package", {})
+            license_claim = metadata.get("license") if isinstance(metadata, dict) else None
+            # A standalone [package] + empty [workspace] can declare its license
+            # directly. Virtual workspaces must define their own Apache scope.
+            if (license_claim is not None or not isinstance(package, dict)) and license_claim != EXPECTED_SPDX:
+                errors.append(
+                    f"{label} declares workspace package license {license_claim!r}; "
+                    f"expected '{EXPECTED_SPDX}'"
+                )
+        if isinstance(package, dict):
+            _cargo_license_claim(manifest, document, license_claim, root, errors)
+        elif not isinstance(table, dict):
+            errors.append(f"{label} is missing a [package] or [workspace] table")
+        if not isinstance(table, dict):
+            return
+        for field in ("members", "exclude"):
+            entries = table.get(field, [])
+            if not isinstance(entries, list) or not all(isinstance(entry, str) for entry in entries):
+                errors.append(f"{label} workspace.{field} must be a list of paths")
+                continue
+            for entry in entries:
+                child = manifest.parent / entry / "Cargo.toml"
+                child_document = _load_toml(child, root, errors)
+                if child_document is not None:
+                    visit(child, child_document, license_claim)
+
+    if not isinstance(workspace.get("workspace"), dict):
+        errors.append("Cargo.toml is missing a [workspace] table")
+    visit(root / "Cargo.toml", workspace, None)
 
 
 def _check_node_manifest(path: Path, root: Path, errors: list[str]) -> None:
@@ -199,19 +208,19 @@ def _check_node_manifest(path: Path, root: Path, errors: list[str]) -> None:
 
 
 def _check_python_manifest(root: Path, errors: list[str]) -> None:
-    path = root / "jacspy/pyproject.toml"
+    path = root / "archive/native/jacspy/pyproject.toml"
     document = _load_toml(path, root, errors)
     if document is None:
         return
     project = document.get("project")
     if not isinstance(project, dict):
-        errors.append("jacspy/pyproject.toml is missing a [project] table")
+        errors.append("archive/native/jacspy/pyproject.toml is missing a [project] table")
         return
     claim = project.get("license")
     expected = {"file": "LICENSE-APACHE"}
     if claim != expected:
         errors.append(
-            "jacspy/pyproject.toml must declare project.license.file = 'LICENSE-APACHE'"
+            "archive/native/jacspy/pyproject.toml must declare project.license.file = 'LICENSE-APACHE'"
         )
 
 

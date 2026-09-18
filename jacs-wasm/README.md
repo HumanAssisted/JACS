@@ -2,8 +2,8 @@
 
 **JACS sign + verify in the browser. No backend required.**
 
-> **Distribution status (observed 2026-07-11):** `@jacs/wasm` is not yet
-> published on npm. The API below is available from a source build and becomes
+> **Distribution status:** This checkout contains an unreleased source-built
+> package; see [release status](../docs/release-status.md). The API below is available from a source build and becomes
 > an install contract only after the release workflow publishes and smoke-tests
 > the package.
 
@@ -22,8 +22,9 @@ or platform integrations. Imports retain and verify their declared algorithm.
 
 ```sh
 git clone https://github.com/HumanAssisted/JACS.git
-cd JACS
-make build-wasm
+cd JACS/jacs-wasm
+wasm-pack build --target web --release . --locked
+bash scripts/finalize-pkg.sh
 # From your consuming project:
 npm install /absolute/path/to/JACS/jacs-wasm/pkg
 ```
@@ -231,11 +232,10 @@ the page's JS.
   origin share `localStorage`. Set short-lived passwords + force
   re-unlock between tab visits if you need stronger separation.
 
-The full background — including the cross-platform compile audit, the
-`forbidden-deps` enforcement, and the deliberate decision to defer a
-WebCrypto-backed `DetachedSigner` to V2 — lives in
-[`WASM_FINDINGS.md`](../docs/jacs/WASM_FINDINGS.md) (HAI internal repo)
-and the [`JACS_WASM_PRD.md`](../docs/jacs/JACS_WASM_PRD.md).
+The active [core guide](../jacs-core/README.md) describes compile-target and
+forbidden-dependency checks. Platform biometric custody is provided by the
+[mobile boundary](../jacs-mobile/README.md); browser passkey/PRF integration
+still belongs to the consuming application.
 
 ## `localStore` (browser persistence)
 
@@ -291,22 +291,14 @@ const agent = await createEphemeralInWorker(); // pq2025; keeps key generation o
 const signed = await signMessageInWorker(agent, JSON.stringify({ hello: "world" }));
 ```
 
-## Differences from `jacsnpm`
+## Native compatibility
 
-If you reached this README looking for the Node.js native bindings, you
-want a different package: [`@hai.ai/jacs`](https://www.npmjs.com/package/@hai.ai/jacs)
-is the napi-rs build with the full native JACS surface (storage backends,
-DNS, observability, MCP). `@jacs/wasm` is browser-only — no filesystem,
-no DNS, no MCP — and ships a wasm artifact, not a `.node` binary.
-
-| | `@jacs/wasm` | `@hai.ai/jacs` |
-|---|---|---|
-| Runtime | Browser | Node.js native |
-| Install | Source build today; `npm install @jacs/wasm` only after publication | `npm install @hai.ai/jacs` |
-| Build artifact | `.wasm` + `.js` | `.node` (per platform) |
-| Sign / verify | Yes | Yes |
-| Filesystem / DNS | No | Yes |
-| MCP server / CLI | No | Yes |
+The old `@hai.ai/jacs` napi-rs package is a Node-only compatibility binding.
+Its source is preserved in [`archive/native/jacsnpm`](../archive/native/jacsnpm),
+outside the active publication set. It cannot supply browser or Hermes key
+custody. Browser consumers use this source-built WASM package; React Native
+consumers use the [mobile bindings and native vaults](../jacs-mobile/README.md).
+The active CLI and MCP are thin Rust consumers of `jacs-core`.
 
 ## License
 

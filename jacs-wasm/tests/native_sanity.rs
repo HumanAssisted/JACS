@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 const AGREEMENT_V2_SCENARIO: &str =
-    include_str!("../../binding-core/tests/fixtures/agreement_v2_scenarios.json");
+    include_str!("../../tests/fixtures/native_compat/agreement_v2_scenarios.json");
 
 #[allow(dead_code)]
 fn extract_code(err: &wasm_bindgen::JsError) -> Option<String> {
@@ -443,7 +443,7 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let fixture: Value = serde_json::from_str(
         &std::fs::read_to_string(
-            manifest_dir.join("../binding-core/tests/fixtures/method_parity.json"),
+            manifest_dir.join("../tests/fixtures/native_compat/method_parity.json"),
         )
         .unwrap(),
     )

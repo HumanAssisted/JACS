@@ -21,6 +21,6 @@ fi
 cd "$stage"
 xcodebuild -scheme JacsMobile -destination "platform=iOS Simulator,id=$simulator_id" \
     -configuration Release -parallel-testing-enabled NO \
-    -derivedDataPath "$stage/test-build" test
+    -derivedDataPath "$stage/test-build" ENABLE_TESTABILITY=YES test
 echo "PASS: Swift lifecycle/cancellation XCTest and noninteractive simulator Keychain policy tests."
 echo "Physical-device biometric acceptance remains a separate interactive check."

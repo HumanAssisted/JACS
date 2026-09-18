@@ -1,0 +1,31 @@
+# Reviewed source contract for every cargo-deny [[licenses.clarify]] entry.
+# cargo-deny-hash is XXH32 over cargo-deny's normalized text. SHA-256 covers
+# the exact upstream bytes embedded by scripts/third_party_notices.py.
+
+[[reviewed]]
+names = ["ring"]
+expression = "(Apache-2.0 OR ISC) AND OpenSSL"
+path = "LICENSE"
+cargo-deny-hash = 0x0d99693a
+sha256 = "b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a"
+
+[[reviewed]]
+names = [
+    "surrealdb",
+    "surrealdb-core",
+    "surrealdb-types",
+    "surrealdb-types-derive",
+    "surrealdb-collections",
+    "surrealdb-strand",
+]
+expression = "BUSL-1.1"
+path = "LICENSE"
+cargo-deny-hash = 0xbb1191d7
+sha256 = "98a94ac615f88370865016487b436fa404560910bd329794ed7502277a94b805"
+
+[[reviewed]]
+names = ["tokio-tungstenite-wasm"]
+expression = "MIT"
+path = "LICENSE"
+cargo-deny-hash = 0x5c83871f
+sha256 = "21a90dcb0db22db586f77424935222d55a4be191fe41e1a5839e383a254d2cb8"

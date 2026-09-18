@@ -2,15 +2,12 @@
 name = "jacs-cli"
 version = "0.13.0"
 edition = "2024"
-rust-version = "1.97"
-description = "JACS CLI: command-line interface for JSON AI Communication Standard"
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Thin JACS command line for portable signatures and encrypted agent keys"
 readme = "README.md"
-authors = ["HAI.AI <engineering@hai.io>"]
-license = "Apache-2.0"
-homepage = "https://humanassisted.github.io/JACS"
-repository = "https://github.com/HumanAssisted/JACS"
-keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
-categories = ["cryptography", "text-processing", "data-structures"]
 
 [lib]
 name = "jacs_cli"
@@ -20,36 +17,17 @@ path = "src/lib.rs"
 name = "jacs"
 path = "src/main.rs"
 
-[features]
-default = ["mcp", "attestation", "keychain", "agreements"]
-mcp = ["dep:jacs-mcp"]
-attestation = ["jacs/attestation"]
-keychain = ["jacs/keychain"]
-agreements = ["jacs/agreements"]
-
 [dependencies]
-jacs = { version = "0.13.0", path = "../jacs" }
-jacs-mcp = { version = "0.13.0", path = "../jacs-mcp", features = ["mcp", "full-tools"], optional = true }
-clap = { version = "4.5.4", features = ["derive", "cargo"] }
-rpassword = "7.3.1"
-reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
-tiny_http = "0.12"
-dirs = "5.0"
-serde_json = "1.0"
-serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+jacs-core = { version = "0.13.0", path = "../jacs-core" }
+jacs-mcp = { version = "0.13.0", path = "../jacs-mcp" }
+clap = { version = "4.5", features = ["derive"] }
+base64 = "0.22"
+rpassword = "7.3"
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "io-std", "time", "net"] }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+zeroize = "1"
 
 [dev-dependencies]
-assert_cmd = "2"
-clap = { version = "4.5.4", features = ["derive", "cargo"] }
-predicates = "3.1"
-serial_test = "4.0.1"
-serde_json = "1.0"
 tempfile = "3"
-# Used by cli_image_tests.rs to generate fixture PNG/JPEG bytes inline.
-# WebP fixtures use the pre-committed bytes at jacs/tests/fixtures/provenance/unsigned_16x16.webp.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-
-[package.metadata.cargo-install]
-bin = ["jacs"]

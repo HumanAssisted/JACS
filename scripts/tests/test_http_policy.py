@@ -63,8 +63,6 @@ class NoRedirectPolicyTests(unittest.TestCase):
     def test_registry_clients_share_the_no_redirect_default(self) -> None:
         policy = importlib.import_module("scripts.http_policy")
         clients = (
-            ("homebrew_release.py", "fetch_bytes", "opener"),
-            ("verify_pypi_release_attestations.py", "fetch_metadata", "open_url"),
             ("crates_release_gate.py", "probe_exact_version", "open_url"),
             ("check-release-matrix.py", "get_json", "open_url"),
             ("release_retry.py", "probe_retry_surfaces", "open_url"),
