@@ -23,19 +23,16 @@ use crate::observability::convenience::{
 };
 use crate::time_utils::now_rfc3339;
 use base64::Engine;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Once;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use url::Url;
 use uuid::Uuid;
 
-/// Version marker carried inside request-bound authorization claims.
-pub const REQUEST_AUTH_VERSION: &str = "jacs-request-v2";
-/// Domain separator for request-bound authorization signatures.
-pub const REQUEST_AUTH_DOMAIN: &str = "JACS-REQUEST-AUTH-V2\n";
+// Wire claims and domain constants have one portable owner.
+pub use jacs_core::request_auth::{REQUEST_AUTH_DOMAIN, REQUEST_AUTH_VERSION, RequestAuthClaims};
 const MAX_REQUEST_AUTH_HEADER_BYTES: usize = 64 * 1024;
 const MAX_VERIFY_PAYLOAD_DECODED_BYTES: usize = 10 * 1024 * 1024;
 const MAX_VERIFY_PAYLOAD_ENCODED_BYTES: usize = MAX_VERIFY_PAYLOAD_DECODED_BYTES.div_ceil(3) * 4;
@@ -83,24 +80,6 @@ fn replay_ttl_from_unix_seconds(
             JacsError::ValidationError(format!("{context} replay TTL exceeds the supported range"))
         })?;
     Ok(Duration::from_secs(remaining))
-}
-
-/// Authenticated request context returned after a v2 header verifies.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RequestAuthClaims {
-    pub version: String,
-    pub key_id: String,
-    pub issued_at: u64,
-    pub nonce: String,
-    pub method: String,
-    pub scheme: String,
-    pub authority: String,
-    pub target: String,
-    pub content_digest: String,
-    pub audience: String,
-    pub signing_algorithm: String,
-    pub public_key_hash: String,
 }
 
 /// Current fully-bound response envelope version.
@@ -243,45 +222,36 @@ pub fn build_request_auth_header_with_signer(
     audience: &str,
     sign: impl FnOnce(&str) -> Result<String, JacsError>,
 ) -> Result<String, JacsError> {
-    let (scheme, authority, target) = canonical_request_url_components(url)?;
-    let method = normalize_http_method(method)?;
-    let audience = nonempty_request_auth_value(audience, "audience")?;
-    let key_id = nonempty_request_auth_value(key_id, "key_id")?;
-    let signing_algorithm = nonempty_request_auth_value(signing_algorithm, "signing_algorithm")?;
-    let public_key_hash = nonempty_request_auth_value(public_key_hash, "public_key_hash")?;
-    let issued_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| JacsError::Internal {
-            message: format!("build_request_auth_header: system clock error: {e}"),
-        })?
-        .as_secs();
+    let issued_at = current_unix_seconds("build_request_auth_header")?;
     let nonce = Uuid::new_v4().simple().to_string();
-    let claims = RequestAuthClaims {
-        version: REQUEST_AUTH_VERSION.to_string(),
-        key_id: key_id.to_string(),
-        issued_at,
-        nonce,
+    // Preserve provider failures exactly while delegating all wire construction
+    // and cryptographic encoding to the shared portable protocol boundary.
+    let mut provider_error = None;
+    let result = jacs_core::request_auth::build_request_auth_header_with_signer_at(
+        key_id,
+        signing_algorithm,
+        public_key_hash,
         method,
-        scheme,
-        authority,
-        target,
-        content_digest: request_content_digest(body),
-        audience: audience.to_string(),
-        signing_algorithm: signing_algorithm.to_string(),
-        public_key_hash: public_key_hash.to_string(),
-    };
-    let canonical = request_auth_claims_canonical(&claims)?;
-    let signing_input = format!("{REQUEST_AUTH_DOMAIN}{canonical}");
-    let signature = sign(&signing_input)?;
-    let signature_bytes = base64::engine::general_purpose::STANDARD
-        .decode(signature)
-        .map_err(|e| JacsError::SigningFailed {
-            reason: format!("request auth signer returned invalid base64: {e}"),
-        })?;
-    let claims_segment = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(canonical);
-    let signature_segment =
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature_bytes);
-    Ok(format!("JACS v2.{claims_segment}.{signature_segment}"))
+        url,
+        body,
+        audience,
+        issued_at,
+        &nonce,
+        |input| {
+            sign(input).map_err(|error| {
+                provider_error = Some(error);
+                jacs_core::CoreError::SignerUnavailable("native request-auth signer failed".into())
+            })
+        },
+    );
+    if let Some(error) = provider_error {
+        return Err(error);
+    }
+    result.map_err(|error| match error {
+        jacs_core::CoreError::MalformedDocument(reason) => JacsError::ValidationError(reason),
+        jacs_core::CoreError::SignatureInvalid(reason) => JacsError::SigningFailed { reason },
+        other => other.into(),
+    })
 }
 
 /// Verify a request-bound JACS Authorization header with an explicitly trusted
@@ -641,79 +611,17 @@ fn request_auth_claims_canonical(claims: &RequestAuthClaims) -> Result<String, J
 pub(crate) fn canonical_request_url_components(
     request_url: &str,
 ) -> Result<(String, String, String), JacsError> {
-    let parsed = Url::parse(request_url).map_err(|e| {
-        JacsError::ValidationError(format!("invalid absolute request URL '{request_url}': {e}"))
-    })?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(JacsError::ValidationError(
-            "request URL scheme must be http or https".to_string(),
-        ));
-    }
-    if parsed.fragment().is_some() {
-        return Err(JacsError::ValidationError(
-            "request URL must not contain a fragment".to_string(),
-        ));
-    }
-    if !parsed.username().is_empty() || parsed.password().is_some() {
-        return Err(JacsError::ValidationError(
-            "request URL must not contain userinfo".to_string(),
-        ));
-    }
-    let host = parsed.host_str().ok_or_else(|| {
-        JacsError::ValidationError("request URL must include an authority".to_string())
-    })?;
-    let authority = match parsed.port() {
-        Some(port) => format!("{host}:{port}"),
-        None => host.to_string(),
-    };
-    let mut target = parsed.path().to_string();
-    if target.is_empty() {
-        target.push('/');
-    }
-    if let Some(query) = parsed.query() {
-        target.push('?');
-        target.push_str(query);
-    }
-    Ok((parsed.scheme().to_string(), authority, target))
+    jacs_core::request_auth::canonical_request_url_components(request_url)
+        .map_err(|error| JacsError::ValidationError(error.to_string()))
 }
 
 pub(crate) fn request_content_digest(body: &[u8]) -> String {
-    let digest = Sha256::digest(body);
-    format!(
-        "sha-256=:{}:",
-        base64::engine::general_purpose::STANDARD.encode(digest)
-    )
+    jacs_core::request_auth::request_content_digest(body)
 }
 
 pub(crate) fn normalize_http_method(method: &str) -> Result<String, JacsError> {
-    let method = method.trim();
-    if method.is_empty()
-        || !method.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(
-                    byte,
-                    b'!' | b'#'
-                        | b'$'
-                        | b'%'
-                        | b'&'
-                        | b'\''
-                        | b'*'
-                        | b'+'
-                        | b'-'
-                        | b'.'
-                        | b'^'
-                        | b'_'
-                        | b'`'
-                        | b'|'
-                        | b'~'
-                )
-        })
-    {
-        return Err(JacsError::ValidationError(
-            "request method must be a non-empty HTTP token".to_string(),
-        ));
-    }
-    Ok(method.to_ascii_uppercase())
+    jacs_core::request_auth::normalize_http_method(method)
+        .map_err(|error| JacsError::ValidationError(error.to_string()))
 }
 
 fn nonempty_request_auth_value<'a>(value: &'a str, field: &str) -> Result<&'a str, JacsError> {

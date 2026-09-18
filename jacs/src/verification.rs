@@ -54,6 +54,7 @@ pub(crate) fn matching_algorithm(
     Ok(expected.or(claimed).map(|algorithm| match algorithm {
         SigningAlgorithm::Ed25519 => "ring-Ed25519".to_string(),
         SigningAlgorithm::Pq2025 => "pq2025".to_string(),
+        SigningAlgorithm::Es256 => "es256".to_string(),
     }))
 }
 
@@ -210,11 +211,12 @@ impl NonSigningVerifier {
         expected_signer: Option<ExpectedSigner<'_>>,
     ) -> Result<IntegrityVerificationReport, JacsError> {
         let algorithm = algorithm_from_alias(algorithm).ok_or_else(|| {
-            JacsError::CryptoError("Explicit verifier requires ed25519 or pq2025".to_string())
+            JacsError::CryptoError("Explicit verifier requires ed25519, pq2025 or es256".to_string())
         })?;
         let expected_length = match algorithm {
             SigningAlgorithm::Ed25519 => jacs_core::sign::ED25519_PUBLIC_KEY_SIZE,
             SigningAlgorithm::Pq2025 => jacs_core::sign::ML_DSA_87_PUBLIC_KEY_SIZE,
+            SigningAlgorithm::Es256 => 65,
         };
         if public_key.len() != expected_length {
             return Err(JacsError::CryptoError(

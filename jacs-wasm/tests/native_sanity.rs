@@ -54,6 +54,152 @@ fn create_ephemeral_pq2025_signs_and_verifies_via_handle() {
     assert_eq!(outcome["valid"], Value::Bool(true));
 }
 
+#[test]
+fn es256_identity_update_raw_sign_and_pinned_transfer_round_trip() {
+    use base64::Engine as _;
+    use jacs_core::{CoreAgent, SigningAlgorithm};
+    use jacs_wasm::{
+        generate_transfer_code, import_encrypted_agent_pinned, reencrypt_transferred_agent,
+    };
+
+    let original = create_ephemeral("es256").expect("ES256 agent");
+    let original_doc: Value = serde_json::from_str(&original.export_agent().unwrap()).unwrap();
+    let mut edited = original_doc.clone();
+    edited["name"] = json!("Phone identity");
+    let updated: Value =
+        serde_json::from_str(&original.update_agent_json(&edited.to_string()).unwrap()).unwrap();
+    assert_eq!(updated["jacsId"], original_doc["jacsId"]);
+    assert_ne!(updated["jacsVersion"], original_doc["jacsVersion"]);
+    assert_eq!(updated["name"], "Phone identity");
+
+    let key_b64 = original.get_public_key_base64().unwrap();
+    let key = base64::engine::general_purpose::STANDARD
+        .decode(&key_b64)
+        .unwrap();
+    assert_eq!(key.len(), 65);
+    assert_eq!(
+        original.get_public_key_hash().unwrap(),
+        jacs_core::verify::sha256_hex(&key)
+    );
+    let pem = original.get_public_key_pem().unwrap();
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(original.get_public_key_pem_base64().unwrap())
+            .unwrap(),
+        pem.as_bytes(),
+    );
+    let verifier = create_verifier(&key_b64, "es256").unwrap();
+    assert_eq!(verifier.get_public_key_pem().unwrap(), pem);
+    assert_eq!(
+        verifier.get_public_key_hash().unwrap(),
+        original.get_public_key_hash().unwrap()
+    );
+    let message = "HAI auth: café 🗝";
+    let signature = base64::engine::general_purpose::STANDARD
+        .decode(original.sign_string(message).unwrap())
+        .unwrap();
+    assert!(
+        CoreAgent::verify_raw_bytes_with_key(
+            &key,
+            SigningAlgorithm::Es256,
+            message.as_bytes(),
+            &signature,
+        )
+        .unwrap()
+    );
+    assert!(
+        !CoreAgent::verify_raw_bytes_with_key(
+            &key,
+            SigningAlgorithm::Es256,
+            b"altered",
+            &signature,
+        )
+        .unwrap()
+    );
+
+    let code = generate_transfer_code().unwrap();
+    assert_eq!(code.split_whitespace().count(), 6);
+    let transferred = original.export_encrypted_agent(code.clone()).unwrap();
+    let id = updated["jacsId"].as_str().unwrap();
+    let restored =
+        import_encrypted_agent_pinned(&transferred, code.clone(), id, &key_b64, "es256").unwrap();
+    assert_eq!(
+        restored.export_agent().unwrap(),
+        original.export_agent().unwrap()
+    );
+    restored.clear_secrets().unwrap();
+
+    let local = reencrypt_transferred_agent(
+        &transferred,
+        code,
+        id,
+        &key_b64,
+        "es256",
+        "distinct browser secret".into(),
+    )
+    .unwrap();
+    assert_ne!(local, transferred);
+    let browser = import_encrypted_agent(&local, "distinct browser secret").unwrap();
+    let signed = browser.sign_message_json(r#"{"linked":true}"#).unwrap();
+    let outcome: Value = serde_json::from_str(&original.verify_json(&signed).unwrap()).unwrap();
+    assert_eq!(outcome["valid"], true);
+}
+
+#[test]
+fn prepared_identity_update_keeps_request_auth_on_old_version_until_commit() {
+    let handle = create_ephemeral("ed25519").unwrap();
+    let before: Value = serde_json::from_str(&handle.export_agent().unwrap()).unwrap();
+    let candidate = handle
+        .prepare_agent_update_json(r#"{"name":"Updated registered identity"}"#)
+        .unwrap();
+    let prepared: Value = serde_json::from_str(&candidate).unwrap();
+    assert_eq!(prepared["jacsId"], before["jacsId"]);
+    assert_ne!(prepared["jacsVersion"], before["jacsVersion"]);
+    assert_eq!(
+        serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap(),
+        before,
+        "a candidate must not mutate the authenticated current identity",
+    );
+    let auth = handle
+        .build_request_auth_header(
+            "POST",
+            "https://hai.ai/api/v1/agents/register",
+            candidate.as_bytes(),
+            "hai.ai",
+        )
+        .unwrap();
+    let claims = jacs_core::request_auth::inspect_unverified_request_auth_header(&auth).unwrap();
+    assert_eq!(
+        claims.key_id,
+        format!(
+            "{}:{}",
+            before["jacsId"].as_str().unwrap(),
+            before["jacsVersion"].as_str().unwrap()
+        ),
+    );
+    assert_eq!(
+        handle.commit_agent_update_json(&candidate).unwrap(),
+        candidate
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap(),
+        prepared,
+    );
+    let after_auth = handle
+        .build_request_auth_header("GET", "https://hai.ai/api/v1/agents/me", &[], "hai.ai")
+        .unwrap();
+    let after_claims =
+        jacs_core::request_auth::inspect_unverified_request_auth_header(&after_auth).unwrap();
+    assert_eq!(
+        after_claims.key_id,
+        format!(
+            "{}:{}",
+            prepared["jacsId"].as_str().unwrap(),
+            prepared["jacsVersion"].as_str().unwrap()
+        ),
+    );
+}
+
 // NOTE: The error-returning constructor paths build `JsError` values via
 // `wasm-bindgen` imports that panic on non-wasm targets (see
 // `wasm-bindgen-0.2`'s `lib.rs:1196`). The behavior they exercise is

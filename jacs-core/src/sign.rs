@@ -57,7 +57,7 @@ pub mod pq2025_consts {
 // =========================================================================
 
 /// JACS signing algorithm. The wire form is the lowercase string
-/// (`"ed25519"`, `"pq2025"`) — that is what the JS API surfaces and what
+/// (`"ed25519"`, `"pq2025"`, `"es256"`) — that is what the JS API surfaces and what
 /// the `jacsSignature.signingAlgorithm` field stores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -66,19 +66,22 @@ pub enum SigningAlgorithm {
     Ed25519,
     /// ML-DSA-87 (FIPS-204) — implemented by `Pq2025Signer`.
     Pq2025,
+    /// ECDSA P-256 with SHA-256, canonical SEC1 public keys and P1363 signatures.
+    Es256,
 }
 
 impl SigningAlgorithm {
-    /// Stable wire identifier (`"ed25519"` or `"pq2025"`).
+    /// Stable wire identifier (`"ed25519"`, `"pq2025"`, or `"es256"`).
     pub fn as_str(&self) -> &'static str {
         match self {
             SigningAlgorithm::Ed25519 => "ed25519",
             SigningAlgorithm::Pq2025 => "pq2025",
+            SigningAlgorithm::Es256 => "es256",
         }
     }
 
     /// Parse the wire identifier. Accepts both the jacs-core form
-    /// (`"ed25519"`, `"pq2025"`) and the native `jacs` form (`"ring-Ed25519"`)
+    /// (`"ed25519"`, `"pq2025"`, `"es256"`) and the native `jacs` form (`"ring-Ed25519"`)
     /// so verification accepts signed documents from either platform. The
     /// canonical wire form for *newly signed* documents is always the
     /// lowercase short name; the native alias is read-only.
@@ -86,6 +89,7 @@ impl SigningAlgorithm {
         match raw {
             "ed25519" | "ring-Ed25519" => Some(SigningAlgorithm::Ed25519),
             "pq2025" => Some(SigningAlgorithm::Pq2025),
+            "es256" | "ES256" => Some(SigningAlgorithm::Es256),
             _ => None,
         }
     }
@@ -132,10 +136,14 @@ pub trait DetachedSigner: Send + Sync {
     ///   `Pq2025Signer::export_private_bytes` produces, which
     ///   `from_private_bytes` round-trips).
     ///
-    /// Returns `CoreError::Locked` if the signer has been cleared. The
+    /// Hardware-backed implementations use the default `NotExportable` result.
+    /// ES256 software signers return a 32-byte big-endian private scalar.
+    /// Returns `CoreError::Locked` if an exportable signer has been cleared. The
     /// returned `Vec<u8>` MUST be treated as a secret — callers should
     /// encrypt it immediately and zeroize any intermediate buffers.
-    fn export_private_key_bytes(&self) -> Result<Vec<u8>, CoreError>;
+    fn export_private_key_bytes(&self) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::NotExportable)
+    }
 }
 
 // =========================================================================
@@ -460,4 +468,127 @@ impl DetachedSigner for Ed25519DalekSigner {
         // generate_pkcs8` path emits. See trait doc.
         self.export_pkcs8_v2()
     }
+}
+
+// =========================================================================
+// ES256 (ECDSA P-256 / SHA-256)
+// =========================================================================
+
+/// Software P-256 signer with the same wire format as portable hardware signers.
+///
+/// Public keys are exactly 65-byte uncompressed SEC1 points (`04 || X || Y`).
+/// Signatures are exactly 64-byte IEEE-P1363 `r || s`, normalized to low-S, over
+/// SHA-256 of the message. Platform adapters must convert DER signatures and
+/// normalize S before returning a signature. Private exports are the 32-byte
+/// big-endian scalar, never an OS key handle. Hardware signers should implement
+/// `DetachedSigner` directly and retain its `NotExportable` default.
+pub struct P256Signer {
+    signing_key: Option<p256::ecdsa::SigningKey>,
+    public_key: Vec<u8>,
+}
+
+impl P256Signer {
+    pub fn generate() -> Result<Self, CoreError> {
+        let key = p256::ecdsa::SigningKey::random(&mut aes_gcm::aead::OsRng);
+        Ok(Self::from_key(key))
+    }
+
+    pub fn from_private_bytes(bytes: &[u8]) -> Result<Self, CoreError> {
+        if bytes.len() != 32 {
+            return Err(CoreError::MalformedKey(
+                "ES256 private scalar must be exactly 32 bytes".into(),
+            ));
+        }
+        let key = p256::ecdsa::SigningKey::from_slice(bytes)
+            .map_err(|error| CoreError::MalformedKey(format!("ES256 private scalar: {error}")))?;
+        Ok(Self::from_key(key))
+    }
+
+    fn from_key(key: p256::ecdsa::SigningKey) -> Self {
+        let public_key = key
+            .verifying_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec();
+        Self {
+            signing_key: Some(key),
+            public_key,
+        }
+    }
+
+    pub fn verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> Result<(), CoreError> {
+        // Shares canonical encoding and low-S checks with identity profiles.
+        crate::identity::verify_signature("es256", public_key, message, signature)
+    }
+}
+
+impl std::fmt::Debug for P256Signer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("P256Signer")
+            .field("algorithm", &SigningAlgorithm::Es256)
+            .field("unlocked", &self.signing_key.is_some())
+            .finish()
+    }
+}
+
+impl DetachedSigner for P256Signer {
+    fn algorithm(&self) -> SigningAlgorithm {
+        SigningAlgorithm::Es256
+    }
+
+    fn public_key(&self) -> &[u8] {
+        &self.public_key
+    }
+
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, CoreError> {
+        use p256::ecdsa::signature::Signer as _;
+        let key = self.signing_key.as_ref().ok_or(CoreError::Locked)?;
+        let signature: p256::ecdsa::Signature = key.sign(message);
+        let signature = signature.normalize_s().unwrap_or(signature);
+        Ok(signature.to_bytes().to_vec())
+    }
+
+    fn clear_secrets(&mut self) {
+        // p256 SigningKey zeroizes its secret scalar on drop.
+        self.signing_key = None;
+    }
+
+    fn export_private_key_bytes(&self) -> Result<Vec<u8>, CoreError> {
+        let key = self.signing_key.as_ref().ok_or(CoreError::Locked)?;
+        let mut bytes = key.to_bytes();
+        let exported = bytes.to_vec();
+        bytes.zeroize();
+        Ok(exported)
+    }
+}
+
+/// Native-compatible public key representation for HAI registration.
+///
+/// Ed25519 and pq2025 preserve the historical JACS PUBLIC KEY armor over raw
+/// algorithm key bytes (not SPKI). ES256 uses standard DER SubjectPublicKeyInfo
+/// inside PUBLIC KEY armor, matching the native ES256 implementation. Internal
+/// signatures and key pinning always use the canonical raw bytes, not this text.
+pub fn public_key_pem(public_key: &[u8], algorithm: SigningAlgorithm) -> Result<String, CoreError> {
+    use base64::Engine as _;
+    crate::identity::canonical_key_id(algorithm.as_str(), public_key)?;
+    let encoded = match algorithm {
+        SigningAlgorithm::Ed25519 | SigningAlgorithm::Pq2025 => public_key.to_vec(),
+        SigningAlgorithm::Es256 => {
+            use p256::pkcs8::EncodePublicKey;
+            let key = p256::PublicKey::from_sec1_bytes(public_key)
+                .map_err(|error| CoreError::MalformedKey(error.to_string()))?;
+            key.to_public_key_der()
+                .map_err(|error| CoreError::MalformedKey(error.to_string()))?
+                .as_bytes()
+                .to_vec()
+        }
+    };
+    let base64 = base64::engine::general_purpose::STANDARD.encode(encoded);
+    let mut pem = String::from("-----BEGIN PUBLIC KEY-----\n");
+    for line in base64.as_bytes().chunks(64) {
+        pem.push_str(std::str::from_utf8(line).expect("base64 is ASCII"));
+        pem.push('\n');
+    }
+    pem.push_str("-----END PUBLIC KEY-----\n");
+    Ok(pem)
 }

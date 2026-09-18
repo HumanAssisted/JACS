@@ -3266,19 +3266,27 @@ impl Agent {
         new_self["jacsVersion"] = json!(new_version.to_string());
         new_self["jacsVersionDate"] = json!(versioncreated.to_string());
 
-        // generate new keys?
-        // sign new version
-        new_self[AGENT_SIGNATURE_FIELDNAME] =
-            self.signing_procedure(&new_self, None, AGENT_SIGNATURE_FIELDNAME)?;
-        // hash new version
-        let document_hash = self.hash_doc(&new_self)?;
-        new_self[SHA256_FIELDNAME] = json!(document_hash.to_string());
-        //replace ones self
-        self.version = new_self.get_str("jacsVersion");
-        self.value = Some(new_self.clone());
-        self.validate_agent(&self.to_string())?;
-        self.verify_self_signature()?;
-        Ok(new_self.to_string())
+        // signing_procedure reads the agent's version. Stage the new version
+        // while preparing the signature, then restore both fields on every
+        // fallible path so a denied/failed update never publishes partial state.
+        let previous_version = self.version.clone();
+        let previous_value = self.value.clone();
+        self.version = Some(new_version);
+        let result = (|| {
+            new_self[AGENT_SIGNATURE_FIELDNAME] =
+                self.signing_procedure(&new_self, None, AGENT_SIGNATURE_FIELDNAME)?;
+            let document_hash = self.hash_doc(&new_self)?;
+            new_self[SHA256_FIELDNAME] = json!(document_hash);
+            self.validate_agent(&new_self.to_string())?;
+            self.value = Some(new_self.clone());
+            self.verify_self_signature()?;
+            Ok(new_self.to_string())
+        })();
+        if result.is_err() {
+            self.version = previous_version;
+            self.value = previous_value;
+        }
+        result
     }
 
     /// Rotates the agent's keys and creates a new version of the agent document.
@@ -4505,6 +4513,36 @@ mod ephemeral_tests {
 
     fn make_agent_json() -> String {
         create_minimal_blank_agent("ai".to_string(), None, None, None).unwrap()
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env)]
+    fn update_self_signs_current_version_and_rolls_back_when_signing_fails() {
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        agent
+            .create_agent_and_load(&make_agent_json(), true, Some("ring-Ed25519"))
+            .unwrap();
+        let mut edited = agent.value.clone().unwrap();
+        edited["description"] = json!("portable update");
+        let prior_version = edited["jacsVersion"].clone();
+        agent.update_self(&edited.to_string()).unwrap();
+        let updated = agent.value.clone().unwrap();
+        assert_eq!(updated["jacsPreviousVersion"], prior_version);
+        assert_eq!(
+            updated["jacsSignature"]["agentVersion"],
+            updated["jacsVersion"]
+        );
+        agent.verify_self_signature().unwrap();
+
+        // Removing the private key models unavailable signing material after
+        // staging the new version. Neither identity state field may change.
+        let old_version = agent.version.clone();
+        agent.private_key = None;
+        edited = updated.clone();
+        edited["description"] = json!("must not commit");
+        assert!(agent.update_self(&edited.to_string()).is_err());
+        assert_eq!(agent.version, old_version);
+        assert_eq!(agent.value.as_ref(), Some(&updated));
     }
 
     #[test]

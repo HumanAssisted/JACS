@@ -129,7 +129,7 @@ fn map_core_err(err: CoreError) -> JsError {
 fn parse_algorithm(raw: &str) -> Result<SigningAlgorithm, JsError> {
     SigningAlgorithm::from_wire_str(raw).ok_or_else(|| {
         map_core_err(CoreError::UnsupportedAlgorithm(format!(
-            "unknown signing algorithm '{}' (expected one of: ed25519, pq2025)",
+            "unknown signing algorithm '{}' (expected one of: ed25519, pq2025, es256)",
             raw
         )))
     })
@@ -158,6 +158,127 @@ pub struct CoreAgentHandle {
 
 #[wasm_bindgen]
 impl CoreAgentHandle {
+    /// Bind request authentication to the exact HTTP method, URL, bytes and
+    /// audience. The transport must send these bytes without reserialization.
+    #[wasm_bindgen(js_name = buildRequestAuthHeader)]
+    pub fn build_request_auth_header(
+        &self,
+        method: &str,
+        url: &str,
+        body: &[u8],
+        audience: &str,
+    ) -> Result<String, JsError> {
+        self.inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?
+            .build_request_auth_header(method, url, body, audience)
+            .map_err(map_core_err)
+    }
+
+    /// Sign exactly the UTF-8 bytes of a string, returning a standard base64
+    /// detached signature. HTTP clients should use buildRequestAuthHeader.
+    #[wasm_bindgen(js_name = signString)]
+    pub fn sign_string(&self, message: &str) -> Result<String, JsError> {
+        self.sign_raw_bytes_base64(message.as_bytes())
+    }
+
+    /// Sign exactly the supplied bytes without JSON canonicalization.
+    #[wasm_bindgen(js_name = signRawBytesBase64)]
+    pub fn sign_raw_bytes_base64(&self, bytes: &[u8]) -> Result<String, JsError> {
+        let started_at = now_ms();
+        let signature = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?
+            .sign_raw_bytes(bytes)
+            .map_err(map_core_err)?;
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.sign_count = metrics.sign_count.saturating_add(1);
+            metrics.last_sign_duration_ms = now_ms() - started_at;
+        }
+        Ok(base64::engine::general_purpose::STANDARD.encode(signature))
+    }
+
+    /// SHA-256 of the exact public-key bytes, as lowercase hexadecimal.
+    #[wasm_bindgen(js_name = getPublicKeyHash)]
+    pub fn get_public_key_hash(&self) -> Result<String, JsError> {
+        if let Some((public_key, _)) = &self.verifier_override {
+            return Ok(jacs_core::verify::sha256_hex(public_key));
+        }
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        Ok(jacs_core::verify::sha256_hex(agent.public_key()))
+    }
+
+    /// Native-compatible public-key PEM for HAI registration.
+    #[wasm_bindgen(js_name = getPublicKeyPem)]
+    pub fn get_public_key_pem(&self) -> Result<String, JsError> {
+        if let Some((public_key, algorithm)) = &self.verifier_override {
+            return jacs_core::sign::public_key_pem(public_key, *algorithm).map_err(map_core_err);
+        }
+        self.inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?
+            .public_key_pem()
+            .map_err(map_core_err)
+    }
+
+    /// Standard base64 of the public PEM's UTF-8 bytes, as HAI expects.
+    #[wasm_bindgen(js_name = getPublicKeyPemBase64)]
+    pub fn get_public_key_pem_base64(&self) -> Result<String, JsError> {
+        Ok(base64::engine::general_purpose::STANDARD.encode(self.get_public_key_pem()?.as_bytes()))
+    }
+
+    /// Update this agent's identity document, bump its version, and sign it
+    /// with the current key. Core enforces immutable identity/key fields.
+    #[wasm_bindgen(js_name = updateAgentJson)]
+    pub fn update_agent_json(&self, agent_json: &str) -> Result<String, JsError> {
+        let document = jacs_core::strict_json::parse_strict_json(agent_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))?;
+        let updated = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?
+            .update_agent(&document)
+            .map_err(map_core_err)?;
+        serde_json::to_string(&updated)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))
+    }
+
+    /// Sign a candidate identity update without changing this handle's current
+    /// version. Authenticate its registration request using the current handle.
+    #[wasm_bindgen(js_name = prepareAgentUpdateJson)]
+    pub fn prepare_agent_update_json(&self, updates_json: &str) -> Result<String, JsError> {
+        let updates = jacs_core::strict_json::parse_strict_json(updates_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))?;
+        let prepared = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?
+            .prepare_agent_update(&updates)
+            .map_err(map_core_err)?;
+        serde_json::to_string(&prepared)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))
+    }
+
+    /// Commit a self-signed candidate after successful registration. Core
+    /// validates the identity, key and parent version before changing state.
+    #[wasm_bindgen(js_name = commitAgentUpdateJson)]
+    pub fn commit_agent_update_json(&self, prepared_json: &str) -> Result<String, JsError> {
+        let prepared = jacs_core::strict_json::parse_strict_json(prepared_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))?;
+        let committed = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?
+            .commit_agent_update(&prepared)
+            .map_err(map_core_err)?;
+        serde_json::to_string(&committed)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))
+    }
+
     /// Sign a JSON payload, returning the signed document as a JSON string.
     ///
     /// Increments `signCount` + records `lastSignDurationMs` on the
@@ -338,7 +459,7 @@ impl CoreAgentHandle {
         Ok(base64::engine::general_purpose::STANDARD.encode(agent.public_key()))
     }
 
-    /// The signing algorithm tag, as one of `"ed25519"` / `"pq2025"`. For
+    /// The signing algorithm tag: `"ed25519"`, `"pq2025"`, or `"es256"`. For
     /// verifier handles returns the override algorithm the caller passed
     /// to `createVerifier`.
     #[wasm_bindgen]
@@ -437,7 +558,7 @@ impl CoreAgentHandle {
     ///
     /// `signers_json` is a JSON array of objects shaped
     /// `{ agentId, publicKeyBase64, algorithm }`. `algorithm` is one of
-    /// `"ed25519"` / `"pq2025"`; `publicKeyBase64` is the standard
+    /// `"ed25519"`, `"pq2025"`, or `"es256"`; `publicKeyBase64` is the standard
     /// base64 encoding of the raw public-key bytes. Signers absent from
     /// the list surface as `SignerKeyMissing` in the per-signer outcome
     /// (the call does **not** throw — it returns a structured
@@ -870,6 +991,96 @@ pub fn import_encrypted_agent(
         verifier_override: None,
         metrics: Arc::new(Mutex::new(HandleMetrics::default())),
     })
+}
+
+/// Generate a cryptographically random transfer code on the sending device.
+/// The JavaScript copy is host-managed and cannot be wiped by Rust.
+#[wasm_bindgen(js_name = generateTransferCode)]
+pub fn generate_transfer_code() -> Result<String, JsError> {
+    init_jacs_wasm();
+    jacs_core::transfer::generate_transfer_code()
+        .map(|code| code.to_string())
+        .map_err(map_core_err)
+}
+
+/// Unlock transferred material only after matching independently trusted
+/// agent ID, public key, and algorithm. Do not obtain these pins from the
+/// transfer blob itself.
+#[wasm_bindgen(js_name = importEncryptedAgentPinned)]
+pub fn import_encrypted_agent_pinned(
+    material_json: &str,
+    password: String,
+    expected_agent_id: &str,
+    expected_public_key_base64: &str,
+    expected_algorithm: &str,
+) -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    let password = zeroize::Zeroizing::new(password);
+    let material = parse_material(material_json)?;
+    let key = decode_public_key(expected_public_key_base64)?;
+    let algorithm = parse_algorithm(expected_algorithm)?;
+    let agent = jacs_core::transfer::import_transferred_agent(
+        material,
+        password.as_str(),
+        expected_agent_id,
+        &key,
+        algorithm,
+    )
+    .map_err(map_core_err)?;
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(agent)),
+        verifier_override: None,
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
+    })
+}
+
+/// Validate a transferred identity and immediately rewrap it with a distinct
+/// local storage secret. Only encrypted material is returned to JavaScript;
+/// the temporary unlocked agent is cleared inside core.
+#[wasm_bindgen(js_name = reencryptTransferredAgent)]
+pub fn reencrypt_transferred_agent(
+    material_json: &str,
+    code: String,
+    expected_agent_id: &str,
+    expected_public_key_base64: &str,
+    expected_algorithm: &str,
+    storage_password: String,
+) -> Result<String, JsError> {
+    init_jacs_wasm();
+    let code = zeroize::Zeroizing::new(code);
+    let storage_password = zeroize::Zeroizing::new(storage_password);
+    let material = parse_material(material_json)?;
+    let key = decode_public_key(expected_public_key_base64)?;
+    let algorithm = parse_algorithm(expected_algorithm)?;
+    let encrypted = jacs_core::transfer::reencrypt_transferred_material(
+        material,
+        code.as_str(),
+        expected_agent_id,
+        &key,
+        algorithm,
+        storage_password.as_str(),
+    )
+    .map_err(map_core_err)?;
+    serde_json::to_string(&encrypted)
+        .map_err(|e| map_core_err(CoreError::MalformedDocument(e.to_string())))
+}
+
+fn parse_material(material_json: &str) -> Result<AgentMaterial, JsError> {
+    jacs_core::strict_json::deserialize_strict_json(material_json).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "AgentMaterial JSON: {e}"
+        )))
+    })
+}
+
+fn decode_public_key(public_key_base64: &str) -> Result<Vec<u8>, JsError> {
+    base64::engine::general_purpose::STANDARD
+        .decode(public_key_base64)
+        .map_err(|e| {
+            map_core_err(CoreError::MalformedKey(format!(
+                "invalid base64 public key: {e}"
+            )))
+        })
 }
 
 /// Import an encrypted agent from four separate file-shaped buffers (used

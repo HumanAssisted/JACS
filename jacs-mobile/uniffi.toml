@@ -1,0 +1,8 @@
+[bindings.kotlin]
+package_name = "ai.hai.jacs"
+cdylib_name = "jacs_mobile"
+
+[bindings.swift]
+module_name = "JacsMobile"
+ffi_module_name = "JacsMobileFFI"
+generate_module_map = true

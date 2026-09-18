@@ -45,6 +45,14 @@ pub enum CoreError {
     #[error("agent is locked; call unlock before signing")]
     Locked,
 
+    /// The signing key is held by a platform or hardware provider and cannot be exported.
+    #[error("private key is not exportable")]
+    NotExportable,
+
+    /// An external signing provider failed or is temporarily unavailable.
+    #[error("signing provider unavailable: {0}")]
+    SignerUnavailable(String),
+
     /// The caller asked for one algorithm but the loaded material is a
     /// different one.
     #[error("algorithm mismatch: expected {expected}, got {actual}")]
@@ -106,6 +114,8 @@ impl CoreError {
             CoreError::InvalidPassword => "InvalidPassword",
             CoreError::InvalidPasswordFormat(_) => "InvalidPasswordFormat",
             CoreError::Locked => "Locked",
+            CoreError::NotExportable => "NotExportable",
+            CoreError::SignerUnavailable(_) => "SignerUnavailable",
             CoreError::AlgorithmMismatch { .. } => "AlgorithmMismatch",
             CoreError::UnsupportedAlgorithm(_) => "UnsupportedAlgorithm",
             CoreError::MalformedDocument(_) => "MalformedDocument",

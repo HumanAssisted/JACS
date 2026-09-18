@@ -6,6 +6,7 @@
 // the `#output` element.
 
 import { createEphemeral, initJacsWasm } from "@jacs/wasm";
+import { deviceTransferSmoke } from "./device-transfer-smoke";
 
 async function main(): Promise<void> {
   const out = document.getElementById("output") as HTMLPreElement;
@@ -15,9 +16,10 @@ async function main(): Promise<void> {
   try {
     write("initJacsWasm...");
     await initJacsWasm();
-    write("createEphemeral ed25519...");
+    write("createEphemeral pq2025 (default)...");
     // PRD §4.3: constructors return Promise<CoreAgentHandle>.
-    const agent = await createEphemeral("ed25519");
+    const agent = await createEphemeral();
+    if (agent.algorithm() !== "pq2025") throw new Error("New identities must default to pq2025");
     write(`pk len: ${agent.getPublicKeyBase64().length}`);
 
     const message = JSON.stringify({ hello: "world" });
@@ -32,6 +34,10 @@ async function main(): Promise<void> {
     if (outcome.valid !== true) {
       throw new Error(`expected valid=true, got ${outcome.valid}`);
     }
+    agent.clearSecrets();
+    agent.free();
+    await deviceTransferSmoke(write);
+    write("DEVICE TRANSFER OK (ed25519, es256, pq2025, worker)");
     write("SMOKE OK");
   } catch (err) {
     write(`SMOKE FAILED: ${err instanceof Error ? err.message : String(err)}`);

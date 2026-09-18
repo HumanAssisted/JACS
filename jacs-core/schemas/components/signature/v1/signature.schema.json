@@ -51,7 +51,8 @@
       "type": "string",
       "enum": [
         "ring-Ed25519",
-        "pq2025"
+        "pq2025",
+        "es256"
       ]
     },
     "response": {

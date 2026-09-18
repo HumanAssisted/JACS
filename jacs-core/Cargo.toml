@@ -52,6 +52,10 @@ sha2 = "0.10.8"
 rand = "0.9"
 zeroize = "1.8"
 base64 = "0.22"
+# Exact compatibility with legacy native public-key hashing (pure Rust).
+encoding_rs = "0.8.35"
+# Same pure-Rust HTTP target normalization as native request-auth-v2.
+url = "2"
 # Post-quantum signatures (ML-DSA-87 / Dilithium). Pure-Rust, wasm-friendly.
 # See PRD §4.2, §4.7.
 fips204 = "0.4.6"
@@ -61,7 +65,7 @@ fips204 = "0.4.6"
 # wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
 # §4.5.
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "pkcs8"] }
 # `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
 # already a transitive dep of native jacs. See PRD §4.2.
 secrecy = "0.10.3"

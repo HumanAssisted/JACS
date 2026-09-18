@@ -196,3 +196,51 @@ fn get_public_key_base64_round_trips_to_32_bytes_for_ed25519() {
         .expect("decode");
     assert_eq!(pk.len(), 32);
 }
+
+#[wasm_bindgen_test]
+fn es256_pinned_transfer_rejects_substitution_and_reused_secret() {
+    use jacs_wasm::{
+        generate_transfer_code, import_encrypted_agent_pinned, reencrypt_transferred_agent,
+    };
+    let original = create_ephemeral("es256").expect("ES256 agent");
+    let code = generate_transfer_code().expect("transfer code");
+    let material = original
+        .export_encrypted_agent(code.clone())
+        .expect("transfer envelope");
+    let agent: serde_json::Value = serde_json::from_str(&original.export_agent().unwrap()).unwrap();
+    let id = agent["jacsId"].as_str().unwrap();
+    let key = original.get_public_key_base64().unwrap();
+
+    let received = import_encrypted_agent_pinned(&material, code.clone(), id, &key, "es256")
+        .expect("pinned import");
+    let signed = received.sign_message_json(r#"{"browser":true}"#).unwrap();
+    let outcome: serde_json::Value =
+        serde_json::from_str(&original.verify_json(&signed).unwrap()).unwrap();
+    assert_eq!(outcome["valid"], true);
+    assert!(
+        import_encrypted_agent_pinned(&material, code.clone(), "other-agent", &key, "es256")
+            .is_err()
+    );
+    let other_key = create_ephemeral("es256")
+        .unwrap()
+        .get_public_key_base64()
+        .unwrap();
+    assert!(
+        import_encrypted_agent_pinned(&material, code.clone(), id, &other_key, "es256").is_err()
+    );
+    assert!(import_encrypted_agent_pinned(&material, code.clone(), id, &key, "ed25519").is_err());
+    assert!(
+        import_encrypted_agent_pinned(&material, "wrong code".into(), id, &key, "es256").is_err()
+    );
+    assert!(reencrypt_transferred_agent(&material, code.clone(), id, &key, "es256", code).is_err());
+
+    let mut tampered: serde_json::Value = serde_json::from_str(&material).unwrap();
+    tampered["agent"]["name"] = serde_json::json!("Unsigned impersonation");
+    assert!(
+        import_encrypted_agent_pinned(&tampered.to_string(), "unused".into(), id, &key, "es256")
+            .is_err()
+    );
+    received.clear_secrets().unwrap();
+    assert!(received.sign_string("auth challenge").is_err());
+    assert!(received.update_agent_json(&agent.to_string()).is_err());
+}

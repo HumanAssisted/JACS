@@ -1,0 +1,28 @@
+[package]
+name = "jacs-mobile"
+version = "0.13.0"
+edition = "2024"
+rust-version = "1.97"
+description = "JACS portable UniFFI bindings for Android, iOS and React Native"
+license = "Apache-2.0"
+repository = "https://github.com/HumanAssisted/JACS"
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+jacs-core = { version = "0.13.0", path = "../jacs-core" }
+uniffi = "=0.31.2"
+serde_json = "1"
+thiserror = "2"
+zeroize = "1.8"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+base64 = "0.22"
+
+[[bin]]
+name = "jacs-mobile-bindgen"
+path = "src/bin/bindgen.rs"
+required-features = ["bindgen"]

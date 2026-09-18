@@ -95,7 +95,7 @@ pub enum CryptoSigningAlgorithm {
 
 /// Returns the list of verification algorithms actually implemented in JACS.
 pub fn supported_verification_algorithms() -> Vec<&'static str> {
-    vec!["ring-Ed25519", "pq2025"]
+    vec!["ring-Ed25519", "pq2025", "es256"]
 }
 
 /// Returns the list of algorithms still permitted for new private-key use.
@@ -119,6 +119,14 @@ pub fn verify_string_with_algorithm(
     signature_base64: &str,
     algorithm: &str,
 ) -> Result<(), JacsError> {
+    if matches!(algorithm, "es256" | "ES256") {
+        use base64::Engine as _;
+        let signature = base64::engine::general_purpose::STANDARD
+            .decode(signature_base64)
+            .map_err(|_| JacsError::CryptoError("invalid ES256 signature base64".into()))?;
+        return jacs_core::P256Signer::verify(&public_key, data.as_bytes(), &signature)
+            .map_err(Into::into);
+    }
     let algorithm = CryptoSigningAlgorithm::from_str(algorithm)
         .map_err(|_| JacsError::CryptoError(format!("Unknown signing algorithm: {algorithm}")))?;
 
