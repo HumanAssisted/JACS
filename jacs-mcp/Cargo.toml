@@ -22,7 +22,7 @@ zeroize = "1.8"
 tempfile = "3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"], optional = true }
-rmcp = { version = "3.0.0", default-features = false, features = ["server", "transport-io"], optional = true }
+rmcp = { version = "3.3.0", default-features = false, features = ["server", "transport-io"], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync"], optional = true }
 
 [target.'cfg(unix)'.dependencies]

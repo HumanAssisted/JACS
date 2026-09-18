@@ -28,3 +28,11 @@
 # missing/duplicate attachments" is a generic-api-key false positive, not a
 # credential. Suppress only this exact historical finding, not the path/rule.
 b20534e0c19e174d77d3174b95354e3fe0a7dd19:jacs-mcp/README.md:generic-api-key:52
+
+# Reviewed 2026-09-18 with gitleaks 8.30.1 after rebasing onto main. These
+# historical and archived copies are byte-identical to the README narrative
+# prose reviewed at b20534e0 above; neither contains a credential.
+386c6451f0828b1c3e21542934b21cff04399191:archive/native/jacs-mcp/README.md:generic-api-key:52
+fd42449722ed83427b8dcd5574d315a32ae3a197:jacs-mcp/README.md:generic-api-key:52
+# The published rebased commit has the same reviewed README prose/blob.
+51903ce95cc2e11fecd0ddcc5697e956d0ee8ac0:archive/native/jacs-mcp/README.md:generic-api-key:52

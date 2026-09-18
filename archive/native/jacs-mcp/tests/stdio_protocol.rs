@@ -737,20 +737,9 @@ async fn default_profile_rejects_signing_without_unlocking_configured_key() -> a
     let _guard = STDIO_PROTOCOL_LOCK.lock().await;
     let mut session = RawStdioSession::spawn_with_mode(SessionMode::DefaultVerifyOnly).await?;
     let config_before = std::fs::read(session.base.join("jacs.config.json"))?;
-    // Runtime-generated fixtures select their data directory explicitly. Do
-    // not assume the old checked-in config's current-directory storage layout.
-    let config: Value = serde_json::from_slice(&config_before)?;
-    let data_dir = PathBuf::from(
-        config["jacs_data_directory"]
-            .as_str()
-            .expect("fixture config data directory"),
-    );
-    let data_dir = if data_dir.is_absolute() {
-        data_dir
-    } else {
-        session.base.join(data_dir)
-    };
-    let document_dir = data_dir.join("documents");
+    // Native document storage is rooted beside the fixture config. Its
+    // jacs_data_directory contains agent identities, not signed documents.
+    let document_dir = session.base.join("documents");
     // The fixture signer already persisted the verification sample. The child
     // must neither add a signed document nor alter that existing artifact.
     let fixture_path = {

@@ -587,3 +587,40 @@ fn malformed_hardware_request_auth_signature_does_not_commit_metadata_update() {
     assert!(matches!(result, Err(CoreError::SignatureInvalid(_))));
     assert_eq!(agent.export_agent(), before);
 }
+
+#[test]
+fn es256_rejects_the_high_s_twin_of_a_valid_signature() {
+    // P-256's group order is public curve metadata. ECDSA (r, n-s) is the
+    // malleable twin of (r, s), so both encode the same mathematical proof.
+    // Construct it directly to avoid testing normalize_s against itself.
+    const ORDER: [u8; 32] = [
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63,
+        0x25, 0x51,
+    ];
+    let signer = P256Signer::generate().unwrap();
+    let message = b"canonical ES256 verification after dependency upgrade";
+    let low = signer.sign(message).unwrap();
+    let mut high = low.clone();
+    let mut borrow = 0i16;
+    for i in (0..32).rev() {
+        let difference = i16::from(ORDER[i]) - i16::from(low[32 + i]) - borrow;
+        high[32 + i] = difference as u8;
+        borrow = i16::from(difference < 0);
+    }
+    assert_eq!(borrow, 0);
+    assert_ne!(high, low);
+    let parsed = p256::ecdsa::Signature::from_slice(&high).unwrap();
+    assert_eq!(parsed.normalize_s().to_bytes().as_slice(), low);
+
+    jacs_core::verify::verify_detached(SigningAlgorithm::Es256, signer.public_key(), message, &low)
+        .expect("canonical twin remains valid");
+    let error = jacs_core::verify::verify_detached(
+        SigningAlgorithm::Es256,
+        signer.public_key(),
+        message,
+        &high,
+    )
+    .expect_err("cryptographically equivalent high-S signatures are noncanonical");
+    assert!(matches!(error, CoreError::SignatureInvalid(ref detail) if detail.contains("low-S")));
+}

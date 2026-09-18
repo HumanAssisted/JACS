@@ -27,14 +27,14 @@ pub fn tools() -> Vec<Tool> {
         ),
         (
             TOOL_NAMES[1],
-            "Sign a JSON object with the configured identity, preserving its algorithm.",
+            "Sign a JSON object with the configured identity, preserving its algorithm. The signature records agent-key provenance, not human approval or proof that the content is true.",
             json!({"type":"object", "properties":{"document":text}, "required":["document"], "additionalProperties":false}),
             true,
             false,
         ),
         (
             TOOL_NAMES[2],
-            "Verify a signed JSON document against an explicitly supplied public key and algorithm. This verifies cryptography, not registry trust.",
+            "Verify signed JSON integrity against an explicitly supplied public key and algorithm. Identity, trust, authorization, human approval, truth, freshness and revocation are not established.",
             json!({"type":"object", "properties":{"document":text,"public_key":{"type":"string","maxLength":16384,"description":"Canonical standard-base64 raw public key, independently pinned by the caller"},"algorithm":{"type":"string","enum":["pq2025","ed25519","es256"]}}, "required":["document","public_key","algorithm"], "additionalProperties":false}),
             true,
             false,

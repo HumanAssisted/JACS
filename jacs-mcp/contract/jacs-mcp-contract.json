@@ -40,7 +40,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Sign a JSON object with the configured identity, preserving its algorithm.",
+      "description": "Sign a JSON object with the configured identity, preserving its algorithm. The signature records agent-key provenance, not human approval or proof that the content is true.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -62,7 +62,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Verify a signed JSON document against an explicitly supplied public key and algorithm. This verifies cryptography, not registry trust.",
+      "description": "Verify signed JSON integrity against an explicitly supplied public key and algorithm. Identity, trust, authorization, human approval, truth, freshness and revocation are not established.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
