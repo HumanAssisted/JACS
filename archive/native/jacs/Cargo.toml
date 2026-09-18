@@ -161,7 +161,7 @@ fips204 = "0.4.6"
 # ES256 (ECDSA P-256) ecosystem compatibility keys (P2 Task 002). Narrow
 # RustCrypto stack per the PRD buy/build note: never used for native JACS
 # signing, and `ring` stays out of portable core paths.
-p256 = { version = "0.13", features = ["pkcs8", "pem"] }
+p256 = { version = "0.14", features = ["pkcs8", "pem"] }
 # base58btc for Multikey (publicKeyMultibase) encoding of the ES256 key —
 # already in the tree transitively.
 bs58 = "0.5"
