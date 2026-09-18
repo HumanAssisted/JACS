@@ -146,6 +146,12 @@ export class WorkerAgentHandle {
     this.algorithm = algorithm;
   }
 
+  /** Exact content in a complete document with locally generated signed root IDs. */
+  async signDocument(dataJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("signDocument", {handleId: this.handleId, dataJson});
+    return result.value;
+  }
+
   async signMessage(dataJson: string): Promise<string> {
     const result = await dispatch<{ signedJson: string }>("signMessage", {
       handleId: this.handleId,
@@ -280,6 +286,22 @@ export async function importRecoveryInWorker(
     materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
   }, options?.workerUrl);
   return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+/** No handle/persistence: signed identity JSON only; caller checks current version. */
+export async function verifyRecoveryInWorker(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm,
+  options?: {workerUrl?: URL | string}): Promise<string> {
+  const result = await dispatch<{identityJson: string}>("verifyRecovery", {
+    materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
+  }, options?.workerUrl);
+  return result.identityJson;
+}
+
+export async function normalizeRecoveryCodeInWorker(code: string,
+  options?: {workerUrl?: URL | string}): Promise<string> {
+  const result = await dispatch<{code: string}>("normalizeRecoveryCode", {code}, options?.workerUrl);
+  return result.code;
 }
 
 export async function generateRecoveryCodeInWorker(

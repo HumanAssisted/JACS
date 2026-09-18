@@ -42,6 +42,7 @@ private final class FakeAgent: JacsSessionAgent {
         XCTAssertFalse(cleared)
         return "signed:" + json
     }
+    func signDocument(_ json: String) throws -> String { try sign(json) }
     func recovery() throws -> MobileRecoveryExport {
         return MobileRecoveryExport(code: "0123-4567-89AB-CDEF-0123-4567-89AB-CDEF",
             material: try export("one two three four five six"))
@@ -266,7 +267,7 @@ final class JacsBiometricVaultTests: XCTestCase {
         }
         auth.succeed()
         wait(for: [created], timeout: 15)
-        var recovery: MobileRecoveryExport?
+        var recovery: JacsBiometricRecovery?
         let exported = expectation(description: "generated recovery")
         source!.createRecovery {
             if case .success(let value) = $0 { recovery = value } else { XCTFail("recovery export failed") }
@@ -278,6 +279,17 @@ final class JacsBiometricVaultTests: XCTestCase {
         XCTAssertEqual(identity["jacsAgentType"] as? String, "human")
         let id = try XCTUnwrap(identity["jacsId"] as? String)
         let original = store.records["source"]
+        auth = FakeAuthorization()
+        let verified = expectation(description: "noninteractive readback")
+        realVault.verifyRecovery(material: backup.material, code: backup.code,
+            expectedAgentID: id, expectedPublicKey: backup.material.publicKey) {
+            if case .success(let identityJSON) = $0 { XCTAssertEqual(identityJSON, backup.material.agentJson) }
+            else { XCTFail("readback failed") }
+            verified.fulfill()
+        }
+        wait(for: [verified], timeout: 15)
+        XCTAssertNil(auth.callback)
+        XCTAssertEqual(store.records["source"], original)
         var malformed = backup.material
         malformed.encryptedPrivateKey = Data([0])
         for (account, material, code, expectedID) in [
@@ -299,22 +311,141 @@ final class JacsBiometricVaultTests: XCTestCase {
             XCTAssertEqual(store.records["source"], original)
             XCTAssertEqual(store.records.count, 1)
         }
+        let removed = expectation(description: "explicit removal after candidate verification")
+        realVault.delete(account: "source") {
+            if case .success = $0 {} else { XCTFail("explicit delete failed") }
+            removed.fulfill()
+        }
+        wait(for: [removed], timeout: 5)
+        XCTAssertNil(store.records["source"])
         auth = FakeAuthorization()
         let restored = expectation(description: "same identity restored")
         realVault.receiveRecovery(material: backup.material, code: backup.code.lowercased(),
             expectedAgentID: id, expectedPublicKey: backup.material.publicKey,
-            account: "destination", reason: "Restore") { result in
+            account: "source", reason: "Restore") { result in
             guard case .success(let session) = result else { XCTFail("restore failed"); restored.fulfill(); return }
             session.exportIdentityJSON {
                 if case .success(let json) = $0 { XCTAssertEqual(json, backup.material.agentJson) }
                 else { XCTFail("restored identity unavailable") }
-                session.close()
-                restored.fulfill()
+                session.signDocumentJSON("{\"exact\":\"native terms\"}") { result in
+                    if case .success(let signed) = result {
+                        let verified = try? JacsMobile.verifyWithKey(json: signed, publicKey: backup.material.publicKey, algorithm: .pq2025)
+                        XCTAssertEqual(verified?.valid, true)
+                        let parsed = (try? JSONSerialization.jsonObject(with: Data(signed.utf8))) as? [String: Any]
+                        XCTAssertNotNil(parsed?["jacsId"])
+                        XCTAssertNotNil(parsed?["jacsVersion"])
+                        XCTAssertNotNil(parsed?["jacsSha256"])
+                    } else { XCTFail("owned full-document signing failed") }
+                    session.close()
+                    restored.fulfill()
+                }
             }
         }
         auth.succeed()
         wait(for: [restored], timeout: 15)
-        XCTAssertNotNil(store.records["destination"])
+        XCTAssertNotNil(store.records["source"])
+    }
+
+    func testExplicitDeleteIsScopedAndCancellationBeforeMutationKeepsRecord() {
+        let session = createSession()
+        store.records["other"] = Data([9])
+        let original = store.records["agent"]
+        worker.suspend()
+        let cancelled = expectation(description: "delete cancelled")
+        let request = vault.delete(account: "agent") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("delete must cancel") }
+            cancelled.fulfill()
+        }
+        request.cancel()
+        worker.resume()
+        wait(for: [cancelled], timeout: 5)
+        worker.sync {}; callbacks.sync {}
+        XCTAssertEqual(store.records["agent"], original)
+        XCTAssertTrue(session.isActive)
+        let deleted = expectation(description: "deliberate delete")
+        vault.delete(account: "agent") {
+            if case .success = $0 {} else { XCTFail("delete failed") }
+            deleted.fulfill()
+        }
+        wait(for: [deleted], timeout: 5)
+        XCTAssertNil(store.records["agent"])
+        XCTAssertEqual(store.records["other"], Data([9]))
+        XCTAssertFalse(session.isActive)
+        vault.invalidate()
+        let refused = expectation(description: "inactive delete refused")
+        vault.delete(account: "other") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("inactive delete allowed") }
+            refused.fulfill()
+        }
+        wait(for: [refused], timeout: 5)
+        XCTAssertNotNil(store.records["other"])
+    }
+
+    func testDeleteRefusesAnOutstandingPromptAndDoesNotCancelIt() {
+        let opened = expectation(description: "existing prompt")
+        vault.create(account: "agent", reason: "Set up") {
+            if case .success(let session) = $0 { session.close() } else { XCTFail("existing prompt lost") }
+            opened.fulfill()
+        }
+        let refused = expectation(description: "delete busy")
+        vault.delete(account: "agent") {
+            if case .failure(.busy) = $0 {} else { XCTFail("delete overlapped prompt") }
+            refused.fulfill()
+        }
+        wait(for: [refused], timeout: 5)
+        auth.succeed()
+        wait(for: [opened], timeout: 5)
+        XCTAssertNotNil(store.records["agent"])
+    }
+
+    func testRecoveryPrevalidationDoesNotPromptAndMapsErrorsWithoutDetails() throws {
+        let material = EncryptedAgentMaterial(configJson: "{}", agentJson: "{}", publicKey: Data([1]),
+            encryptedPrivateKey: Data([2]), algorithm: .pq2025)
+        let failed = expectation(description: "bad paste")
+        vault.receiveRecovery(material: material, code: "bad-paste", expectedAgentID: "test", expectedPublicKey: Data([1]),
+            account: "agent", reason: "Restore") {
+            if case .failure(.invalidRecoveryCode) = $0 {} else { XCTFail("untyped paste error") }
+            failed.fulfill()
+        }
+        wait(for: [failed], timeout: 5)
+        XCTAssertNil(auth.callback)
+        XCTAssertTrue(store.records.isEmpty)
+        for (code, expected) in [("InvalidPassword", JacsBiometricError.invalidRecoveryCode),
+            ("MalformedKey", .identityMismatch), ("MalformedEnvelope", .malformedMaterial), ("Locked", .locked)] {
+            let mapped = mapMobileError(MobileError.Core(code: code, detail: "sensitive-do-not-report"))
+            XCTAssertEqual(mapped, expected)
+            XCTAssertFalse(String(describing: mapped).contains("sensitive"))
+        }
+        let value = JacsBiometricRecovery(MobileRecoveryExport(code: "sensitive-code", material: material))
+        XCTAssertFalse(String(describing: value).contains("sensitive-code"))
+        XCTAssertFalse(String(reflecting: value).contains("sensitive-code"))
+        XCTAssertTrue(Mirror(reflecting: value).children.isEmpty)
+    }
+
+    func testReadbackCancellationAndSignedDocumentLateResultAreSuppressed() {
+        worker.suspend()
+        let failed = expectation(description: "readback cancelled")
+        let material = EncryptedAgentMaterial(configJson: "{}", agentJson: "{}", publicKey: Data([1]),
+            encryptedPrivateKey: Data([2]), algorithm: .pq2025)
+        let request = vault.verifyRecovery(material: material, code: "invalid", expectedAgentID: "test", expectedPublicKey: Data([1])) {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("late readback escaped") }
+            failed.fulfill()
+        }
+        request.cancel()
+        worker.resume()
+        wait(for: [failed], timeout: 5)
+        worker.sync {}; callbacks.sync {}
+        let session = createSession()
+        callbacks.suspend()
+        let signed = expectation(description: "document cancelled")
+        session.signDocumentJSON("exact-content") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late complete document escaped") }
+            signed.fulfill()
+        }
+        worker.sync {}
+        vault.invalidate()
+        callbacks.resume()
+        wait(for: [signed], timeout: 5)
     }
 
     func testRecoveryLocksBeforeDeliveryAndCancellationSuppressesCode() {

@@ -373,6 +373,11 @@ impl MobileAgent {
         Ok(self.lock()?.export_encrypted_material(&password)?.into())
     }
 
+    /// Complete JACS document, with exact input JSON as content and fresh root headers.
+    pub fn sign_document_json(&self, json: String) -> Result<String, MobileError> {
+        Ok(self.lock()?.sign_document(&parse_json(&json)?)?.to_string())
+    }
+
     pub fn sign_message_json(&self, json: String) -> Result<String, MobileError> {
         Ok(self.lock()?.sign_message(&parse_json(&json)?)?.to_string())
     }
@@ -478,6 +483,34 @@ pub fn material_from_json(json: String) -> Result<EncryptedAgentMaterial, Mobile
         return Err(CoreError::MalformedDocument("material JSON exceeds 1 MiB".into()).into());
     }
     Ok(jacs_core::strict_json::deserialize_strict_json::<AgentMaterial>(&json)?.into())
+}
+
+/// Cheap paste validation; no KDF, handle, storage or biometrics.
+#[uniffi::export]
+pub fn normalize_recovery_code(code: String) -> Result<String, MobileError> {
+    let code = Zeroizing::new(code);
+    Ok(jacs_core::recovery::normalize_recovery_code(&code)?.to_string())
+}
+
+/// Verify downloaded ciphertext against trusted registration. Only public identity
+/// JSON is returned; the temporary unlocked key is cleared inside core.
+#[uniffi::export]
+pub fn verify_recovery(
+    material: EncryptedAgentMaterial,
+    code: String,
+    expected_agent_id: String,
+    expected_public_key: Vec<u8>,
+    expected_algorithm: MobileAlgorithm,
+) -> Result<String, MobileError> {
+    let code = Zeroizing::new(code);
+    Ok(jacs_core::recovery::verify_recovery(
+        material.try_into()?,
+        &code,
+        &expected_agent_id,
+        &expected_public_key,
+        expected_algorithm.into(),
+    )?
+    .to_string())
 }
 
 /// Durable recovery code: 128 CSPRNG bits, distinct from device transfer.

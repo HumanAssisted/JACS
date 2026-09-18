@@ -244,3 +244,11 @@ code is a separate short-lived protocol and is not a durable recovery code.
 Keep the code separate from its ciphertext, never log either, and clear displayed
 codes and unlocked handles on background/logout. Server backup generations,
 read-back, save acknowledgment and key replacement are application responsibilities.
+
+`recovery::verify_recovery` returns only verified identity JSON and clears the
+temporary imported key; it does not persist a record or change the source handle.
+The application must compare the identity's version to current registration.
+`CoreAgent::sign_document(content)` uses the existing native-header preparation
+and verified completion pipeline to produce fresh signed document/version IDs,
+exact `content` and `jacsSha256`. It confers no application authority and leaves
+`sign_message` behavior unchanged.

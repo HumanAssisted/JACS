@@ -105,17 +105,18 @@ class JacsBiometricVault(
         expectedPublicKey: ByteArray, title: String, callback: JacsVaultCallback<JacsVaultIdentity>,
     ): JacsVaultRequest {
         val expectedKey = expectedPublicKey.copyOf()
-        return provision(title, callback) {
+        return provision(title, callback, preflight = { normalizeRecoveryCode(code) }) {
             val material = materialFromJson(materialJson)
             if (material.algorithm != MobileAlgorithm.PQ2025)
-                throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
+                throw JacsVaultException(JacsVaultException.Code.IDENTITY_MISMATCH)
             MobileAgent.importRecovery(material, code, expectedAgentId, expectedKey, MobileAlgorithm.PQ2025)
         }
     }
 
     private fun provision(
-        title: String, callback: JacsVaultCallback<JacsVaultIdentity>, createAgent: () -> MobileAgent,
-    ): JacsVaultRequest = begin(false, true, callback) { ticket ->
+        title: String, callback: JacsVaultCallback<JacsVaultIdentity>, preflight: () -> Unit = {},
+        createAgent: () -> MobileAgent,
+    ): JacsVaultRequest = begin(false, true, callback, preflight) { ticket ->
         worker.execute {
             try {
                 if (records.exists()) throw JacsVaultException(JacsVaultException.Code.ALREADY_EXISTS)
@@ -143,6 +144,23 @@ class JacsBiometricVault(
                 main.post { prompt(ticket, title, cipher, callback) { keystore.finishUnlock(wrapped, cipher) } }
             } catch (error: Exception) { fail(ticket, callback, error) }
         } }
+
+    fun signDocumentJson(json: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
+        useSession(callback) { it.signDocumentJson(json) }
+
+    /** Read-back only: no prompt, storage mutation or escaping unlocked handle. */
+    fun verifyRecovery(materialJson: String, code: String, expectedAgentId: String,
+        expectedPublicKey: ByteArray, callback: JacsVaultCallback<String>): JacsVaultRequest {
+        val key = expectedPublicKey.copyOf()
+        return begin(false, false, callback) { ticket -> worker.execute {
+            try {
+                if (!state.current(ticket)) return@execute
+                val identity = ai.hai.jacs.verifyRecovery(materialFromJson(materialJson), code,
+                    expectedAgentId, key, MobileAlgorithm.PQ2025)
+                main.post { complete(ticket, callback, identity) }
+            } catch (error: Exception) { fail(ticket, callback, error) }
+        } }
+    }
 
     fun signMessageJson(json: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
         useSession(callback) { it.signMessageJson(json) }
@@ -215,7 +233,7 @@ class JacsBiometricVault(
     }
 
     private fun <T> begin(needsSession: Boolean, opensSession: Boolean, callback: JacsVaultCallback<T>,
-                          start: (JacsVaultState.Ticket) -> Unit): JacsVaultRequest {
+                          preflight: () -> Unit = {}, start: (JacsVaultState.Ticket) -> Unit): JacsVaultRequest {
         requireMain()
         if (!foreground && !closed) {
             callback.onError(JacsVaultException(JacsVaultException.Code.BACKGROUNDED))
@@ -225,9 +243,12 @@ class JacsBiometricVault(
             callback.onError(error); return JacsVaultRequest {}
         }
         callbacks[ticket] = { callback.onError(it) }
-        val availability = if (opensSession) biometricAvailabilityError() else null
-        if (availability != null) fail(ticket, callback, JacsVaultException(availability))
-        else start(ticket)
+        try {
+            preflight()
+            val availability = if (opensSession) biometricAvailabilityError() else null
+            if (availability != null) fail(ticket, callback, JacsVaultException(availability))
+            else start(ticket)
+        } catch (error: Exception) { fail(ticket, callback, error) }
         return JacsVaultRequest {
             if (state.cancel(ticket)) main.post {
                 if (state.owns(ticket)) invalidate(JacsVaultException.Code.CANCELLED)
@@ -346,6 +367,16 @@ class JacsBiometricVault(
             is KeyPermanentlyInvalidatedException -> JacsVaultException(JacsVaultException.Code.KEY_INVALIDATED)
             is UserNotAuthenticatedException -> JacsVaultException(JacsVaultException.Code.LOCKED)
             is AEADBadTagException -> JacsVaultException(JacsVaultException.Code.INTEGRITY)
+            is MobileException.Core -> JacsVaultException(when (error.code) {
+                "InvalidPassword", "InvalidPasswordFormat" -> JacsVaultException.Code.INVALID_RECOVERY_CODE
+                "MalformedKey", "AlgorithmMismatch" -> JacsVaultException.Code.IDENTITY_MISMATCH
+                "MalformedEnvelope", "MalformedDocument", "SignatureInvalid", "SchemaInvalid" -> JacsVaultException.Code.MALFORMED_MATERIAL
+                "Locked" -> JacsVaultException.Code.LOCKED
+                else -> JacsVaultException.Code.CRYPTO
+            })
+            is MobileException.InvalidJson -> JacsVaultException(JacsVaultException.Code.MALFORMED_MATERIAL)
+            is MobileException.Busy -> JacsVaultException(JacsVaultException.Code.BUSY)
+            is MobileException.Unavailable -> JacsVaultException(JacsVaultException.Code.UNAVAILABLE)
             is IOException -> JacsVaultException(JacsVaultException.Code.STORAGE)
             is IllegalArgumentException -> JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
             else -> JacsVaultException(JacsVaultException.Code.CRYPTO)

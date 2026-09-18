@@ -178,3 +178,34 @@ fn recovery_roundtrip_pins_identity_and_preserves_source_after_failures() {
         Err(jacs_core::CoreError::Locked)
     ));
 }
+
+#[test]
+fn readback_verifies_without_replacing_source_or_returning_handle() {
+    let human = CoreAgent::create_human().unwrap();
+    let identity = human.export_agent();
+    let backup = export_recovery(&human).unwrap();
+    let id = identity["jacsId"].as_str().unwrap();
+    assert_eq!(
+        verify_recovery(
+            backup.material.clone(),
+            &backup.code,
+            id,
+            human.public_key(),
+            human.algorithm()
+        )
+        .unwrap(),
+        identity
+    );
+    assert!(
+        verify_recovery(
+            backup.material,
+            &backup.code,
+            "other",
+            human.public_key(),
+            human.algorithm()
+        )
+        .is_err()
+    );
+    assert_eq!(human.export_agent(), identity);
+    assert!(human.is_unlocked());
+}

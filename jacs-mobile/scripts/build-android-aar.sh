@@ -48,6 +48,10 @@ mkdir -p "$stage/library/src/main/kotlin/ai/hai/jacs/platform"
 cp jacs-mobile/platforms/android/*.kt "$stage/library/src/main/kotlin/ai/hai/jacs/platform/"
 mkdir -p "$stage/library/src/androidTest/kotlin/ai/hai/jacs/platform"
 cp jacs-mobile/tests/android-instrumented/*.kt "$stage/library/src/androidTest/kotlin/ai/hai/jacs/platform/"
+# Instrumentation host exists only in the debug variant, never the release AAR.
+mkdir -p "$stage/library/src/debug/kotlin/ai/hai/jacs/platform"
+cp jacs-mobile/tests/android-test-host/VaultRecoveryTestActivity.kt "$stage/library/src/debug/kotlin/ai/hai/jacs/platform/"
+cp jacs-mobile/tests/android-test-host/AndroidManifest.xml "$stage/library/src/debug/AndroidManifest.xml"
 # Align ELF load segments for Android devices using 16 KiB memory pages.
 RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384" \
 cargo ndk -t arm64-v8a -t x86_64 --platform 30 \
@@ -55,5 +59,12 @@ cargo ndk -t arm64-v8a -t x86_64 --platform 30 \
 gradle --no-daemon --project-dir "$stage" \
     :library:assembleRelease :library:assembleDebugAndroidTest :library:publishReleasePublicationToBundleRepository
 python3 jacs-mobile/scripts/check-android-package.py "$stage"
+python3 - "$stage/library/build/outputs/aar/library-release.aar" <<'PYTEST'
+import io, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as aar:
+    with zipfile.ZipFile(io.BytesIO(aar.read("classes.jar"))) as classes:
+        assert not any("VaultRecoveryTestActivity" in name for name in classes.namelist()), "debug test host leaked into release classes"
+    assert b"VaultRecoveryTestActivity" not in aar.read("AndroidManifest.xml"), "debug test host leaked into release manifest"
+PYTEST
 echo "AAR: $stage/library/build/outputs/aar/library-release.aar"
 echo "Maven bundle with JNA dependency metadata: $stage/library/build/maven"

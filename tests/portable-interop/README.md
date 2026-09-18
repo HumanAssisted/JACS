@@ -42,3 +42,17 @@ browser/worker identities in native UniFFI, and checks worker rejection of wrong
 codes, wrong pins, malformed material, short transfer codes and locked exports.
 Recovery codes exist only in mode-0600 disposable fixtures which are deleted by
 the harness; none appear in status output or HTTP routes.
+
+Recovery mode also exercises complete `signDocument` envelopes, syntax
+normalization and noninteractive `verifyRecovery` read-back on native/WASM/worker.
+The read-back result is public identity JSON, never an unlocked handle.
+
+`native_document_check.rs` checks the public golden fixture and fresh core output
+against archived `jacs::verification::NonSigningVerifier` plus its native checksum
+implementation. Run it from a temporary standalone Cargo manifest outside this
+workspace, with `jacs` pointing to `archive/native/jacs` (`default-features=false`),
+`jacs-core` pointing to `jacs-core`, `serde_json="1"`, `base64="0.23"`, and a `[[bin]]`
+path to that source. Use `cargo run --manifest-path <temporary-manifest> --bin
+native-document-check`. Do not add archived dependencies to the active workspace.
+The older signing-agent verifier checks only the historical normalized key-hash
+alias; the explicit non-signing verifier supports portable raw-key hashes too.

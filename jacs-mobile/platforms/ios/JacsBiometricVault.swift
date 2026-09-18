@@ -174,7 +174,8 @@ public final class JacsBiometricVault {
     }
     private final class WeakSession {
         weak var value: JacsBiometricSession?
-        init(_ value: JacsBiometricSession) { self.value = value }
+        let account: String
+        init(_ value: JacsBiometricSession, account: String) { self.value = value; self.account = account }
     }
     private let lock = NSLock()
     private var active = true
@@ -283,7 +284,7 @@ public final class JacsBiometricVault {
                         expectedAgentID: String, expectedPublicKey: Data,
                         account: String, reason: String,
         completion: @escaping (Result<JacsBiometricSession, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
-        open(account: account, reason: reason, create: {
+        open(account: account, reason: reason, preflight: { _ = try normalizeRecoveryCode(code: code) }, create: {
             guard material.algorithm == .pq2025 else { throw JacsBiometricError.unsupportedAlgorithm }
             return RustSessionAgent(try MobileAgent.importRecovery(material: material, code: code,
                 expectedAgentId: expectedAgentID, expectedPublicKey: expectedPublicKey,
@@ -291,7 +292,68 @@ public final class JacsBiometricVault {
         }, completion: completion)
     }
 
-    private func open(account: String, reason: String, create: (() throws -> JacsSessionAgent)?,
+    /// Read-back verification never prompts, persists or releases an unlocked handle.
+    @discardableResult
+    public func verifyRecovery(material: EncryptedAgentMaterial, code: String,
+        expectedAgentID: String, expectedPublicKey: Data,
+        completion: @escaping (Result<String, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        ownedOperation({ _ in
+            guard material.algorithm == .pq2025 else { throw JacsBiometricError.unsupportedAlgorithm }
+            return try JacsMobile.verifyRecovery(material: material, code: code,
+                expectedAgentId: expectedAgentID, expectedPublicKey: expectedPublicKey, expectedAlgorithm: .pq2025)
+        }, completion: completion)
+    }
+
+    /// Deliberate local removal only. For invalidated-record restore, first verify
+    /// the candidate recovery and its registered current version. Never auto-delete
+    /// on failed unlock/receive; removal does not revoke or replace an identity.
+    @discardableResult
+    public func delete(account: String,
+        completion: @escaping (Result<Void, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        ownedOperation({ [self] operation in
+            guard !account.isEmpty && account.utf8.count <= 128 else { throw JacsBiometricError.invalidStoredRecord }
+            // Never acquire the vault lock while holding an operation lock:
+            // request admission inspects operations under the vault lock.
+            lock.lock()
+            let live = sessions.filter { $0.account == account }.compactMap { $0.value }
+            lock.unlock()
+            try operation.mutateIfPending {
+                live.forEach { $0.close() }
+                try store.delete(account: account)
+            }
+            lock.lock()
+            sessions.removeAll { $0.account == account }
+            lock.unlock()
+        }, completion: completion)
+    }
+
+    /// Noninteractive work with the same pending-operation and late-result fences.
+    private func ownedOperation<T>(_ work: @escaping (JacsBiometricOperation) throws -> T,
+        completion: @escaping (Result<T, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        let id = UUID()
+        let operation = JacsBiometricOperation { [weak self, callbacks] in
+            callbacks.async { self?.remove(id); completion(.failure(.cancelled)) }
+        }
+        lock.lock()
+        let rejection: JacsBiometricError? = !active ? .inactive :
+            (pending.values.contains { $0.isPending } ? .busy : nil)
+        if rejection == nil { pending[id] = operation }
+        lock.unlock()
+        worker.async { [self] in
+            guard operation.claimWork() else { return }
+            let result: Result<T, JacsBiometricError>
+            do { if let rejection { throw rejection }; result = .success(try work(operation)) }
+            catch { result = .failure(mapMobileError(error)) }
+            callbacks.async { [self] in
+                remove(id)
+                guard operation.claimCompletion() else { return }
+                completion(result)
+            }
+        }
+        return operation
+    }
+
+    private func open(account: String, reason: String, preflight: () throws -> Void = {}, create: (() throws -> JacsSessionAgent)?,
                       cleanup: @escaping () -> Void = {},
                       completion: @escaping (Result<JacsBiometricSession, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
         let id = UUID()
@@ -319,6 +381,13 @@ public final class JacsBiometricVault {
             auth.invalidate()
             worker.async(execute: cleanup)
             finish(operation, id: id, result: .failure(.invalidStoredRecord), completion: completion)
+            return operation
+        }
+        do { try preflight() }
+        catch {
+            auth.invalidate()
+            worker.async(execute: cleanup)
+            finish(operation, id: id, result: .failure(mapMobileError(error)), completion: completion)
             return operation
         }
         auth.authenticate(reason: reason) { [self] authorizationResult in
@@ -373,13 +442,13 @@ public final class JacsBiometricVault {
                     let canDeliver = active && operation.isPending
                     if canDeliver {
                         sessions.removeAll { $0.value == nil }
-                        sessions.append(WeakSession(session))
+                        sessions.append(WeakSession(session, account: account))
                     }
                     lock.unlock()
                     if !canDeliver { session.close() }
                     result = canDeliver ? .success(session) : .failure(.cancelled)
                 } catch let error as JacsBiometricError { result = .failure(error) }
-                catch { result = .failure(.cryptographyFailed) }
+                catch { result = .failure(mapMobileError(error)) }
                 finish(operation, id: id, result: result, completion: completion)
             }
         }

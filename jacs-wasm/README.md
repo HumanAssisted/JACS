@@ -323,3 +323,14 @@ including `InvalidPasswordFormat`, `InvalidPassword`, `MalformedKey`,
 After completing work, call `clearSecrets()`/`drop()`; discard late results after
 background/cancel/account change and erase displayed code copies in the host.
 The worker provides responsiveness, not protection against same-origin scripts.
+
+`verifyRecovery(...)` / `verifyRecoveryInWorker(...)` return signed public identity
+JSON without a retained handle or storage mutation. Check the returned version
+against current authenticated registration as well as the supplied ID/key pins.
+`normalizeRecoveryCode(...)` / `normalizeRecoveryCodeInWorker(...)` validate pasted
+syntax without KDF work. Backup read-back and save acknowledgment remain separate.
+
+`handle.signDocumentJson(contentJson)` / `workerHandle.signDocument(contentJson)`
+create complete JACS documents: exact JSON content, fresh signed root IDs/dates and
+standard checksum. Existing message methods are unchanged. The host still owns
+review, authorization and suppression of results arriving after cancellation.

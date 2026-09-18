@@ -319,3 +319,26 @@ material }`; `importRecovery` takes the material, code and ID/key/algorithm pins
 These APIs expose no plaintext private key or OS wrapping secret. Display/input
 copies of a recovery code are host-managed strings: never log or persist them,
 and discard them on background. The six-word transfer APIs remain separate.
+
+`verifyRecovery` on each owned vault performs a noninteractive read-back check and
+returns only the verified signed identity JSON. It neither persists the material
+nor installs an unlocked session. Compare its `jacsVersion` with the current
+registered version before treating a backup as current. UniFFI's
+`normalizeRecoveryCode` provides cheap syntax validation before prompts; malformed
+paste is rejected before `receiveRecovery` requests biometrics. Native errors
+separate invalid recovery code, identity mismatch, malformed material and locked
+state; they never expose foreign exception details. A well-formed wrong code still
+fails authenticated decryption; it cannot reliably be distinguished from modified
+ciphertext with an invalid authentication tag.
+
+On iOS, `createRecovery` returns `JacsBiometricRecovery` with redacted descriptions
+and reflection. `delete(account:completion:)` deliberately removes only that local
+record and closes its sessions. Cancellation before the mutation keeps the record.
+For an invalidated record, first verify the candidate recovery and current version,
+then explicitly delete and restore. `receiveRecovery` never auto-overwrites a record.
+
+For a complete independently verifiable document, use iOS
+`session.signDocumentJSON` or Android `vault.signDocumentJson` (UniFFI:
+`MobileAgent.signDocumentJson`). Exact input JSON becomes `content`; JACS generates
+fresh root IDs/dates before signing and computes the standard `jacsSha256` afterward.
+Existing `signMessageJson` retains its original minimal-message semantics.

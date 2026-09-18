@@ -82,6 +82,22 @@ fn small_stack_child() {
                 human.export_agent_json().unwrap(),
                 recovered.export_agent_json().unwrap()
             );
+            let complete = human
+                .sign_document_json(r#"{"stack":"full-document"}"#.into())
+                .unwrap();
+            assert!(recovered.verify_json(complete).unwrap().valid);
+            let readback = human.export_recovery().unwrap();
+            assert_eq!(
+                jacs_mobile::verify_recovery(
+                    readback.material,
+                    readback.code,
+                    identity["jacsId"].as_str().unwrap().into(),
+                    human.public_key().unwrap(),
+                    jacs_mobile::MobileAlgorithm::Pq2025
+                )
+                .unwrap(),
+                human.export_agent_json().unwrap()
+            );
             human.clear_secrets().unwrap();
             recovered.clear_secrets().unwrap();
             println!("complete");

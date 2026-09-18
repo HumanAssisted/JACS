@@ -414,6 +414,20 @@ impl CoreAgentHandle {
         })
     }
 
+    /// Complete JACS document with exact JSON content and fresh signed root headers.
+    #[wasm_bindgen(js_name = signDocumentJson)]
+    pub fn sign_document_json(&self, json: &str) -> Result<String, JsError> {
+        let content = jacs_core::strict_json::parse_strict_json(json).map_err(map_core_err)?;
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?;
+        Ok(agent
+            .sign_document(&content)
+            .map_err(map_core_err)?
+            .to_string())
+    }
+
     /// Generate a 128-bit recovery secret and return JSON {code, materialJson}.
     /// The caller owns display copies and must discard them on background.
     /// No local state or backup is replaced. Lock the handle after completing work.
@@ -1020,6 +1034,37 @@ pub fn import_encrypted_agent(
         verifier_override: None,
         metrics: Arc::new(Mutex::new(HandleMetrics::default())),
     })
+}
+
+/// Cheap syntax normalization before prompting or KDF work.
+#[wasm_bindgen(js_name = normalizeRecoveryCode)]
+pub fn normalize_recovery_code(code: String) -> Result<String, JsError> {
+    let code = zeroize::Zeroizing::new(code);
+    jacs_core::recovery::normalize_recovery_code(&code)
+        .map(|code| code.to_string())
+        .map_err(map_core_err)
+}
+
+/// Read-back check: return verified identity JSON, never an unlocked handle.
+#[wasm_bindgen(js_name = verifyRecovery)]
+pub fn verify_recovery(
+    material_json: &str,
+    code: String,
+    expected_agent_id: &str,
+    expected_public_key_base64: &str,
+    expected_algorithm: &str,
+) -> Result<String, JsError> {
+    init_jacs_wasm();
+    let code = zeroize::Zeroizing::new(code);
+    let identity = jacs_core::recovery::verify_recovery(
+        parse_material(material_json)?,
+        &code,
+        expected_agent_id,
+        &decode_public_key(expected_public_key_base64)?,
+        parse_algorithm(expected_algorithm)?,
+    )
+    .map_err(map_core_err)?;
+    Ok(identity.to_string())
 }
 
 /// Durable recovery code, 128 bits. The host must discard JS copies on background.

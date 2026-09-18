@@ -490,6 +490,28 @@ impl CoreAgent {
         Ok(document)
     }
 
+    /// Wrap exact JSON content in a complete native-compatible JACS document.
+    /// Fresh document/version IDs are frozen before signing; completion verifies
+    /// the signature and computes the standard checksum. This does not authorize
+    /// the content for an application, and does not change sign_message semantics.
+    pub fn sign_document(&self, content: &Value) -> Result<Value, CoreError> {
+        use crate::{
+            PurposeIsolationAssurance, SignatureMetadataV2, SigningKeyScope, SigningPurpose,
+        };
+        self.signer.as_ref().ok_or(CoreError::Locked)?;
+        let scope = SigningKeyScope::from_public_key(
+            required_identity_string(&self.agent_json, "jacsId")?,
+            required_identity_string(&self.agent_json, "jacsVersion")?,
+            self.algorithm,
+            &self.public_key,
+            [SigningPurpose::Document, SigningPurpose::LegacyRaw],
+            PurposeIsolationAssurance::SharedRawCapable,
+        )?;
+        let prepared = crate::prepare_message_v2(&scope, content, SignatureMetadataV2::now())?;
+        let signature = self.sign_raw_bytes(prepared.signature_input())?;
+        prepared.complete_with_signature(&scope, &self.public_key, &signature)
+    }
+
     /// Sign `document` in place, attaching the signature object under
     /// `placement_key`. Used by `sign_message` (placement key `"jacsSignature"`)
     /// and by `jacs-core::agreements` in Task 014.

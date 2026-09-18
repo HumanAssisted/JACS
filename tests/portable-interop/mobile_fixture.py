@@ -39,12 +39,14 @@ def create_fixture(binding, path):
         require(agent.algorithm() == binding.MobileAlgorithm.PQ2025, "source algorithm")
         document = json.loads(agent.export_agent_json())
         challenge = {"test": "jacs-portable-pq-interop", "direction": "mobile-to-browser", "nonce": document["jacsId"]}
-        signed_challenge = agent.sign_message_json(json.dumps(challenge))
+        signed_challenge = agent.sign_document_json(json.dumps(challenge)) if RECOVERY else agent.sign_message_json(json.dumps(challenge))
         if RECOVERY:
             require(document["jacsAgentType"] == "human", "human first version")
             require(document["jacsVersion"] == document["jacsOriginalVersion"], "no AI predecessor")
             recovery = agent.export_recovery()
             material_json = binding.material_to_json(recovery.material)
+            verified = binding.verify_recovery(recovery.material, recovery.code, document["jacsId"], agent.public_key(), binding.MobileAlgorithm.PQ2025)
+            require(json.loads(verified) == document, "native recovery readback")
         else:
             material_json = binding.material_to_json(agent.export_encrypted_agent(TO_BROWSER_PASSWORD))
         write_private_json(path, {

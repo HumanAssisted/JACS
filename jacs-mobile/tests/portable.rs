@@ -363,3 +363,36 @@ fn human_recovery_interoperates_with_core_and_rejects_wrong_pins() {
     mobile.clear_secrets().unwrap();
     assert!(mobile.export_recovery().is_err());
 }
+
+#[test]
+fn recovery_readback_and_complete_document_use_public_only_results() {
+    let agent = MobileAgent::create_human().unwrap();
+    let identity: serde_json::Value =
+        serde_json::from_str(&agent.export_agent_json().unwrap()).unwrap();
+    let backup = agent.export_recovery().unwrap();
+    assert_eq!(
+        normalize_recovery_code(backup.code.to_lowercase()).unwrap(),
+        backup.code
+    );
+    let verified = verify_recovery(
+        backup.material,
+        backup.code,
+        identity["jacsId"].as_str().unwrap().into(),
+        agent.public_key().unwrap(),
+        MobileAlgorithm::Pq2025,
+    )
+    .unwrap();
+    assert_eq!(verified, agent.export_agent_json().unwrap());
+    let signed = agent
+        .sign_document_json(r#"{"exact":"terms"}"#.into())
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&signed).unwrap();
+    assert_eq!(document["content"], serde_json::json!({"exact":"terms"}));
+    assert_eq!(
+        document["jacsSha256"],
+        jacs_core::document_hash_v1(&document).unwrap()
+    );
+    assert!(agent.verify_json(signed).unwrap().valid);
+    agent.clear_secrets().unwrap();
+    assert!(agent.sign_document_json("{}".into()).is_err());
+}

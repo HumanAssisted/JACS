@@ -98,3 +98,25 @@ pub fn import_recovery(
         expected_algorithm,
     )
 }
+
+/// Read-back verification without persistence or an escaping signing handle.
+/// Returns only the verified public identity. Consumers also compare its current
+/// registered jacsVersion; key/ID pins alone do not establish version freshness.
+pub fn verify_recovery(
+    material: AgentMaterial,
+    code: &str,
+    expected_agent_id: &str,
+    expected_public_key: &[u8],
+    expected_algorithm: SigningAlgorithm,
+) -> Result<serde_json::Value, CoreError> {
+    let mut agent = import_recovery(
+        material,
+        code,
+        expected_agent_id,
+        expected_public_key,
+        expected_algorithm,
+    )?;
+    let identity = agent.export_agent();
+    agent.clear_secrets();
+    Ok(identity)
+}

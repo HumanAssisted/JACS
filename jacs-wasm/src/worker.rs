@@ -37,7 +37,7 @@ use wasm_bindgen::prelude::*;
 use crate::agent_handle::{
     CoreAgentHandle, create_ephemeral, create_human, generate_recovery_code,
     generate_transfer_code, import_encrypted_agent, import_encrypted_agent_pinned, import_recovery,
-    reencrypt_transferred_agent,
+    normalize_recovery_code, reencrypt_transferred_agent, verify_recovery,
 };
 
 // ---------------------------------------------------------------------------
@@ -190,6 +190,12 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
         "createEphemeral" => op_create_ephemeral(req.args),
         "createHuman" => store_created_handle(create_human().map_err(WorkerError::from_js)),
         "importRecovery" => op_import_recovery(req.args),
+        "verifyRecovery" => op_verify_recovery(req.args),
+        "normalizeRecoveryCode" => require_str(&req.args, "code").and_then(|code| {
+            normalize_recovery_code(code.to_string())
+                .map(|code| json!({"code": code}))
+                .map_err(WorkerError::from_js)
+        }),
         "generateRecoveryCode" => generate_recovery_code()
             .map(|code| json!({ "code": code }))
             .map_err(WorkerError::from_js),
@@ -209,6 +215,7 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
         | "exportAgent"
         | "exportEncryptedAgent"
         | "exportRecovery"
+        | "signDocument"
         | "getPublicKeyPem"
         | "getPublicKeyPemBase64"
         | "getPublicKeyHash" => op_agent_method(&req.op, req.args),
@@ -257,6 +264,18 @@ fn store_created_handle(
         .map_err(WorkerError::from_js)?;
     let algorithm = handle.algorithm().map_err(WorkerError::from_js)?;
     Ok(json!({ "handleId": store_handle(handle), "publicKeyBase64": key, "algorithm": algorithm }))
+}
+
+fn op_verify_recovery(args: Value) -> Result<Value, WorkerError> {
+    verify_recovery(
+        require_str(&args, "materialJson")?,
+        require_str(&args, "code")?.to_string(),
+        require_str(&args, "expectedAgentId")?,
+        require_str(&args, "expectedPublicKeyBase64")?,
+        require_str(&args, "expectedAlgorithm")?,
+    )
+    .map(|identity| json!({"identityJson": identity}))
+    .map_err(WorkerError::from_js)
 }
 
 fn op_import_recovery(args: Value) -> Result<Value, WorkerError> {
@@ -414,6 +433,7 @@ fn op_agent_method(op: &str, args: Value) -> Result<Value, WorkerError> {
             }
             "exportAgent" => handle.export_agent(),
             "exportRecovery" => handle.export_recovery(),
+            "signDocument" => handle.sign_document_json(require_str(&args, "dataJson")?),
             "exportEncryptedAgent" => {
                 handle.export_encrypted_agent(require_str(&args, "password")?.to_string())
             }

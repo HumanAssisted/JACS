@@ -19,6 +19,8 @@ import __wbg_init, {
   createHuman as _createHumanRaw,
   importRecovery as _importRecoveryRaw,
   generateRecoveryCode as _generateRecoveryCodeRaw,
+  normalizeRecoveryCode as _normalizeRecoveryCodeRaw,
+  verifyRecovery as _verifyRecoveryRaw,
   createVerifier as _createVerifierRaw,
   importEncryptedAgent as _importEncryptedAgentRaw,
   importEncryptedAgentPinned as _importEncryptedAgentPinnedRaw,
@@ -120,6 +122,19 @@ export async function createHuman(): Promise<CoreAgentHandle> {
 export async function generateRecoveryCode(): Promise<string> {
   await initJacsWasm();
   return _generateRecoveryCodeRaw();
+}
+
+/** Syntax-only recovery input validation before prompts/KDF. */
+export async function normalizeRecoveryCode(code: string): Promise<string> {
+  await initJacsWasm();
+  return _normalizeRecoveryCodeRaw(code);
+}
+
+/** Read-back returns signed public identity JSON; compare registered current version. */
+export async function verifyRecovery(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm): Promise<string> {
+  await initJacsWasm();
+  return _verifyRecoveryRaw(materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm);
 }
 
 /** Durable recovery with independent identity/key pins; accepts grouped pasted codes. */

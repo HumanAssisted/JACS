@@ -103,7 +103,15 @@ try {
         const content = verified.data.content;
         require(content.test === fixture.challenge.test && content.direction === 'mobile-to-browser' && content.nonce === fixture.challenge.nonce, 'mobile challenge');
         phase = 'sign-browser';
-        const signedResponse = agent.signMessageJson(JSON.stringify({ test: 'jacs-portable-pq-interop', direction: 'browser-to-mobile', reply_to: fixture.challenge.nonce }));
+        const contentToSign = JSON.stringify({ test: 'jacs-portable-pq-interop', direction: 'browser-to-mobile', reply_to: fixture.challenge.nonce });
+        const signedResponse = fixture.recovery ? agent.signDocumentJson(contentToSign) : agent.signMessageJson(contentToSign);
+        if (fixture.recovery) {
+          const complete = JSON.parse(signedResponse);
+          require(complete.jacsId && complete.jacsVersion && complete.jacsSha256, 'full root headers');
+          require(Object.keys(complete.content).length === 3 && Object.entries(JSON.parse(contentToSign)).every(([key, value]) => complete.content[key] === value), 'exact content');
+          require(await jacs.verifyRecovery(fixture.material_json, fixture.transfer_password, fixture.agent_id,
+            fixture.public_key_base64, 'pq2025') === agent.exportAgent(), 'web readback');
+        }
         phase = 'reencrypt';
         const recovery = fixture.recovery ? JSON.parse(agent.exportRecovery()) : null;
         const materialJson = recovery?.materialJson ?? agent.exportEncryptedAgent(fixture.return_password);
@@ -128,6 +136,9 @@ try {
             require(identity.jacsAgentType === 'human', 'worker human constructor');
             createdHumans.push({ signed_identity: identityJson, public_key_base64: workerHuman.publicKeyBase64 });
             const backup = await workerHuman.exportRecovery();
+            require(await worker.normalizeRecoveryCodeInWorker(backup.code.toLowerCase().replaceAll('-', ' ')) === backup.code, 'worker paste normalization');
+            require(await worker.verifyRecoveryInWorker(backup.materialJson, backup.code,
+              identity.jacsId, workerHuman.publicKeyBase64, 'pq2025') === identityJson, 'worker readback');
             workerRestored = await worker.importRecoveryInWorker(backup.materialJson, backup.code.toLowerCase().replaceAll('-', ' '),
               identity.jacsId, workerHuman.publicKeyBase64, 'pq2025');
             require(await workerRestored.exportAgent() === identityJson, 'worker recovery identity');
@@ -141,14 +152,23 @@ try {
               try { await worker.importRecoveryInWorker(blob, code, id, workerHuman.publicKeyBase64, 'pq2025'); }
               catch (error) { rejected = error.code === expectedError; }
               require(rejected, 'worker recovery rejects invalid input');
+              let readbackRejected = false;
+              try { await worker.verifyRecoveryInWorker(blob, code, id, workerHuman.publicKeyBase64, 'pq2025'); }
+              catch (error) { readbackRejected = error.code === expectedError; }
+              require(readbackRejected, 'worker readback rejects invalid input');
             }
             // A failed import never clears/replaces an existing worker key.
-            const signed = await workerHuman.signMessage('{}');
+            const signed = await workerHuman.signDocument('{"exact":"worker approval"}');
+            const complete = JSON.parse(signed);
+            require(complete.jacsId && complete.jacsVersion && complete.jacsSha256 && complete.content.exact === 'worker approval', 'worker full document');
             require(JSON.parse(await workerRestored.verify(signed)).valid, 'working handle preserved');
             await workerRestored.clearSecrets();
             let locked = false;
             try { await workerRestored.exportRecovery(); } catch (error) { locked = error.code === 'Locked'; }
             require(locked, 'locked worker cannot export');
+            let lockedSigning = false;
+            try { await workerRestored.signDocument('{}'); } catch (error) { lockedSigning = error.code === 'Locked'; }
+            require(lockedSigning, 'locked worker cannot sign full document');
           } finally {
             await workerHuman.drop();
             await workerRestored?.drop();
