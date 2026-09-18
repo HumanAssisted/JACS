@@ -16,6 +16,7 @@ android {
     ndkVersion = "27.3.13750724"
     defaultConfig {
         minSdk = 30
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
     compileOptions {
@@ -30,6 +31,8 @@ android {
 dependencies {
     // UniFFI's generated Kotlin uses JNA; the Android artifact includes libjnidispatch.
     implementation("net.java.dev.jna:jna:5.18.1@aar")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 afterEvaluate {

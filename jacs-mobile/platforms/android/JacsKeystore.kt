@@ -19,6 +19,7 @@ import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 
 /** Default custody path for transferable ML-DSA-87 (pq2025) identities.
@@ -30,6 +31,40 @@ import javax.crypto.spec.GCMParameterSpec
 class JacsKeystore(private val alias: String) {
     data class WrappedMaterial(val materialJson: String, val wrappedSecret: ByteArray)
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+
+    /** Loading an existing alias never silently weakens the required policy. */
+    fun ensureWrappingKey() {
+        if (!store.containsAlias(alias)) createWrappingKey()
+        validatedWrappingKey()
+    }
+
+    internal fun validatedWrappingKey(): SecretKey {
+        try {
+            val key = store.getKey(alias, null) as? SecretKey
+                ?: throw JacsVaultException(JacsVaultException.Code.KEY_INVALIDATED)
+            val info = SecretKeyFactory.getInstance("AES", "AndroidKeyStore")
+                .getKeySpec(key, KeyInfo::class.java) as KeyInfo
+            // Android reports -1 for authentication on every key use, even
+            // though KeyGenParameterSpec expresses that duration as zero.
+            if (key.algorithm != KeyProperties.KEY_ALGORITHM_AES || info.keySize != 256 ||
+                info.purposes != (KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT) ||
+                info.blockModes.toSet() != setOf(KeyProperties.BLOCK_MODE_GCM) ||
+                info.encryptionPaddings.toSet() != setOf(KeyProperties.ENCRYPTION_PADDING_NONE) ||
+                !info.isUserAuthenticationRequired ||
+                info.userAuthenticationType != KeyProperties.AUTH_BIOMETRIC_STRONG ||
+                info.userAuthenticationValidityDurationSeconds != -1 ||
+                !info.isInvalidatedByBiometricEnrollment || info.isUserAuthenticationValidWhileOnBody) {
+                throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
+            }
+            return key
+        } catch (error: JacsVaultException) {
+            throw error
+        } catch (error: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            throw JacsVaultException(JacsVaultException.Code.KEY_INVALIDATED, error)
+        } catch (error: Exception) {
+            throw JacsVaultException(JacsVaultException.Code.KEY_POLICY, error)
+        }
+    }
 
     fun createWrappingKey() {
         require(Build.VERSION.SDK_INT >= 30) { "JacsKeystore requires API 30+" }
@@ -51,7 +86,7 @@ class JacsKeystore(private val alias: String) {
      * Call finishProtect only with the Cipher in onAuthenticationSucceeded.
      */
     fun prepareProtect(): Cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-        init(Cipher.ENCRYPT_MODE, store.getKey(alias, null) as SecretKey)
+        init(Cipher.ENCRYPT_MODE, validatedWrappingKey())
     }
 
     fun finishProtect(agent: MobileAgent, authenticatedCipher: Cipher): WrappedMaterial {
@@ -76,7 +111,7 @@ class JacsKeystore(private val alias: String) {
             "Malformed wrapped envelope secret"
         }
         return Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.DECRYPT_MODE, store.getKey(alias, null) as SecretKey,
+            init(Cipher.DECRYPT_MODE, validatedWrappingKey(),
                 GCMParameterSpec(128, wrappedSecret.copyOfRange(1, 13)))
         }
     }

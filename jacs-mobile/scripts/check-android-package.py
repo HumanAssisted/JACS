@@ -23,6 +23,7 @@ def check(project: Path) -> None:
                 "ai/hai/jacs/MobileAgent.class",
                 "ai/hai/jacs/platform/JacsKeystore.class",
                 "ai/hai/jacs/platform/JacsKeystoreSigner.class",
+                "ai/hai/jacs/platform/JacsBiometricVault.class",
             ):
                 assert name in classes.namelist(), f"Missing public class {name}"
         for abi, machine in (("arm64-v8a", 183), ("x86_64", 62)):

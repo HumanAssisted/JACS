@@ -45,13 +45,15 @@ mkdir -p "$stage/library/src/main/kotlin" "$stage/library/src/main/jniLibs"
 cp -R jacs-mobile/distribution/android/. "$stage/"
 cp -R jacs-mobile/generated/kotlin/. "$stage/library/src/main/kotlin/"
 mkdir -p "$stage/library/src/main/kotlin/ai/hai/jacs/platform"
-cp jacs-mobile/platforms/android/JacsKeystore.kt "$stage/library/src/main/kotlin/ai/hai/jacs/platform/"
+cp jacs-mobile/platforms/android/*.kt "$stage/library/src/main/kotlin/ai/hai/jacs/platform/"
+mkdir -p "$stage/library/src/androidTest/kotlin/ai/hai/jacs/platform"
+cp jacs-mobile/tests/android-instrumented/*.kt "$stage/library/src/androidTest/kotlin/ai/hai/jacs/platform/"
 # Align ELF load segments for Android devices using 16 KiB memory pages.
 RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384" \
 cargo ndk -t arm64-v8a -t x86_64 --platform 30 \
     -o "$stage/library/src/main/jniLibs" build -p jacs-mobile --release --locked
 gradle --no-daemon --project-dir "$stage" \
-    :library:assembleRelease :library:publishReleasePublicationToBundleRepository
+    :library:assembleRelease :library:assembleDebugAndroidTest :library:publishReleasePublicationToBundleRepository
 python3 jacs-mobile/scripts/check-android-package.py "$stage"
 echo "AAR: $stage/library/build/outputs/aar/library-release.aar"
 echo "Maven bundle with JNA dependency metadata: $stage/library/build/maven"

@@ -83,8 +83,12 @@ def main() -> None:
         java, "-Xmx1g", "-cp", classpath(compiler),
         "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect",
         "-jvm-target", "17", "-classpath", classpath(compile_libraries), "-d", str(output),
-        str(generated), str(mobile / "platforms/android/JacsKeystore.kt"),
-        str(mobile / "tests/android/DerEncodingSmoke.kt"),
+        str(generated), *map(str, sorted((mobile / "platforms/android").glob("*.kt"))),
+        *map(str, sorted((mobile / "tests/android").glob("*.kt"))),
+    ], check=True)
+    subprocess.run([
+        java, "-ea", "-cp", classpath([output, stdlib, jna, api]),
+        "ai.hai.jacs.platform.VaultStateSmokeKt",
     ], check=True)
     subprocess.run([
         java, "-ea", "-cp", classpath([output, stdlib, jna, api]),
