@@ -1,5 +1,6 @@
 import XCTest
 import LocalAuthentication
+import Security
 import JacsMobile
 @testable import JacsMobilePlatform
 
@@ -177,6 +178,41 @@ final class JacsBiometricVaultTests: XCTestCase {
         }
         let pending: MobilePublicIdentity? = try authenticated { vault.keyRotationStatus(account: "agent", reason: "Status", completion: $0) }
         XCTAssertNil(pending)
+    }
+
+    func testInspectDistinguishesUnreadableRecordsFromKeychainFailuresWithoutPrompting() {
+        let outcomes: [(OSStatus, JacsBiometricRecordState?)] = [
+            (errSecSuccess, .presentLocked), (errSecInteractionNotAllowed, .presentLocked),
+            (errSecItemNotFound, .absent), (errSecDecode, .unreadable),
+            (errSecMissingEntitlement, nil), (errSecNotAvailable, nil), (errSecParam, nil)
+        ]
+        for (status, expectedState) in outcomes {
+            let systemStore = SystemVaultRecordStore(service: "test-inspection") { query in
+                let request = query as! [String: Any]
+                XCTAssertEqual(request[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
+                XCTAssertEqual(request[kSecReturnAttributes as String] as? Bool, true)
+                XCTAssertNil(request[kSecReturnData as String])
+                return status
+            }
+            vault = JacsBiometricVault(store: systemStore, factory: factory,
+                authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+            let inspected = expectation(description: "nonprompting inspect status \(status)")
+            vault.inspect(account: "agent") { result in
+                switch result {
+                case .success(let inspection):
+                    XCTAssertNotNil(expectedState)
+                    XCTAssertEqual(inspection.state, expectedState)
+                    XCTAssertNil(inspection.identity)
+                case .failure(.keychainStatus(let received)):
+                    XCTAssertNil(expectedState)
+                    XCTAssertEqual(received, status)
+                case .failure(let error): XCTFail("unexpected inspection error: \(error)")
+                }
+                inspected.fulfill()
+            }
+            wait(for: [inspected], timeout: 5)
+            XCTAssertNil(auth.callback)
+        }
     }
 
     func testRotationCancellationAndInspectNeverCreateOrLoseAStage() throws {

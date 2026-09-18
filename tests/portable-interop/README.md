@@ -61,6 +61,7 @@ The standalone native document harness also checks canonical `ed25519` service r
 
 Set `JACS_INTEROP_RECOVERY=1 JACS_INTEROP_ROTATION=1` for staged rotation coverage:
 native stage → real worker candidate proof, worker stage → process restart →
-wrong acceptance refusal → candidate recovery readback → exact commit/replay,
+wrong acceptance refusal → candidate recovery readback → exact commit/replay →
+new-key signing and verification after both commit and replay,
 and native resumption/verification of the worker stage. Fixtures contain disposable
 encrypted test keys only and are removed by the runner.

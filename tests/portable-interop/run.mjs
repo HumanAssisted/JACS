@@ -205,6 +205,9 @@ try {
             for (let i = 0; i < 2; i++) {
               require(JSON.parse(await current.commitKeyRotation(rotatedMaterial, fixture.return_password,
                 JSON.stringify(staged.agent), staged.public_key)).jacsVersion === staged.agent.jacsVersion, 'exact commit/replay');
+              const committedProof = await current.signDocument(JSON.stringify({challenge: 'promoted-worker', replay: i === 1}));
+              require(JSON.parse(agent.verifyWithKeyJson(committedProof, staged.public_key, 'pq2025')).valid, 'promoted worker signs with new key after commit/replay');
+              require(!JSON.parse(agent.verifyWithKeyJson(committedProof, fixture.public_key_base64, 'pq2025')).valid, 'promoted worker no longer signs with old key');
             }
             require(current.publicKeyBase64 === staged.public_key, 'worker metadata follows commit');
           } finally { await current?.drop(); worker.terminateWorker(); }
@@ -228,7 +231,7 @@ try {
   await writeFile(returnPath, JSON.stringify(result), { mode: 0o600, flag: 'wx' });
   phase = 'mobile-import-and-verify';
   mobile('verify', binding, fixturePath, returnPath);
-  if (fixture.rotation_material) console.log('PASS: native/worker staged rotation, interrupted reopen, candidate proof/backup, exact acceptance and commit replay');
+  if (fixture.rotation_material) console.log('PASS: native/worker staged rotation, interrupted reopen, candidate proof/backup, exact acceptance and new-key signing after commit/replay');
   console.log(fixture.recovery ? 'PASS: human creation and 128-bit recovery through native UniFFI, Chromium WASM and Web Worker; wrong-code/pin/material rejection' : 'PASS: native UniFFI -> browser WASM -> native UniFFI PQ interoperability');
 } catch {
   console.error(`FAIL: PQ interoperability at ${phase}`);

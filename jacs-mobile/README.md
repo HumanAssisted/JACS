@@ -377,6 +377,8 @@ is safe. Cancellation/background suppresses late results but does not discard a
 persisted candidate. Call `discardKeyRotation` only after authoritative
 nonacceptance; never discard merely because a response was lost. Removing a local
 vault deliberately removes both copies and remains separate from server revocation.
+An unreadable or unverifiable pending stage blocks rotation without replacing the
+working active key. This does not trigger automatic deletion of either copy.
 
 UniFFI supplies `prepareKeyRotation(password)`, `validateKeyRotation(material,
 password)`, `signRotationDocumentJson(material,password,json)`,
@@ -393,3 +395,6 @@ from a locked Keychain value. After unlock, iOS `session.describe` and Android
 `publicKeyBase64`, `publicKeyHash`, `publicKeyPem` and `algorithm`. No secondary
 public metadata store is created. Obtain authoritative pins from registration
 before restore or activation, regardless of local inspect metadata.
+iOS reports a known decode failure as unreadable and returns other unexpected
+Keychain statuses as typed errors; an entitlement or storage failure is not a
+claim that the stored identity needs restoring.

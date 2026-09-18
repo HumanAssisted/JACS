@@ -61,7 +61,7 @@ internal protocol JacsVaultRecordStore {
     func read(account: String, authorization: JacsBiometricAuthorizing) throws -> Data
     func delete(account: String) throws
     func replace(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws
-    func inspect(account: String) -> JacsBiometricInspection
+    func inspect(account: String) throws -> JacsBiometricInspection
 }
 
 public enum JacsBiometricRecordState { case absent, presentLocked, unreadable }
@@ -76,7 +76,11 @@ public struct JacsBiometricInspection {
 /// low-level password-only JacsKeychain API and never migrates weaker records.
 internal final class SystemVaultRecordStore: JacsVaultRecordStore {
     let service: String
-    init(service: String) { self.service = service + ".biometric-vault.v1" }
+    private let inspectQuery: (CFDictionary) -> OSStatus
+    init(service: String, inspectQuery: @escaping (CFDictionary) -> OSStatus = { SecItemCopyMatching($0, nil) }) {
+        self.service = service + ".biometric-vault.v1"
+        self.inspectQuery = inspectQuery
+    }
 
     private func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
@@ -137,17 +141,18 @@ internal final class SystemVaultRecordStore: JacsVaultRecordStore {
         try check(SecItemUpdate(item as CFDictionary, [kSecValueData as String: data] as CFDictionary))
     }
 
-    func inspect(account: String) -> JacsBiometricInspection {
+    func inspect(account: String) throws -> JacsBiometricInspection {
         var item = query(account)
         item[kSecReturnAttributes as String] = true
         item[kSecMatchLimit as String] = kSecMatchLimitOne
         item[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-        let status = SecItemCopyMatching(item as CFDictionary, nil)
+        let status = inspectQuery(item as CFDictionary)
         let state: JacsBiometricRecordState
         switch status {
         case errSecSuccess, errSecInteractionNotAllowed: state = .presentLocked
         case errSecItemNotFound: state = .absent
-        default: state = .unreadable
+        case errSecDecode: state = .unreadable
+        default: throw JacsBiometricError.keychainStatus(status)
         }
         // Protected value bytes are never requested by this nonprompting query.
         return JacsBiometricInspection(state: state, identity: nil)
@@ -268,7 +273,7 @@ public final class JacsBiometricVault {
         completion: @escaping (Result<JacsBiometricInspection, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
         ownedOperation({ _ in
             guard !account.isEmpty && account.utf8.count <= 128 else { throw JacsBiometricError.invalidStoredRecord }
-            return self.store.inspect(account: account)
+            return try self.store.inspect(account: account)
         }, completion: completion)
     }
 
