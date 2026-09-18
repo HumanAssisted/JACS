@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check the built simulator executable's __TEXT,__entitlements in every slice."""
+"""Check the built simulator executable, not an input entitlements plist.
+
+Xcode puts iOS Simulator entitlements in __TEXT,__entitlements. The ordinary
+code signature instead contains macOS host-process entitlements. Assert the
+isolated Keychain identity in every architecture of the actual Mach-O binary.
+"""
 
 import plistlib
 import struct
@@ -9,81 +14,81 @@ from pathlib import Path
 GROUP = "JACSTEST01.ai.hai.jacs.simulator-tests"
 
 
-def entitlements(data: bytes) -> list[dict]:
-    # Xcode's universal simulator executable uses a big-endian fat header;
-    # its arm64/x86_64 slices are little-endian 64-bit Mach-O files.
-    if data[:4] == b"\xca\xfe\xba\xbe":
-        if len(data) < 8:
-            raise ValueError("truncated universal Mach-O header")
-        count = struct.unpack_from(">I", data, 4)[0]
-        table_end = 8 + 20 * count
-        if not count or table_end > len(data):
-            raise ValueError("invalid universal Mach-O architecture table")
-        result = []
-        ranges = []
-        for index in range(count):
-            _, _, offset, size, _ = struct.unpack_from(">IIIII", data, 8 + 20 * index)
-            if offset < table_end or not size or offset + size > len(data):
-                raise ValueError("invalid universal Mach-O slice bounds")
-            if any(offset < end and start < offset + size for start, end in ranges):
-                raise ValueError("overlapping universal Mach-O slices")
-            ranges.append((offset, offset + size))
-            result.extend(thin_entitlements(data[offset:offset + size]))
-        return result
-    return thin_entitlements(data)
+def slices(binary):
+    magic = binary[:4]
+    fat_formats = {
+        b"\xca\xfe\xba\xbe": (">", "IIIII"),
+        b"\xbe\xba\xfe\xca": ("<", "IIIII"),
+        b"\xca\xfe\xba\xbf": (">", "IIQQII"),
+        b"\xbf\xba\xfe\xca": ("<", "IIQQII"),
+    }
+    if magic not in fat_formats:
+        return [binary]
+    endian, layout = fat_formats[magic]
+    count = struct.unpack_from(endian + "I", binary, 4)[0]
+    width = struct.calcsize(endian + layout)
+    if not count or 8 + count * width > len(binary):
+        raise ValueError("Invalid universal Mach-O architecture table")
+    result = []
+    for index in range(count):
+        _, _, offset, size, *_ = struct.unpack_from(endian + layout, binary, 8 + index * width)
+        if offset < 8 + count * width or not size or offset + size > len(binary):
+            raise ValueError("Invalid universal Mach-O architecture bounds")
+        result.append(binary[offset:offset + size])
+    return result
 
 
-def thin_entitlements(data: bytes) -> list[dict]:
-    if len(data) < 32 or data[:4] != b"\xcf\xfa\xed\xfe":
-        raise ValueError("expected an arm64/x86_64 Mach-O executable")
-    count, size = struct.unpack_from("<II", data, 16)
-    commands_end = 32 + size
-    if commands_end > len(data):
-        raise ValueError("truncated Mach-O load commands")
-    position = 32
+def embedded_entitlements(binary):
+    endian = {b"\xcf\xfa\xed\xfe": "<", b"\xfe\xed\xfa\xcf": ">"}.get(binary[:4])
+    if endian is None or len(binary) < 32:
+        raise ValueError("Expected a 64-bit simulator Mach-O executable")
+    count, command_bytes = struct.unpack_from(endian + "II", binary, 16)
+    limit = 32 + command_bytes
+    if limit > len(binary):
+        raise ValueError("Invalid Mach-O load-command bounds")
+    cursor = 32
     found = []
     for _ in range(count):
-        if position + 8 > commands_end:
-            raise ValueError("truncated Mach-O load command")
-        command, length = struct.unpack_from("<II", data, position)
-        if length < 8 or position + length > commands_end:
-            raise ValueError("invalid Mach-O load command bounds")
+        if cursor + 8 > limit:
+            raise ValueError("Truncated Mach-O load command")
+        command, size = struct.unpack_from(endian + "II", binary, cursor)
+        if size < 8 or cursor + size > limit:
+            raise ValueError("Invalid Mach-O load command size")
         if command == 0x19:  # LC_SEGMENT_64
-            if length < 72:
-                raise ValueError("truncated Mach-O segment")
-            sections = struct.unpack_from("<I", data, position + 64)[0]
-            if 72 + 80 * sections > length:
-                raise ValueError("truncated Mach-O section table")
+            if size < 72:
+                raise ValueError("Truncated Mach-O segment")
+            sections = struct.unpack_from(endian + "I", binary, cursor + 64)[0]
+            if 72 + sections * 80 > size:
+                raise ValueError("Invalid Mach-O section table")
             for index in range(sections):
-                section = position + 72 + 80 * index
-                name, segment, _, section_size, offset = struct.unpack_from(
-                    "<16s16sQQI", data, section)
-                if name.rstrip(b"\0") != b"__entitlements" or segment.rstrip(b"\0") != b"__TEXT":
+                section = cursor + 72 + index * 80
+                name = binary[section:section + 16].rstrip(b"\0")
+                segment = binary[section + 16:section + 32].rstrip(b"\0")
+                if (segment, name) != (b"__TEXT", b"__entitlements"):
                     continue
-                if offset < commands_end or not section_size or offset + section_size > len(data):
-                    raise ValueError("invalid simulator entitlement section bounds")
-                found.append(plistlib.loads(data[offset:offset + section_size].rstrip(b"\0")))
-        position += length
-    if position != commands_end or len(found) != 1 or not isinstance(found[0], dict):
-        raise ValueError("expected exactly one simulator entitlement dictionary per slice")
-    return found
+                length, offset = struct.unpack_from(endian + "QI", binary, section + 40)
+                if not length or offset < limit or offset + length > len(binary):
+                    raise ValueError("Invalid simulator entitlement section bounds")
+                found.append(plistlib.loads(binary[offset:offset + length].rstrip(b"\0")))
+        cursor += size
+    if cursor != limit or len(found) != 1:
+        raise ValueError("Expected exactly one embedded simulator entitlement section")
+    return found[0]
 
 
-def validate(data: bytes) -> int:
-    slices = entitlements(data)
-    for values in slices:
-        if values.get("application-identifier") != GROUP:
-            raise ValueError("test host lacks its synthetic application identity")
-        if values.get("keychain-access-groups") != [GROUP]:
-            raise ValueError("test host lacks its isolated Keychain group")
-    return len(slices)
+def check(binary):
+    architectures = slices(binary)
+    for executable in architectures:
+        entitlements = embedded_entitlements(executable)
+        if entitlements.get("application-identifier") != GROUP:
+            raise ValueError("Simulator host lacks its isolated application identity")
+        if entitlements.get("keychain-access-groups") != [GROUP]:
+            raise ValueError("Simulator host lacks its isolated Keychain group")
+    return len(architectures)
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("Usage: check-ios-simulator-entitlements.py <built-host-executable>")
-    try:
-        count = validate(Path(sys.argv[1]).read_bytes())
-    except (OSError, ValueError, struct.error, plistlib.InvalidFileException) as error:
-        raise SystemExit(f"iOS simulator entitlement check failed: {error}")
-    print(f"PASS: {count} built simulator slice(s) have the exact isolated Keychain identity.")
+        raise SystemExit("Usage: check-ios-simulator-entitlements.py <built-simulator-executable>")
+    count = check(Path(sys.argv[1]).read_bytes())
+    print(f"PASS: isolated Keychain entitlements embedded in all {count} simulator architecture(s).")
