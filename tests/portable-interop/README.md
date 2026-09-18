@@ -56,3 +56,5 @@ path to that source. Use `cargo run --manifest-path <temporary-manifest> --bin
 native-document-check`. Do not add archived dependencies to the active workspace.
 The older signing-agent verifier checks only the historical normalized key-hash
 alias; the explicit non-signing verifier supports portable raw-key hashes too.
+
+The standalone native document harness also checks canonical `ed25519` service receipts against the archived schema/verifier; the historical `ring-Ed25519` spelling remains accepted. Signed document bytes are never rewritten for alias compatibility.
