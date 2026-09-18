@@ -186,7 +186,7 @@ impl DetachedSigner for CallbackSigner {
             let parsed = p256::ecdsa::Signature::from_slice(&signature).map_err(|_| {
                 CoreError::SignatureInvalid("platform ES256 signature must be 64-byte P1363".into())
             })?;
-            signature = parsed.normalize_s().unwrap_or(parsed).to_bytes().to_vec();
+            signature = parsed.normalize_s().to_bytes().to_vec();
         }
         // A faulty/malicious callback cannot return a purported signed document.
         jacs_core::verify::verify_detached(self.algorithm, &self.public_key, message, &signature)?;

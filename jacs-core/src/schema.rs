@@ -155,7 +155,8 @@ pub fn validate_agreement_v2_document(document: &Value) -> Result<(), CoreError>
     validator.validate(&schema_check_doc).map_err(|err| {
         CoreError::SchemaInvalid(format!(
             "agreement v2 schema validation failed at '{}': {}",
-            err.instance_path, err
+            err.instance_path(),
+            err
         ))
     })?;
 

@@ -12,8 +12,8 @@ use jacs_core::envelope::{
 };
 use jacs_core::sign::{DetachedSigner, Ed25519DalekSigner};
 
+use aes_gcm::Aes256Gcm;
 use aes_gcm::aead::{Aead, KeyInit};
-use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -105,9 +105,9 @@ fn synthesize_argon2id_envelope(
     argon2
         .hash_password_into(password.as_bytes(), &salt, &mut key)
         .expect("derive test key");
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+    let cipher = Aes256Gcm::new((&key).into());
     let ciphertext = cipher
-        .encrypt(Nonce::from_slice(&nonce_bytes), plain)
+        .encrypt((&nonce_bytes).into(), plain)
         .expect("encrypt test envelope");
     serde_json::to_vec(&serde_json::json!({
         "jacsEncryptedPrivateKeyVersion": 2,
@@ -156,13 +156,13 @@ fn synthesize_legacy_pbkdf2_envelope(plain: &[u8], password: &str, iterations: u
     // Seeded RNG so the test is bit-stable.
     let mut rng = StdRng::seed_from_u64(0xCAFE_BABE);
     let mut salt = [0u8; PBKDF2_SALT_SIZE];
-    rand::RngCore::fill_bytes(&mut rng, &mut salt);
+    rand::Rng::fill_bytes(&mut rng, &mut salt);
     let mut nonce_bytes = [0u8; AES_GCM_NONCE_SIZE];
-    rand::RngCore::fill_bytes(&mut rng, &mut nonce_bytes);
+    rand::Rng::fill_bytes(&mut rng, &mut nonce_bytes);
 
     let key = derive_key_with_iterations(password, &salt, iterations);
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let cipher = Aes256Gcm::new((&key).into());
+    let nonce = (&nonce_bytes).into();
     let ct = cipher.encrypt(nonce, plain).expect("encrypt");
 
     let mut out = Vec::with_capacity(PBKDF2_SALT_SIZE + AES_GCM_NONCE_SIZE + ct.len());

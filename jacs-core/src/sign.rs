@@ -339,13 +339,12 @@ impl Ed25519DalekSigner {
     /// Generate a fresh Ed25519 keypair using a cryptographically secure
     /// system RNG.
     pub fn generate() -> Result<Self, CoreError> {
-        // ed25519-dalek 2.x consumes `rand_core 0.6::CryptoRngCore`. The
-        // workspace pulls `rand 0.9` (and `rand_core 0.9`) for envelope
-        // RNG; `aes_gcm::aead::OsRng` re-exports the `rand_core 0.6`
-        // `OsRng` impl which satisfies the bound and avoids dragging
-        // `rand` 0.8 back in.
-        let mut csprng = aes_gcm::aead::OsRng;
-        let signing_key = SigningKey::generate(&mut csprng);
+        use rand::TryRng;
+        let mut secret = zeroize::Zeroizing::new([0u8; 32]);
+        rand::rngs::SysRng
+            .try_fill_bytes(secret.as_mut())
+            .map_err(|_| CoreError::EncryptionFailed("secure randomness unavailable".into()))?;
+        let signing_key = SigningKey::from_bytes(&secret);
         let public_key = signing_key.verifying_key().to_bytes();
         Ok(Self {
             signing_key: Some(signing_key),
@@ -489,7 +488,9 @@ pub struct P256Signer {
 
 impl P256Signer {
     pub fn generate() -> Result<Self, CoreError> {
-        let key = p256::ecdsa::SigningKey::random(&mut aes_gcm::aead::OsRng);
+        use p256::elliptic_curve::Generate;
+        let key = p256::ecdsa::SigningKey::try_generate_from_rng(&mut rand::rngs::SysRng)
+            .map_err(|_| CoreError::EncryptionFailed("secure randomness unavailable".into()))?;
         Ok(Self::from_key(key))
     }
 
@@ -505,11 +506,7 @@ impl P256Signer {
     }
 
     fn from_key(key: p256::ecdsa::SigningKey) -> Self {
-        let public_key = key
-            .verifying_key()
-            .to_encoded_point(false)
-            .as_bytes()
-            .to_vec();
+        let public_key = key.verifying_key().to_sec1_point(false).as_bytes().to_vec();
         Self {
             signing_key: Some(key),
             public_key,
@@ -544,7 +541,7 @@ impl DetachedSigner for P256Signer {
         use p256::ecdsa::signature::Signer as _;
         let key = self.signing_key.as_ref().ok_or(CoreError::Locked)?;
         let signature: p256::ecdsa::Signature = key.sign(message);
-        let signature = signature.normalize_s().unwrap_or(signature);
+        let signature = signature.normalize_s();
         Ok(signature.to_bytes().to_vec())
     }
 
