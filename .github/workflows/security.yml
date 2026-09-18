@@ -74,12 +74,12 @@ jobs:
         run: |
           cargo audit --file archive/native/jacs-surrealdb/Cargo.lock \
             --ignore RUSTSEC-2023-0071
-          cargo deny --manifest-path archive/native/jacs-surrealdb/Cargo.toml --config archive/native/deny.toml --all-features check advisories licenses
+          cargo deny --manifest-path archive/native/jacs-surrealdb/Cargo.toml --all-features check --config archive/native/deny.toml advisories licenses
 
       - name: Audit standalone observability example lock
         run: |
           cargo audit --file archive/native/jacs/examples/observability/Cargo.lock
-          cargo deny --manifest-path archive/native/jacs/examples/observability/Cargo.toml --config archive/native/deny.toml --all-features check advisories licenses
+          cargo deny --manifest-path archive/native/jacs/examples/observability/Cargo.toml --all-features check --config archive/native/deny.toml advisories licenses
 
       - name: Pinned full-history secret scan
         env:

@@ -122,9 +122,10 @@ def require_exact_parents(path: Path, dependency: str, expected: set[str]) -> No
 
 
 def require_all_features_cargo_deny(text: str, source: str) -> None:
-    """Reject cargo-deny workflow commands that omit optional feature graphs."""
+    """Reject incomplete graphs and misplaced check-only cargo-deny options."""
 
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    logical_lines = re.sub(r"\\\s*\n\s*", " ", text).splitlines()
+    for line_number, line in enumerate(logical_lines, start=1):
         command = line.strip()
         if command.startswith("#") or "cargo deny" not in command:
             continue
@@ -132,6 +133,12 @@ def require_all_features_cargo_deny(text: str, source: str) -> None:
             raise ValueError(
                 f"{source}:{line_number} cargo-deny must audit all features"
             )
+        if " check " in f" {command} ":
+            before_check = command.split(" check ", 1)[0]
+            if re.search(r"(?:^|\s)(?:--config(?:=|\s|$)|-c(?:\s|$))", before_check):
+                raise ValueError(
+                    f"{source}:{line_number} cargo-deny --config must follow check"
+                )
 
 
 def require_no_active_exceptions(policy: dict, reviewed: dict) -> None:
