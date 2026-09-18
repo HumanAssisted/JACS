@@ -9,11 +9,6 @@ on:
       - "Cargo.lock"
       - ".github/workflows/mobile-bindings.yml"
   workflow_dispatch:
-    inputs:
-      build_ios_package:
-        description: "Also assemble the iOS XCFramework/Swift package on the macOS runner"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -30,9 +25,9 @@ env:
 
 jobs:
   android-source:
-    name: Generated Kotlin and Android API source compilation
+    name: Android source tests and native AAR assembly
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -40,11 +35,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
+          targets: aarch64-linux-android,x86_64-linux-android
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Portable mobile integration tests
         run: cargo test -p jacs-mobile --test portable -- --nocapture
       - name: Generate Kotlin and Swift from the current Rust API
         run: bash jacs-mobile/scripts/generate-bindings.sh
+      - name: Release PQ operations on 512 KiB and 1 MiB native stacks
+        run: cargo test -p jacs-mobile --release --locked --test native_stack
       - name: Compile Android adapter and verify DER interoperability
         shell: bash
         run: |
@@ -59,11 +57,23 @@ jobs:
         with:
           name: android-compiled-source
           path: jacs-mobile/generated/android-typecheck.jar
+          if-no-files-found: error
+      - name: Prepare pinned Android package build tools
+        run: bash jacs-mobile/scripts/prepare-android-ci.sh
+      - name: Assemble Android AAR and local Maven bundle
+        run: bash jacs-mobile/scripts/build-android-aar.sh --reuse-bindings
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacs-mobile-android-package
+          path: |
+            jacs-mobile/generated/android-project/library/build/outputs/aar/library-release.aar
+            jacs-mobile/generated/android-project/library/build/maven/
+          if-no-files-found: error
 
   ios-source:
-    name: Generated Swift and iOS adapter source compilation
+    name: iOS source tests and native XCFramework assembly
     runs-on: macos-14
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -71,22 +81,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Generate Swift from the current Rust API
         run: bash jacs-mobile/scripts/generate-bindings.sh
       - name: Compile generated Swift and native security adapters
         run: bash jacs-mobile/scripts/check-ios-source.sh
-      - name: Install Rust target libraries for requested package assembly
-        if: github.event_name == 'workflow_dispatch' && inputs.build_ios_package
-        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
       - name: Assemble iOS XCFramework and Swift package
-        if: github.event_name == 'workflow_dispatch' && inputs.build_ios_package
-        run: bash jacs-mobile/scripts/build-ios-xcframework.sh
+        run: bash jacs-mobile/scripts/build-ios-xcframework.sh --reuse-bindings
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.event_name == 'workflow_dispatch' && inputs.build_ios_package
         with:
           name: jacs-mobile-ios-package
           path: |
             jacs-mobile/generated/ios-package/Package.swift
             jacs-mobile/generated/ios-package/Sources/
             jacs-mobile/generated/ios-package/JacsMobileFFI.xcframework/
+          if-no-files-found: error

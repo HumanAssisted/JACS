@@ -11,6 +11,9 @@ android {
     namespace = "ai.hai.jacs"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
+    // Matches the existing NDK used by cargo-ndk and prevents AGP selecting a
+    // different SDK package while stripping the prebuilt native libraries.
+    ndkVersion = "27.3.13750724"
     defaultConfig {
         minSdk = 30
         consumerProguardFiles("consumer-rules.pro")

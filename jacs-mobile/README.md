@@ -188,8 +188,8 @@ the real generated bindings. They do not download SDKs or install toolchains.
 Cargo and Gradle may resolve their ordinary package dependencies. Both scripts
 fail with a specific missing-prerequisite message before building.
 
-**Android AAR:** install JDK 17, Gradle 8.9, `cargo-ndk`, Android SDK platform 35
-and build-tools 35.0.0, an Android NDK, and Rust targets
+**Android AAR:** install JDK 17, Gradle 8.9, `cargo-ndk` 4.1.2, Android SDK platform 35
+and build-tools 35.0.0, Android NDK 27.3.13750724, and Rust targets
 `aarch64-linux-android`/`x86_64-linux-android`. Set `ANDROID_HOME` and
 `ANDROID_NDK_HOME`, then run:
 
@@ -229,7 +229,7 @@ The script refuses to overwrite an existing XCFramework; move an old output
 aside before rebuilding. No artifact is uploaded or published externally.
 
 The Android adapter and generated Kotlin compile with Kotlin 2.0.21 against
-Android 15/API 35 classes and the actual JNA Android AAR. The independent host
+the Android 15/API 35 SDK and the actual JNA Android AAR. The independent host
 test verifies 32 DER-to-P1363 conversions with Java's signature verifier and
 rejects five malformed DER inputs. Reproduce this source check after generation:
 
@@ -246,12 +246,19 @@ independently installed SDK's public API jar instead. Output is
 
 On an Xcode-equipped macOS machine, run
 `bash jacs-mobile/scripts/check-ios-source.sh` after generation to compile both
-Swift modules against the simulator SDK. The `mobile-bindings.yml` workflow
-adds Android and macOS source gates; its manual iOS package option also assembles
-the XCFramework/Swift package. That new macOS gate has not been run from this
-Linux environment. AAR/XCFramework assembly and device biometric tests remain
-release validation steps; SDK/device runtime behavior is not established by
-the successful Android source compilation.
+Swift modules against the simulator SDK. Both SDK source gates passed on
+September 17, 2026: [Android SDK compilation](https://github.com/HumanAssisted/JACS/actions/runs/35276917844/job/105389654795)
+and [iOS simulator SDK compilation](https://github.com/HumanAssisted/JACS/actions/runs/35276917844/job/105389654510).
+
+The `mobile-bindings.yml` workflow also assembles both native distribution
+packages on pull requests and uploads build artifacts for review. It reuses
+the bindings generated and compiled earlier in each job. Android uses the
+runner's existing SDK/NDK and JDK, checksum-pinned Gradle 8.9, and version-pinned
+`cargo-ndk` 4.1.2; the workflow never accepts SDK licenses or downloads SDK
+packages. The macOS job builds arm64 device and both simulator Rust archives
+before assembling the XCFramework. Neither job publishes packages to a registry.
+Package assembly gates must pass on the current commit; source compilation
+alone does not establish packaging or device runtime behavior.
 
 ## Verification scope
 

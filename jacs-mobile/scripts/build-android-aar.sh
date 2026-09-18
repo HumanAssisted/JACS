@@ -3,7 +3,13 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 fail() { echo "jacs-mobile Android build: $*" >&2; exit 1; }
-for program in cargo rustup java gradle; do
+reuse_bindings=false
+if [[ "${1:-}" == --reuse-bindings && $# == 1 ]]; then
+    reuse_bindings=true
+elif [[ $# != 0 ]]; then
+    fail "Usage: $0 [--reuse-bindings] (reuse only bindings generated from this checkout)."
+fi
+for program in cargo rustup java gradle python3; do
     command -v "$program" >/dev/null || fail "Missing $program. Install the documented prerequisites first."
 done
 cargo ndk --version >/dev/null 2>&1 || fail "Missing cargo-ndk. Install it before running this script."
@@ -28,7 +34,12 @@ done
 export ANDROID_HOME="$android_sdk"
 export CARGO_TARGET_DIR="$repo_root/target"
 export CARGO_INCREMENTAL=0
-bash jacs-mobile/scripts/generate-bindings.sh
+if [[ "$reuse_bindings" == true ]]; then
+    [[ -f jacs-mobile/generated/kotlin/ai/hai/jacs/jacs_mobile.kt ]] || \
+        fail "Generate current Kotlin bindings before using --reuse-bindings."
+else
+    bash jacs-mobile/scripts/generate-bindings.sh
+fi
 stage="$repo_root/jacs-mobile/generated/android-project"
 mkdir -p "$stage/library/src/main/kotlin" "$stage/library/src/main/jniLibs"
 cp -R jacs-mobile/distribution/android/. "$stage/"
@@ -38,8 +49,9 @@ cp jacs-mobile/platforms/android/JacsKeystore.kt "$stage/library/src/main/kotlin
 # Align ELF load segments for Android devices using 16 KiB memory pages.
 RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384" \
 cargo ndk -t arm64-v8a -t x86_64 -p 30 \
-    -o "$stage/library/src/main/jniLibs" build -p jacs-mobile --release
+    -o "$stage/library/src/main/jniLibs" build -p jacs-mobile --release --locked
 gradle --no-daemon --project-dir "$stage" \
     :library:assembleRelease :library:publishReleasePublicationToBundleRepository
+python3 jacs-mobile/scripts/check-android-package.py "$stage"
 echo "AAR: $stage/library/build/outputs/aar/library-release.aar"
 echo "Maven bundle with JNA dependency metadata: $stage/library/build/maven"
