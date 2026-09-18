@@ -151,7 +151,7 @@ fn native_signature_schema_accepts_only_canonical_verification_algorithms() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").expect("schema init");
 
     // These are verification capabilities, independent of native key creation.
-    for canonical in ["ring-Ed25519", "pq2025", "es256"] {
+    for canonical in ["ring-Ed25519", "ed25519", "pq2025", "es256"] {
         schema
             .validate_signature(&base_signature(Some(canonical)))
             .unwrap_or_else(|error| panic!("canonical '{canonical}' must validate: {error}"));
@@ -162,7 +162,6 @@ fn native_signature_schema_accepts_only_canonical_verification_algorithms() {
     for bad in [
         "ring-ES256",
         "ES256",
-        "ed25519",
         "ES384",
         "rsa-pss-sha256",
         "es256 ",
