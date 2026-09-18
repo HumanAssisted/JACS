@@ -14,14 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "release_tag.py"
 WORKFLOWS = {
     "release-crate.yml": "crate",
-    "release-storage-crate.yml": "storage",
     "release-cli.yml": "cli",
-    "release-npm.yml": "npm",
-    "release-pypi.yml": "pypi",
     "release-wasm.yml": "wasm",
-    "release-jacsgo.yml": "jacsgo",
 }
-TAG_RELEASE_WORKFLOWS = tuple(WORKFLOWS) + ("release-homebrew.yml",)
+TAG_RELEASE_WORKFLOWS = tuple(WORKFLOWS)
 
 
 def load_release_tag():
@@ -102,16 +98,9 @@ class ReleaseTagParserTests(unittest.TestCase):
 
     def test_accepts_exact_release_prefixes_and_strict_semver(self) -> None:
         cases = {
-            "crate": ("refs/tags/crate/v0.11.4", {"version": "0.11.4"}),
+            "crate": ("refs/tags/crate/v0.13.0", {"version": "0.13.0"}),
             "cli": ("refs/tags/cli/v1.2.3-rc.1+build.7", {"version": "1.2.3-rc.1+build.7"}),
-            "npm": ("refs/tags/npm/v0.11.4", {"version": "0.11.4"}),
-            "pypi": ("refs/tags/pypi/v0.11.4", {"version": "0.11.4"}),
-            "wasm": ("refs/tags/wasm-v0.11.4", {"version": "0.11.4"}),
-            "jacsgo": ("refs/tags/jacsgo/v0.11.4", {"version": "0.11.4"}),
-            "storage": (
-                "refs/tags/crate/jacs-postgresql/v0.11.4",
-                {"crate": "jacs-postgresql", "version": "0.11.4"},
-            ),
+            "wasm": ("refs/tags/wasm-v0.13.0", {"version": "0.13.0"}),
         }
         for surface, (ref, expected) in cases.items():
             with self.subTest(surface=surface):
@@ -119,13 +108,16 @@ class ReleaseTagParserTests(unittest.TestCase):
 
     def test_rejects_shell_payload_wrong_prefix_and_invalid_semver(self) -> None:
         invalid = (
-            ("npm", "refs/tags/npm/v0.11.4`touch${IFS}TAG_INJECTION_PROVED`"),
+            ("npm", "refs/tags/npm/v0.13.0"),
+            ("pypi", "refs/tags/pypi/v0.13.0"),
+            ("jacsgo", "refs/tags/jacsgo/v0.13.0"),
+            ("wasm", "refs/tags/wasm-v0.11.4`touch${IFS}TAG_INJECTION_PROVED`"),
             ("cli", "refs/tags/npm/v0.11.4"),
             ("crate", "refs/tags/crate/v01.2.3"),
             ("crate", "refs/tags/crate/v1.02.3"),
             ("crate", "refs/tags/crate/v1.2.03"),
-            ("jacsgo", "refs/tags/jacsgo/v1.2.3-"),
-            ("jacsgo", "refs/tags/jacsgo/v1.2.3-alpha..1"),
+            ("crate", "refs/tags/crate/v1.2.3-"),
+            ("crate", "refs/tags/crate/v1.2.3-alpha..1"),
             ("storage", "refs/tags/crate/../../jacs/v0.11.4"),
             ("storage", "refs/tags/crate/jacs/v0.11.4"),
         )
@@ -142,12 +134,12 @@ class ReleaseTagParserTests(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "GITHUB_REF": "refs/tags/npm/v0.11.4`touch${IFS}TAG_INJECTION_PROVED`",
+                    "GITHUB_REF": "refs/tags/wasm-v0.11.4`touch${IFS}TAG_INJECTION_PROVED`",
                     "GITHUB_OUTPUT": str(output),
                 }
             )
             result = subprocess.run(
-                ["python3", str(SCRIPT), "--surface", "npm"],
+                ["python3", str(SCRIPT), "--surface", "wasm"],
                 cwd=root,
                 env=env,
                 capture_output=True,
@@ -193,11 +185,6 @@ class ReleaseTagParserTests(unittest.TestCase):
                             "first-party release source must be the immutable event SHA",
                         )
 
-    def test_homebrew_push_uses_explicit_ephemeral_credentials(self) -> None:
-        text = (ROOT / ".github" / "workflows" / "release-homebrew.yml").read_text()
-        self.assertIn("GIT_ASKPASS", text)
-        self.assertIn("GIT_TERMINAL_PROMPT", text)
-        self.assertIn("HOMEBREW_TAP_TOKEN", text)
 
     def test_security_executable_jobs_have_bounded_timeouts(self) -> None:
         text = (ROOT / ".github" / "workflows" / "security.yml").read_text()

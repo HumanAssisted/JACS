@@ -94,7 +94,7 @@ pub fn digest_bytes(label: &str, bytes: &[u8]) -> String {
     hasher.update(label.as_bytes());
     hasher.update([0]);
     hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 pub fn validate_digest(digest: &str) -> Result<(), CoreError> {
@@ -180,7 +180,7 @@ pub fn verify_signature(
                 .map_err(|error| CoreError::MalformedKey(error.to_string()))?;
             let signature = p256::ecdsa::Signature::from_slice(signature)
                 .map_err(|error| CoreError::SignatureInvalid(error.to_string()))?;
-            if signature.normalize_s().is_some() {
+            if signature.normalize_s() != signature {
                 return Err(CoreError::SignatureInvalid(
                     "ES256 requires low-S signature".into(),
                 ));

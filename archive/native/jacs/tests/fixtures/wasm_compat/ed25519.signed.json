@@ -1,0 +1,8 @@
+{
+  "canonical": "{\"fixture\":\"wasm_compat::ed25519\",\"ts\":\"2026-05-16\"}",
+  "payload": {
+    "fixture": "wasm_compat::ed25519",
+    "ts": "2026-05-16"
+  },
+  "signature_b64": "5CgaTrkSf9Cmi+if8liji3RCekP1VYZKpYDjx/CjAIDakFmyEu7VtyLpSbzT/1XqgcDdlPyX/EYfnOqMt4YbDQ=="
+}

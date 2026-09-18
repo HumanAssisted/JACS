@@ -16,12 +16,15 @@ pub mod human_approval;
 pub mod identity;
 pub mod lifecycle;
 pub mod material;
+pub mod request_auth;
 pub mod response_context;
+pub mod rotation;
 pub mod schema;
 pub mod sign;
 pub mod signing;
 pub mod signing_context;
 pub mod strict_json;
+pub mod transfer;
 pub mod verification;
 pub mod verification_registry;
 pub mod verify;
@@ -29,7 +32,8 @@ pub mod verify;
 pub use agent::CoreAgent;
 pub use errors::CoreError;
 pub use material::{AgentMaterial, UnlockSecret};
-pub use sign::{DetachedSigner, Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm};
+pub use rotation::{PreparedKeyRotation, verify_key_rotation};
+pub use sign::{DetachedSigner, Ed25519DalekSigner, P256Signer, Pq2025Signer, SigningAlgorithm};
 pub use signing::{
     AuthorityClassifiedPreparedDocumentV1, MediaCanonicalizationV1, MediaClaimFormatV1,
     MediaClaimV1, MediaEmbeddingChannelV1, NativeDocumentHeaderV1, NativeMessageHeaderV1,

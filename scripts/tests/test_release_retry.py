@@ -43,19 +43,7 @@ def make_target_block(text: str, name: str) -> str:
 
 
 def write_manifests(root: Path, version: str = "0.11.4") -> None:
-    cargo_paths = (
-        "jacs",
-        "jacs-core",
-        "jacs-media",
-        "binding-core",
-        "jacs-mcp",
-        "jacs-cli",
-        "jacsgo/lib",
-        "jacs-duckdb",
-        "jacs-redb",
-        "jacs-surrealdb",
-        "jacs-postgresql",
-    )
+    cargo_paths = ("jacs-core", "jacs-mcp", "jacs-cli")
     for relative in cargo_paths:
         directory = root / relative
         directory.mkdir(parents=True, exist_ok=True)
@@ -63,16 +51,6 @@ def write_manifests(root: Path, version: str = "0.11.4") -> None:
             f'[package]\nname = "fixture"\nversion = "{version}"\n',
             encoding="utf-8",
         )
-    (root / "jacspy").mkdir(parents=True, exist_ok=True)
-    (root / "jacspy" / "pyproject.toml").write_text(
-        f'[project]\nname = "jacs"\nversion = "{version}"\n',
-        encoding="utf-8",
-    )
-    (root / "jacsnpm").mkdir(parents=True, exist_ok=True)
-    (root / "jacsnpm" / "package.json").write_text(
-        f'{{"name":"@hai.ai/jacs","version":"{version}"}}\n',
-        encoding="utf-8",
-    )
     (root / "jacs-wasm").mkdir(parents=True, exist_ok=True)
     (root / "jacs-wasm" / "package.template.json").write_text(
         f'{{"name":"@jacs/wasm","version":"{version}"}}\n',
@@ -149,79 +127,34 @@ class FakeResponse:
 
 
 class MakeReleaseTests(unittest.TestCase):
-    def test_every_rust_publish_and_dry_run_is_locked(self) -> None:
+    def test_make_release_planning_is_read_only_and_uses_safe_helper(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-        targets = (
-            "publish-jacs",
-            "publish-jacs-core",
-            "publish-jacs-media",
-            "publish-jacs-binding-core",
-            "publish-jacs-mcp",
-            "publish-jacs-cli",
-            "publish-jacs-storage",
-            "publish-jacs-duckdb",
-            "publish-jacs-redb",
-            "publish-jacs-surrealdb",
-            "publish-jacs-postgresql",
-            "publish-jacs-dry",
-            "publish-jacs-storage-dry",
-        )
-        for target in targets:
-            with self.subTest(target=target):
-                block = make_target_block(makefile, target)
-                publish_lines = [
-                    line for line in block.splitlines() if "cargo publish" in line
-                ]
-                self.assertTrue(publish_lines)
-                self.assertTrue(all("--locked" in line for line in publish_lines))
+        plan = make_target_block(makefile, "plan-release-everything")
+        self.assertIn("check-versions", plan.splitlines()[0])
+        self.assertIn("scripts/release_retry.py release-all", plan)
+        self.assertNotIn("--execute", makefile)
+        self.assertNotIn("cargo publish", makefile)
+        self.assertNotIn("git tag", makefile)
+        self.assertNotIn("git push", makefile)
 
-        dry = make_target_block(makefile, "publish-jacs-dry")
-        self.assertLess(dry.index("cd jacs-core"), dry.index("cd jacs-media"))
-
-    def test_release_writes_are_serial_recipe_steps_after_one_preflight(self) -> None:
+    def test_release_preflight_checks_source_and_clean_worktree(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         preflight = make_target_block(makefile, "release-preflight")
-        self.assertIn("check-versions", preflight.splitlines()[0])
-        self.assertIn("check-release-matrix", preflight.splitlines()[0])
-        self.assertIn("check-changelog-sealed", preflight.splitlines()[0])
-        self.assertIn("$(RELEASE_HELPER) check-worktree", preflight)
+        self.assertEqual(preflight.splitlines()[0], "release-preflight: check")
+        self.assertIn("scripts/release_retry.py check-worktree", preflight)
+        check = make_target_block(makefile, "check")
+        for gate in ("check-versions", "check-project-license", "check-third-party-notices"):
+            self.assertIn(gate, check.splitlines()[0])
+        self.assertIn("scripts/check-release-matrix.py", makefile)
+        self.assertIn("scripts/check_workspace_boundary.py", check)
 
-        everything = make_target_block(makefile, "release-everything")
-        self.assertEqual(
-            everything.splitlines()[0].split("#", 1)[0].rstrip(),
-            "release-everything: release-preflight",
-        )
-        self.assertIn("release-all --execute", everything)
-        self.assertNotIn("release-jacspy release-", everything.splitlines()[0])
-
-        storage = make_target_block(makefile, "release-jacs-storage")
-        self.assertEqual(
-            storage.splitlines()[0], "release-jacs-storage: release-preflight"
-        )
-        self.assertIn("release-storage --execute", storage)
-
-    def test_retry_targets_only_delegate_to_the_safe_helper(self) -> None:
-        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-        targets = (
-            "retry-jacs",
-            "retry-jacspy",
-            "retry-jacsnpm",
-            "retry-jacs-wasm",
-            "retry-cli",
-            "retry-jacsgo",
-            "retry-everything",
-        )
-        for target in targets:
-            with self.subTest(target=target):
-                block = make_target_block(makefile, target)
-                self.assertIn("$(RELEASE_HELPER)", block)
-                self.assertNotIn("git tag", block)
-                self.assertNotIn("git push", block)
-
+    def test_active_release_order_and_archived_tags_fail_closed(self) -> None:
         module = load_module()
-        self.assertLess(
-            module.RELEASE_ORDER.index("cli"), module.RELEASE_ORDER.index("npm")
-        )
+        self.assertEqual(module.RELEASE_ORDER, ("crate", "cli", "wasm"))
+        for tag in ("npm/v0.13.0", "pypi/v0.13.0", "jacsgo/v0.13.0", "crate/jacs-redb/v0.13.0"):
+            with self.subTest(tag=tag):
+                with self.assertRaises(ValueError):
+                    module.validate_tag(tag)
 
 
 class TagRetryTests(unittest.TestCase):
@@ -300,7 +233,7 @@ class TagRetryTests(unittest.TestCase):
         module = load_module()
         git = FakeGit(remote=(ZERO, ONE))
 
-        module.retry_tag("jacsgo/v0.11.4", run=git)
+        module.retry_tag("cli/v0.11.4", run=git)
 
         operations = [command[1] for command in git.commands]
         self.assertLess(operations.index("fetch"), operations.index("push"))
@@ -311,14 +244,14 @@ class TagRetryTests(unittest.TestCase):
         module = load_module()
 
         with self.assertRaisesRegex(module.ReleaseError, "neither local nor remote"):
-            module.plan_retry_tag("npm/v0.11.4", run=FakeGit())
+            module.plan_retry_tag("wasm-v0.11.4", run=FakeGit())
 
     def test_retry_refuses_conflicting_local_and_remote_tag_identities(self) -> None:
         module = load_module()
 
         with self.assertRaisesRegex(module.ReleaseError, "different tag objects"):
             module.plan_retry_tag(
-                "npm/v0.11.4",
+                "wasm-v0.11.4",
                 run=FakeGit(local=(ZERO, ZERO), remote=(ONE, ONE)),
             )
 
@@ -328,7 +261,7 @@ class TagRetryTests(unittest.TestCase):
         git.fail_remote_probe = True
 
         with self.assertRaisesRegex(module.ReleaseError, "remote tag probe failed"):
-            module.plan_retry_tag("pypi/v0.11.4", run=git)
+            module.plan_retry_tag("crate/v0.11.4", run=git)
 
     def test_remote_probe_timeout_fails_closed(self) -> None:
         module = load_module()
@@ -380,7 +313,7 @@ class TagRetryTests(unittest.TestCase):
         git.head = TWO
 
         with self.assertRaisesRegex(module.ReleaseError, "does not point at HEAD"):
-            module.release_tag("npm/v0.11.4", run=git)
+            module.release_tag("wasm-v0.11.4", run=git)
 
         self.assertFalse(any(command[1] == "push" for command in git.commands))
 
@@ -388,13 +321,13 @@ class TagRetryTests(unittest.TestCase):
         module = load_module()
 
         remote_only = FakeGit(remote=(ZERO, ZERO))
-        outcome = module.release_tag("crate/jacs-redb/v0.11.4", run=remote_only)
+        outcome = module.release_tag("cli/v0.11.4", run=remote_only)
         self.assertEqual(outcome, "already-remote")
         self.assertFalse(any(command[1] == "tag" for command in remote_only.commands))
 
         local_only = FakeGit(local=(ZERO, ZERO))
         local_only.head = ZERO
-        outcome = module.release_tag("crate/jacs-redb/v0.11.4", run=local_only)
+        outcome = module.release_tag("cli/v0.11.4", run=local_only)
         self.assertEqual(outcome, "pushed-local")
         self.assertEqual(local_only.remote, (ZERO, ZERO))
         self.assertFalse(any(command[1] == "tag" for command in local_only.commands))
@@ -435,9 +368,9 @@ class TagRetryTests(unittest.TestCase):
         module = load_module()
         events: list[tuple[str, str]] = []
         entries = [
-            ("crate/jacs-duckdb/v0.11.4", None),
-            ("crate/jacs-redb/v0.11.4", None),
-            ("crate/jacs-surrealdb/v0.11.4", None),
+            ("crate/v0.11.4", None),
+            ("cli/v0.11.4", None),
+            ("wasm-v0.11.4", None),
         ]
         original_plan = module.plan_release_tag
         original_release = module.release_tag
@@ -448,7 +381,7 @@ class TagRetryTests(unittest.TestCase):
 
         def release(tag: str, **_kwargs):
             events.append(("release", tag))
-            if "redb" in tag:
+            if tag.startswith("cli/"):
                 raise module.ReleaseError("simulated push failure")
             return "pushed-local"
 
@@ -517,7 +450,7 @@ class RetryRegistryProbeTests(unittest.TestCase):
 
         self.assertEqual(urls, [])
 
-    def test_probes_all_six_rust_crates_at_the_exact_version(self) -> None:
+    def test_probes_all_three_rust_crates_at_the_exact_version(self) -> None:
         module = load_module()
         urls: list[str] = []
         verifier_commands: list[list[str]] = []
@@ -541,21 +474,15 @@ class RetryRegistryProbeTests(unittest.TestCase):
 
         self.assertEqual(missing, [])
         crate_urls = [url for url in urls if "crates.io/api/v1/crates" in url]
-        self.assertEqual(len(crate_urls), 6)
+        self.assertEqual(len(crate_urls), 3)
         for crate in (
             "jacs-core",
-            "jacs-media",
-            "jacs",
-            "jacs-binding-core",
             "jacs-mcp",
             "jacs-cli",
         ):
             self.assertIn(f"https://crates.io/api/v1/crates/{crate}/0.11.4", crate_urls)
-        self.assertEqual(len(verifier_commands), 2)
+        self.assertEqual(len(verifier_commands), 1)
         self.assertTrue(any("cli/v0.11.4" in command for command in verifier_commands))
-        self.assertTrue(
-            any("jacsgo/v0.11.4" in command for command in verifier_commands)
-        )
 
     def test_only_authoritative_404_is_retryable(self) -> None:
         module = load_module()

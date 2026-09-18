@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import tomllib
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -19,44 +20,31 @@ SPEC.loader.exec_module(license_check)
 
 
 CONTRACT_FILES = (
-    "LICENSE",
-    "LICENSE-APACHE",
-    "Cargo.toml",
-    "jacs/Cargo.toml",
-    "jacs/LICENSE",
-    "jacs-core/Cargo.toml",
-    "jacs-media/Cargo.toml",
-    "jacs-wasm/Cargo.toml",
-    "binding-core/Cargo.toml",
-    "jacs-mcp/Cargo.toml",
-    "jacs-cli/Cargo.toml",
-    "jacsnpm/Cargo.toml",
-    "jacsnpm/LICENSE",
-    "jacsnpm/package.json",
-    "jacspy/Cargo.toml",
-    "jacspy/LICENSE-APACHE",
-    "jacspy/pyproject.toml",
-    "jacsgo/lib/Cargo.toml",
-    "jacs-duckdb/Cargo.toml",
-    "jacs-redb/Cargo.toml",
-    "jacs-postgresql/Cargo.toml",
-    "jacs-surrealdb/Cargo.toml",
-    "jacs/examples/observability/Cargo.toml",
-    "jacs-wasm/package.template.json",
+    "LICENSE", "LICENSE-APACHE", "Cargo.toml",
+    "archive/native/jacspy/pyproject.toml",
     "jacs-wasm/scripts/finalize-pkg.sh",
+    *license_check.EXACT_LICENSE_COPIES,
+    *license_check.NODE_MANIFESTS,
 )
 
 
 def make_consistent_fixture(destination: Path) -> None:
-    for relative in CONTRACT_FILES:
-        source = ROOT / relative
+    files = set(CONTRACT_FILES)
+    pending = [Path("Cargo.toml")]
+    visited = set()
+    while pending:
+        manifest = pending.pop()
+        if manifest in visited:
+            continue
+        visited.add(manifest)
+        files.add(manifest.as_posix())
+        table = tomllib.loads((ROOT / manifest).read_text()).get("workspace", {})
+        for field in ("members", "exclude"):
+            pending.extend(manifest.parent / entry / "Cargo.toml" for entry in table.get(field, []))
+    for relative in files:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
-
-    # Keep the fixture self-contained even if a future repository edit changes
-    # which canonical Apache copy a package uses.
-    shutil.copyfile(destination / "LICENSE-APACHE", destination / "jacs/LICENSE")
+        shutil.copyfile(ROOT / relative, target)
 
 
 class ProjectLicenseContractTests(unittest.TestCase):
@@ -74,7 +62,7 @@ class ProjectLicenseContractTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             make_consistent_fixture(root)
-            manifest = root / "jacsnpm/package.json"
+            manifest = root / "archive/native/jacsnpm/package.json"
             package = json.loads(manifest.read_text(encoding="utf-8"))
             package["license"] = "MIT"
             manifest.write_text(json.dumps(package), encoding="utf-8")
@@ -82,7 +70,7 @@ class ProjectLicenseContractTests(unittest.TestCase):
             errors = license_check.check_project_license(root)
 
         self.assertIn(
-            "jacsnpm/package.json declares license 'MIT'; expected 'Apache-2.0'",
+            "archive/native/jacsnpm/package.json declares license 'MIT'; expected 'Apache-2.0'",
             errors,
         )
 
@@ -90,13 +78,13 @@ class ProjectLicenseContractTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             make_consistent_fixture(root)
-            (root / "jacsnpm/LICENSE").write_text("different terms\n", encoding="utf-8")
+            (root / "archive/native/jacsnpm/LICENSE").write_text("different terms\n", encoding="utf-8")
 
             errors = license_check.check_project_license(root)
 
         self.assertTrue(
             any(
-                "jacsnpm/LICENSE" in error and "does not match" in error
+                "archive/native/jacsnpm/LICENSE" in error and "does not match" in error
                 for error in errors
             ),
             errors,
@@ -121,16 +109,35 @@ class ProjectLicenseContractTests(unittest.TestCase):
             errors,
         )
 
+    def test_archive_workspace_uses_its_own_license_scope(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_consistent_fixture(root)
+            manifest = root / "archive/native/Cargo.toml"
+            manifest.write_text(manifest.read_text().replace('license = "Apache-2.0"', 'license = "MIT"', 1))
+            errors = license_check.check_project_license(root)
+        self.assertTrue(any("archive/native/Cargo.toml declares workspace package license 'MIT'" in error for error in errors), errors)
+        self.assertTrue(any("archive/native/jacs-redb/Cargo.toml inherits workspace license 'MIT'" in error for error in errors), errors)
+
+    def test_excluded_standalone_archive_package_is_checked(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_consistent_fixture(root)
+            manifest = root / "archive/native/jacs-surrealdb/Cargo.toml"
+            manifest.write_text(manifest.read_text().replace('license = "Apache-2.0"', 'license = "MIT"', 1))
+            errors = license_check.check_project_license(root)
+        self.assertIn("archive/native/jacs-surrealdb/Cargo.toml declares package license 'MIT'; expected 'Apache-2.0'", errors)
+
     def test_missing_python_license_file_fails_closed(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             make_consistent_fixture(root)
-            (root / "jacspy/LICENSE-APACHE").unlink()
+            (root / "archive/native/jacspy/LICENSE-APACHE").unlink()
 
             errors = license_check.check_project_license(root)
 
         self.assertTrue(
-            any("jacspy/LICENSE-APACHE is missing" in error for error in errors),
+            any("archive/native/jacspy/LICENSE-APACHE is missing" in error for error in errors),
             errors,
         )
 
@@ -173,7 +180,9 @@ class ProjectLicenseContractTests(unittest.TestCase):
         ]
         security = (ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8")
 
-        self.assertIn("check-project-license", release_preflight)
+        self.assertIn("check", release_preflight.splitlines()[0].split())
+        check_dependencies = next(line for line in makefile.splitlines() if line.startswith("check:"))
+        self.assertIn("check-project-license", check_dependencies.split())
         self.assertIn("python3 scripts/check_project_license.py", makefile)
         self.assertIn("python3 scripts/check_project_license.py", security)
 

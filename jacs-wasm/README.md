@@ -2,8 +2,8 @@
 
 **JACS sign + verify in the browser. No backend required.**
 
-> **Distribution status (observed 2026-07-11):** `@jacs/wasm` is not yet
-> published on npm. The API below is available from a source build and becomes
+> **Distribution status:** This checkout contains an unreleased source-built
+> package; see [release status](../docs/release-status.md). The API below is available from a source build and becomes
 > an install contract only after the release workflow publishes and smoke-tests
 > the package.
 
@@ -12,12 +12,19 @@ From a source-built package, await one init call and you can create JACS
 agents, sign messages, verify signed documents, and run multi-party agreements
 entirely client-side.
 
+**New identities use post-quantum ML-DSA-87 (`pq2025`) by default**, in both
+the main-thread and worker APIs. Use `createEphemeral()` or
+`createEphemeralInWorker()`; neither falls back to a classical algorithm.
+Ed25519 and ES256 remain explicit compatibility choices for existing identities
+or platform integrations. Imports retain and verify their declared algorithm.
+
 ## Build and install today
 
 ```sh
 git clone https://github.com/HumanAssisted/JACS.git
-cd JACS
-make build-wasm
+cd JACS/jacs-wasm
+wasm-pack build --target web --release . --locked
+bash scripts/finalize-pkg.sh
 # From your consuming project:
 npm install /absolute/path/to/JACS/jacs-wasm/pkg
 ```
@@ -33,7 +40,7 @@ import { initJacsWasm, createEphemeral } from "@jacs/wasm";
 
 await initJacsWasm();
 
-const agent = await createEphemeral("pq2025");
+const agent = await createEphemeral(); // pq2025; no classical fallback
 const signed = agent.signMessageJson(JSON.stringify({ hello: "world" }));
 const result = JSON.parse(agent.verifyJson(signed));
 console.log(result.valid); // true
@@ -48,9 +55,9 @@ console.log(result.valid); // true
 
 ### Constructors
 
-- `createEphemeral(algorithm: "ed25519" | "pq2025"): Promise<CoreAgentHandle>` —
-  generate a fresh keypair. Public key is wrapped in a minimal agent
-  document (`jacsId`, `jacsVersion`, `name`, `algorithm`).
+- `createEphemeral(algorithm?: "pq2025" | "ed25519" | "es256"): Promise<CoreAgentHandle>` —
+  generate a fresh keypair and a self-signed agent document; defaults to
+  `pq2025`. The raw wasm-bindgen constructor requires an explicit algorithm.
 - `importEncryptedAgent(materialJson: string, password: string): Promise<CoreAgentHandle>` —
   unlock an `AgentMaterial` bundle produced by `exportEncryptedAgent(password)`
   or the native `jacs` CLI, including a value loaded from
@@ -58,13 +65,29 @@ console.log(result.valid); // true
 - `importEncryptedAgentFiles(args, password): Promise<CoreAgentHandle>` —
   same as `importEncryptedAgent` but takes the four constituent files
   separately (matches the shape browser file pickers hand you).
-- `createVerifier(publicKeyBase64: string, algorithm: "ed25519" | "pq2025"): Promise<CoreAgentHandle>` —
+- `createVerifier(publicKeyBase64: string, algorithm: "ed25519" | "pq2025" | "es256"): Promise<CoreAgentHandle>` —
   build a verify-only handle. Sign attempts return `{ code: "Locked" }`.
 
 ### Instance methods on `CoreAgentHandle`
 
 - `signMessageJson(dataJson: string): string` — JSON in, signed JACS
   document (also JSON) out.
+- `signString(message: string): string` / `signRawBytesBase64(bytes: Uint8Array): string` —
+  detached signature over the exact UTF-8 string or bytes, standard base64
+  encoded.
+- `buildRequestAuthHeader(method, url, body: Uint8Array, audience): string` —
+  construct a request-auth-v2 credential bound to the exact HTTP request.
+  Send the same body bytes without reserialization; HAI requires this request
+  context rather than an unbound timestamp signature.
+- `updateAgentJson(updatesJson: string): string` — merge identity metadata,
+  advance the version, and self-sign with the current key. Core rejects edits
+  to protected identity/key fields. An unchanged exported document plus edited
+  metadata may be supplied as well.
+- `prepareAgentUpdateJson(updatesJson: string): string` — sign a candidate
+  successor without changing the current handle. Authenticate its registration
+  request with the handle's current version, then call
+  `commitAgentUpdateJson(preparedJson: string): string` after registration
+  succeeds. A failed registration leaves the handle's existing identity usable.
 - `verifyJson(signed: string): string` — verify with this handle's
   algorithm + key. Returns a JSON `VerificationOutcome`
   (`{ valid, signer_id, timestamp, data, errors }`).
@@ -79,11 +102,60 @@ console.log(result.valid); // true
   AES-256-GCM envelope. Pass this result to
   `localStore.saveEncryptedAgent`; restore it with `importEncryptedAgent`.
 - `getPublicKeyBase64(): string` — raw public-key bytes, base64-encoded.
-- `algorithm(): "ed25519" | "pq2025"` — algorithm tag.
+- `getPublicKeyHash(): string` — SHA-256 of raw public-key bytes, lowercase hex.
+- `getPublicKeyPem(): string` / `getPublicKeyPemBase64(): string` —
+  native-compatible public PEM or base64 of its UTF-8 bytes for HAI registration.
+- `algorithm(): "ed25519" | "pq2025" | "es256"` — algorithm tag. ES256 uses a
+  65-byte uncompressed SEC1 public key and a 64-byte low-S P1363 signature.
 - `isUnlocked(): boolean` — whether the handle still holds a private key.
 - `clearSecrets(): void` — zero the in-memory private key. Subsequent
   `signMessageJson` calls throw `{ code: "Locked" }`; verify methods
   continue to work.
+
+### Encrypted device transfer
+
+`generateTransferCode(): Promise<string>` generates six independent random
+words (66 bits). Display it only on the sending device; the relay receives
+only `exportEncryptedAgent(code)`. It must never receive the code.
+
+On the receiving device, obtain the expected agent ID, public key, and
+algorithm from an authenticated registration independently of the blob:
+
+```ts
+import { reencryptTransferredAgent, localStore, importEncryptedAgent } from "@jacs/wasm";
+
+// Inputs: ciphertext from the link relay, the code entered by the user,
+// independently authenticated registration, and a distinct local secret.
+const stored = await reencryptTransferredAgent(
+  ciphertext, code, registration.agentId, registration.publicKeyBase64,
+  registration.algorithm, browserSecret,
+);
+localStore.saveEncryptedAgent(registration.agentId, stored);
+const agent = await importEncryptedAgent(stored, browserSecret);
+```
+
+`reencryptTransferredAgent` validates the self-signed identity and all three
+pins, unlocks, re-encrypts using the local secret, and clears the temporary
+agent. The local secret must differ from the transfer code. `browserSecret`
+can be a user password or an encoded passkey PRF output obtained by the host;
+this library does not implement passkey enrollment or recovery.
+
+For an explicitly managed unlocked handle, use
+`importEncryptedAgentPinned(materialJson, code, expectedAgentId,
+expectedPublicKeyBase64, expectedAlgorithm)` and call `clearSecrets()` in a
+`finally` block. Plain `importEncryptedAgent` verifies the self-signature but
+does not provide an independent registration trust check. Unsigned legacy
+identity bundles must be migrated before browser import.
+
+The worker entry point exports `generateTransferCodeInWorker`,
+`importEncryptedAgentPinnedInWorker`, and `reencryptTransferredAgentInWorker`
+with the same positional arguments, plus an optional `{ workerUrl }`.
+Worker handles also expose `signString`, `getPublicKeyHash`, `exportAgent`,
+`updateAgentJson`, and `exportEncryptedAgent` as async methods.
+
+One-shot delivery, authenticated sessions, and relay expiry remain transport
+responsibilities. JavaScript owns copies of strings passed through the API;
+Rust can wipe its own secret buffers, not the host's string copies.
 
 ### Error codes
 
@@ -97,7 +169,7 @@ message:
 | `InvalidPassword` | Password did not unlock the encrypted private key. |
 | `Locked` | `clearSecrets()` was called or this is a verifier-only handle. Sign refused. |
 | `AlgorithmMismatch` | The document was signed under a different algorithm than this handle's. |
-| `UnsupportedAlgorithm` | Requested algorithm is not one of `"ed25519"` / `"pq2025"`. |
+| `UnsupportedAlgorithm` | Requested algorithm is not `"ed25519"`, `"pq2025"`, or `"es256"`. |
 | `MalformedDocument` | The signed payload is structurally invalid. |
 | `MalformedKey` | The supplied public/private key is the wrong length or format. |
 | `MalformedEnvelope` | The encrypted key envelope is short, missing fields, or has wrong magic. |
@@ -160,11 +232,10 @@ the page's JS.
   origin share `localStorage`. Set short-lived passwords + force
   re-unlock between tab visits if you need stronger separation.
 
-The full background — including the cross-platform compile audit, the
-`forbidden-deps` enforcement, and the deliberate decision to defer a
-WebCrypto-backed `DetachedSigner` to V2 — lives in
-[`WASM_FINDINGS.md`](../docs/jacs/WASM_FINDINGS.md) (HAI internal repo)
-and the [`JACS_WASM_PRD.md`](../docs/jacs/JACS_WASM_PRD.md).
+The active [core guide](../jacs-core/README.md) describes compile-target and
+forbidden-dependency checks. Platform biometric custody is provided by the
+[mobile boundary](../jacs-mobile/README.md); browser passkey/PRF integration
+still belongs to the consuming application.
 
 ## `localStore` (browser persistence)
 
@@ -216,26 +287,18 @@ off-thread:
 ```ts
 import { createEphemeralInWorker, signMessageInWorker } from "@jacs/wasm/worker";
 
-const agent = await createEphemeralInWorker("pq2025");
+const agent = await createEphemeralInWorker(); // pq2025; keeps key generation off the UI thread
 const signed = await signMessageInWorker(agent, JSON.stringify({ hello: "world" }));
 ```
 
-## Differences from `jacsnpm`
+## Native compatibility
 
-If you reached this README looking for the Node.js native bindings, you
-want a different package: [`@hai.ai/jacs`](https://www.npmjs.com/package/@hai.ai/jacs)
-is the napi-rs build with the full native JACS surface (storage backends,
-DNS, observability, MCP). `@jacs/wasm` is browser-only — no filesystem,
-no DNS, no MCP — and ships a wasm artifact, not a `.node` binary.
-
-| | `@jacs/wasm` | `@hai.ai/jacs` |
-|---|---|---|
-| Runtime | Browser | Node.js native |
-| Install | Source build today; `npm install @jacs/wasm` only after publication | `npm install @hai.ai/jacs` |
-| Build artifact | `.wasm` + `.js` | `.node` (per platform) |
-| Sign / verify | Yes | Yes |
-| Filesystem / DNS | No | Yes |
-| MCP server / CLI | No | Yes |
+The old `@hai.ai/jacs` napi-rs package is a Node-only compatibility binding.
+Its source is preserved in [`archive/native/jacsnpm`](../archive/native/jacsnpm),
+outside the active publication set. It cannot supply browser or Hermes key
+custody. Browser consumers use this source-built WASM package; React Native
+consumers use the [mobile bindings and native vaults](../jacs-mobile/README.md).
+The active CLI and MCP are thin Rust consumers of `jacs-core`.
 
 ## License
 

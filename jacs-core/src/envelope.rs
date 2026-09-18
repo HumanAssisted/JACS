@@ -17,12 +17,12 @@
 //! See PRD §4.6.
 
 use crate::CoreError;
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
-use aes_gcm::{AeadCore, Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, Generate, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use pbkdf2::pbkdf2_hmac;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -234,10 +234,11 @@ pub fn encrypt_v2_envelope(data: &[u8], password: &str) -> Result<Vec<u8>, CoreE
     rand::rng().fill(&mut salt[..]);
     let kdf = default_argon2id_kdf();
     let mut key = derive_argon2id_key(password, &salt, &kdf)?;
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher_key = (&key).into();
     let cipher = Aes256Gcm::new(cipher_key);
     key.zeroize();
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::try_generate_from_rng(&mut rand::rngs::SysRng)
+        .map_err(|_| CoreError::EncryptionFailed("secure randomness unavailable".into()))?;
     let encrypted = cipher
         .encrypt(&nonce, data)
         .map_err(|e| CoreError::EncryptionFailed(format!("AES-GCM encryption failed: {e}")))?;
@@ -270,6 +271,31 @@ pub fn decrypt_v2_envelope(
     if first_non_ws != Some(b'{') {
         return Ok(None);
     }
+    let (envelope, salt, nonce, ciphertext) = parse_validated_v2_envelope(encrypted_data)?;
+    let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
+    let cipher_key = (&key).into();
+    let cipher = Aes256Gcm::new(cipher_key);
+    key.zeroize();
+    let plaintext = cipher
+        .decrypt(
+            <&Nonce<aes_gcm::aead::consts::U12>>::try_from(nonce.as_slice())
+                .expect("validated nonce length"),
+            ciphertext.as_ref(),
+        )
+        .map_err(|_| CoreError::InvalidPassword)?;
+    Ok(Some(plaintext))
+}
+
+/// Validate a V2 encrypted private-key envelope without deriving a key or decrypting.
+/// Device-link relays use this to reject plaintext and hostile work factors.
+/// Legacy binary envelopes are intentionally not eligible for new transfers.
+pub fn validate_encrypted_private_key(encrypted_data: &[u8]) -> Result<(), CoreError> {
+    parse_validated_v2_envelope(encrypted_data).map(|_| ())
+}
+
+type ParsedV2Envelope = (EncryptedPrivateKeyEnvelope, Vec<u8>, Vec<u8>, Vec<u8>);
+
+fn parse_validated_v2_envelope(encrypted_data: &[u8]) -> Result<ParsedV2Envelope, CoreError> {
     if encrypted_data.len() > MAX_V2_ENVELOPE_BYTES {
         return Err(CoreError::MalformedEnvelope(format!(
             "V2 envelope exceeds the {} byte limit",
@@ -329,14 +355,12 @@ pub fn decrypt_v2_envelope(
             MAX_V2_CIPHERTEXT_BYTES
         )));
     }
-    let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    key.zeroize();
-    let plaintext = cipher
-        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
-        .map_err(|_| CoreError::InvalidPassword)?;
-    Ok(Some(plaintext))
+    if ciphertext.len() < 16 {
+        return Err(CoreError::MalformedEnvelope(
+            "ciphertext is missing its authentication tag".into(),
+        ));
+    }
+    Ok((envelope, salt, nonce, ciphertext))
 }
 
 // =========================================================================
@@ -443,11 +467,12 @@ pub fn decrypt_private_key(
 
     let (salt, rest) = encrypted_key_with_salt_and_nonce.split_at(PBKDF2_SALT_SIZE);
     let (nonce, encrypted_data) = rest.split_at(AES_GCM_NONCE_SIZE);
-    let nonce_slice = Nonce::from_slice(nonce);
+    let nonce_slice =
+        <&Nonce<aes_gcm::aead::consts::U12>>::try_from(nonce).expect("validated nonce length");
 
     // Try current iteration count first.
     let mut key = derive_key_from_password(password, salt);
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher_key = (&key).into();
     let cipher = Aes256Gcm::new(cipher_key);
     key.zeroize();
     if let Ok(decrypted) = cipher.decrypt(nonce_slice, encrypted_data) {
@@ -456,7 +481,7 @@ pub fn decrypt_private_key(
 
     // Fall back to legacy 100k iterations (pre-0.6.0 keys).
     let mut legacy_key = derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS_LEGACY);
-    let legacy_cipher_key = Key::<Aes256Gcm>::from_slice(&legacy_key);
+    let legacy_cipher_key = (&legacy_key).into();
     let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
     legacy_key.zeroize();
     let decrypted = legacy_cipher

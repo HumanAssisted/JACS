@@ -108,36 +108,27 @@ class ReleaseArtifactLicenseTests(unittest.TestCase):
             workflow.count("scripts/check_release_artifact_licenses.py"), 2
         )
         for staged_file in (
-            "LICENSE-APACHE",
-            "THIRD-PARTY-NOTICES",
             "scripts/check_release_artifact_licenses.py",
-            "scripts/smoke-cli-installers.py",
-            "jacspy/pyproject.toml",
-            "jacspy/python/jacs/cli_runner.py",
-            "jacsnpm/package.json",
-            "jacsnpm/scripts/install-cli.js",
-            "jacsnpm/bin/jacs-cli.js",
+            "scripts/smoke-portable-cli.py",
         ):
             with self.subTest(staged_file=staged_file):
                 self.assertIn(f'$prefix/{staged_file}', workflow)
+        # Windows stages an exact source subset; both legal files must match
+        # its anchored root-file pattern as well as ship inside the archive.
+        self.assertIn("LICENSE(-APACHE)?|THIRD-PARTY-NOTICES)$", workflow)
+        for crate in ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli"):
+            self.assertIn(f'$prefix/{crate}/*', workflow)
+        for archived in ("jacspy/", "jacsnpm/", "archive/native/"):
+            self.assertNotIn(f'$prefix/{archived}', workflow)
 
-    def test_go_release_distributes_and_attests_license_and_notices(self) -> None:
-        workflow = (ROOT / ".github/workflows/release-jacsgo.yml").read_text(
+    def test_wasm_release_finalizes_and_tests_legal_files(self) -> None:
+        workflow = (ROOT / ".github/workflows/release-wasm.yml").read_text(
             encoding="utf-8"
         )
-        verifier = (
-            ROOT / "scripts/verify_github_release_attestations.py"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("cp LICENSE-APACHE artifacts/LICENSE-APACHE", workflow)
-        self.assertIn(
-            "cp THIRD-PARTY-NOTICES artifacts/THIRD-PARTY-NOTICES", workflow
-        )
-        # The prepared artifact directory is uploaded, attested, and published
-        # as one exact bundle, so the staged notice files follow every binary.
-        self.assertGreaterEqual(workflow.count("artifacts/*"), 3)
-        self.assertIn('"LICENSE-APACHE"', verifier)
-        self.assertIn('"THIRD-PARTY-NOTICES"', verifier)
+        self.assertIn("bash jacs-wasm/scripts/finalize-pkg.sh", workflow)
+        self.assertIn("bash jacs-wasm/scripts/tests/finalize-pkg.test.sh", workflow)
+        self.assertIn("bash jacs-wasm/scripts/tests/package-consumption.test.sh", workflow)
+        self.assertFalse((ROOT / ".github/workflows/release-jacsgo.yml").exists())
 
 
 if __name__ == "__main__":

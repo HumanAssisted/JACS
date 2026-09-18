@@ -627,3 +627,40 @@ fn v2_portable_valid_apply_and_merge_still_succeed() {
         .expect("valid transcript merge must still succeed");
     assert_eq!(merged["jacsType"], json!("agreement"));
 }
+
+#[test]
+fn v2_schema_rejects_principal_delegation_fields() {
+    let (mut agent, agreement, agent_id) = core_v2_agreement();
+    let signed = agreements::v2::sign(&mut agent, &agreement, "signer").unwrap();
+    jacs_core::schema::validate_agreement_v2_document(&signed)
+        .expect("the otherwise identical agreement is valid");
+
+    for (object_path, field, value) in [
+        ("/parties/0", "delegatedBy", json!(agent_id)),
+        (
+            "/agreementSignatures/0",
+            "delegationChain",
+            json!([{
+                "jacsId": agent_id,
+                "jacsVersion": signed["jacsVersion"],
+                "jacsSha256": signed["jacsSha256"],
+            }]),
+        ),
+    ] {
+        let mut delegated = signed.clone();
+        delegated
+            .pointer_mut(object_path)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(field.into(), value);
+        // Exercise schema validation directly so failure cannot be explained
+        // by the unrelated document signature/checksum changing on mutation.
+        let error = jacs_core::schema::validate_agreement_v2_document(&delegated)
+            .expect_err("principal delegation remains unsupported after schema/dependency merge");
+        assert!(
+            matches!(error, jacs_core::CoreError::SchemaInvalid(ref detail) if detail.contains(field)),
+            "{field} must fail as an unsupported schema property: {error}"
+        );
+    }
+}

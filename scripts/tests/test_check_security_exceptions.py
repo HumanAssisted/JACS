@@ -13,11 +13,41 @@ SPEC = importlib.util.spec_from_file_location("check_security_exceptions", SCRIP
 assert SPEC is not None and SPEC.loader is not None
 security_exceptions = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(security_exceptions)
-ROOT = SCRIPT.parents[1]
+ROOT = SCRIPT.parents[1] / "archive/native"
 REVIEWED_CLARIFICATIONS = ROOT / "scripts/third_party_license_clarifications.toml"
 
 
 class SecurityExceptionPolicyTests(unittest.TestCase):
+    def test_active_graph_has_no_exception_contract(self) -> None:
+        active = SCRIPT.parents[1]
+        policy = tomllib.loads((active / "deny.toml").read_text())
+        reviewed = security_exceptions.load_reviewed_license_clarifications(
+            active / "scripts/third_party_license_clarifications.toml"
+        )
+        security_exceptions.require_no_active_exceptions(policy, reviewed)
+
+    def test_active_graph_rejects_all_exception_surfaces(self) -> None:
+        for section, key in (("advisories", "ignore"), ("licenses", "exceptions"), ("licenses", "clarify")):
+            with self.subTest(section=section, key=key):
+                with self.assertRaisesRegex(ValueError, "active portable graph"):
+                    security_exceptions.require_no_active_exceptions({section: {key: ["unexpected"]}}, {})
+        with self.assertRaisesRegex(ValueError, "reviewed license"):
+            security_exceptions.require_no_active_exceptions({}, {"unexpected": {}})
+
+    def test_workflow_waiver_is_bound_to_exact_archived_lock(self) -> None:
+        valid = "cargo audit --file archive/native/jacs-surrealdb/Cargo.lock \\\n  --ignore RUSTSEC-2023-0071"
+        security_exceptions.require_archive_scoped_workflow_ignores(valid)
+        for invalid in (
+            valid.replace("archive/native/jacs-surrealdb/Cargo.lock", "Cargo.lock"),
+            valid.replace("archive/native/jacs-surrealdb/Cargo.lock", "archive/native/Cargo.lock"),
+            "cargo audit --ignore RUSTSEC-2023-0071",
+            valid + "; cargo audit --ignore RUSTSEC-2023-0071",
+            valid.replace("RUSTSEC-2023-0071", "RUSTSEC-2099-9999"),
+        ):
+            with self.subTest(command=invalid):
+                with self.assertRaisesRegex(ValueError, "archived SurrealDB lock"):
+                    security_exceptions.require_archive_scoped_workflow_ignores(invalid)
+
     @staticmethod
     def notice_source(
         *,
@@ -165,6 +195,24 @@ License text (the SHA-256 above identifies the source bytes):
         """
 
         security_exceptions.require_all_features_cargo_deny(workflow, "workflow.yml")
+
+    def test_cargo_deny_rejects_config_before_check(self) -> None:
+        for option in ["--config archive/native/deny.toml", "--config=archive/native/deny.toml", "-c archive/native/deny.toml"]:
+            with self.subTest(option=option):
+                command = f"cargo deny --manifest-path archive/native/jacs-surrealdb/Cargo.toml {option} --all-features check advisories licenses"
+                with self.assertRaisesRegex(ValueError, "--config must follow check"):
+                    security_exceptions.require_all_features_cargo_deny(command, "workflow.yml")
+
+    def test_cargo_deny_accepts_config_after_check(self) -> None:
+        for manifest in ["jacs-surrealdb", "jacs/examples/observability"]:
+            with self.subTest(manifest=manifest):
+                command = f"cargo deny --manifest-path archive/native/{manifest}/Cargo.toml --all-features check --config archive/native/deny.toml advisories licenses"
+                security_exceptions.require_all_features_cargo_deny(command, "workflow.yml")
+
+    def test_cargo_deny_checks_config_across_shell_continuations(self) -> None:
+        command = "cargo deny --all-features --config archive/native/deny.toml \\\n  check advisories licenses"
+        with self.assertRaisesRegex(ValueError, "--config must follow check"):
+            security_exceptions.require_all_features_cargo_deny(command, "workflow.yml")
 
     def test_object_store_s3_isolation_accepts_opt_in_cloud_features(self) -> None:
         manifest = {

@@ -16,7 +16,7 @@ class SchemaDocsGenerationTests(unittest.TestCase):
             # Match the source/output layout so generated relative links are
             # identical to the checked-in pages. Use the actual existing tool.
             staged = Path(temporary) / "jacs"
-            shutil.copytree(ROOT / "jacs/schemas", staged / "schemas")
+            shutil.copytree(ROOT / "archive/native/jacs/schemas", staged / "schemas")
             output = staged / "docs/schema"
             subprocess.run(
                 ["jsonschema2md", "-d", str(staged / "schemas"),
@@ -26,14 +26,14 @@ class SchemaDocsGenerationTests(unittest.TestCase):
             clean = {page.name: page.read_bytes() for page in output.glob("*.md")}
             parent = "agreement-definitions-agreementsignature.md"
             self.assertIn(parent, clean)
-            self.assertEqual(clean[parent], (ROOT / "jacs/docs/schema" / parent).read_bytes())
+            self.assertEqual(clean[parent], (ROOT / "archive/native/jacs/docs/schema" / parent).read_bytes())
             orphans = (
                 "agreement-definitions-party-properties-delegatedby.md",
                 "agreement-definitions-agreementsignature-properties-delegationchain.md",
             )
             for name in orphans:
                 self.assertNotIn(name, clean)
-                self.assertFalse((ROOT / "jacs/docs/schema" / name).exists())
+                self.assertFalse((ROOT / "archive/native/jacs/docs/schema" / name).exists())
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@
 `jacs-core` is the compile-anywhere protocol crate for [JACS](https://github.com/HumanAssisted/JACS).
 It holds the cryptographic primitives, canonical JSON serializer, embedded
 schemas, encrypted-key envelope codec, and agreement payload helpers that
-both the native [`jacs`](https://crates.io/crates/jacs) crate and the
-browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
+the active browser, mobile, CLI and MCP boundaries share. The archived native
+facade can also depend on this core for compatibility.
 
 ## What it is
 
@@ -20,7 +20,7 @@ browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
   mathematical integers outside ±(2^53−1), including exponent spellings;
   repeated array values are valid. Existing parsing keeps RFC 8785 binary64
   rounding for nonintegral decimals.
-- The home of `Ed25519DalekSigner`, `Pq2025Signer`, the `DetachedSigner`
+- The home of `Ed25519DalekSigner`, `Pq2025Signer`, `P256Signer`, the `DetachedSigner`
   trait, `CoreAgent`, the AES-256-GCM + Argon2id encrypted-key envelope,
   the embedded JSON schema set (Draft 7), and the multi-party agreement
   payload logic.
@@ -33,13 +33,14 @@ browser-side source-built [`jacs-wasm`](../jacs-wasm/README.md) wrapper share.
 - **Not an observability layer.** No env-var-driven logging,
   no `tracing` subscriber wiring, no metrics export.
 - **Not a CLI or MCP server.** Those live in
-  [`jacs-cli`](https://crates.io/crates/jacs-cli) and
-  [`jacs-mcp`](https://crates.io/crates/jacs-mcp), both built on `jacs`.
+  [`jacs-cli`](../jacs-cli/README.md) and
+  [`jacs-mcp`](../jacs-mcp/README.md), both using this portable core.
 
-If you want the full native JACS experience (storage backends, A2A,
-attestation, MCP, observability), use `jacs`. If you want to sign or verify a
-JACS document in the browser, build `@jacs/wasm` from source; it was not yet
-published on npm at the 2026-07-09 distribution baseline.
+The active workspace builds the portable primitive and thin platform boundaries.
+Historical storage, A2A, email and other native integrations are retained in
+[`archive/native`](../archive/native/README.md), outside the active dependency
+graph and publication set. Build browser bindings from source; see the current
+[release status](../docs/release-status.md) before relying on registry packages.
 
 ## Quick start
 
@@ -47,7 +48,7 @@ published on npm at the 2026-07-09 distribution baseline.
 use jacs_core::{CoreAgent, SigningAlgorithm};
 use serde_json::json;
 
-let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519)?;
+let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Pq2025)?;
 let signed = agent.sign_message(&json!({ "hello": "world" }))?;
 let outcome = agent.verify(&signed)?;
 assert!(outcome.valid);
@@ -59,7 +60,7 @@ For multi-party agreements:
 use jacs_core::{CoreAgent, SigningAlgorithm, agreements};
 use serde_json::json;
 
-let mut alice = CoreAgent::ephemeral(SigningAlgorithm::Ed25519)?;
+let mut alice = CoreAgent::ephemeral(SigningAlgorithm::Pq2025)?;
 let mut bob = CoreAgent::ephemeral(SigningAlgorithm::Pq2025)?;
 let alice_id = alice.export_agent()["jacsId"].as_str().unwrap().to_string();
 let bob_id = bob.export_agent()["jacsId"].as_str().unwrap().to_string();
@@ -74,12 +75,90 @@ agreements::sign(&mut alice, &mut doc, "alice")?;
 agreements::sign(&mut bob, &mut doc, "bob")?;
 
 let signers: Vec<(&str, &[u8], SigningAlgorithm)> = vec![
-    (alice_id.as_str(), alice.public_key(), SigningAlgorithm::Ed25519),
+    (alice_id.as_str(), alice.public_key(), SigningAlgorithm::Pq2025),
     (bob_id.as_str(),   bob.public_key(),   SigningAlgorithm::Pq2025),
 ];
 let outcome = agreements::verify(&doc, &signers)?;
 assert!(outcome.all_valid);
 ```
+
+## Portable identities and platform signers
+
+Use `Pq2025` (ML-DSA-87) for new portable identities. Browser and mobile convenience
+constructors select it without a classical fallback. The same Rust implementation
+signs in WASM, Android, and iOS. Ed25519 and ES256 are explicit compatibility
+choices; an ES256 hardware key is not a post-quantum signing key.
+
+`CoreAgent::ephemeral` creates a self-signed identity for `Ed25519`, `Pq2025`
+(ML-DSA-87), or `Es256` (P-256/SHA-256). `update_agent(&metadata)` merges identity
+metadata, creates a new UUID version, and signs with the existing key. Identity
+and key fields are protected; denied or failed signatures leave the previous
+identity unchanged.
+
+`CoreAgent::from_signer(Box<dyn DetachedSigner>, agent_json)` accepts a platform
+signing provider. Existing signed identities are verified against the provider's
+public key. Unsigned input is a **new identity creation request**, filled with
+initial headers and self-signed. A platform provider can keep its key permanently
+in hardware: `export_private_key_bytes` defaults to `CoreError::NotExportable`.
+Such keys cannot participate in private-key transfer; use a software signing key
+protected by the OS when the same key must move between devices.
+
+ES256 wire encodings are strict: 65-byte uncompressed SEC1 public key, 64-byte
+IEEE-P1363 `r || s` signature with low-S normalization, and a 32-byte big-endian
+private scalar for exportable software keys. Platform adapters must convert
+DER signatures to this canonical form. Signing takes message bytes and hashes
+with SHA-256 once. `public_key_pem` is the native registration presentation:
+Ed25519/ML-DSA raw-key PEM armor, ES256 SPKI PEM. Identity pinning compares raw
+key bytes, never PEM text.
+
+`from_encrypted_material` requires a valid self-signed identity and checks its
+key, algorithm, ID, version and optional checksum. Signature stripping is an
+error. Old unsigned exports require the explicit
+`from_legacy_encrypted_material` migration API **after independently confirming
+the agent ID and public key**; an existing invalid signature is never ignored.
+New exports are self-signed. Valid signed native documents retain support for
+their historical public-key hash convention.
+
+The `transfer` module generates a six-word transfer code, validates a received
+bundle against an independently pinned registration, and reencrypts it under a
+separate destination secret. It performs no HTTP or device authentication; the
+relay transport supplies authenticated, expiring, one-use sessions.
+
+The six-word code has 66 bits of generated entropy. It is a human-entered
+transfer secret, not a claim of 128-bit post-quantum confidentiality. Encryption
+uses AES-256-GCM with Argon2id; its protection also depends on the wrapping
+secret. ML-DSA signatures do not upgrade TLS, passkeys, or a weak password.
+
+## Staged key rotation
+
+`CoreAgent::prepare_key_rotation(None)` creates a new PQ2025 key and a signed
+candidate without changing the active identity. An explicit algorithm is
+supported; a PQ2025 identity cannot downgrade to Ed25519 or ES256. The opaque
+`PreparedKeyRotation` exposes its public identity/proof and password-encrypted
+material. It never exposes a private key. `prepare_key_rotation_with_signer`
+accepts hardware/platform callbacks, including non-exportable keys.
+
+Persist the encrypted candidate atomically and obtain any required registry
+admission before calling `commit_key_rotation`. Commit rejects a stale or foreign
+stage, verifies the complete transition again, checks that the candidate provider
+still controls the prepared key, then clears and drops the old signer. Dropping
+an uncommitted stage clears its candidate signer. Registry HTTP, filesystem
+transactions and recovery policy belong to the caller.
+
+The embedded `jacsKeyRotationProof` uses **`jacs-key-rotation-v2`**. The old key
+signs a domain-separated canonical context binding the stable agent ID, both
+identity versions, both canonical raw public-key hashes, both algorithms, the
+exact old identity, the complete unsigned new identity and its timestamp. The
+new key signs the complete candidate, including that proof. The new version
+links to `jacsPreviousVersion`; original identity provenance is preserved.
+
+`verify_key_rotation` requires an independently trusted old identity, key and
+algorithm. `CoreAgent::verify_key_rotation` uses its existing trusted identity
+and remains available while locked. Do not derive the old trust anchor from
+self-asserted proof data. The archived native `JACS_KEY_ROTATION:` proof did not
+bind both versions or the complete candidate; V2 deliberately rejects it.
+Registries must explicitly adopt the V2 verifier rather than falling back to
+legacy verification when V2 fails. The archived native verifier is unchanged.
 
 ## Numeric compatibility profiles
 
@@ -137,9 +216,10 @@ as malformed legacy PBKDF2 noise.
 
 ## Where to go next
 
-- [`jacs`](../jacs/README.md) — native facade. Filesystem, DNS, HTTP, MCP, CLI, storage.
+- [`jacs-mobile`](../jacs-mobile/README.md) — mobile bindings and biometric vaults.
+- [`jacs-cli`](../jacs-cli/README.md) and [`jacs-mcp`](../jacs-mcp/README.md) — thin host boundaries.
+- [`archive/native`](../archive/native/README.md) — historical native compatibility source.
 - [`jacs-wasm`](../jacs-wasm/README.md) — browser bindings that wrap `jacs-core` with a TypeScript API.
-- [PRD](../docs/jacs/JACS_WASM_PRD.md) — full design + scope of the native/wasm split (HAI internal).
 
 ## License
 

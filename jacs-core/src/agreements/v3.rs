@@ -84,9 +84,8 @@ pub enum AuthorizationRequirementV3 {
     AgentPlusHumanSeal,
 }
 
-/// Closed portable algorithm vocabulary for Agreement v3 evidence. ES256 is
-/// verification-only for the native CoreAgent today, but is required for OS
-/// broker and managed-authority evidence produced by mobile platforms.
+/// Closed portable algorithm vocabulary for Agreement v3 evidence, including
+/// ES256 for OS broker and managed-authority evidence from mobile platforms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgreementAlgorithmV3 {
@@ -110,6 +109,7 @@ impl From<SigningAlgorithm> for AgreementAlgorithmV3 {
         match value {
             SigningAlgorithm::Ed25519 => Self::Ed25519,
             SigningAlgorithm::Pq2025 => Self::Pq2025,
+            SigningAlgorithm::Es256 => Self::Es256,
         }
     }
 }
@@ -634,7 +634,7 @@ pub fn digest_octets(label: &str, bytes: &[u8]) -> String {
     hasher.update(label.as_bytes());
     hasher.update([0]);
     hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 pub fn canonical_key_id(
@@ -1436,7 +1436,7 @@ impl jsonschema::Retrieve for SchemaBundleResolver {
 }
 
 fn raw_sha256(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 impl ResolvedSchemaBundleV3 {
@@ -1526,7 +1526,9 @@ impl ResolvedSchemaBundleV3 {
         validator.validate(instance).map_err(|e| {
             CoreError::SchemaInvalid(format!(
                 "agreement value failed schema '{}' at '{}': {}",
-                schema_id, e.instance_path, e
+                schema_id,
+                e.instance_path(),
+                e
             ))
         })
     }

@@ -1,20 +1,9 @@
 [workspace]
-members = [
-    "jacs",
-    "jacs-cli",
-    "jacs-core",
-    "jacs-wasm",
-    "jacs-duckdb",
-    "jacs-postgresql",
-    "jacs-redb",
-    "jacs-media",
-    "binding-core",
-    "jacsnpm",
-    "jacspy",
-    "jacs-mcp",
-    "jacsgo/lib"
-]
-exclude = ["jacs-surrealdb"]
+# Only the portable primitive and its thin platform/front-end boundaries ship.
+members = ["jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli"]
+default-members = ["jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli"]
+# Historical native integrations have their own manifest, lock and license.
+exclude = ["archive/native"]
 resolver = "3"
 
 [workspace.package]

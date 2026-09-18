@@ -13,17 +13,9 @@ from pathlib import Path
 SURFACE_PREFIXES = {
     "crate": "refs/tags/crate/v",
     "cli": "refs/tags/cli/v",
-    "npm": "refs/tags/npm/v",
-    "pypi": "refs/tags/pypi/v",
     "wasm": "refs/tags/wasm-v",
-    "jacsgo": "refs/tags/jacsgo/v",
 }
-STORAGE_CRATES = (
-    "jacs-duckdb",
-    "jacs-redb",
-    "jacs-surrealdb",
-    "jacs-postgresql",
-)
+
 
 # SemVer 2.0.0. Numeric identifiers cannot contain leading zeroes; pre-release
 # and build identifiers must be non-empty and may contain only ASCII SemVer
@@ -47,20 +39,6 @@ def validate_semver(version: str) -> str:
 
 def parse_release_ref(surface: str, ref: str) -> dict[str, str]:
     """Return validated output fields for an exact release-tag reference."""
-
-    if surface == "storage":
-        match = re.fullmatch(
-            rf"refs/tags/crate/({'|'.join(map(re.escape, STORAGE_CRATES))})/v(.+)",
-            ref,
-        )
-        if match is None:
-            allowed = ", ".join(STORAGE_CRATES)
-            raise ValueError(
-                "storage release ref must name an allowed crate "
-                f"({allowed}) and use crate/<crate>/v<semver>"
-            )
-        crate, version = match.groups()
-        return {"crate": crate, "version": validate_semver(version)}
 
     try:
         prefix = SURFACE_PREFIXES[surface]
@@ -89,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--surface",
         required=True,
-        choices=(*SURFACE_PREFIXES, "storage"),
+        choices=tuple(SURFACE_PREFIXES),
         help="release workflow whose exact tag grammar should be applied",
     )
     args = parser.parse_args(argv)

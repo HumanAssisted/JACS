@@ -29,6 +29,7 @@ use serde_json::Value;
 /// base64-serialized by `serde_json` when the bundle is JSON-encoded
 /// (via the default `serde(with = …)` path below).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AgentMaterial {
     /// The agent's `jacs.config.json` contents (parsed as JSON).
     pub config: Value,
@@ -37,7 +38,7 @@ pub struct AgentMaterial {
     pub agent: Value,
     /// Raw public-key bytes (algorithm-specific encoding — Ed25519 is the
     /// 32-byte verifying key, pq2025 is the 2592-byte ML-DSA-87 public
-    /// key).
+    /// key; ES256 is a 65-byte uncompressed SEC1 point).
     #[serde(with = "base64_bytes")]
     pub public_key: Vec<u8>,
     /// The encrypted private-key envelope. Either the V2 Argon2id JSON
@@ -64,7 +65,8 @@ pub enum UnlockSecret<'a> {
     Password(&'a str),
     /// Skip decryption. The provided bytes are interpreted directly as
     /// the algorithm-specific raw private key (Ed25519 PKCS#8 or raw
-    /// 32-byte scalar; pq2025 ML-DSA-87 4896-byte private key). Used
+    /// 32-byte scalar; pq2025 ML-DSA-87 4896-byte private key; ES256
+    /// 32-byte big-endian scalar). Used
     /// by `CoreAgent::ephemeral` and by callers who already hold the
     /// decrypted bytes (for example after running a custom key store).
     RawPrivateKey(SecretBox<Vec<u8>>),

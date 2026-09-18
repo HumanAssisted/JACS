@@ -1,0 +1,17 @@
+# Copy into an existing React Native TurboModule library package and adjust
+# directory to this JACS checkout. Paths are relative to that package root.
+rust:
+  directory: ../jacs
+  manifestPath: jacs-mobile/Cargo.toml
+bindings:
+  cpp: cpp/generated
+  ts: src/generated
+android:
+  apiLevel: 30
+  targets:
+    - arm64-v8a
+    - x86_64
+ios:
+  targets:
+    - aarch64-apple-ios
+    - aarch64-apple-ios-sim

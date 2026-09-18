@@ -1,52 +1,46 @@
 //! Wave 5 / Task 010 — `Ed25519DalekSigner` tests.
 //!
-//! The byte-exact signature match against the Task 001 fixture
-//! (`ed25519_dalek_signature_matches_ring_fixture`) is the load-bearing
-//! oracle: Ed25519 is deterministic, so if `ed25519-dalek` produces
-//! different bytes than `ring` over the same canonical payload + same
-//! key, the entire native → wasm migration fails. Any mismatch is a
-//! blocker, not something to patch around.
+//! The fixed public key and native signature pin cross-version verification.
+//! Signing and private-key import tests generate fresh keys in memory; private
+//! key bytes are never read from committed fixtures.
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use jacs_core::CoreError;
 use jacs_core::sign::{DetachedSigner, Ed25519DalekSigner, SigningAlgorithm};
 
-const FIXTURE_PKCS8: &[u8] =
-    include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.pkcs8.bin");
 const FIXTURE_PUBLIC: &[u8] =
-    include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.public.bin");
+    include_bytes!("../../tests/fixtures/native_compat/wasm_compat/ed25519.public.bin");
 const FIXTURE_SIGNED_JSON: &str =
-    include_str!("../../jacs/tests/fixtures/wasm_compat/ed25519.signed.json");
+    include_str!("../../tests/fixtures/native_compat/wasm_compat/ed25519.signed.json");
 
 #[test]
-fn ed25519_dalek_imports_ring_pkcs8() {
-    let signer =
-        Ed25519DalekSigner::from_pkcs8(FIXTURE_PKCS8).expect("ring-generated PKCS#8 must import");
+fn ed25519_dalek_imports_generated_pkcs8() {
+    let original = Ed25519DalekSigner::generate().expect("keygen");
+    let pkcs8 = original.export_pkcs8_v2().expect("export");
+    let signer = Ed25519DalekSigner::from_pkcs8(&pkcs8).expect("PKCS#8 must import");
     assert_eq!(
         signer.public_key(),
-        FIXTURE_PUBLIC,
-        "imported PKCS#8 public key must match the fixture's public bytes"
+        original.public_key(),
+        "imported PKCS#8 public key must match the generated key"
     );
     assert_eq!(signer.algorithm(), SigningAlgorithm::Ed25519);
 }
 
 #[test]
-fn ed25519_dalek_signature_matches_ring_fixture() {
+fn ed25519_dalek_import_preserves_deterministic_signature() {
     // Ed25519 is deterministic: signing the same message with the same
-    // key always produces the same 64-byte signature. The fixture
-    // captures (canonical payload, ring-produced signature); the
-    // ed25519-dalek path must produce byte-identical output.
-    let signer = Ed25519DalekSigner::from_pkcs8(FIXTURE_PKCS8).expect("import");
+    // key always produces the same 64-byte signature after PKCS#8 import.
+    let original = Ed25519DalekSigner::generate().expect("keygen");
+    let pkcs8 = original.export_pkcs8_v2().expect("export");
+    let signer = Ed25519DalekSigner::from_pkcs8(&pkcs8).expect("import");
     let parsed: serde_json::Value =
         serde_json::from_str(FIXTURE_SIGNED_JSON).expect("fixture JSON");
     let canonical = parsed["canonical"].as_str().expect("canonical field");
-    let expected_sig = B64
-        .decode(parsed["signature_b64"].as_str().expect("sig field"))
-        .expect("base64");
+    let expected_sig = original.sign(canonical.as_bytes()).expect("sign original");
     let produced_sig = signer.sign(canonical.as_bytes()).expect("sign");
     assert_eq!(
         produced_sig, expected_sig,
-        "ed25519-dalek signature must byte-equal the ring fixture signature"
+        "PKCS#8 import must preserve the deterministic signature"
     );
 }
 
@@ -125,8 +119,10 @@ fn ed25519_dalek_from_private_scalar_matches_pkcs8_import() {
     //   30 51 02 01 01 30 05 06 03 2b 65 70 04 22 04 20 <32 bytes priv>
     //   ...
     // So bytes [16..48] are the raw scalar.
-    let scalar = &FIXTURE_PKCS8[16..48];
-    let signer_a = Ed25519DalekSigner::from_pkcs8(FIXTURE_PKCS8).expect("pkcs8");
+    let original = Ed25519DalekSigner::generate().expect("keygen");
+    let pkcs8 = original.export_pkcs8_v2().expect("export");
+    let scalar = &pkcs8[16..48];
+    let signer_a = Ed25519DalekSigner::from_pkcs8(&pkcs8).expect("pkcs8");
     let signer_b = Ed25519DalekSigner::from_private_scalar(scalar).expect("scalar");
     assert_eq!(
         signer_a.public_key(),

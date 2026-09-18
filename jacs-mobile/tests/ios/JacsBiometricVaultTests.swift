@@ -1,0 +1,396 @@
+import XCTest
+import LocalAuthentication
+import JacsMobile
+@testable import JacsMobilePlatform
+
+private final class FakeAuthorization: JacsBiometricAuthorizing {
+    var context: LAContext? { nil }
+    var domainState: Data? = Data([1, 2, 3])
+    var callback: ((Result<Void, JacsBiometricError>) -> Void)?
+    var invalidations = 0
+    func authenticate(reason: String, completion: @escaping (Result<Void, JacsBiometricError>) -> Void) {
+        callback = completion
+    }
+    func invalidate() { invalidations += 1 }
+    func succeed() { callback?(.success(())) }
+}
+
+private final class FakeStore: JacsVaultRecordStore {
+    var records: [String: Data] = [:]
+    var addError: JacsBiometricError?
+    var reads = 0
+    func add(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws {
+        if let error = addError { throw error }
+        guard records[account] == nil else { throw JacsBiometricError.alreadyExists }
+        records[account] = data
+    }
+    func read(account: String, authorization: JacsBiometricAuthorizing) throws -> Data {
+        reads += 1
+        guard let data = records[account] else { throw JacsBiometricError.notFoundOrEnrollmentChanged }
+        return data
+    }
+    func delete(account: String) throws { records.removeValue(forKey: account) }
+}
+
+private final class FakeAgent: JacsSessionAgent {
+    var cleared = false
+    var signCalls = 0
+    var signHook: (() -> Void)?
+    func sign(_ json: String) throws -> String {
+        signCalls += 1
+        signHook?()
+        XCTAssertFalse(cleared)
+        return "signed:" + json
+    }
+    func export(_ password: String) throws -> EncryptedAgentMaterial {
+        XCTAssertTrue(Data(base64Encoded: password)?.count == 32 || password.split(separator: " ").count == 6)
+        return EncryptedAgentMaterial(configJson: "{}", agentJson: "{}", publicKey: Data([1]),
+            encryptedPrivateKey: Data([2]), algorithm: .pq2025)
+    }
+    func requestAuth(method: String, url: String, body: Data, audience: String) throws -> String { "auth" }
+    func identity() throws -> String { "public-identity" }
+    func clear() { cleared = true }
+}
+
+private final class FakeFactory: JacsVaultAgentFactory {
+    var created: [FakeAgent] = []
+    var restored: [FakeAgent] = []
+    var serializedMaterial = "encrypted-pq-material"
+    func create() throws -> JacsSessionAgent {
+        let agent = FakeAgent(); created.append(agent); return agent
+    }
+    func restore(materialJSON: String, password: String) throws -> JacsSessionAgent {
+        XCTAssertEqual(materialJSON, "encrypted-pq-material")
+        XCTAssertEqual(Data(base64Encoded: password)?.count, 32)
+        let agent = FakeAgent(); restored.append(agent); return agent
+    }
+    func serialize(_ material: EncryptedAgentMaterial) throws -> String { serializedMaterial }
+}
+
+final class JacsBiometricVaultTests: XCTestCase {
+    private var store: FakeStore!
+    private var factory: FakeFactory!
+    private var auth: FakeAuthorization!
+    private var worker: DispatchQueue!
+    private var callbacks: DispatchQueue!
+    private var vault: JacsBiometricVault!
+
+    override func setUp() {
+        store = FakeStore(); factory = FakeFactory(); auth = FakeAuthorization()
+        worker = DispatchQueue(label: "test-vault-worker")
+        callbacks = DispatchQueue(label: "test-vault-callbacks")
+        vault = JacsBiometricVault(store: store, factory: factory,
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+    }
+    override func tearDown() {
+        vault.invalidate()
+        worker.sync {}
+        callbacks.sync {}
+        vault = nil
+    }
+
+    private func createSession() -> JacsBiometricSession {
+        let done = expectation(description: "create")
+        var session: JacsBiometricSession?
+        vault.create(account: "agent", reason: "Unlock identity") {
+            if case .success(let value) = $0 { session = value } else { XCTFail("create failed") }
+            done.fulfill()
+        }
+        auth.succeed()
+        wait(for: [done], timeout: 5)
+        return session!
+    }
+
+    func testCancellationRejectsLateAndRepeatedBiometricCallbacks() {
+        let done = expectation(description: "cancelled once")
+        done.assertForOverFulfill = true
+        let operation = vault.create(account: "agent", reason: "Unlock identity") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("expected cancellation") }
+            done.fulfill()
+        }
+        operation.cancel()
+        auth.succeed()
+        auth.succeed()
+        wait(for: [done], timeout: 5)
+        worker.sync {}; callbacks.sync {}
+        XCTAssertTrue(factory.created.isEmpty)
+        XCTAssertTrue(store.records.isEmpty)
+        XCTAssertGreaterThan(auth.invalidations, 0)
+    }
+
+    func testCancelledProtectClearsTheSuppliedRustHandle() throws {
+        let agent = try MobileAgent.createDefault()
+        let done = expectation(description: "protect cancelled")
+        let operation = vault.protect(agent: agent, account: "agent", reason: "Protect") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("expected cancelled protect") }
+            done.fulfill()
+        }
+        operation.cancel()
+        auth.succeed()
+        wait(for: [done], timeout: 5)
+        worker.sync {}
+        XCTAssertFalse(try agent.isUnlocked())
+        XCTAssertTrue(store.records.isEmpty)
+    }
+
+    func testLogoutBeforeQueuedDeliveryCannotResurrectSessionAndCanRecoverAtomicRecord() {
+        callbacks.suspend()
+        let done = expectation(description: "late result rejected")
+        vault.create(account: "agent", reason: "Unlock identity") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("late success escaped logout") }
+            done.fulfill()
+        }
+        auth.succeed()
+        worker.sync {}
+        XCTAssertNotNil(store.records["agent"])
+        vault.invalidate()
+        callbacks.resume()
+        wait(for: [done], timeout: 5)
+        worker.sync {}; callbacks.sync {}
+        XCTAssertTrue(factory.created.allSatisfy { $0.cleared })
+        XCTAssertTrue(factory.restored.allSatisfy { $0.cleared })
+
+        // The atomic record survives cancellation complete and locked.
+        vault.resume()
+        auth = FakeAuthorization()
+        let recovered = expectation(description: "recover locked record")
+        vault.unlock(account: "agent", reason: "Recover saved identity") {
+            if case .success(let session) = $0 { session.close() } else { XCTFail("recovery failed") }
+            recovered.fulfill()
+        }
+        auth.succeed()
+        wait(for: [recovered], timeout: 5)
+    }
+
+    func testBackgroundInvalidatesActiveSessionAndQueuedSigningResult() {
+        let session = createSession()
+        callbacks.suspend()
+        let done = expectation(description: "sign result invalidated")
+        session.signMessageJSON("message") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late signing result escaped") }
+            done.fulfill()
+        }
+        worker.sync {}
+        vault.invalidate()
+        XCTAssertFalse(session.isActive)
+        callbacks.resume()
+        wait(for: [done], timeout: 5)
+        worker.sync {}
+        XCTAssertTrue(factory.restored[0].cleared)
+
+        let denied = expectation(description: "new requests denied until resume")
+        vault.unlock(account: "agent", reason: "Unlock") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("inactive vault accepted work") }
+            denied.fulfill()
+        }
+        wait(for: [denied], timeout: 5)
+    }
+
+    func testPersistenceFailureClearsGeneratedKeyAndDoesNotReplaceExistingRecord() {
+        store.records["agent"] = Data("existing-recovery-copy".utf8)
+        let done = expectation(description: "duplicate rejected")
+        vault.create(account: "agent", reason: "Unlock") {
+            if case .failure(.alreadyExists) = $0 {} else { XCTFail("duplicate replaced") }
+            done.fulfill()
+        }
+        auth.succeed()
+        wait(for: [done], timeout: 5)
+        worker.sync {}
+        XCTAssertEqual(store.records["agent"], Data("existing-recovery-copy".utf8))
+        XCTAssertTrue(factory.created[0].cleared)
+        XCTAssertTrue(factory.restored.isEmpty)
+
+        auth = FakeAuthorization()
+        store.addError = .keychainStatus(-36)
+        let failed = expectation(description: "save failure")
+        vault.create(account: "another", reason: "Unlock") {
+            if case .failure(.keychainStatus(-36)) = $0 {} else { XCTFail("wrong save failure") }
+            failed.fulfill()
+        }
+        auth.succeed()
+        wait(for: [failed], timeout: 5)
+        worker.sync {}
+        XCTAssertNil(store.records["another"])
+        XCTAssertTrue(factory.created.allSatisfy { $0.cleared })
+    }
+
+    func testOversizedRecordIsRejectedBeforePersistenceAndClearsSource() {
+        factory.serializedMaterial = String(repeating: "x", count: 1024 * 1024)
+        let done = expectation(description: "oversized record rejected")
+        vault.create(account: "agent", reason: "Unlock") {
+            if case .failure(.invalidStoredRecord) = $0 {} else { XCTFail("oversized record persisted") }
+            done.fulfill()
+        }
+        auth.succeed()
+        wait(for: [done], timeout: 5)
+        worker.sync {}
+        XCTAssertTrue(store.records.isEmpty)
+        XCTAssertTrue(factory.created[0].cleared)
+        XCTAssertTrue(factory.restored.isEmpty)
+    }
+
+    func testInvalidationDoesNotWaitForInFlightCryptoAndSuppressesItsResult() {
+        let session = createSession()
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        factory.restored[0].signHook = { entered.signal(); release.wait() }
+        let done = expectation(description: "in-flight result invalidated")
+        session.signMessageJSON("message") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("in-flight result escaped") }
+            done.fulfill()
+        }
+        XCTAssertEqual(entered.wait(timeout: .now() + 5), .success)
+        // This must return while the fake crypto is still blocked.
+        vault.invalidate()
+        XCTAssertFalse(session.isActive)
+        release.signal()
+        wait(for: [done], timeout: 5)
+        worker.sync {}
+        XCTAssertTrue(factory.restored[0].cleared)
+    }
+
+    func testClosingTransferBeforeQueuedDeliverySuppressesTheCode() {
+        let session = createSession()
+        callbacks.suspend()
+        let done = expectation(description: "transfer result invalidated")
+        session.createTransfer {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late transfer code escaped") }
+            done.fulfill()
+        }
+        worker.sync {}
+        XCTAssertFalse(session.isActive)
+        XCTAssertTrue(factory.restored[0].cleared)
+        session.close()
+        callbacks.resume()
+        wait(for: [done], timeout: 5)
+    }
+
+    func testEnrollmentDomainChangeAndBiometricDenialNeverImport() {
+        createSession().close()
+        auth = FakeAuthorization()
+        auth.domainState = Data([9, 9, 9])
+        let changed = expectation(description: "enrollment changed")
+        vault.unlock(account: "agent", reason: "Unlock") {
+            if case .failure(.notFoundOrEnrollmentChanged) = $0 {} else { XCTFail("domain change accepted") }
+            changed.fulfill()
+        }
+        auth.succeed()
+        wait(for: [changed], timeout: 5)
+        XCTAssertEqual(factory.restored.count, 1)
+
+        auth = FakeAuthorization()
+        let denied = expectation(description: "biometry lockout")
+        let reads = store.reads
+        vault.unlock(account: "agent", reason: "Unlock") {
+            if case .failure(.biometricsLockedOut) = $0 {} else { XCTFail("fallback allowed") }
+            denied.fulfill()
+        }
+        auth.callback?(.failure(.biometricsLockedOut))
+        wait(for: [denied], timeout: 5)
+        XCTAssertEqual(store.reads, reads)
+        XCTAssertEqual(factory.restored.count, 1)
+    }
+
+    func testOverlappingPromptIsRejectedWithoutCancellingFirstRequest() {
+        let first = expectation(description: "first cancelled")
+        let operation = vault.unlock(account: "agent", reason: "Unlock") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("wrong first result") }
+            first.fulfill()
+        }
+        auth = FakeAuthorization()
+        let busy = expectation(description: "busy")
+        vault.unlock(account: "agent", reason: "Unlock") {
+            if case .failure(.busy) = $0 {} else { XCTFail("overlapping prompt accepted") }
+            busy.fulfill()
+        }
+        operation.cancel()
+        wait(for: [first, busy], timeout: 5)
+        XCTAssertTrue(factory.restored.isEmpty)
+    }
+
+    func testRealRustPqCreateEncryptedExportUnlockAndSign() throws {
+        // Only auth/persistence are faked here. Key creation, envelope KDF,
+        // self-signature validation and signing run through the real UniFFI ABI.
+        vault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+        let session = createSession()
+        let exported = expectation(description: "real encrypted export")
+        var material: EncryptedAgentMaterial?
+        session.exportEncryptedMaterial(password: "Swift-vault-transfer-test-only!") {
+            if case .success(let value) = $0 { material = value } else { XCTFail("export failed") }
+            exported.fulfill()
+        }
+        wait(for: [exported], timeout: 15)
+        let encrypted = try XCTUnwrap(material)
+        XCTAssertEqual(encrypted.algorithm, .pq2025)
+        let verifier = try MobileAgent.importEncryptedAgent(material: encrypted,
+            password: "Swift-vault-transfer-test-only!")
+        defer { try? verifier.clearSecrets() }
+        session.close()
+
+        auth = FakeAuthorization()
+        let unlocked = expectation(description: "real Rust import")
+        var restored: JacsBiometricSession?
+        vault.unlock(account: "agent", reason: "Unlock") {
+            if case .success(let value) = $0 { restored = value } else { XCTFail("unlock failed") }
+            unlocked.fulfill()
+        }
+        auth.succeed()
+        wait(for: [unlocked], timeout: 15)
+        let restoredSession = try XCTUnwrap(restored)
+        let signed = expectation(description: "real Rust signature")
+        restoredSession.signMessageJSON("{\"swiftVault\":true}") {
+            if case .success(let document) = $0 {
+                XCTAssertTrue((try? verifier.verifyJson(json: document).valid) == true)
+            } else { XCTFail("sign failed") }
+            signed.fulfill()
+        }
+        wait(for: [signed], timeout: 15)
+        let transferDone = expectation(description: "generated transfer relocks before delivery")
+        var outbound: JacsBiometricTransfer?
+        restoredSession.createTransfer {
+            if case .success(let transfer) = $0 {
+                outbound = transfer
+                XCTAssertEqual(transfer.code.split(separator: " ").count, 6)
+                XCTAssertEqual(transfer.material.algorithm, .pq2025)
+                XCTAssertFalse(restoredSession.isActive)
+                let received = try? MobileAgent.importEncryptedAgent(material: transfer.material,
+                    password: transfer.code)
+                XCTAssertNotNil(received)
+                XCTAssertEqual(try? received?.publicKey(), try? verifier.publicKey())
+                try? received?.clearSecrets()
+            } else { XCTFail("transfer failed") }
+            transferDone.fulfill()
+        }
+        wait(for: [transferDone], timeout: 15)
+        let transfer = try XCTUnwrap(outbound)
+        let identityData = Data(try verifier.exportAgentJson().utf8)
+        let identity = try XCTUnwrap(JSONSerialization.jsonObject(with: identityData) as? [String: Any])
+        let agentID = try XCTUnwrap(identity["jacsId"] as? String)
+        let publicKey = try verifier.publicKey()
+
+        auth = FakeAuthorization()
+        let received = expectation(description: "pinned transfer immediately rewrapped")
+        vault.receive(material: transfer.material, code: transfer.code,
+            expectedAgentID: agentID, expectedPublicKey: publicKey,
+            account: "received", reason: "Receive identity") {
+            if case .success(let session) = $0 { session.close() } else { XCTFail("pinned receive failed") }
+            received.fulfill()
+        }
+        auth.succeed()
+        wait(for: [received], timeout: 15)
+        XCTAssertNotNil(store.records["received"])
+
+        auth = FakeAuthorization()
+        let wrongPin = expectation(description: "wrong key never persisted")
+        vault.receive(material: transfer.material, code: transfer.code,
+            expectedAgentID: agentID, expectedPublicKey: Data([0]),
+            account: "wrong-pin", reason: "Receive identity") {
+            if case .failure = $0 {} else { XCTFail("wrong pin accepted") }
+            wrongPin.fulfill()
+        }
+        auth.succeed()
+        wait(for: [wrongPin], timeout: 15)
+        XCTAssertNil(store.records["wrong-pin"])
+    }
+}

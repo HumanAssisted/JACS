@@ -1,0 +1,29 @@
+[package]
+# Archived compatibility code; publishing is intentionally disabled.
+publish = false
+name = "jacs-postgresql"
+version = "0.1.20"
+edition = "2024"
+rust-version.workspace = true
+description = "PostgreSQL storage backend for JACS documents"
+readme.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords = ["cryptography", "json", "postgresql", "storage"]
+categories = ["database", "data-structures"]
+
+[dependencies]
+jacs = { version = "0.13.0", path = "../jacs", default-features = false }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
+tokio = { version = "1.0", features = ["rt-multi-thread"] }
+serde_json = "1.0"
+tracing = "0.1"
+
+[dev-dependencies]
+serial_test = "3.2.0"
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
+serde_json = "1.0"

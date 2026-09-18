@@ -13,6 +13,7 @@ const EXPECTED_KEYS: &[&str] = &[
     "schemas/components/files/v1/files.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
     "schemas/agreement/v2/agreement.schema.json",
+    "schemas/agreement/v3/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
     "schemas/conflict/v1/conflict.schema.json",
     "schemas/compatibility-key-binding/v1/compatibility-key-binding.schema.json",
@@ -133,16 +134,13 @@ fn embedded_resolver_implements_retrieve_trait() {
 }
 
 // =========================================================================
-// P2 Task 001 — the native algorithm schema wall.
-//
-// The `signingAlgorithm` enum is the crypto-level guard that keeps
-// ecosystem algorithms (ES256) out of native `jacsSignature` objects. It
-// must stay exactly `ring-Ed25519 | pq2025`, and it must stay OPTIONAL so
-// legacy documents that omit it still validate.
+// Portable signatures support software and device hardware identities.
+// The algorithm field stays optional for historical schema compatibility;
+// cryptographic verification independently requires the correct algorithm.
 // =========================================================================
 
 #[test]
-fn signature_schema_enum_stays_ring_ed25519_and_pq2025() {
+fn signature_schema_supports_portable_and_hardware_algorithms() {
     let body = DEFAULT_SCHEMA_STRINGS
         .get("schemas/components/signature/v1/signature.schema.json")
         .copied()
@@ -157,9 +155,8 @@ fn signature_schema_enum_stays_ring_ed25519_and_pq2025() {
         .collect();
     assert_eq!(
         enum_vals,
-        vec!["ring-Ed25519", "pq2025"],
-        "native signingAlgorithm enum is the PQ wall — it must stay exactly \
-         ring-Ed25519|pq2025; ecosystem algorithms (ES256) are never valid here"
+        vec!["ring-Ed25519", "pq2025", "es256"],
+        "signature schema must support every portable signing algorithm"
     );
 
     let required: Vec<&str> = schema["required"]

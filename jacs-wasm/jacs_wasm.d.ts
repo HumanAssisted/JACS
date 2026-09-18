@@ -32,7 +32,16 @@ export class CoreAgentHandle {
   exportAgent(): string;
   exportEncryptedAgent(password: string): string;
   getPublicKeyBase64(): string;
+  getPublicKeyHash(): string;
+  getPublicKeyPem(): string;
+  getPublicKeyPemBase64(): string;
   isUnlocked(): boolean;
+  signString(message: string): string;
+  buildRequestAuthHeader(method: string, url: string, body: Uint8Array, audience: string): string;
+  signRawBytesBase64(bytes: Uint8Array): string;
+  updateAgentJson(agent_json: string): string;
+  prepareAgentUpdateJson(updates_json: string): string;
+  commitAgentUpdateJson(prepared_json: string): string;
   signMessageJson(data_json: string): string;
   verifyJson(signed_json: string): string;
   verifyWithKeyJson(
@@ -81,6 +90,25 @@ export function importEncryptedAgent(
   material_json: string,
   password: string,
 ): CoreAgentHandle;
+
+export function generateTransferCode(): string;
+
+export function importEncryptedAgentPinned(
+  material_json: string,
+  password: string,
+  expected_agent_id: string,
+  expected_public_key_base64: string,
+  expected_algorithm: string,
+): CoreAgentHandle;
+
+export function reencryptTransferredAgent(
+  material_json: string,
+  code: string,
+  expected_agent_id: string,
+  expected_public_key_base64: string,
+  expected_algorithm: string,
+  storage_password: string,
+): string;
 
 export function importEncryptedAgentFiles(
   config_text: string,

@@ -30,7 +30,7 @@ jobs:
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -44,7 +44,7 @@ jobs:
           TAG_VERSION: ${{ steps.extract.outputs.version }}
         run: |
           set -euo pipefail
-          for dir in jacs jacs-mcp jacs-cli; do
+          for dir in jacs-core jacs-mcp jacs-cli; do
             CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             echo "$dir version: $CARGO_VERSION, tag: $TAG_VERSION"
             if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
@@ -88,7 +88,7 @@ jobs:
       VERSION: ${{ needs.verify-version.outputs.version }}
       CLI_ASSET_NAME: jacs-cli-${{ needs.verify-version.outputs.version }}-${{ matrix.asset_suffix }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: runner.os != 'Windows'
         with:
           ref: ${{ github.sha }}
@@ -114,59 +114,14 @@ jobs:
           $prefix = ($entries | Select-Object -First 1).TrimEnd('/')
 
           $requiredFiles = $entries | Where-Object {
-            $_ -eq "$prefix/Cargo.toml" -or
-            $_ -eq "$prefix/Cargo.lock" -or
-            $_ -eq "$prefix/README.md" -or
-            $_ -eq "$prefix/LICENSE" -or
-            $_ -eq "$prefix/LICENSE-APACHE" -or
-            $_ -eq "$prefix/THIRD-PARTY-NOTICES" -or
+            $_ -match "^$prefix/(Cargo\.(toml|lock)|README\.md|LICENSE(-APACHE)?|THIRD-PARTY-NOTICES)$" -or
+            $_ -like "$prefix/jacs-core/*" -or
+            $_ -like "$prefix/jacs-wasm/*" -or
+            $_ -like "$prefix/jacs-mobile/*" -or
+            $_ -like "$prefix/jacs-cli/*" -or
+            $_ -like "$prefix/jacs-mcp/*" -or
             $_ -eq "$prefix/scripts/check_release_artifact_licenses.py" -or
-            $_ -eq "$prefix/scripts/smoke-cli-installers.py" -or
-            $_ -eq "$prefix/binding-core/Cargo.toml" -or
-            $_ -eq "$prefix/jacs-core/Cargo.toml" -or
-            $_ -like "$prefix/jacs-core/src/*" -or
-            $_ -like "$prefix/jacs-core/schemas/*" -or
-            $_ -eq "$prefix/jacs-wasm/Cargo.toml" -or
-            $_ -like "$prefix/jacs-wasm/src/*" -or
-            $_ -eq "$prefix/jacs/Cargo.toml" -or
-            $_ -eq "$prefix/jacs/README.md" -or
-            $_ -eq "$prefix/jacs/LICENSE" -or
-            $_ -eq "$prefix/jacs/build.rs" -or
-            $_ -like "$prefix/jacs/benches/*" -or
-            $_ -like "$prefix/jacs/examples/*.rs" -or
-            $_ -like "$prefix/jacs/examples/*.json" -or
-            $_ -eq "$prefix/jacs-cli/Cargo.toml" -or
-            $_ -eq "$prefix/jacs-mcp/Cargo.toml" -or
-            $_ -eq "$prefix/jacs-mcp/README.md" -or
-            $_ -eq "$prefix/jacsnpm/Cargo.toml" -or
-            $_ -eq "$prefix/jacsnpm/package.json" -or
-            $_ -eq "$prefix/jacsnpm/scripts/install-cli.js" -or
-            $_ -eq "$prefix/jacsnpm/bin/jacs-cli.js" -or
-            $_ -eq "$prefix/jacsnpm/src/lib.rs" -or
-            $_ -eq "$prefix/jacspy/Cargo.toml" -or
-            $_ -eq "$prefix/jacspy/pyproject.toml" -or
-            $_ -eq "$prefix/jacspy/python/jacs/cli_runner.py" -or
-            $_ -eq "$prefix/jacspy/src/lib.rs" -or
-            $_ -eq "$prefix/jacsgo/lib/Cargo.toml" -or
-            $_ -eq "$prefix/jacsgo/lib/src/lib.rs" -or
-            $_ -eq "$prefix/jacs-duckdb/Cargo.toml" -or
-            $_ -like "$prefix/jacs-duckdb/src/*" -or
-            $_ -eq "$prefix/jacs-redb/Cargo.toml" -or
-            $_ -like "$prefix/jacs-redb/src/*" -or
-            $_ -eq "$prefix/jacs-surrealdb/Cargo.toml" -or
-            $_ -like "$prefix/jacs-surrealdb/src/*" -or
-            $_ -eq "$prefix/jacs-postgresql/Cargo.toml" -or
-            $_ -like "$prefix/jacs-postgresql/src/*" -or
-            $_ -eq "$prefix/jacs-media/Cargo.toml" -or
-            $_ -eq "$prefix/jacs-media/README.md" -or
-            $_ -like "$prefix/jacs-media/src/*" -or
-            $_ -like "$prefix/binding-core/src/*" -or
-            $_ -like "$prefix/binding-core/examples/*.rs" -or
-            $_ -like "$prefix/jacs-mcp/examples/*.rs" -or
-            $_ -like "$prefix/jacs/src/*" -or
-            $_ -like "$prefix/jacs/schemas/*" -or
-            $_ -like "$prefix/jacs-cli/src/*" -or
-            $_ -like "$prefix/jacs-mcp/src/*"
+            $_ -eq "$prefix/scripts/smoke-portable-cli.py"
           }
 
           if (-not $requiredFiles) {
@@ -175,10 +130,6 @@ jobs:
 
           $requiredFiles | Set-Content -Path $manifest
           tar -xf $archive -C $workspace --strip-components 1 -T $manifest
-
-      - name: Install system dependencies (D-Bus for keychain support)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
 
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
@@ -230,22 +181,20 @@ jobs:
             "${env:CLI_ASSET_NAME}.zip"
           Get-FileHash "${env:CLI_ASSET_NAME}.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  ${env:CLI_ASSET_NAME}.zip" } | Out-File "${env:CLI_ASSET_NAME}.zip.sha256" -Encoding ascii
 
-      - name: Smoke staged Python and Node installers (Unix)
+      - name: Smoke the exact staged release binary (Unix)
         if: runner.os != 'Windows'
         run: |
-          # Serve only an aggregate sha256sums.txt, matching the release layout.
-          python3 scripts/smoke-cli-installers.py \
-            --asset "${CLI_ASSET_NAME}.tar.gz" \
-            --checksum "${CLI_ASSET_NAME}.tar.gz.sha256"
+          staging="$(mktemp -d)"
+          tar -xzf "${CLI_ASSET_NAME}.tar.gz" -C "$staging"
+          python3 scripts/smoke-portable-cli.py --binary "$staging/jacs-cli"
 
-      - name: Smoke staged Python and Node installers (Windows)
+      - name: Smoke the exact staged release binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Serve only an aggregate sha256sums.txt, matching the release layout.
-          python scripts/smoke-cli-installers.py `
-            --asset "${env:CLI_ASSET_NAME}.zip" `
-            --checksum "${env:CLI_ASSET_NAME}.zip.sha256"
+          $staging = Join-Path $env:RUNNER_TEMP 'portable-cli-smoke'
+          Expand-Archive -Path "${env:CLI_ASSET_NAME}.zip" -DestinationPath $staging
+          python scripts/smoke-portable-cli.py --binary (Join-Path $staging 'jacs-cli.exe')
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -260,7 +209,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
@@ -318,7 +267,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jacs-cli-${{ needs.verify-version.outputs.version }}-release-bundle
 
@@ -392,7 +341,7 @@ jobs:
       contents: read
       attestations: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false

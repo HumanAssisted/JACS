@@ -31,7 +31,7 @@ except ModuleNotFoundError:  # Imported as scripts.check_release_matrix in tests
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = ROOT / "release" / "shipped-artifacts.json"
-DEPLOYMENT_DOC_PATH = ROOT / "jacs" / "docs" / "jacsbook" / "src" / "getting-started" / "deployment.md"
+DEPLOYMENT_DOC_PATH = ROOT / "docs" / "release-status.md"
 USER_AGENT = "jacs-release-matrix/1 (+https://github.com/HumanAssisted/JACS)"
 REGISTRY_JSON_LIMIT_BYTES = 8 * 1024 * 1024
 DOC_MATRIX_START = "<!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->"
@@ -45,40 +45,11 @@ CLI_PLATFORM_ASSETS = {
     "Windows x86_64": ("windows-x64", "zip"),
 }
 
-PYTHON_PLATFORM_TAGS = {
-    "macOS arm64": ("macosx_", "_arm64.whl"),
-    "macOS x86_64": ("macosx_", "_x86_64.whl"),
-    "Linux x86_64 manylinux_2_38": ("manylinux_2_38_x86_64.whl",),
-    "Linux arm64 manylinux_2_38": ("manylinux_2_38_aarch64.whl",),
-    "Linux x86_64 manylinux_2_28": ("manylinux_2_28_x86_64.whl",),
-    "Linux arm64 manylinux_2_28": ("manylinux_2_28_aarch64.whl",),
-    "Linux x86_64 musllinux": ("musllinux_", "_x86_64.whl"),
-}
-
-NODE_PLATFORM_FILES = {
-    "macOS arm64": "jacs.darwin-arm64.node",
-    "macOS x86_64": "jacs.darwin-x64.node",
-    "Linux x86_64 glibc": "jacs.linux-x64-gnu.node",
-    "Linux x86_64 musl": "jacs.linux-x64-musl.node",
-    "Linux arm64 glibc": "jacs.linux-arm64-gnu.node",
-    "Linux arm64 musl": "jacs.linux-arm64-musl.node",
-    "Windows x86_64": "jacs.win32-x64-msvc.node",
-}
-
-GO_PLATFORM_ASSETS = {
-    "macOS arm64": ("darwin", "arm64", "dylib"),
-    "macOS x86_64": ("darwin", "amd64", "dylib"),
-    "Linux x86_64 glibc": ("linux", "amd64", "so"),
-    "Linux arm64 glibc": ("linux", "arm64", "so"),
-}
 
 SURFACE_LABELS = {
-    "rust": "Rust library (`jacs`)",
+    "crate": "Rust (`jacs-core`, `jacs-mcp`, `jacs-cli`)",
     "cli": "CLI (`jacs-cli`)",
-    "python": "Python (`jacs`)",
-    "node": "Node (`@hai.ai/jacs`)",
     "wasm": "Browser (`@jacs/wasm`)",
-    "go": "Go (`github.com/HumanAssisted/JACS/jacsgo`)",
 }
 
 
@@ -90,7 +61,9 @@ def render_documentation_matrix(matrix: dict) -> str:
         "|---|---|---|---|",
     ]
     artifacts = matrix["artifacts"]
-    for surface in ("rust", "cli", "python", "node", "wasm", "go"):
+    if set(artifacts) != set(SURFACE_LABELS):
+        raise ValueError("active artifact scope must be exactly crate, cli and wasm")
+    for surface in SURFACE_LABELS:
         artifact = artifacts[surface]
         version = artifact["version"]
         version_text = "unpublished" if version is None else f"`{version}`"
@@ -127,12 +100,9 @@ def load_toml(path: Path) -> dict:
 
 def source_versions() -> dict[str, str]:
     return {
-        "rust": load_toml(ROOT / "jacs" / "Cargo.toml")["package"]["version"],
+        "crate": load_toml(ROOT / "jacs-core" / "Cargo.toml")["package"]["version"],
         "cli": load_toml(ROOT / "jacs-cli" / "Cargo.toml")["package"]["version"],
-        "python": load_toml(ROOT / "jacspy" / "pyproject.toml")["project"]["version"],
-        "node": json.loads((ROOT / "jacsnpm" / "package.json").read_text())["version"],
         "wasm": load_toml(ROOT / "jacs-wasm" / "Cargo.toml")["package"]["version"],
-        "go": load_toml(ROOT / "jacsgo" / "lib" / "Cargo.toml")["package"]["version"],
     }
 
 
@@ -186,24 +156,21 @@ def get_json(
 
 
 def registry_versions() -> dict[str, str | None]:
-    crates = get_json("https://crates.io/api/v1/crates/jacs")
-    cli = get_json("https://crates.io/api/v1/crates/jacs-cli")
-    pypi = get_json("https://pypi.org/pypi/jacs/json")
-    node = get_json("https://registry.npmjs.org/@hai.ai%2Fjacs/latest")
+    crates = {}
+    for package in ("jacs-core", "jacs-mcp", "jacs-cli"):
+        metadata = get_json(
+            f"https://crates.io/api/v1/crates/{package}", missing_is_none=True
+        )
+        crates[package] = None if metadata is None else metadata["crate"]["max_version"]
+    if len(set(crates.values())) != 1:
+        raise ValueError(f"active crates have different recorded registry versions: {crates}")
     wasm = get_json(
         "https://registry.npmjs.org/@jacs%2Fwasm/latest", missing_is_none=True
     )
-    go = get_json(
-        "https://proxy.golang.org/github.com/%21human%21assisted/%21j%21a%21c%21s/jacsgo/@latest",
-        missing_is_none=True,
-    )
     return {
-        "rust": crates["crate"]["max_version"],
-        "cli": cli["crate"]["max_version"],
-        "python": pypi["info"]["version"],
-        "node": node["version"],
+        "crate": crates["jacs-core"],
+        "cli": crates["jacs-cli"],
         "wasm": None if wasm is None else wasm["version"],
-        "go": None if go is None else go["Version"],
     }
 
 
@@ -215,49 +182,6 @@ def expected_cli_assets(version: str, platforms: list[str]) -> set[str]:
         except KeyError as error:
             raise ValueError(f"unknown CLI platform label {platform!r}") from error
         assets.add(f"jacs-cli-{version}-{suffix}.{extension}")
-    return assets
-
-
-def missing_python_platforms(filenames: list[str], platforms: list[str]) -> list[str]:
-    missing: list[str] = []
-    for platform in platforms:
-        try:
-            required_fragments = PYTHON_PLATFORM_TAGS[platform]
-        except KeyError as error:
-            raise ValueError(f"unknown Python platform label {platform!r}") from error
-        if not any(all(fragment in filename for fragment in required_fragments) for filename in filenames):
-            missing.append(platform)
-    return missing
-
-
-def missing_node_platforms(filenames: list[str], platforms: list[str]) -> list[str]:
-    # unpkg reports root entries with a leading slash. Strip exactly that
-    # transport-level slash while preserving every real path component: the
-    # generated native loader requires these binaries at the package root.
-    normalized = {
-        filename[1:] if filename.startswith("/") else filename
-        for filename in filenames
-    }
-    missing: list[str] = []
-    for platform in platforms:
-        try:
-            required = NODE_PLATFORM_FILES[platform]
-        except KeyError as error:
-            raise ValueError(f"unknown Node platform label {platform!r}") from error
-        if required not in normalized:
-            missing.append(platform)
-    return missing
-
-
-def expected_go_assets(version: str, platforms: list[str]) -> set[str]:
-    normalized_version = version.removeprefix("v")
-    assets: set[str] = set()
-    for platform in platforms:
-        try:
-            goos, goarch, extension = GO_PLATFORM_ASSETS[platform]
-        except KeyError as error:
-            raise ValueError(f"unknown Go platform label {platform!r}") from error
-        assets.add(f"jacsgo-v{normalized_version}-{goos}-{goarch}.{extension}")
     return assets
 
 
@@ -311,79 +235,12 @@ def validate_online_asset_evidence(matrix: dict, failures: list[str]) -> None:
             ) is None:
                 fail(f"CLI asset {asset_name} has no GitHub SHA-256 digest", failures)
 
-    python = artifacts["python"]
-    python_version = python["version"]
-    if python_version is not None and python["status"].startswith("published"):
-        pypi = get_json(f"https://pypi.org/pypi/jacs/{python_version}/json")
-        files = pypi["urls"]
-        filenames = [item["filename"] for item in files]
-        try:
-            missing = missing_python_platforms(filenames, python["platforms"])
-        except ValueError as error:
-            fail(str(error), failures)
-            missing = []
-        for platform in missing:
-            fail(f"PyPI release {python_version} has no wheel for {platform}", failures)
-        if not any(filename.endswith(".tar.gz") for filename in filenames):
-            fail(f"PyPI release {python_version} is missing its source distribution", failures)
-        for item in files:
-            digest = item.get("digests", {}).get("sha256")
-            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-                fail(f"PyPI artifact {item.get('filename')!r} lacks a SHA-256 digest", failures)
-
-    node = artifacts["node"]
-    node_version = node["version"]
-    if node_version is not None and node["status"].startswith("published"):
-        npm_release_with_provenance("@hai.ai%2Fjacs", node_version, "npm", failures)
-        unpkg = get_json(f"https://unpkg.com/@hai.ai/jacs@{node_version}/?meta")
-        filenames = [item["path"] for item in unpkg.get("files", [])]
-        try:
-            missing = missing_node_platforms(filenames, node["platforms"])
-        except ValueError as error:
-            fail(str(error), failures)
-            missing = []
-        for platform in missing:
-            fail(f"npm release {node_version} has no native binary for {platform}", failures)
-
     wasm = artifacts["wasm"]
     wasm_version = wasm["version"]
     if wasm_version is not None and wasm["status"].startswith("published"):
         npm_release_with_provenance(
             "@jacs%2Fwasm", wasm_version, "WASM npm", failures
         )
-
-    go = artifacts["go"]
-    go_version = go["version"]
-    if go["status"].startswith("published"):
-        if not isinstance(go_version, str):
-            fail("published Go version must be a semantic-version string", failures)
-            return
-        normalized_go_version = go_version.removeprefix("v")
-        try:
-            expected = expected_github_release_assets(
-                f"jacsgo/v{normalized_go_version}"
-            )
-            expected_go_assets(go_version, go["platforms"])
-        except ValueError as error:
-            fail(f"published Go version/inventory is invalid: {error}", failures)
-            return
-        tag = urllib.parse.quote(
-            f"jacsgo/v{normalized_go_version}", safe=""
-        )
-        release = get_json(
-            f"https://api.github.com/repos/HumanAssisted/JACS/releases/tags/{tag}"
-        )
-        release_assets = {asset["name"]: asset for asset in release["assets"]}
-        for asset_name in sorted(expected - release_assets.keys()):
-            fail(f"Go GitHub release asset missing: {asset_name}", failures)
-        for asset_name in sorted(release_assets.keys() - expected):
-            fail(f"Go GitHub release asset unexpected: {asset_name}", failures)
-        for asset_name in sorted(expected & release_assets.keys()):
-            digest = release_assets[asset_name].get("digest")
-            if not isinstance(digest, str) or re.fullmatch(
-                r"sha256:[0-9a-f]{64}", digest
-            ) is None:
-                fail(f"Go asset {asset_name} has no GitHub SHA-256 digest", failures)
 
 
 def fail(message: str, failures: list[str]) -> None:
@@ -427,7 +284,9 @@ def main() -> int:
     except (OSError, ValueError, KeyError, TypeError) as error:
         fail(f"deployment artifact table validation failed: {error}", failures)
 
-    for surface, version in source_versions().items():
+    versions = source_versions()
+    versions["jacs-mcp"] = load_toml(ROOT / "jacs-mcp" / "Cargo.toml")["package"]["version"]
+    for surface, version in versions.items():
         if version != declared:
             fail(f"{surface} source version {version} != matrix source {declared}", failures)
 
@@ -446,11 +305,7 @@ def main() -> int:
                     "refresh release/shipped-artifacts.json with evidence",
                     failures,
                 )
-            parity_version = (
-                live_version.removeprefix("v")
-                if surface == "go" and live_version is not None
-                else live_version
-            )
+            parity_version = live_version
             if args.require_parity and parity_version != declared:
                 fail(
                     f"{surface} registry version {live_version!r} != release {declared!r}",

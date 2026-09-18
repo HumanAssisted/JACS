@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -53,7 +53,7 @@ jobs:
           toolchain: "1.97.0"
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
 
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
@@ -88,12 +88,8 @@ jobs:
 
       # ------------------------------------------------------------------
       # 2. cargo check (warnings = errors) for the wasm-portable crates.
-      # Native check is limited to `jacs-core` (the shared portable
-      # crate); the rest of the workspace (jacs / jacs-binding-core /
-      # jacs-mcp / jacs-cli) pulls in keyring → libdbus-sys on Linux and
-      # is already covered by the main Rust PR workflow which installs
-      # the required system deps. wasm32 checks run on both portable
-      # crates so wasm-pack doesn't have to be the first failure signal.
+      # Native workspace coverage runs in rust.yml. These target checks ensure
+      # the core and browser adapter remain portable before wasm-pack runs.
       # ------------------------------------------------------------------
       - name: cargo check (warnings = errors)
         env:

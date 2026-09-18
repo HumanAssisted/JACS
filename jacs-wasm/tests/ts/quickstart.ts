@@ -30,7 +30,7 @@ import {
 const _init: Promise<void> = initJacsWasm();
 
 // PRD §4.3: `createEphemeral` returns `Promise<CoreAgentHandle>`.
-const _ephemeral: Promise<CoreAgentHandle> = createEphemeral("ed25519");
+const _ephemeral: Promise<CoreAgentHandle> = createEphemeral();
 
 // PRD §4.3: `createVerifier(publicKeyBase64, algorithm)` returns
 // `Promise<CoreAgentHandle>`.

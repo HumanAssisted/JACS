@@ -1,0 +1,24 @@
+[workspace]
+# Historical native integrations remain independently buildable for SDK compatibility.
+# They are excluded from the active portable workspace and are not release candidates.
+default-members = ["jacs", "binding-core"]
+members = [
+    "jacs", "jacs-cli", "jacs-mcp", "jacs-media", "binding-core",
+    "jacsnpm", "jacspy", "jacsgo/lib",
+    "jacs-duckdb", "jacs-postgresql", "jacs-redb",
+]
+exclude = ["jacs-surrealdb", "jacs/examples/observability"]
+resolver = "3"
+
+[workspace.package]
+rust-version = "1.97"
+readme = "README.md"
+authors = ["HAI.AI <engineering@hai.io>"]
+license = "Apache-2.0"
+homepage = "https://humanassisted.github.io/JACS"
+repository = "https://github.com/HumanAssisted/JACS"
+keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
+categories = ["cryptography", "text-processing", "data-structures"]
+
+[workspace.metadata.dev-requirements]
+cargo-audit = "0.22.1"

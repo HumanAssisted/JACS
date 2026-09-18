@@ -1,60 +1,29 @@
 {
-  "schema_version": 1,
-  "observed_at": "2026-09-10",
-  "review_baseline": "743df757",
+  "schema_version": 2,
+  "observed_at": "2026-09-17",
+  "review_baseline": "portable-source-scope",
   "source_version": "0.13.0",
+  "historical_matrix": "archive/native/release/shipped-artifacts.json",
   "artifacts": {
-    "rust": {
-      "package": "jacs",
+    "crate": {
+      "package": "jacs-core, jacs-mcp, jacs-cli",
       "registry": "crates.io",
-      "version": "0.13.0",
-      "status": "published",
+      "version": null,
+      "status": "source-only-unreleased-trim",
       "platforms": [
-        "source only; no prebuilt library artifact"
+        "portable core; thin native CLI and MCP source"
       ],
-      "evidence": "Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied. The four storage crates (jacs-duckdb, jacs-redb, jacs-postgresql 0.1.20; jacs-surrealdb 0.1.21) are published against jacs 0.13.0."
+      "evidence": "The active publication set contains only jacs-core, jacs-mcp and jacs-cli. Trimmed source has not been published; historical registry versions do not attest these new source bytes. Exact candidate checksums, SPDX and provenance gates remain required."
     },
     "cli": {
       "package": "jacs-cli",
       "registry": "crates.io and GitHub Releases",
-      "version": "0.13.0",
-      "status": "published",
+      "version": null,
+      "status": "source-only-unreleased-trim",
       "platforms": [
-        "macOS arm64",
-        "macOS x86_64",
-        "Linux x86_64 glibc",
-        "Linux arm64 glibc",
-        "Windows x86_64"
+        "source build; no trimmed prebuilt artifact recorded"
       ],
-      "evidence": "Release jobs build each listed target, run a launch smoke, and install the staged archive through the Python and Node CLI installers (sign/verify smoke on Unix only: the trust model refuses to create key files on Windows). cargo install remains a source build."
-    },
-    "python": {
-      "package": "jacs",
-      "registry": "PyPI",
-      "version": "0.13.0",
-      "status": "published",
-      "platforms": [
-        "macOS arm64",
-        "macOS x86_64",
-        "Linux x86_64 manylinux_2_28",
-        "Linux arm64 manylinux_2_28",
-        "Linux x86_64 musllinux"
-      ],
-      "evidence": "glibc wheels are built inside the pinned manylinux_2_28 images; release candidate smokes install and sign/verify on Ubuntu x86_64 and arm64, macOS x86_64 and arm64, and Alpine x86_64. No Windows or arm64 musllinux wheel is recorded."
-    },
-    "node": {
-      "package": "@hai.ai/jacs",
-      "registry": "npm",
-      "version": "0.10.1",
-      "status": "published-behind-source",
-      "platforms": [
-        "macOS arm64",
-        "macOS x86_64",
-        "Linux x86_64 glibc",
-        "Linux x86_64 musl",
-        "Linux arm64 glibc"
-      ],
-      "evidence": "Source CI runtime-smokes Node 20 on Ubuntu x86_64. Other listed native binaries are not runtime-smoked here."
+      "evidence": "The thin CLI delegates key creation, signing, verification, rotation and re-encryption to the portable core. No historical native CLI download is claimed to contain the trimmed implementation. Release assets still require exact inventories, SHA-256 digests and attestations."
     },
     "wasm": {
       "package": "@jacs/wasm",
@@ -64,20 +33,7 @@
       "platforms": [
         "browser source build; release package unavailable"
       ],
-      "evidence": "Source CI builds wasm32 and runs Firefox plus Chromium/Playwright tests; Safari and Windows-hosted browsers are unverified."
-    },
-    "go": {
-      "package": "github.com/HumanAssisted/JACS/jacsgo",
-      "registry": "Go module proxy",
-      "version": "v0.13.0",
-      "status": "published",
-      "platforms": [
-        "macOS arm64",
-        "macOS x86_64",
-        "Linux x86_64 glibc",
-        "Linux arm64 glibc"
-      ],
-      "evidence": "Release publishes libjacsgo for each listed target with SHA-256 digests and GitHub attestations; consumer smokes passed on Ubuntu x86_64 and arm64 and macOS x86_64. The macOS arm64 consumer smoke failed only because its Go 1.21 toolchain cannot run on macOS 26 (fixed for the next release)."
+      "evidence": "Browser source and cross-runtime crypto checks are available. No npm publication or installed-browser compatibility is implied by source validation; publication retains npm integrity, provenance and post-publish checks."
     }
   }
 }

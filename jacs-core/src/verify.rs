@@ -11,7 +11,7 @@
 
 use crate::CoreError;
 use crate::canonical::canonicalize_json_try;
-use crate::sign::{Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm};
+use crate::sign::{Ed25519DalekSigner, P256Signer, Pq2025Signer, SigningAlgorithm};
 use serde_json::{Map, Value, json};
 
 // =========================================================================
@@ -159,6 +159,7 @@ pub fn verify_detached(
     match algorithm {
         SigningAlgorithm::Ed25519 => Ed25519DalekSigner::verify(public_key, message, signature),
         SigningAlgorithm::Pq2025 => Pq2025Signer::verify(public_key, message, signature),
+        SigningAlgorithm::Es256 => P256Signer::verify(public_key, message, signature),
     }
 }
 
@@ -318,7 +319,17 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
+}
+
+/// Native JACS historical key fingerprint. This hashes the BOM-aware lossy
+/// Unicode rendering of raw key bytes, preserving established request-auth-v2.
+/// New portable material uses `sha256_hex` for its canonical raw-key fingerprint.
+pub fn legacy_public_key_hash(public_key: &[u8]) -> String {
+    let (encoding, _) =
+        encoding_rs::Encoding::for_bom(public_key).unwrap_or((encoding_rs::UTF_8, 0));
+    let decoded = encoding.decode(public_key).0;
+    sha256_hex(decoded.trim().replace('\r', "").as_bytes())
 }
 
 /// Build the `signatureMetadata` object embedded in a `jacsSignature`. The

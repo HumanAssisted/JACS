@@ -1,0 +1,1283 @@
+//! Unified error types for the JACS crate.
+//!
+//! This module provides a comprehensive error taxonomy that maps to
+//! user-friendly error messages with actionable guidance.
+//!
+//! # Error Categories
+//!
+//! The error types are organized into two groups:
+//!
+//! 1. **High-level category errors** - Broad categories for general error handling:
+//!    - `ConfigError` - Configuration loading/parsing errors
+//!    - `CryptoError` - Cryptographic operation errors
+//!    - `SchemaError` - Schema validation errors
+//!    - `AgentError` - Agent lifecycle errors
+//!    - `DocumentError` - Document operations errors
+//!    - `NetworkError` - Network/HTTP errors
+//!    - `TrustError` - Trust store errors
+//!    - `IoError` - IO wrapper
+//!    - `ValidationError` - Input validation errors
+//!
+//! 2. **Specific error variants** - Detailed errors for precise error handling
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use jacs::error::JacsError;
+//!
+//! fn load_config(path: &str) -> Result<Config, JacsError> {
+//!     let content = std::fs::read_to_string(path)
+//!         .map_err(|e| JacsError::ConfigError(format!("Failed to read config at '{}': {}", path, e)))?;
+//!     // ...
+//! }
+//! ```
+
+use std::error::Error;
+use std::fmt;
+
+/// Unified error type for all JACS operations.
+///
+/// Each variant includes contextual information to help users
+/// understand what went wrong and how to fix it.
+#[derive(Debug)]
+pub enum JacsError {
+    // ==========================================================================
+    // HIGH-LEVEL CATEGORY ERRORS
+    // These are broad categories useful for converting from format!() errors
+    // and providing consistent error handling across the crate.
+    // ==========================================================================
+    /// Configuration loading or parsing error.
+    ///
+    /// Use this for errors related to:
+    /// - Missing or invalid configuration files
+    /// - Invalid configuration values
+    /// - Environment variable issues
+    ConfigError(String),
+
+    /// Cryptographic operation error.
+    ///
+    /// Use this for errors related to:
+    /// - Key generation failures
+    /// - Encryption/decryption failures
+    /// - Signature creation/verification failures
+    /// - Hash computation failures
+    CryptoError(String),
+
+    /// Schema validation error.
+    ///
+    /// Use this for errors related to:
+    /// - JSON schema validation failures
+    /// - Schema loading/parsing errors
+    /// - Schema compilation errors
+    SchemaError(String),
+
+    /// Agent lifecycle error.
+    ///
+    /// Use this for errors related to:
+    /// - Agent creation failures
+    /// - Agent loading failures
+    /// - Agent state transitions
+    AgentError(String),
+
+    /// Document operation error.
+    ///
+    /// Use this for errors related to:
+    /// - Document creation failures
+    /// - Document loading failures
+    /// - Document signing/verification failures
+    DocumentError(String),
+
+    /// Network or HTTP error.
+    ///
+    /// Use this for errors related to:
+    /// - HTTP request failures
+    /// - Connection errors
+    /// - DNS resolution failures
+    /// - TLS/SSL errors
+    NetworkError(String),
+
+    /// Trust store error.
+    ///
+    /// Use this for errors related to:
+    /// - Trust store operations
+    /// - Trusted agent management
+    /// - Public key cache operations
+    TrustError(String),
+
+    /// IO error wrapper.
+    ///
+    /// Wraps `std::io::Error` for file and IO operations.
+    IoError(std::io::Error),
+
+    /// Input validation error.
+    ///
+    /// Use this for errors related to:
+    /// - Invalid function arguments
+    /// - Malformed input data
+    /// - Constraint violations
+    ValidationError(String),
+
+    // ==========================================================================
+    // SPECIFIC ERROR VARIANTS
+    // These provide detailed error information for precise error handling.
+    // ==========================================================================
+
+    // === Configuration Errors ===
+    /// Configuration file not found at the specified path.
+    ConfigNotFound { path: String },
+
+    /// Configuration file exists but contains invalid data.
+    ConfigInvalid { field: String, reason: String },
+
+    // === Key Errors ===
+    /// Private or public key file not found.
+    KeyNotFound { path: String },
+
+    /// Failed to decrypt the private key (wrong password or corrupted).
+    KeyDecryptionFailed { reason: String },
+
+    /// Failed to generate a new keypair.
+    KeyGenerationFailed { algorithm: String, reason: String },
+
+    // === Signing Errors ===
+    /// Signing operation failed.
+    SigningFailed { reason: String },
+
+    // === Verification Errors ===
+    /// Signature does not match the expected value.
+    SignatureInvalid { expected: String, got: String },
+
+    /// Signature verification failed (cryptographic check failed).
+    SignatureVerificationFailed { reason: String },
+
+    /// Document hash does not match the expected value.
+    HashMismatch { expected: String, got: String },
+
+    /// Document structure is invalid or missing required fields.
+    DocumentMalformed { field: String, reason: String },
+
+    /// The agent that signed the document is not in the trust store.
+    SignerUnknown { agent_id: String },
+
+    // === DNS Errors ===
+    /// DNS lookup failed for the specified domain.
+    DnsLookupFailed { domain: String, reason: String },
+
+    /// Expected DNS TXT record not found.
+    DnsRecordMissing { domain: String },
+
+    /// DNS TXT record found but contains invalid data.
+    DnsRecordInvalid { domain: String, reason: String },
+
+    // === Size Limit Errors ===
+    /// Document exceeds the maximum allowed size.
+    ///
+    /// The default maximum size is 10MB, configurable via `JACS_MAX_DOCUMENT_SIZE`.
+    DocumentTooLarge { size: usize, max_size: usize },
+
+    // === Document Lookup Errors ===
+    /// JACS document not found by ID in storage.
+    ///
+    /// This is a domain-level "not found" — the document ID was valid
+    /// but no matching document exists in the storage backend.
+    /// Distinct from `FileNotFound` which is a filesystem concept.
+    DocumentNotFound { document_id: String },
+
+    // === File Errors ===
+    /// File not found at the specified path.
+    FileNotFound { path: String },
+
+    /// Failed to read file contents.
+    FileReadFailed { path: String, reason: String },
+
+    /// Failed to write file contents.
+    FileWriteFailed { path: String, reason: String },
+
+    /// Failed to create a directory.
+    DirectoryCreateFailed { path: String, reason: String },
+
+    /// Could not determine MIME type for the file.
+    MimeTypeUnknown { path: String },
+
+    // === Trust Store Errors ===
+    /// Agent is not in the local trust store.
+    AgentNotTrusted { agent_id: String },
+
+    // === Registration Errors ===
+    /// Registration with a remote registry failed.
+    RegistrationFailed { reason: String },
+
+    // === Search Errors ===
+    /// Search operation failed.
+    ///
+    /// Use this for errors from search backends (fulltext, vector, hybrid).
+    /// Distinct from `StorageError` which covers general storage operations.
+    SearchError(String),
+
+    // === Storage Errors ===
+    /// Generic storage backend error.
+    StorageError(String),
+
+    // === Database Errors ===
+    /// Database operation failed.
+    DatabaseError { operation: String, reason: String },
+
+    // === Verification Claim Errors ===
+    /// Agent's verification claim could not be satisfied.
+    ///
+    /// This occurs when an agent claims a verification level (e.g., "verified" or
+    /// "verified-registry") but the required security conditions are not met.
+    VerificationClaimFailed { claim: String, reason: String },
+
+    // === Attestation Errors ===
+    /// Attestation creation failed.
+    ///
+    /// Use this for errors related to:
+    /// - Attestation document creation
+    /// - Attestation subject or claims validation
+    /// - Migration (lift-to-attestation) failures
+    #[cfg(feature = "attestation")]
+    AttestationFailed { message: String },
+
+    /// Attestation verification failed.
+    ///
+    /// Use this for errors related to:
+    /// - Attestation local (crypto-only) verification
+    /// - Attestation full (evidence + chain) verification
+    #[cfg(feature = "attestation")]
+    VerificationFailed { message: String },
+
+    // === Conversion Errors ===
+    /// Format conversion failed (e.g., JSON to YAML, JSON to HTML).
+    ///
+    /// Use this for errors related to:
+    /// - JSON to YAML conversion failures
+    /// - YAML to JSON conversion failures
+    /// - JSON to HTML conversion failures
+    /// - HTML to JSON extraction failures
+    ConversionError {
+        from: String,
+        to: String,
+        reason: String,
+    },
+
+    // === Agent State Errors ===
+    /// No agent is currently loaded. Call quickstart(), create(), or load() first.
+    AgentNotLoaded,
+
+    // === Inline / Media Signature Errors (PRD §4.1, §4.2) ===
+    /// File / image carries no JACS signature.
+    ///
+    /// Returned only by strict-mode verify (`VerifyOptions { strict: true }`).
+    /// Permissive mode returns `Ok(VerifyTextResult::MissingSignature)` /
+    /// `Ok(MediaVerificationResult { status: MissingSignature })` instead.
+    /// The wrapped string is the offending file path (best-effort; may be
+    /// abbreviated by callers).
+    MissingSignature(String),
+
+    // === Wrapped Errors ===
+    /// Wrapper for underlying errors from the existing API.
+    ///
+    /// Note: Prefer using specific category errors (ConfigError, CryptoError, etc.)
+    /// over Internal when the error category is known.
+    Internal { message: String },
+}
+
+impl fmt::Display for JacsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            // High-level category errors
+            JacsError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
+            JacsError::CryptoError(msg) => write!(f, "Cryptographic error: {}", msg),
+            JacsError::SchemaError(msg) => write!(f, "Schema error: {}", msg),
+            JacsError::AgentError(msg) => write!(f, "Agent error: {}", msg),
+            JacsError::DocumentError(msg) => write!(f, "Document error: {}", msg),
+            JacsError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            JacsError::TrustError(msg) => write!(f, "Trust store error: {}", msg),
+            JacsError::IoError(err) => write!(f, "IO error: {}", err),
+            JacsError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+
+            // Specific configuration errors
+            JacsError::ConfigNotFound { path } => {
+                write!(
+                    f,
+                    "Configuration not found at '{}'. Run jacs.create(name=\"...\") to create a new agent.",
+                    path
+                )
+            }
+            JacsError::ConfigInvalid { field, reason } => {
+                write!(f, "Invalid configuration field '{}': {}", field, reason)
+            }
+
+            // Keys
+            JacsError::KeyNotFound { path } => {
+                write!(
+                    f,
+                    "Key file not found at '{}'. Ensure keys were generated during agent creation.",
+                    path
+                )
+            }
+            JacsError::KeyDecryptionFailed { reason } => {
+                write!(f, "Failed to decrypt private key: {}", reason)
+            }
+            JacsError::KeyGenerationFailed { algorithm, reason } => {
+                write!(f, "Failed to generate {} keypair: {}", algorithm, reason)
+            }
+
+            // Signing
+            JacsError::SigningFailed { reason } => {
+                write!(f, "Document signing failed: {}", reason)
+            }
+
+            // Verification
+            JacsError::SignatureInvalid { expected, got } => {
+                write!(
+                    f,
+                    "Invalid signature: expected '{}...', got '{}...'",
+                    &expected[..expected.len().min(16)],
+                    &got[..got.len().min(16)]
+                )
+            }
+            JacsError::SignatureVerificationFailed { reason } => {
+                write!(f, "Signature verification failed: {}", reason)
+            }
+            JacsError::HashMismatch { expected, got } => {
+                write!(
+                    f,
+                    "Hash mismatch: document may have been tampered with. Expected '{}...', got '{}...'",
+                    &expected[..expected.len().min(16)],
+                    &got[..got.len().min(16)]
+                )
+            }
+            JacsError::DocumentMalformed { field, reason } => {
+                write!(f, "Malformed document: field '{}' - {}", field, reason)
+            }
+            JacsError::SignerUnknown { agent_id } => {
+                write!(
+                    f,
+                    "Unknown signer '{}'. Use jacs.trust_agent() to add them to your trust store.",
+                    agent_id
+                )
+            }
+
+            // DNS
+            JacsError::DnsLookupFailed { domain, reason } => {
+                write!(f, "DNS lookup failed for '{}': {}", domain, reason)
+            }
+            JacsError::DnsRecordMissing { domain } => {
+                write!(
+                    f,
+                    "DNS TXT record not found for '{}'. Add the record shown by `jacs dns-record`.",
+                    domain
+                )
+            }
+            JacsError::DnsRecordInvalid { domain, reason } => {
+                write!(f, "Invalid DNS record for '{}': {}", domain, reason)
+            }
+
+            // Size limits
+            JacsError::DocumentTooLarge { size, max_size } => {
+                write!(
+                    f,
+                    "Document too large: {} bytes exceeds maximum allowed size of {} bytes. \
+                    To increase the limit, set JACS_MAX_DOCUMENT_SIZE environment variable.",
+                    size, max_size
+                )
+            }
+
+            // Document lookup
+            JacsError::DocumentNotFound { document_id } => {
+                write!(
+                    f,
+                    "Document '{}' not found in storage. Verify the document ID is correct and the document has been stored.",
+                    document_id
+                )
+            }
+
+            // Files
+            JacsError::FileNotFound { path } => {
+                write!(
+                    f,
+                    "File not found: '{}'. Ensure the file path is correct or create the file first.",
+                    path
+                )
+            }
+            JacsError::FileReadFailed { path, reason } => {
+                write!(
+                    f,
+                    "Failed to read file '{}': {}. Check that the file exists and has read permissions.",
+                    path, reason
+                )
+            }
+            JacsError::FileWriteFailed { path, reason } => {
+                write!(
+                    f,
+                    "Failed to write file '{}': {}. Check that the directory exists and has write permissions.",
+                    path, reason
+                )
+            }
+            JacsError::DirectoryCreateFailed { path, reason } => {
+                write!(
+                    f,
+                    "Failed to create directory '{}': {}. Check that the parent directory exists and has write permissions.",
+                    path, reason
+                )
+            }
+            JacsError::MimeTypeUnknown { path } => {
+                write!(
+                    f,
+                    "Could not determine MIME type for '{}'. The file will be treated as application/octet-stream.",
+                    path
+                )
+            }
+
+            // Trust
+            JacsError::AgentNotTrusted { agent_id } => {
+                write!(
+                    f,
+                    "Agent '{}' is not trusted. Use jacs.trust_agent() to add them.",
+                    agent_id
+                )
+            }
+
+            // Registration
+            JacsError::RegistrationFailed { reason } => {
+                write!(f, "Registration failed: {}", reason)
+            }
+
+            // Search
+            JacsError::SearchError(msg) => write!(f, "Search error: {}", msg),
+
+            // Storage
+            JacsError::StorageError(msg) => write!(f, "Storage error: {}", msg),
+
+            // Database
+            JacsError::DatabaseError { operation, reason } => {
+                write!(f, "Database error during '{}': {}", operation, reason)
+            }
+
+            // Verification Claims
+            JacsError::VerificationClaimFailed { claim, reason } => {
+                write!(
+                    f,
+                    "Verification claim '{}' failed: {}\n\n\
+                    Fix: ",
+                    claim, reason
+                )?;
+                // Provide claim-specific actionable guidance
+                match claim.as_str() {
+                    "verified"
+                        if reason.contains("jacsAgentDomain") || reason.contains("domain") =>
+                    {
+                        write!(
+                            f,
+                            "Add \"jacsAgentDomain\": \"your-domain.com\" to your agent,\n     \
+                            or use \"jacsVerificationClaim\": \"unverified\" if DNS verification is not needed."
+                        )?;
+                    }
+                    _ if reason.contains("downgrade") || reason.contains("Cannot downgrade") => {
+                        write!(
+                            f,
+                            "Verification claims cannot be downgraded for security. Create a new agent if you need a lower claim level."
+                        )?;
+                    }
+                    _ => {
+                        write!(
+                            f,
+                            "Ensure all security requirements for '{}' are met.",
+                            claim
+                        )?;
+                    }
+                }
+                write!(
+                    f,
+                    "\n\nSee: https://jacs.ai/docs/security#verification-claims"
+                )
+            }
+
+            // Attestation
+            #[cfg(feature = "attestation")]
+            JacsError::AttestationFailed { message } => {
+                write!(f, "Attestation failed: {}", message)
+            }
+            #[cfg(feature = "attestation")]
+            JacsError::VerificationFailed { message } => {
+                write!(f, "Attestation verification failed: {}", message)
+            }
+
+            // Conversion
+            JacsError::ConversionError { from, to, reason } => {
+                write!(f, "Conversion from {} to {} failed: {}", from, to, reason)
+            }
+
+            // Agent state
+            JacsError::AgentNotLoaded => {
+                write!(
+                    f,
+                    "No agent loaded. Call jacs.quickstart(name, domain, ...) to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
+                )
+            }
+
+            // Inline / media missing signature (strict mode)
+            JacsError::MissingSignature(path) => {
+                write!(
+                    f,
+                    "No JACS signature found in '{}'. Pass strict=false to allow unsigned files, or sign the file first.",
+                    path
+                )
+            }
+
+            // Internal
+            JacsError::Internal { message } => {
+                write!(f, "{}", message)
+            }
+        }
+    }
+}
+
+impl Error for JacsError {}
+
+impl JacsError {
+    /// Create a `ConversionError` with the given source format, target format, and reason.
+    pub fn conversion(from: &str, to: &str, reason: impl Into<String>) -> Self {
+        JacsError::ConversionError {
+            from: from.to_string(),
+            to: to.to_string(),
+            reason: reason.into(),
+        }
+    }
+
+    /// Extracts a concise, actionable message from the error chain.
+    ///
+    /// For deeply nested error chains (common with `Box<dyn Error>` conversions),
+    /// this returns the last meaningful segment instead of the full chain.
+    /// For direct JacsError variants, it returns the Display output.
+    pub fn user_message(&self) -> String {
+        let full = self.to_string();
+        // For Internal errors that wrap chains, extract the last segment
+        if let JacsError::Internal { message } = self {
+            // Split on common chain separators and take the last meaningful part
+            let parts: Vec<&str> = message.split(": ").collect();
+            if parts.len() > 1 {
+                // Return the last non-empty segment
+                if let Some(last) = parts.last()
+                    && !last.is_empty()
+                {
+                    return last.to_string();
+                }
+            }
+        }
+        full
+    }
+}
+
+impl From<Box<dyn Error>> for JacsError {
+    fn from(err: Box<dyn Error>) -> Self {
+        let msg = err.to_string();
+        let lower = msg.to_lowercase();
+
+        // Log when this bridge is hit to track migration progress.
+        // As callers migrate to constructing specific JacsError variants,
+        // this bridge should be used less frequently.
+        tracing::warn!(
+            error_msg = %msg,
+            "Box<dyn Error> -> JacsError bridge hit; prefer constructing JacsError directly"
+        );
+
+        // Categorize known error patterns into specific variants
+        if lower.contains("password")
+            || lower.contains("encrypt")
+            || lower.contains("decrypt")
+            || lower.contains("pbkdf2")
+            || lower.contains("aes")
+        {
+            return JacsError::CryptoError(msg);
+        }
+        if lower.contains("config")
+            || lower.contains("environment variable")
+            || lower.contains("jacs_")
+            || lower.contains("not found at")
+        {
+            return JacsError::ConfigError(msg);
+        }
+        if lower.contains("key")
+            && (lower.contains("generate") || lower.contains("load") || lower.contains("not found"))
+        {
+            return JacsError::CryptoError(msg);
+        }
+
+        JacsError::Internal { message: msg }
+    }
+}
+
+impl From<std::io::Error> for JacsError {
+    fn from(err: std::io::Error) -> Self {
+        JacsError::IoError(err)
+    }
+}
+
+impl From<serde_json::Error> for JacsError {
+    fn from(err: serde_json::Error) -> Self {
+        JacsError::DocumentMalformed {
+            field: "json".to_string(),
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<String> for JacsError {
+    fn from(err: String) -> Self {
+        JacsError::Internal { message: err }
+    }
+}
+
+impl From<&str> for JacsError {
+    fn from(err: &str) -> Self {
+        JacsError::Internal {
+            message: err.to_string(),
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<object_store::Error> for JacsError {
+    fn from(err: object_store::Error) -> Self {
+        JacsError::StorageError(err.to_string())
+    }
+}
+
+impl From<crate::storage::jenv::EnvError> for JacsError {
+    fn from(err: crate::storage::jenv::EnvError) -> Self {
+        JacsError::ConfigError(err.to_string())
+    }
+}
+
+#[cfg(feature = "a2a")]
+impl From<crate::a2a::A2AError> for JacsError {
+    fn from(err: crate::a2a::A2AError) -> Self {
+        match err {
+            crate::a2a::A2AError::SerializationError(msg) => {
+                JacsError::DocumentError(format!("A2A serialization: {}", msg))
+            }
+            crate::a2a::A2AError::SigningError(msg) => {
+                JacsError::CryptoError(format!("A2A signing: {}", msg))
+            }
+            crate::a2a::A2AError::ValidationError(msg) => {
+                JacsError::ValidationError(format!("A2A validation: {}", msg))
+            }
+            crate::a2a::A2AError::KeyGenerationError(msg) => {
+                JacsError::CryptoError(format!("A2A key generation: {}", msg))
+            }
+        }
+    }
+}
+
+impl From<base64::DecodeError> for JacsError {
+    fn from(err: base64::DecodeError) -> Self {
+        JacsError::CryptoError(format!("base64 decode failed: {}", err))
+    }
+}
+
+/// Map every `jacs_core::CoreError` variant to an existing `JacsError`
+/// variant. Per PRD §9 (no new JacsError variants), this conversion uses
+/// the closest pre-existing variant for each kind:
+///
+/// - Password / envelope / decrypt failures → `KeyDecryptionFailed`
+/// - Signature verification → `SignatureVerificationFailed`
+/// - Document structure errors → `DocumentMalformed`
+/// - Schema errors → `SchemaError`
+/// - Agreement quorum errors → `DocumentError`
+/// - Algorithm / key / encryption errors → `CryptoError`
+///
+/// `Locked` is a transient state error (agent unlocked then `clear_secrets`
+/// called); it maps to `CryptoError` so callers see a typed crypto failure
+/// instead of a generic `Internal`.
+///
+/// No `CoreError` variant ever maps to `JacsError::Internal`. That contract
+/// is checked by `tests/core_error_mapping.rs`.
+impl From<jacs_core::CoreError> for JacsError {
+    fn from(err: jacs_core::CoreError) -> Self {
+        use jacs_core::CoreError as CE;
+        let msg = err.to_string();
+        match err {
+            CE::InvalidPassword | CE::InvalidPasswordFormat(_) => {
+                JacsError::KeyDecryptionFailed { reason: msg }
+            }
+            CE::Locked | CE::NotExportable | CE::SignerUnavailable(_) => JacsError::CryptoError(msg),
+            CE::AlgorithmMismatch { .. } | CE::UnsupportedAlgorithm(_) => {
+                JacsError::CryptoError(msg)
+            }
+            CE::MalformedDocument(reason) => JacsError::DocumentMalformed {
+                field: "document".to_string(),
+                reason,
+            },
+            CE::MalformedKey(_) => JacsError::CryptoError(msg),
+            CE::MalformedEnvelope(reason) => JacsError::KeyDecryptionFailed { reason },
+            CE::SignatureInvalid(reason) => JacsError::SignatureVerificationFailed { reason },
+            CE::EncryptionFailed(_) => JacsError::CryptoError(msg),
+            CE::DecryptionFailed(reason) => JacsError::KeyDecryptionFailed { reason },
+            CE::SchemaInvalid(msg) => JacsError::SchemaError(msg),
+            CE::AgreementFailed(msg) => JacsError::DocumentError(msg),
+        }
+    }
+}
+
+#[cfg(feature = "sqlx-sqlite")]
+impl From<sqlx::Error> for JacsError {
+    fn from(err: sqlx::Error) -> Self {
+        JacsError::DatabaseError {
+            operation: "sqlite".to_string(),
+            reason: err.to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==========================================================================
+    // HIGH-LEVEL CATEGORY ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_config_error_display() {
+        let err = JacsError::ConfigError("missing required field 'name'".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Configuration error"));
+        assert!(msg.contains("missing required field"));
+    }
+
+    #[test]
+    fn test_crypto_error_display() {
+        let err = JacsError::CryptoError("key generation failed".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Cryptographic error"));
+        assert!(msg.contains("key generation"));
+    }
+
+    #[test]
+    fn test_schema_error_display() {
+        let err = JacsError::SchemaError("schema validation failed".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Schema error"));
+        assert!(msg.contains("validation failed"));
+    }
+
+    #[test]
+    fn test_agent_error_display() {
+        let err = JacsError::AgentError("failed to load agent".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Agent error"));
+        assert!(msg.contains("failed to load"));
+    }
+
+    #[test]
+    fn test_document_error_display() {
+        let err = JacsError::DocumentError("document signing failed".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Document error"));
+        assert!(msg.contains("signing failed"));
+    }
+
+    #[test]
+    fn test_network_error_display() {
+        let err = JacsError::NetworkError("connection refused".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Network error"));
+        assert!(msg.contains("connection refused"));
+    }
+
+    #[test]
+    fn test_trust_error_display() {
+        let err = JacsError::TrustError("trust store not found".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Trust store error"));
+        assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_io_error_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = JacsError::IoError(io_err);
+        let msg = err.to_string();
+        assert!(msg.contains("IO error"));
+        assert!(msg.contains("file not found"));
+    }
+
+    #[test]
+    fn test_validation_error_display() {
+        let err = JacsError::ValidationError("invalid input".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Validation error"));
+        assert!(msg.contains("invalid input"));
+    }
+
+    #[test]
+    fn test_io_error_from_std_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let jacs_err: JacsError = io_err.into();
+        assert!(matches!(jacs_err, JacsError::IoError(_)));
+        let msg = jacs_err.to_string();
+        assert!(msg.contains("access denied"));
+    }
+
+    // ==========================================================================
+    // SPECIFIC ERROR VARIANT TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_error_display_config_not_found() {
+        let err = JacsError::ConfigNotFound {
+            path: "./jacs.config.json".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("jacs.config.json"));
+        assert!(msg.contains("create"));
+    }
+
+    #[test]
+    fn test_error_display_agent_not_loaded() {
+        let err = JacsError::AgentNotLoaded;
+        let msg = err.to_string();
+        assert!(msg.contains("quickstart"));
+        assert!(msg.contains("create"));
+        assert!(msg.contains("load"));
+    }
+
+    #[test]
+    fn test_error_from_string() {
+        let err: JacsError = "test error".into();
+        assert!(matches!(err, JacsError::Internal { .. }));
+    }
+
+    #[test]
+    fn test_error_is_send_sync() {
+        // Ensure JacsError can be sent across threads
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+
+        // These will fail to compile if JacsError doesn't implement Send/Sync
+        // Note: IoError contains std::io::Error which is Send + Sync
+        assert_send::<JacsError>();
+        assert_sync::<JacsError>();
+    }
+
+    #[test]
+    fn test_error_implements_std_error() {
+        let err = JacsError::ConfigError("test".to_string());
+        // Verify it implements std::error::Error
+        let _: &dyn Error = &err;
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        let err = JacsError::CryptoError("test crypto error".to_string());
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("CryptoError"));
+        assert!(debug_str.contains("test crypto error"));
+    }
+
+    // ==========================================================================
+    // FILE OPERATION ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_document_not_found_error_is_actionable() {
+        let err = JacsError::DocumentNotFound {
+            document_id: "doc-abc-123".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("doc-abc-123"),
+            "Should include the document ID"
+        );
+        assert!(
+            msg.contains("not found"),
+            "Should state the document was not found"
+        );
+        assert!(
+            msg.contains("Verify") || msg.contains("stored"),
+            "Should provide guidance"
+        );
+    }
+
+    #[test]
+    fn test_file_not_found_error_is_actionable() {
+        let err = JacsError::FileNotFound {
+            path: "/path/to/missing.json".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/path/to/missing.json"),
+            "Should include the file path"
+        );
+        assert!(
+            msg.contains("Ensure") || msg.contains("create"),
+            "Should provide guidance"
+        );
+    }
+
+    #[test]
+    fn test_file_read_failed_error_is_actionable() {
+        let err = JacsError::FileReadFailed {
+            path: "/path/to/file.json".to_string(),
+            reason: "permission denied".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/path/to/file.json"),
+            "Should include the file path"
+        );
+        assert!(
+            msg.contains("permission denied"),
+            "Should include the reason"
+        );
+        assert!(
+            msg.contains("permission") || msg.contains("Check"),
+            "Should provide guidance"
+        );
+    }
+
+    #[test]
+    fn test_file_write_failed_error_is_actionable() {
+        let err = JacsError::FileWriteFailed {
+            path: "/path/to/output.json".to_string(),
+            reason: "disk full".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/path/to/output.json"),
+            "Should include the file path"
+        );
+        assert!(msg.contains("disk full"), "Should include the reason");
+        assert!(
+            msg.contains("write") || msg.contains("Check"),
+            "Should provide guidance"
+        );
+    }
+
+    #[test]
+    fn test_directory_create_failed_error_is_actionable() {
+        let err = JacsError::DirectoryCreateFailed {
+            path: "/path/to/new_dir".to_string(),
+            reason: "permission denied".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/path/to/new_dir"),
+            "Should include the directory path"
+        );
+        assert!(
+            msg.contains("permission denied"),
+            "Should include the reason"
+        );
+        assert!(
+            msg.contains("parent") || msg.contains("Check"),
+            "Should suggest checking parent directory"
+        );
+    }
+
+    // ==========================================================================
+    // VERIFICATION CLAIM ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_verification_claim_domain_error_is_actionable() {
+        let err = JacsError::VerificationClaimFailed {
+            claim: "verified".to_string(),
+            reason: "Verified agents must have jacsAgentDomain set".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("verified"), "Should state the claim");
+        assert!(
+            msg.contains("jacsAgentDomain"),
+            "Should mention the required field"
+        );
+        assert!(msg.contains("Fix:"), "Should provide fix guidance");
+        assert!(msg.contains("jacs.ai/docs"), "Should include docs link");
+    }
+
+    #[test]
+    fn test_verification_claim_generic_error_is_actionable() {
+        let err = JacsError::VerificationClaimFailed {
+            claim: "custom-claim".to_string(),
+            reason: "Requirements not met".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("custom-claim"), "Should state the claim");
+        assert!(msg.contains("Fix:"), "Should provide fix guidance");
+        assert!(
+            msg.contains("security requirements"),
+            "Should mention security requirements"
+        );
+    }
+
+    // ==========================================================================
+    // STORAGE & DATABASE ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_search_error_display() {
+        let err = JacsError::SearchError("fulltext index unavailable".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Search error"));
+        assert!(msg.contains("fulltext index unavailable"));
+    }
+
+    #[test]
+    fn test_storage_error_display() {
+        let err = JacsError::StorageError("backend unavailable".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Storage error"));
+        assert!(msg.contains("backend unavailable"));
+    }
+
+    #[test]
+    fn test_database_error_display() {
+        let err = JacsError::DatabaseError {
+            operation: "store".to_string(),
+            reason: "connection refused".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("Database error"));
+        assert!(msg.contains("store"));
+        assert!(msg.contains("connection refused"));
+    }
+
+    #[test]
+    fn test_user_message_extracts_last_segment() {
+        let err = JacsError::Internal {
+            message: "Failed to load config: file not found: /path/to/config.json".to_string(),
+        };
+        let msg = err.user_message();
+        assert_eq!(msg, "/path/to/config.json");
+    }
+
+    #[test]
+    fn test_user_message_on_non_internal() {
+        let err = JacsError::CryptoError("key generation failed".to_string());
+        let msg = err.user_message();
+        assert!(msg.contains("key generation failed"));
+    }
+
+    #[test]
+    fn test_from_box_error_categorizes_password() {
+        let boxed: Box<dyn Error> = "password validation failed".into();
+        let err: JacsError = boxed.into();
+        assert!(
+            matches!(err, JacsError::CryptoError(_)),
+            "password error should be CryptoError, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_from_box_error_categorizes_config() {
+        let boxed: Box<dyn Error> = "config file not found at /path".into();
+        let err: JacsError = boxed.into();
+        assert!(
+            matches!(err, JacsError::ConfigError(_)),
+            "config error should be ConfigError, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_database_error_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<JacsError>();
+
+        // Verify new variants specifically work across threads
+        let err = JacsError::DatabaseError {
+            operation: "query".to_string(),
+            reason: "timeout".to_string(),
+        };
+        let handle = std::thread::spawn(move || err.to_string());
+        let msg = handle.join().unwrap();
+        assert!(msg.contains("timeout"));
+    }
+
+    #[test]
+    fn test_from_env_error_not_found() {
+        let env_err = crate::storage::jenv::EnvError::NotFound("JACS_TEST_VAR".to_string());
+        let err: JacsError = env_err.into();
+        assert!(
+            matches!(err, JacsError::ConfigError(_)),
+            "EnvError::NotFound should map to ConfigError, got: {:?}",
+            err
+        );
+        assert!(err.to_string().contains("JACS_TEST_VAR"));
+    }
+
+    #[test]
+    fn test_from_env_error_empty() {
+        let env_err = crate::storage::jenv::EnvError::Empty("JACS_KEY".to_string());
+        let err: JacsError = env_err.into();
+        assert!(
+            matches!(err, JacsError::ConfigError(_)),
+            "EnvError::Empty should map to ConfigError, got: {:?}",
+            err
+        );
+        assert!(err.to_string().contains("JACS_KEY"));
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_serialization_error() {
+        let a2a_err = crate::a2a::A2AError::SerializationError("bad json".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::DocumentError(_)),
+            "SerializationError should map to DocumentError, got: {:?}",
+            err
+        );
+        assert!(err.to_string().contains("A2A serialization"));
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_signing_error() {
+        let a2a_err = crate::a2a::A2AError::SigningError("key missing".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::CryptoError(_)),
+            "SigningError should map to CryptoError, got: {:?}",
+            err
+        );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_validation_error() {
+        let a2a_err = crate::a2a::A2AError::ValidationError("schema mismatch".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::ValidationError(_)),
+            "A2A ValidationError should map to JacsError::ValidationError, got: {:?}",
+            err
+        );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_key_generation_error() {
+        let a2a_err = crate::a2a::A2AError::KeyGenerationError("entropy".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::CryptoError(_)),
+            "KeyGenerationError should map to CryptoError, got: {:?}",
+            err
+        );
+    }
+
+    // ==========================================================================
+    // Task 010: JacsError Conversion Coverage Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_from_serde_json_error_converts_to_document_malformed() {
+        let bad_json = "{ invalid json }";
+        let serde_err = serde_json::from_str::<serde_json::Value>(bad_json).unwrap_err();
+        let jacs_err: JacsError = serde_err.into();
+        assert!(
+            matches!(jacs_err, JacsError::DocumentMalformed { .. }),
+            "serde_json::Error should map to DocumentMalformed, got: {:?}",
+            jacs_err
+        );
+        let msg = jacs_err.to_string();
+        assert!(
+            msg.contains("Malformed document"),
+            "Display should mention 'Malformed document'"
+        );
+    }
+
+    #[test]
+    fn test_from_base64_decode_error_converts_to_crypto() {
+        use base64::Engine;
+        let b64_err = base64::engine::general_purpose::STANDARD
+            .decode("not-valid-base64!!!")
+            .unwrap_err();
+        let jacs_err: JacsError = b64_err.into();
+        assert!(
+            matches!(jacs_err, JacsError::CryptoError(_)),
+            "base64::DecodeError should map to CryptoError, got: {:?}",
+            jacs_err
+        );
+    }
+
+    #[test]
+    fn test_config_not_found_display_includes_path_and_guidance() {
+        let err = JacsError::ConfigNotFound {
+            path: "/tmp/nonexistent.json".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/tmp/nonexistent.json"),
+            "Should include the path"
+        );
+        assert!(
+            msg.contains("create") || msg.contains("Run"),
+            "Should provide actionable guidance"
+        );
+    }
+
+    #[test]
+    fn test_verification_claim_downgrade_error_is_actionable() {
+        let err = JacsError::VerificationClaimFailed {
+            claim: "unverified".to_string(),
+            reason: "Cannot downgrade from 'verified' to 'unverified'. Create a new agent instead."
+                .to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("downgrade") || msg.contains("Cannot"),
+            "Should explain downgrade block"
+        );
+        assert!(msg.contains("Fix:"), "Should provide fix guidance");
+        assert!(
+            msg.contains("new agent"),
+            "Should suggest creating new agent"
+        );
+    }
+
+    // ==========================================================================
+    // CONVERSION ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_conversion_error_display_includes_all_fields() {
+        let err = JacsError::ConversionError {
+            from: "JSON".to_string(),
+            to: "YAML".to_string(),
+            reason: "invalid syntax".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("JSON"), "Should include source format");
+        assert!(msg.contains("YAML"), "Should include target format");
+        assert!(msg.contains("invalid syntax"), "Should include reason");
+        assert!(
+            msg.contains("Conversion from JSON to YAML failed"),
+            "Should have structured message"
+        );
+    }
+
+    #[test]
+    fn test_conversion_error_convenience_constructor() {
+        let err = JacsError::conversion("HTML", "JSON", "no script tag found");
+        let msg = err.to_string();
+        assert!(msg.contains("HTML"), "Should include source format");
+        assert!(msg.contains("JSON"), "Should include target format");
+        assert!(msg.contains("no script tag found"), "Should include reason");
+    }
+
+    #[test]
+    fn test_conversion_error_from_string_still_works() {
+        // Ensure the From<String> conversion still produces Internal, not ConversionError
+        let err: JacsError = "conversion failed".to_string().into();
+        assert!(
+            matches!(err, JacsError::Internal { .. }),
+            "String conversion should still produce Internal"
+        );
+    }
+}

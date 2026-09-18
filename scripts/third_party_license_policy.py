@@ -102,8 +102,8 @@ def load_reviewed_license_clarifications(
     with path.open("rb") as handle:
         document = tomllib.load(handle)
     entries = document.get("reviewed")
-    if not isinstance(entries, list) or not entries:
-        raise ValueError(f"{path} must contain at least one [[reviewed]] entry")
+    if not isinstance(entries, list):
+        raise ValueError(f"{path} must contain a reviewed array (empty when no clarifications apply)")
 
     reviewed: dict[str, dict[str, object]] = {}
     required_keys = {

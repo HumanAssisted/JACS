@@ -1,442 +1,73 @@
-name: Rust (jacs crate)
+name: Portable Rust validation
 
 on:
   workflow_call:
-  push:
-    branches: ["main"]
-    tags: ["v*"]
-    paths:
-      - "jacs/**"
-      - "jacs-cli/**"
-      - "jacs-mcp/**"
-      - "binding-core/**"
-      - "jacs-postgresql/**"
-      - "jacs-surrealdb/**"
-      - "jacs-duckdb/**"
-      - "jacs-redb/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".githooks/pre-commit"
-      - "scripts/check-secure-io.sh"
-      - "scripts/forbidden-deps.sh"
-      - "scripts/forbidden-deps.test.sh"
-      - "scripts/smoke/**"
-      - "jacs-core/**"
-      - "jacs-media/**"
-      - ".github/workflows/rust.yml"
   pull_request:
-    branches: ["main"]
-    paths:
-      - "jacs/**"
-      - "jacs-cli/**"
-      - "jacs-mcp/**"
-      - "binding-core/**"
-      - "jacs-postgresql/**"
-      - "jacs-surrealdb/**"
-      - "jacs-duckdb/**"
-      - "jacs-redb/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".githooks/pre-commit"
-      - "scripts/check-secure-io.sh"
-      - "scripts/forbidden-deps.sh"
-      - "scripts/forbidden-deps.test.sh"
-      - "scripts/smoke/**"
-      - "jacs-core/**"
-      - "jacs-media/**"
-      - ".github/workflows/rust.yml"
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      run_full:
-        description: "Run full release-level Rust test matrix"
-        required: false
-        default: false
-        type: boolean
-  schedule:
-    - cron: "0 9 * * 1"  # Weekly on Monday (was daily — saves ~150 min/month)
 
 permissions:
   contents: read
-
-env:
-  CARGO_TERM_COLOR: always
 
 concurrency:
   group: rust-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
 jobs:
-  rust-hygiene:
-    name: Rust hygiene (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-          targets: wasm32-unknown-unknown
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Forbidden-deps guard (wasm-portable crates)
-        # Both jacs-core and jacs-wasm must stay free of native-only
-        # crates like ring, tokio, reqwest, etc. See PRD §4.7. The full
-        # browser pipeline (wasm-pack test + Vite/Playwright) runs in
-        # `wasm-pr.yml` (Task 028).
-        run: |
-          bash scripts/forbidden-deps.test.sh
-          bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
-          bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
-
-      - name: Security audit + license check (cargo-deny)
-        run: |
-          cargo install cargo-deny --locked --version 0.19.0
-          # Advisory ignores (with reason strings) live in deny.toml under
-          # [advisories.ignore]. Single source of truth for both license and
-          # advisory policy; reviewable in PRs.
-          cargo deny --all-features check advisories
-          cargo deny --all-features check licenses
-
-      - name: Validate schema $id fields match file paths
-        run: ./scripts/validate-schemas.sh
-
-      - name: Check no bare serial annotations
-        run: ./scripts/check-no-bare-serial.sh
-
-      - name: Check secure IO guard
-        run: |
-          if [ -n "${GITHUB_BASE_REF:-}" ]; then
-            git fetch origin "$GITHUB_BASE_REF" --depth=1
-            ./scripts/check-secure-io.sh --diff "FETCH_HEAD...HEAD"
-          elif git rev-parse HEAD^ >/dev/null 2>&1; then
-            ./scripts/check-secure-io.sh --diff "HEAD^...HEAD"
-          else
-            echo "No diff base available; skipping secure IO diff guard."
-          fi
-
-  quick-jacs:
-    name: Quick jacs ${{ matrix.shard }} (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [lib, bin-shard-a, bin-shard-b]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Run quick Rust test suite (core - ${{ matrix.shard }})
-        run: make test-jacs-fast-${{ matrix.shard }}
-
-  quick-jacs-cli:
-    name: Quick jacs CLI (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install system dependencies (D-Bus for keychain support)
-        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Run CLI integration tests
-        run: make test-jacs-cli
-        env:
-          JACS_KEYCHAIN_BACKEND: disabled
-
-  # P2 NFR8: the committed stock verifier scripts (scripts/smoke/*.mjs)
-  # must keep verifying real CLI exports — a bit-rotted verifier script
-  # is invisible without this lane (deep-review Issue 018).
-  smoke-verifiers:
-    name: P2 smoke verifiers (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install system dependencies (D-Bus for keychain support)
-        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-
-      - name: Install Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Run exporters + stock verifier scripts
-        run: make smoke-verifiers
-        env:
-          JACS_KEYCHAIN_BACKEND: disabled
-
-  quick-binding-core:
-    name: Quick binding-core (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Run binding-core tests
-        run: make test-jacs-binding-core
-
-      - name: Run jacs-wasm native sanity tests
-        run: make test-jacs-wasm
-
-  # NOTE: jacs-mcp tests run in components.yml (with full-tools).
-  # Removed duplicate quick-jacs-mcp and quick-jacs-mcp-minimal jobs.
-
-  backend-inprocess:
-    name: ${{ matrix.package }} (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [jacs-duckdb, jacs-redb, jacs-surrealdb]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Run in-process backend crate tests
-        run: |
-          if [ "${{ matrix.package }}" = "jacs-surrealdb" ]; then
-            cargo test --manifest-path jacs-surrealdb/Cargo.toml --lib --tests --verbose
-          else
-            cargo test -p ${{ matrix.package }} --lib --tests --verbose
-          fi
-
-  # PostgreSQL backend tests use testcontainers (requires Docker daemon)
-  backend-postgresql:
-    name: jacs-postgresql (testcontainers)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
-        with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Run jacs-postgresql tests
-        run: cargo test -p jacs-postgresql --lib --tests --verbose
-
-  full-jacs-release:
-    name: Full jacs suite (${{ matrix.os }})
-    needs: [backend-postgresql]
-    if: |
-      startsWith(github.ref, 'refs/tags/') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true')
+  portable:
+    name: Portable primitive and thin fronts (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Install system dependencies (D-Bus for keychain support)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Security audit (cargo-deny, Linux)
-        if: runner.os == 'Linux'
-        run: |
-          cargo install cargo-deny --locked --version 0.19.0
-          # Same advisory ignores as the hygiene job; policy in deny.toml.
-          cargo deny --all-features check advisories
-
-      - name: Run full jacs tests
-        run: |
-          cargo build -p jacs-cli
-          cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
-          cargo test -p jacs-binding-core --features agreements,pq-tests --lib --tests --verbose
-          cargo test -p jacs-wasm --test native_sanity --verbose
-          cargo test -p jacs-mcp --lib --tests --verbose
-          cargo test -p jacs-cli --verbose
+          toolchain: "1.97.0"
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - name: Enforce the five-crate primitive boundary
+        run: python3 scripts/check_workspace_boundary.py
+      - name: Compile all active features with warnings denied
         env:
-          JACS_KEYCHAIN_BACKEND: disabled
-
-      - name: Run jacs-mcp tests (without attestation)
-        run: cargo test -p jacs-mcp --no-default-features --features mcp,core-tools --lib --tests --verbose
-        env:
-          JACS_KEYCHAIN_BACKEND: disabled
-
-      - name: Run in-process backend crate tests (release)
+          RUSTFLAGS: "-D warnings"
+        run: cargo check --locked --workspace --all-features
+      - name: Core, mobile, CLI and MCP behavior (including PQ)
+        run: cargo test --locked --workspace
+      - name: Build and smoke the public CLI
         run: |
-          cargo test -p jacs-duckdb --lib --tests --verbose
-          cargo test -p jacs-redb --lib --tests --verbose
-          cargo test --manifest-path jacs-surrealdb/Cargo.toml --lib --tests --verbose
+          cargo build --locked -p jacs-cli
+          python3 scripts/smoke-portable-cli.py --binary target/debug/jacs
 
-      - name: Run jacs-postgresql tests (Linux only)
-        if: runner.os == 'Linux'
-        run: cargo test -p jacs-postgresql --lib --tests --verbose
-
-      - name: Keychain integration tests (macOS)
-        if: runner.os == 'macOS'
-        # Evidence only: the keychain-tests feature needs a real, unlocked login
-        # keychain ("Omit for CI" in jacs/Cargo.toml). This step had passed
-        # --verbose to libtest since v0.9.7 and never completed on a runner.
-        continue-on-error: true
-        run: cargo test -p jacs --features keychain-tests --verbose -- keychain_macos
-
-      - name: Run cross-language and observability suites
-        run: |
-          make test-jacs-cross-language
-          make test-jacs-observability
-
-  full-jacs-nightly:
-    name: Full jacs suite (nightly ubuntu)
-    if: github.event_name == 'schedule'
+  archive-compatibility:
+    name: Archived SDK compatibility (no publishing)
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
     steps:
-      - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Install system dependencies (D-Bus for keychain support)
-        run: sudo apt-get update || echo 'apt-get update reported index errors (third-party runner sources); installing from the indexes that loaded'; sudo apt-get install -y libdbus-1-dev pkg-config
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          toolchain: "1.97"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - name: Security audit (cargo-deny)
-        run: |
-          cargo install cargo-deny --locked --version 0.19.0
-          # Same advisory ignores as the hygiene job; policy in deny.toml.
-          cargo deny --all-features check advisories
-
-      - name: Run nightly full Rust tests
-        run: |
-          cargo build -p jacs-cli
-          cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
-          cargo test -p jacs-binding-core --features agreements,pq-tests --lib --tests --verbose
-          cargo test -p jacs-wasm --test native_sanity --verbose
-          cargo test -p jacs-mcp --lib --tests --verbose
-          cargo test -p jacs-cli --verbose
-        env:
-          JACS_KEYCHAIN_BACKEND: disabled
-
-      - name: Run jacs-mcp tests (without attestation)
-        run: cargo test -p jacs-mcp --no-default-features --features mcp,core-tools --lib --tests --verbose
-
-      - name: Run in-process backend crate tests (nightly)
-        run: |
-          cargo test -p jacs-duckdb --lib --tests --verbose
-          cargo test -p jacs-redb --lib --tests --verbose
-          cargo test --manifest-path jacs-surrealdb/Cargo.toml --lib --tests --verbose
-
-      - name: Run jacs-postgresql tests
-        run: cargo test -p jacs-postgresql --lib --tests --verbose
-
-      - name: Run cross-language and observability suites
-        run: |
-          make test-jacs-cross-language
-          make test-jacs-observability
+          toolchain: "1.97.0"
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - name: Validate the unpublished legacy SDK boundary
+        run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs -p jacs-binding-core --no-default-features
+      - name: Build the archived CLI for process-level regression tests
+        run: cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs-cli --no-default-features --features mcp,agreements
+      - name: Preserve upstream MCP redaction and advisory visibility
+        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-mcp --features full-tools --test stdio_protocol --test visibility_meta
+      - name: Preserve the isolated MCP-to-MIME verification flow
+        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-cli --no-default-features --features mcp,agreements --test mcp_mime_demo
+      - name: Preserve the native A2A peer authority boundary
+        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a --test a2a_v1_peer

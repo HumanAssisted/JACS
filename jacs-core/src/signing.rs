@@ -2061,7 +2061,8 @@ fn validate_native_header_if_declared(document: &Value) -> Result<(), CoreError>
     validator.validate(&schema_input).map_err(|error| {
         CoreError::SchemaInvalid(format!(
             "native header schema validation failed at '{}': {}",
-            error.instance_path, error
+            error.instance_path(),
+            error
         ))
     })
 }
@@ -2180,7 +2181,12 @@ mod tests {
         let signer = Ed25519DalekSigner::generate().expect("keypair");
         let private_key = signer.export_private_key_bytes().expect("private key");
         let public_key = signer.public_key().to_vec();
-        let agent = json!({"jacsId":"agent-1","jacsVersion":"v1"});
+        let agent = CoreAgent::from_signer(
+            Box::new(signer),
+            json!({"jacsId":"agent-1","jacsVersion":"v1"}),
+        )
+        .expect("self-signed fixture identity")
+        .export_agent();
         let scope = SigningKeyScope::from_public_key(
             "agent-1",
             "v1",

@@ -1,0 +1,12 @@
+[
+  {
+    "algorithm": "ed25519",
+    "id": "agent-alpha",
+    "public_key_b64": "yuAdhgu8AP7pzvRPXwgwIPfEbwmLrMo5CtCZIJL+89Y="
+  },
+  {
+    "algorithm": "ed25519",
+    "id": "agent-beta",
+    "public_key_b64": "4k1cfpuwl/s4XxGMCEMHxGHKSsbYxkr0R9DEbZoRxKo="
+  }
+]
