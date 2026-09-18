@@ -48,7 +48,7 @@ mkdir -p "$stage/library/src/main/kotlin/ai/hai/jacs/platform"
 cp jacs-mobile/platforms/android/JacsKeystore.kt "$stage/library/src/main/kotlin/ai/hai/jacs/platform/"
 # Align ELF load segments for Android devices using 16 KiB memory pages.
 RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384" \
-cargo ndk -t arm64-v8a -t x86_64 -p 30 \
+cargo ndk -t arm64-v8a -t x86_64 --platform 30 \
     -o "$stage/library/src/main/jniLibs" build -p jacs-mobile --release --locked
 gradle --no-daemon --project-dir "$stage" \
     :library:assembleRelease :library:publishReleasePublicationToBundleRepository
