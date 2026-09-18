@@ -252,3 +252,12 @@ The application must compare the identity's version to current registration.
 and verified completion pipeline to produce fresh signed document/version IDs,
 exact `content` and `jacsSha256`. It confers no application authority and leaves
 `sign_message` behavior unchanged.
+
+Encrypted rotation stages resume through `CoreAgent::resume_key_rotation` using
+an existing `AgentMaterial` envelope. It verifies the V2 predecessor/candidate
+proof and private/public-key match before returning `PreparedKeyRotation`.
+That stage can `sign_document` for candidate possession and `export_recovery`
+before activation. `commit_encrypted_key_rotation` requires the exact accepted
+identity and public key, validates encrypted bytes even on an idempotent replay,
+and leaves the current signer intact on failure. Acceptance pins must come from
+an authenticated registry: the library does not establish network acceptance.

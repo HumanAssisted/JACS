@@ -37,6 +37,13 @@ class RecoveryVaultLifecycleTest {
     private fun main(action: () -> Unit) = InstrumentationRegistry.getInstrumentation().runOnMainSync(action)
 
     @Test fun ownedReadbackDoesNotCreateSessionAndClassifiesWrongInputs() = withVault { vault ->
+        val inspection = Capture<JacsVaultInspection>()
+        main { vault.inspect(inspection) }; inspection.await()
+        assertEquals(JacsVaultRecordState.ABSENT, inspection.value?.state)
+        assertNull(inspection.value?.identity)
+        val description = Capture<MobilePublicIdentity>()
+        main { vault.describe(description) }; description.await()
+        assertEquals(JacsVaultException.Code.LOCKED, description.error?.code)
         val human = MobileAgent.createHuman()
         try {
             val identity = human.exportAgentJson()

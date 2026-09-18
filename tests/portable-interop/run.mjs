@@ -119,6 +119,7 @@ try {
         require(material.algorithm === 'pq2025' && material.public_key === fixture.public_key_base64, 'rewrap identity');
         require(material.encrypted_private_key !== JSON.parse(fixture.material_json).encrypted_private_key, 'fresh envelope');
         let createdHumans = [];
+        let rotatedMaterial, rotationProof;
         if (fixture.recovery) {
           phase = 'human-worker-recovery';
           const human = await jacs.createHuman();
@@ -175,10 +176,43 @@ try {
             worker.terminateWorker();
           }
         }
+        if (fixture.rotation_material) {
+          phase = 'cross-runtime-staged-rotation';
+          const worker = await import('/worker/index.js');
+          let current = await worker.importRecoveryInWorker(fixture.material_json, fixture.transfer_password,
+            fixture.agent_id, fixture.public_key_base64, 'pq2025');
+          try {
+            const nativeStage = JSON.parse(fixture.rotation_material);
+            const possession = await current.signRotationDocument(fixture.rotation_material, fixture.return_password, '{"challenge":"native-stage"}');
+            require(JSON.parse(agent.verifyWithKeyJson(possession, nativeStage.public_key, 'pq2025')).valid, 'worker resumes native stage');
+            rotatedMaterial = await current.prepareKeyRotation(fixture.return_password);
+            const staged = JSON.parse(rotatedMaterial);
+            const oldJson = await current.exportAgent();
+            const oldStorage = await current.exportEncryptedAgent(fixture.return_password);
+            await current.drop(); worker.terminateWorker(); // process death before acceptance
+            current = await worker.importEncryptedAgentPinnedInWorker(oldStorage, fixture.return_password,
+              fixture.agent_id, fixture.public_key_base64, 'pq2025');
+            require(await current.exportAgent() === oldJson, 'old key survives interruption');
+            rotationProof = await current.signRotationDocument(rotatedMaterial, fixture.return_password, '{"challenge":"worker-stage"}');
+            require(JSON.parse(agent.verifyWithKeyJson(rotationProof, staged.public_key, 'pq2025')).valid, 'candidate possession before commit');
+            const backup = await current.exportRotationRecovery(rotatedMaterial, fixture.return_password);
+            require(JSON.parse(await worker.verifyRecoveryInWorker(backup.materialJson, backup.code,
+              staged.agent.jacsId, staged.public_key, 'pq2025')).jacsVersion === staged.agent.jacsVersion, 'candidate backup before activation');
+            let refused = false;
+            try { await current.commitKeyRotation(rotatedMaterial, fixture.return_password, oldJson, fixture.public_key_base64); }
+            catch { refused = true; }
+            require(refused && await current.exportAgent() === oldJson, 'wrong acceptance preserves active key');
+            for (let i = 0; i < 2; i++) {
+              require(JSON.parse(await current.commitKeyRotation(rotatedMaterial, fixture.return_password,
+                JSON.stringify(staged.agent), staged.public_key)).jacsVersion === staged.agent.jacsVersion, 'exact commit/replay');
+            }
+            require(current.publicKeyBase64 === staged.public_key, 'worker metadata follows commit');
+          } finally { await current?.drop(); worker.terminateWorker(); }
+        }
         phase = 'clear';
         agent.clearSecrets();
         require(!agent.isUnlocked(), 'browser key cleared');
-        return { ok: true, recovery_code: recovery?.code, created_humans: createdHumans, algorithm: 'pq2025', agent_id: fixture.agent_id, public_key_base64: fixture.public_key_base64, material_json: materialJson, signed_response: signedResponse, verified_mobile: true };
+        return { ok: true, rotation_material: rotatedMaterial, rotation_proof: rotationProof, recovery_code: recovery?.code, created_humans: createdHumans, algorithm: 'pq2025', agent_id: fixture.agent_id, public_key_base64: fixture.public_key_base64, material_json: materialJson, signed_response: signedResponse, verified_mobile: true };
       } catch {
         return { ok: false, phase };
       } finally {
@@ -194,6 +228,7 @@ try {
   await writeFile(returnPath, JSON.stringify(result), { mode: 0o600, flag: 'wx' });
   phase = 'mobile-import-and-verify';
   mobile('verify', binding, fixturePath, returnPath);
+  if (fixture.rotation_material) console.log('PASS: native/worker staged rotation, interrupted reopen, candidate proof/backup, exact acceptance and commit replay');
   console.log(fixture.recovery ? 'PASS: human creation and 128-bit recovery through native UniFFI, Chromium WASM and Web Worker; wrong-code/pin/material rejection' : 'PASS: native UniFFI -> browser WASM -> native UniFFI PQ interoperability');
 } catch {
   console.error(`FAIL: PQ interoperability at ${phase}`);

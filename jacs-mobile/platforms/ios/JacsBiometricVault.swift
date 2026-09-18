@@ -60,6 +60,14 @@ internal protocol JacsVaultRecordStore {
     func add(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws
     func read(account: String, authorization: JacsBiometricAuthorizing) throws -> Data
     func delete(account: String) throws
+    func replace(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws
+    func inspect(account: String) -> JacsBiometricInspection
+}
+
+public enum JacsBiometricRecordState { case absent, presentLocked, unreadable }
+public struct JacsBiometricInspection {
+    public let state: JacsBiometricRecordState
+    public let identity: MobilePublicIdentity?
 }
 
 /// A single atomic Keychain record contains the encrypted portable material and
@@ -122,6 +130,29 @@ internal final class SystemVaultRecordStore: JacsVaultRecordStore {
         if status != errSecItemNotFound { try check(status) }
     }
 
+    func replace(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws {
+        guard let context = authorization.context else { throw JacsBiometricError.authenticationFailed }
+        var item = query(account)
+        item[kSecUseAuthenticationContext as String] = context
+        try check(SecItemUpdate(item as CFDictionary, [kSecValueData as String: data] as CFDictionary))
+    }
+
+    func inspect(account: String) -> JacsBiometricInspection {
+        var item = query(account)
+        item[kSecReturnAttributes as String] = true
+        item[kSecMatchLimit as String] = kSecMatchLimitOne
+        item[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        let status = SecItemCopyMatching(item as CFDictionary, nil)
+        let state: JacsBiometricRecordState
+        switch status {
+        case errSecSuccess, errSecInteractionNotAllowed: state = .presentLocked
+        case errSecItemNotFound: state = .absent
+        default: state = .unreadable
+        }
+        // Protected value bytes are never requested by this nonprompting query.
+        return JacsBiometricInspection(state: state, identity: nil)
+    }
+
     private func check(_ status: OSStatus) throws {
         switch status {
         case errSecSuccess: return
@@ -165,12 +196,16 @@ internal struct RustVaultAgentFactory: JacsVaultAgentFactory {
 /// recovery export. This library never falls back to a passcode or server key.
 public final class JacsBiometricVault {
     private static let maximumRecordBytes = 1024 * 1024
-    private struct Record: Codable {
+    // Serializes read/modify/write across vault instances in this process. No
+    // biometric prompt is held under this lock; extensions must use one owner.
+    private static let recordMutationLock = NSLock()
+    private struct Record: Codable, Equatable {
         let version: Int
         let account: String
         let biometricDomain: Data
         let wrappingPassword: String
-        let materialJSON: String
+        var materialJSON: String
+        var pendingMaterialJSON: String? = nil
     }
     private final class WeakSession {
         weak var value: JacsBiometricSession?
@@ -225,6 +260,17 @@ public final class JacsBiometricVault {
     /// Re-enable requests when the caller is foreground and authorized again.
     /// Does not unlock anything or reuse any biometric credentials.
     public func resume() { lock.lock(); active = true; lock.unlock() }
+
+    /// Existence only on iOS: a locked protected value cannot disclose its pins.
+    /// Enrollment invalidation is learned only from an actual unlock attempt.
+    @discardableResult
+    public func inspect(account: String,
+        completion: @escaping (Result<JacsBiometricInspection, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        ownedOperation({ _ in
+            guard !account.isEmpty && account.utf8.count <= 128 else { throw JacsBiometricError.invalidStoredRecord }
+            return self.store.inspect(account: account)
+        }, completion: completion)
+    }
 
     deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -304,6 +350,113 @@ public final class JacsBiometricVault {
         }, completion: completion)
     }
 
+    /// Public candidate metadata only; encrypted staged material stays in Keychain.
+    @discardableResult
+    public func prepareKeyRotation(account: String, reason: String,
+        completion: @escaping (Result<MobilePublicIdentity, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        rotationOperation(account: account, reason: reason, { record, agent in
+            if record.pendingMaterialJSON == nil {
+                record.pendingMaterialJSON = try self.factory.serialize(agent.prepareRotation(record.wrappingPassword))
+            }
+            return try self.rotationIdentity(record, agent)
+        }, completion: completion)
+    }
+
+    /// Reopen the same stage after a crash or uncertain server response.
+    @discardableResult
+    public func keyRotationStatus(account: String, reason: String,
+        completion: @escaping (Result<MobilePublicIdentity?, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        rotationOperation(account: account, reason: reason, { record, agent in
+            record.pendingMaterialJSON == nil ? nil : try self.rotationIdentity(record, agent)
+        }, completion: completion)
+    }
+
+    @discardableResult
+    public func signRotationDocumentJSON(account: String, reason: String, candidateVersion: String, json: String,
+        completion: @escaping (Result<String, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        rotationOperation(account: account, reason: reason, { record, agent in
+            try agent.signRotation(self.rotationMaterial(record, version: candidateVersion),
+                password: record.wrappingPassword, json: json)
+        }, completion: completion)
+    }
+
+    /// Locks before returning the explicit display code; no plaintext code is persisted.
+    @discardableResult
+    public func createRotationRecovery(account: String, reason: String, candidateVersion: String,
+        completion: @escaping (Result<JacsBiometricRecovery, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        rotationOperation(account: account, reason: reason, { record, agent in
+            JacsBiometricRecovery(try agent.rotationRecovery(self.rotationMaterial(record, version: candidateVersion),
+                password: record.wrappingPassword))
+        }, completion: completion)
+    }
+
+    /// HAI must first reconcile authenticated server acceptance of these exact
+    /// pins and any required backup generation. This method performs no network I/O.
+    @discardableResult
+    public func commitKeyRotation(account: String, reason: String, acceptedIdentityJSON: String, acceptedPublicKey: Data,
+        completion: @escaping (Result<String, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        rotationOperation(account: account, reason: reason, { record, agent in
+            let material = try materialFromJson(json: record.pendingMaterialJSON ?? record.materialJSON)
+            let identity = try agent.commitRotation(material, password: record.wrappingPassword,
+                identity: acceptedIdentityJSON, key: acceptedPublicKey)
+            record.materialJSON = try self.factory.serialize(material)
+            record.pendingMaterialJSON = nil
+            self.closeSessions(account: account)
+            return identity
+        }, completion: completion)
+    }
+
+    /// Only after authoritative nonacceptance. Never discard on timeout/background.
+    @discardableResult
+    public func discardKeyRotation(account: String, reason: String, candidateVersion: String,
+        completion: @escaping (Result<Void, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        rotationOperation(account: account, reason: reason, { record, agent in
+            let material = try self.rotationMaterial(record, version: candidateVersion)
+            _ = try agent.validateRotation(material, password: record.wrappingPassword)
+            record.pendingMaterialJSON = nil
+        }, completion: completion)
+    }
+
+    private func rotationMaterial(_ record: Record, version: String? = nil) throws -> EncryptedAgentMaterial {
+        guard let json = record.pendingMaterialJSON else { throw JacsBiometricError.invalidStoredRecord }
+        let material = try materialFromJson(json: json)
+        if let version {
+            let identity = try JSONSerialization.jsonObject(with: Data(material.agentJson.utf8)) as? [String: Any]
+            guard identity?["jacsVersion"] as? String == version else { throw JacsBiometricError.identityMismatch }
+        }
+        return material
+    }
+
+    private func rotationIdentity(_ record: Record, _ agent: JacsSessionAgent) throws -> MobilePublicIdentity {
+        let material = try rotationMaterial(record)
+        return try describePublicIdentity(agentJson: agent.validateRotation(material, password: record.wrappingPassword),
+            publicKey: material.publicKey, algorithm: material.algorithm)
+    }
+
+    private func closeSessions(account: String) {
+        lock.lock()
+        let live = sessions.filter { $0.account == account }.compactMap { $0.value }
+        sessions.removeAll { $0.account == account }
+        lock.unlock()
+        live.forEach { $0.close() }
+    }
+
+    private func rotationOperation<T>(account: String, reason: String,
+        _ work: @escaping (inout Record, JacsSessionAgent) throws -> T,
+        completion: @escaping (Result<T, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
+        var output: Result<T, JacsBiometricError>?
+        return open(account: account, reason: reason, create: nil, transformRecord: { record, agent in
+            output = .success(try work(&record, agent))
+        }, completion: { result in
+            switch result {
+            case .failure(let error): completion(.failure(error))
+            case .success(let session):
+                session.close()
+                completion(output ?? .failure(.cryptographyFailed))
+            }
+        })
+    }
+
     /// Deliberate local removal only. For invalidated-record restore, first verify
     /// the candidate recovery and its registered current version. Never auto-delete
     /// on failed unlock/receive; removal does not revoke or replace an identity.
@@ -318,6 +471,7 @@ public final class JacsBiometricVault {
             let live = sessions.filter { $0.account == account }.compactMap { $0.value }
             lock.unlock()
             try operation.mutateIfPending {
+                Self.recordMutationLock.lock(); defer { Self.recordMutationLock.unlock() }
                 live.forEach { $0.close() }
                 try store.delete(account: account)
             }
@@ -355,6 +509,7 @@ public final class JacsBiometricVault {
 
     private func open(account: String, reason: String, preflight: () throws -> Void = {}, create: (() throws -> JacsSessionAgent)?,
                       cleanup: @escaping () -> Void = {},
+                      transformRecord: ((inout Record, JacsSessionAgent) throws -> Void)? = nil,
                       completion: @escaping (Result<JacsBiometricSession, JacsBiometricError>) -> Void) -> JacsBiometricOperation {
         let id = UUID()
         let auth = authorization()
@@ -400,6 +555,7 @@ public final class JacsBiometricVault {
                     guard let domain = auth.domainState, !domain.isEmpty else {
                         throw JacsBiometricError.biometricsUnavailable
                     }
+                    Self.recordMutationLock.lock(); defer { Self.recordMutationLock.unlock() }
                     let agent: JacsSessionAgent
                     if let create = create {
                         let source = try create()
@@ -427,7 +583,7 @@ public final class JacsBiometricVault {
                         var encoded = try store.read(account: account, authorization: auth)
                         defer { encoded.resetBytes(in: 0..<encoded.count) }
                         guard encoded.count <= Self.maximumRecordBytes,
-                              let record = try? JSONDecoder().decode(Record.self, from: encoded),
+                              var record = try? JSONDecoder().decode(Record.self, from: encoded),
                               record.version == 1, record.account == account,
                               Data(base64Encoded: record.wrappingPassword)?.count == 32 else {
                             throw JacsBiometricError.invalidStoredRecord
@@ -436,7 +592,20 @@ public final class JacsBiometricVault {
                             throw JacsBiometricError.notFoundOrEnrollmentChanged
                         }
                         agent = try factory.restore(materialJSON: record.materialJSON, password: record.wrappingPassword)
+                        do {
+                            let before = record
+                            try transformRecord?(&record, agent)
+                            if record != before {
+                                var updated = try JSONEncoder().encode(record)
+                                defer { updated.resetBytes(in: 0..<updated.count) }
+                                guard updated.count <= Self.maximumRecordBytes else { throw JacsBiometricError.invalidStoredRecord }
+                                try operation.mutateIfPending { try store.replace(updated, account: account, authorization: auth) }
+                            }
+                        } catch { agent.clear(); throw error }
                     }
+                    // Rotation operations return only public values or an explicit
+                    // recovery display code. Clear both signers before delivery.
+                    if transformRecord != nil { agent.clear() }
                     let session = JacsBiometricSession(agent: agent, worker: worker, callbacks: callbacks)
                     lock.lock()
                     let canDeliver = active && operation.isPending

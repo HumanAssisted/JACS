@@ -360,3 +360,96 @@ fn abandoning_a_stage_clears_only_the_candidate_and_locked_old_key_can_verify() 
         .verify_key_rotation(&candidate, &key, SigningAlgorithm::Ed25519)
         .unwrap();
 }
+
+#[test]
+fn encrypted_stage_survives_interruption_and_requires_exact_acceptance() {
+    let mut old = CoreAgent::create_human().unwrap();
+    let before = old.export_agent();
+    let old_material = old.export_encrypted_material(PASSWORD).unwrap();
+    let old_key = old.public_key().to_vec();
+    let old_backup = jacs_core::recovery::export_recovery(&old).unwrap();
+    let stage = old
+        .prepare_key_rotation(None)
+        .unwrap()
+        .export_encrypted_material(PASSWORD)
+        .unwrap();
+    let candidate = stage.agent.clone();
+    let key = stage.public_key.clone();
+    old.clear_secrets(); // process death, no in-memory prepared handle survives
+    let mut old =
+        CoreAgent::from_encrypted_material(old_material, UnlockSecret::Password(PASSWORD)).unwrap();
+    let resumed = old.resume_key_rotation(stage.clone(), PASSWORD).unwrap();
+    let challenge = json!({"jacsType":"replacement-possession", "nonce":"exact"});
+    let proof = resumed.sign_document(&challenge).unwrap();
+    assert_eq!(proof["content"], challenge);
+    assert!(
+        CoreAgent::verify_with_key(&proof, &key, SigningAlgorithm::Pq2025)
+            .unwrap()
+            .valid
+    );
+    let backup = resumed.export_recovery().unwrap();
+    assert_eq!(
+        jacs_core::recovery::verify_recovery(
+            backup.material,
+            &backup.code,
+            candidate["jacsId"].as_str().unwrap(),
+            &key,
+            SigningAlgorithm::Pq2025
+        )
+        .unwrap(),
+        candidate
+    );
+    drop(resumed);
+    assert_eq!(old.export_agent(), before);
+    assert!(
+        CoreAgent::verify_with_key(
+            &old.sign_document(&challenge).unwrap(),
+            &old_key,
+            SigningAlgorithm::Pq2025
+        )
+        .unwrap()
+        .valid
+    );
+    assert!(
+        old.commit_encrypted_key_rotation(stage.clone(), PASSWORD, &before, &old_key)
+            .is_err()
+    );
+    assert!(
+        old.resume_key_rotation(stage.clone(), "wrong password for stage")
+            .is_err()
+    );
+    let stranger = CoreAgent::create_human().unwrap();
+    assert!(
+        stranger
+            .resume_key_rotation(stage.clone(), PASSWORD)
+            .is_err()
+    );
+    assert_eq!(old.export_agent(), before);
+    // The previous saved backup is still usable throughout abandoned staging.
+    assert_eq!(
+        jacs_core::recovery::verify_recovery(
+            old_backup.material,
+            &old_backup.code,
+            before["jacsId"].as_str().unwrap(),
+            &old_key,
+            SigningAlgorithm::Pq2025
+        )
+        .unwrap(),
+        before
+    );
+    old.commit_encrypted_key_rotation(stage.clone(), PASSWORD, &candidate, &key)
+        .unwrap();
+    assert_eq!(
+        old.commit_encrypted_key_rotation(stage.clone(), PASSWORD, &candidate, &key)
+            .unwrap(),
+        candidate
+    );
+    assert_eq!(old.public_key(), key);
+    let mut corrupt = stage;
+    corrupt.encrypted_private_key[0] ^= 1;
+    assert!(
+        old.commit_encrypted_key_rotation(corrupt, PASSWORD, &candidate, &key)
+            .is_err()
+    );
+    assert_eq!(old.export_agent(), candidate);
+}

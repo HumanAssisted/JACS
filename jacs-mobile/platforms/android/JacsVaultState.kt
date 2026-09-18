@@ -66,6 +66,10 @@ internal class JacsVaultState<S> {
         ticket.cipher = null
         return true
     }
+    @Synchronized fun mutate(ticket: Ticket, action: () -> Unit) {
+        if (!current(ticket)) throw JacsVaultException(JacsVaultException.Code.CANCELLED)
+        action()
+    }
     @Synchronized fun isUnlocked(): Boolean = !closed && session != null && pending?.cancelled?.get() != true
     @Synchronized fun invalidate(permanently: Boolean = false): Invalidated<S> {
         generation++

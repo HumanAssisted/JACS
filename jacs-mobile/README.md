@@ -342,3 +342,54 @@ For a complete independently verifiable document, use iOS
 `MobileAgent.signDocumentJson`). Exact input JSON becomes `content`; JACS generates
 fresh root IDs/dates before signing and computes the standard `jacsSha256` afterward.
 Existing `signMessageJson` retains its original minimal-message semantics.
+
+### Staged key rotation
+
+Owned vaults expose `prepareKeyRotation`, `keyRotationStatus`,
+`signRotationDocumentJSON` (Android `signRotationDocumentJson`),
+`createRotationRecovery`, `commitKeyRotation` and `discardKeyRotation`.
+Each uses fresh existing biometric protection. iOS takes `account`, `reason` and
+`completion`; Android takes `title` and `callback`. Candidate signing/recovery
+and discard also require the exact `candidateVersion`. Preparation/status returns
+`MobilePublicIdentity` with validated public identity, key, hash and PEM. No candidate handle or local password
+crosses the application bridge; sign/recovery operations clear temporary signers
+before returning.
+
+Preparation atomically stores at most one encrypted candidate beside the old
+material. Repeated preparation returns that candidate. The old identity retains
+its ID/original version and authorizes the V2 rotation proof. This differs from a
+management-credential replacement that creates a new lineage. Existing biometric
+ACL/Keystore policies and the JACS envelope remain unchanged. Legacy vault records
+remain readable; Android uses its v2 record container only while a stage exists.
+
+Persist the candidate before server submission. Sign the candidate enrollment
+challenge through `signRotationDocumentJSON` and the old-key management challenge
+through the existing old-key session. If the old key has a committed recovery copy,
+export the candidate recovery generation, read it back with `verifyRecovery` pinned
+to the candidate, and obtain save acknowledgment before server activation. HAI owns
+these generation and acknowledgment transactions; JACS never marks a code saved.
+
+After server acceptance, reconcile authenticated status and pass that exact signed
+identity JSON and public key to `commitKeyRotation`. Promotion atomically replaces
+the active material and removes the pending copy. A failed local write leaves both
+old and pending ciphertext available; reopen and reconcile. Exact commit replay
+is safe. Cancellation/background suppresses late results but does not discard a
+persisted candidate. Call `discardKeyRotation` only after authoritative
+nonacceptance; never discard merely because a response was lost. Removing a local
+vault deliberately removes both copies and remains separate from server revocation.
+
+UniFFI supplies `prepareKeyRotation(password)`, `validateKeyRotation(material,
+password)`, `signRotationDocumentJson(material,password,json)`,
+`exportRotationRecovery(material,password)` and
+`commitKeyRotation(material,password,acceptedIdentityJson,acceptedPublicKey)`.
+These low-level native methods are implementation details of the owned vault and
+must not be bridged as unlocked handles or wrapping passwords.
+
+`vault.inspect` is nonprompting and reports absent, present/locked or unreadable.
+It does not claim biometric usability or invalidation. Android validates the public
+identity already present in its encrypted-material record; iOS returns no identity
+from a locked Keychain value. After unlock, iOS `session.describe` and Android
+`vault.describe` return `MobilePublicIdentity` containing validated `agentJson`,
+`publicKeyBase64`, `publicKeyHash`, `publicKeyPem` and `algorithm`. No secondary
+public metadata store is created. Obtain authoritative pins from registration
+before restore or activation, regardless of local inspect metadata.

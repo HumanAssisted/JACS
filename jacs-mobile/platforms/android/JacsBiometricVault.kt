@@ -32,6 +32,8 @@ data class JacsVaultIdentity(val agentJson: String, val publicKeyBase64: String)
 data class JacsEncryptedTransfer(val code: String, val materialJson: String)
 /** Deliberately no data-class toString/copy: code must not appear in diagnostics. */
 class JacsEncryptedRecovery(val code: String, val materialJson: String)
+enum class JacsVaultRecordState { ABSENT, PRESENT_LOCKED, UNREADABLE }
+data class JacsVaultInspection(val state: JacsVaultRecordState, val identity: MobilePublicIdentity?)
 
 /** Owns the unlocked Rust handle; callers never receive an escapable private-key
  * handle. Construct on the main thread, normally from Activity.onCreate, and call
@@ -122,7 +124,7 @@ class JacsBiometricVault(
                 if (records.exists()) throw JacsVaultException(JacsVaultException.Code.ALREADY_EXISTS)
                 keystore.ensureWrappingKey()
                 val cipher = keystore.prepareProtect()
-                main.post { prompt(ticket, title, cipher, callback) {
+                main.post { promptAgent(ticket, title, cipher, callback) {
                     val agent = createAgent()
                     try {
                         if (!state.current(ticket)) throw JacsVaultException(JacsVaultException.Code.CANCELLED)
@@ -141,12 +143,30 @@ class JacsBiometricVault(
             try {
                 val wrapped = records.read()
                 val cipher = keystore.prepareUnlock(wrapped.wrappedSecret)
-                main.post { prompt(ticket, title, cipher, callback) { keystore.finishUnlock(wrapped, cipher) } }
+                main.post { promptAgent(ticket, title, cipher, callback) { keystore.finishUnlock(wrapped, cipher) } }
             } catch (error: Exception) { fail(ticket, callback, error) }
         } }
 
     fun signDocumentJson(json: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
         useSession(callback) { it.signDocumentJson(json) }
+
+    fun describe(callback: JacsVaultCallback<MobilePublicIdentity>): JacsVaultRequest =
+        useSession(callback) { it.describe() }
+
+    /** Public record validation only. No prompt/decryption or claim that the
+     * Keystore key remains usable after biometric enrollment changes. */
+    fun inspect(callback: JacsVaultCallback<JacsVaultInspection>): JacsVaultRequest =
+        begin(false, false, callback) { ticket -> worker.execute {
+            val result = try {
+                if (!records.exists()) JacsVaultInspection(JacsVaultRecordState.ABSENT, null)
+                else {
+                    val material = materialFromJson(records.read().materialJson)
+                    JacsVaultInspection(JacsVaultRecordState.PRESENT_LOCKED,
+                        describePublicIdentity(material.agentJson, material.publicKey, material.algorithm))
+                }
+            } catch (_: Exception) { JacsVaultInspection(JacsVaultRecordState.UNREADABLE, null) }
+            main.post { complete(ticket, callback, result) }
+        } }
 
     /** Read-back only: no prompt, storage mutation or escaping unlocked handle. */
     fun verifyRecovery(materialJson: String, code: String, expectedAgentId: String,
@@ -187,6 +207,83 @@ class JacsBiometricVault(
             val recovery = it.exportRecovery()
             JacsEncryptedRecovery(recovery.code, materialToJson(recovery.material))
         }
+
+    /** Stage once and persist before returning. Repeated prepare reopens the same
+     * candidate; a timeout/background must never silently generate another key. */
+    fun prepareKeyRotation(title: String, callback: JacsVaultCallback<MobilePublicIdentity>): JacsVaultRequest =
+        rotationOperation(title, callback) { wrapped, agent, password ->
+            val material = wrapped.pendingMaterialJson?.let { materialFromJson(it) }
+                ?: agent.prepareKeyRotation(password)
+            val identity = describePublicIdentity(agent.validateKeyRotation(material, password),
+                material.publicKey, material.algorithm)
+            Pair(wrapped.copy(pendingMaterialJson = materialToJson(material)), identity)
+        }
+
+    fun keyRotationStatus(title: String, callback: JacsVaultCallback<MobilePublicIdentity?>): JacsVaultRequest =
+        rotationOperation(title, callback) { wrapped, agent, password ->
+            val material = wrapped.pendingMaterialJson?.let { materialFromJson(it) }
+            Pair(wrapped, material?.let { describePublicIdentity(agent.validateKeyRotation(it, password),
+                it.publicKey, it.algorithm) })
+        }
+
+    fun signRotationDocumentJson(title: String, candidateVersion: String, json: String,
+        callback: JacsVaultCallback<String>): JacsVaultRequest = rotationOperation(title, callback) { wrapped, agent, password ->
+        Pair(wrapped, agent.signRotationDocumentJson(rotationMaterial(wrapped, candidateVersion), password, json))
+    }
+
+    fun createRotationRecovery(title: String, candidateVersion: String,
+        callback: JacsVaultCallback<JacsEncryptedRecovery>): JacsVaultRequest = rotationOperation(title, callback) { wrapped, agent, password ->
+        val recovery = agent.exportRotationRecovery(rotationMaterial(wrapped, candidateVersion), password)
+        Pair(wrapped, JacsEncryptedRecovery(recovery.code, materialToJson(recovery.material)))
+    }
+
+    /** Reconcile authenticated server acceptance and backup generation first.
+     * Exact replay is safe after loss of the local commit response. */
+    fun commitKeyRotation(title: String, acceptedIdentityJson: String, acceptedPublicKey: ByteArray,
+        callback: JacsVaultCallback<String>): JacsVaultRequest {
+        val key = acceptedPublicKey.copyOf()
+        return rotationOperation(title, callback) { wrapped, agent, password ->
+            val material = materialFromJson(wrapped.pendingMaterialJson ?: wrapped.materialJson)
+            val identity = agent.commitKeyRotation(material, password, acceptedIdentityJson, key)
+            Pair(wrapped.copy(materialJson = materialToJson(material), pendingMaterialJson = null), identity)
+        }
+    }
+
+    /** Call only after authoritative nonacceptance, never simply on timeout. */
+    fun discardKeyRotation(title: String, candidateVersion: String,
+        callback: JacsVaultCallback<Unit>): JacsVaultRequest = rotationOperation(title, callback) { wrapped, agent, password ->
+        agent.validateKeyRotation(rotationMaterial(wrapped, candidateVersion), password)
+        Pair(wrapped.copy(pendingMaterialJson = null), Unit)
+    }
+
+    private fun rotationMaterial(wrapped: JacsKeystore.WrappedMaterial, version: String): EncryptedAgentMaterial {
+        val material = wrapped.pendingMaterialJson?.let { materialFromJson(it) }
+            ?: throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
+        if (org.json.JSONObject(material.agentJson).getString("jacsVersion") != version)
+            throw JacsVaultException(JacsVaultException.Code.IDENTITY_MISMATCH)
+        return material
+    }
+
+    /** One fresh biometric decrypt, using the same bound Cipher and existing
+     * wrapping secret. Both Rust signers are cleared before callback delivery. */
+    private fun <T> rotationOperation(title: String, callback: JacsVaultCallback<T>,
+        operation: (JacsKeystore.WrappedMaterial, MobileAgent, String) -> Pair<JacsKeystore.WrappedMaterial, T>): JacsVaultRequest =
+        begin(false, false, callback) { ticket -> worker.execute {
+            try {
+                val wrapped = records.read()
+                val cipher = keystore.prepareUnlock(wrapped.wrappedSecret)
+                main.post { prompt(ticket, title, cipher, callback, {
+                    keystore.withUnlockedPassword(wrapped, cipher) { password ->
+                        val agent = MobileAgent.importEncryptedAgent(materialFromJson(wrapped.materialJson), password)
+                        try {
+                            val (updated, value) = operation(wrapped, agent, password)
+                            state.mutate(ticket) { if (updated != wrapped) records.replace(updated) }
+                            value
+                        } finally { clear(agent) }
+                    }
+                }, { value -> complete(ticket, callback, value, lockAfter = true) }) }
+            } catch (error: Exception) { fail(ticket, callback, error) }
+        } }
 
     private fun <T> useSession(callback: JacsVaultCallback<T>, lockAfter: Boolean = false,
                                operation: (MobileAgent) -> T): JacsVaultRequest =
@@ -256,8 +353,21 @@ class JacsBiometricVault(
         }
     }
 
-    private fun prompt(ticket: JacsVaultState.Ticket, title: String, cipher: Cipher,
-                       callback: JacsVaultCallback<JacsVaultIdentity>, open: () -> MobileAgent) {
+    private fun promptAgent(ticket: JacsVaultState.Ticket, title: String, cipher: Cipher,
+        callback: JacsVaultCallback<JacsVaultIdentity>, open: () -> MobileAgent) {
+        prompt(ticket, title, cipher, callback, {
+            val agent = open()
+            try { Pair(agent, JacsVaultIdentity(agent.exportAgentJson(), agent.getPublicKeyBase64())) }
+            catch (error: Exception) { clear(agent); throw error }
+        }, { (agent, identity) ->
+            if (state.install(ticket, agent)) complete(ticket, callback, identity)
+            else dispose(agent)
+        }, { dispose(it.first) })
+    }
+
+    private fun <T, R> prompt(ticket: JacsVaultState.Ticket, title: String, cipher: Cipher,
+        callback: JacsVaultCallback<R>, open: () -> T, deliver: (T) -> Unit,
+        discard: (T) -> Unit = {}) {
         if (!state.current(ticket)) return
         if (!foreground || activity.isFinishing || activity.isDestroyed) {
             invalidate(JacsVaultException.Code.BACKGROUNDED); return
@@ -289,20 +399,17 @@ class JacsBiometricVault(
                             }
                             prompts.remove(ticket)
                             worker.execute {
-                                var candidate: MobileAgent? = null
+                                var candidate: T? = null
                                 try {
                                     if (!state.current(ticket)) return@execute
-                                    candidate = open()
-                                    val agent = candidate
-                                    val identity = JacsVaultIdentity(agent.exportAgentJson(), agent.getPublicKeyBase64())
-                                    // Transfer ownership to the main-thread state only if current.
+                                    val value = open()
+                                    candidate = value
                                     main.post {
-                                        if (state.install(ticket, agent)) complete(ticket, callback, identity)
-                                        else dispose(agent)
+                                        if (state.current(ticket)) deliver(value) else discard(value)
                                     }
                                     candidate = null
                                 } catch (error: Exception) { fail(ticket, callback, error) }
-                                finally { candidate?.let { clear(it) } }
+                                finally { candidate?.let(discard) }
                             }
                         }
                     })
@@ -409,14 +516,25 @@ internal class EncryptedRecordStore(directory: File, alias: String) : AutoClosea
     }
     fun writeNew(wrapped: JacsKeystore.WrappedMaterial) {
         if (exists()) throw JacsVaultException(JacsVaultException.Code.ALREADY_EXISTS)
+        write(wrapped)
+    }
+    fun replace(wrapped: JacsKeystore.WrappedMaterial) {
+        if (!exists()) throw JacsVaultException(JacsVaultException.Code.MISSING_RECORD)
+        write(wrapped)
+    }
+    private fun write(wrapped: JacsKeystore.WrappedMaterial) {
+        requireOwner()
         val material = wrapped.materialJson.toByteArray(Charsets.UTF_8)
+        val pending = wrapped.pendingMaterialJson?.toByteArray(Charsets.UTF_8)
         require(material.size in 1..MAX_MATERIAL && wrapped.wrappedSecret.size in 29..4096)
+        require(pending == null || pending.size in 1..MAX_MATERIAL)
         val stream = file.startWrite()
         try {
             val output = DataOutputStream(stream)
-            output.writeInt(MAGIC)
+            output.writeInt(if (pending == null) MAGIC else STAGED_MAGIC)
             output.writeInt(material.size); output.write(material)
             output.writeInt(wrapped.wrappedSecret.size); output.write(wrapped.wrappedSecret)
+            if (pending != null) { output.writeInt(pending.size); output.write(pending) }
             output.flush()
             file.finishWrite(stream)
         } catch (error: Exception) { file.failWrite(stream); throw error }
@@ -425,15 +543,19 @@ internal class EncryptedRecordStore(directory: File, alias: String) : AutoClosea
         if (!exists()) throw JacsVaultException(JacsVaultException.Code.MISSING_RECORD)
         try {
             DataInputStream(file.openRead()).use { input ->
-                require(input.readInt() == MAGIC)
+                val magic = input.readInt(); require(magic == MAGIC || magic == STAGED_MAGIC)
                 val size = input.readInt(); require(size in 1..MAX_MATERIAL)
                 val material = ByteArray(size).also { input.readFully(it) }
                 val secretSize = input.readInt(); require(secretSize in 29..4096)
                 val secret = ByteArray(secretSize).also { input.readFully(it) }
+                val pending = if (magic == STAGED_MAGIC) {
+                    val pendingSize = input.readInt(); require(pendingSize in 1..MAX_MATERIAL)
+                    String(ByteArray(pendingSize).also { input.readFully(it) }, Charsets.UTF_8)
+                } else null
                 require(input.read() == -1)
                 val json = String(material, Charsets.UTF_8)
                 require(materialFromJson(json).algorithm == MobileAlgorithm.PQ2025)
-                return JacsKeystore.WrappedMaterial(json, secret)
+                return JacsKeystore.WrappedMaterial(json, secret, pending)
             }
         } catch (error: EOFException) { throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD) }
     }
@@ -447,5 +569,9 @@ internal class EncryptedRecordStore(directory: File, alias: String) : AutoClosea
         try { if (ownerLock.isValid) ownerLock.release() }
         finally { ownerChannel.close() }
     }
-    companion object { private const val MAGIC = 0x4a564c31; private const val MAX_MATERIAL = 4 * 1024 * 1024 }
+    companion object {
+        private const val MAGIC = 0x4a564c31
+        private const val STAGED_MAGIC = 0x4a564c32
+        private const val MAX_MATERIAL = 4 * 1024 * 1024
+    }
 }

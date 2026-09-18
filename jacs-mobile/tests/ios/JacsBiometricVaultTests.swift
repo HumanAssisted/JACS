@@ -30,6 +30,16 @@ private final class FakeStore: JacsVaultRecordStore {
         return data
     }
     func delete(account: String) throws { records.removeValue(forKey: account) }
+    var replaceError: JacsBiometricError?
+    func replace(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws {
+        if let error = replaceError { throw error }
+        guard records[account] != nil else { throw JacsBiometricError.notFoundOrEnrollmentChanged }
+        records[account] = data
+    }
+    func inspect(account: String) -> JacsBiometricInspection {
+        JacsBiometricInspection(state: records[account] == nil ? .absent : .presentLocked, identity: nil)
+    }
+
 }
 
 private final class FakeAgent: JacsSessionAgent {
@@ -105,6 +115,117 @@ final class JacsBiometricVaultTests: XCTestCase {
         auth.succeed()
         wait(for: [done], timeout: 5)
         return session!
+    }
+
+    private func authenticated<T>(_ start: (@escaping (Result<T, JacsBiometricError>) -> Void) -> JacsBiometricOperation) throws -> T {
+        auth = FakeAuthorization()
+        let done = expectation(description: "authenticated vault operation")
+        var outcome: Result<T, JacsBiometricError>?
+        _ = start { outcome = $0; done.fulfill() }
+        auth.succeed()
+        wait(for: [done], timeout: 20)
+        return try XCTUnwrap(outcome).get()
+    }
+
+    func testOwnedRotationPersistsCandidateAndReconcilesExactCommit() throws {
+        vault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+        let session: JacsBiometricSession = try authenticated { vault.createHuman(account: "agent", reason: "Create", completion: $0) }
+        let described = expectation(description: "owned public metadata")
+        var old: MobilePublicIdentity?
+        session.describe { old = try? $0.get(); described.fulfill() }
+        wait(for: [described], timeout: 10)
+        let original = try XCTUnwrap(old)
+        let originalRecord = store.records["agent"]
+        store.replaceError = .keychainStatus(-1)
+        XCTAssertThrowsError(try authenticated { vault.prepareKeyRotation(account: "agent", reason: "Rotate", completion: $0) } as MobilePublicIdentity)
+        XCTAssertEqual(store.records["agent"], originalRecord)
+        store.replaceError = nil
+        let stage: MobilePublicIdentity = try authenticated { vault.prepareKeyRotation(account: "agent", reason: "Rotate", completion: $0) }
+        XCTAssertNotEqual(stage.publicKeyBase64, original.publicKeyBase64)
+        let candidate = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(stage.agentJson.utf8)) as? [String: Any])
+        let version = try XCTUnwrap(candidate["jacsVersion"] as? String)
+        let again: MobilePublicIdentity = try authenticated { vault.prepareKeyRotation(account: "agent", reason: "Resume", completion: $0) }
+        XCTAssertEqual(again.agentJson, stage.agentJson)
+        let stagedRecord = store.records["agent"]
+        // Reconstruct the vault: no candidate handle or plaintext code survives.
+        vault.invalidate(); worker.sync {}
+        vault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+        let resumed: MobilePublicIdentity? = try authenticated { vault.keyRotationStatus(account: "agent", reason: "Resume", completion: $0) }
+        XCTAssertEqual(resumed?.agentJson, stage.agentJson)
+        let proof: String = try authenticated { vault.signRotationDocumentJSON(account: "agent", reason: "Prove", candidateVersion: version,
+            json: "{\"purpose\":\"candidate possession\"}", completion: $0) }
+        let key = try XCTUnwrap(Data(base64Encoded: stage.publicKeyBase64))
+        XCTAssertTrue(try verifyWithKey(json: proof, publicKey: key, algorithm: .pq2025).valid)
+        let recovery: JacsBiometricRecovery = try authenticated { vault.createRotationRecovery(account: "agent", reason: "Save", candidateVersion: version, completion: $0) }
+        XCTAssertEqual(try JacsMobile.verifyRecovery(material: recovery.material, code: recovery.code,
+            expectedAgentId: candidate["jacsId"] as! String, expectedPublicKey: key, expectedAlgorithm: .pq2025), stage.agentJson)
+        XCTAssertThrowsError(try authenticated { vault.commitKeyRotation(account: "agent", reason: "Wrong acceptance",
+            acceptedIdentityJSON: original.agentJson, acceptedPublicKey: Data(base64Encoded: original.publicKeyBase64)!, completion: $0) } as String)
+        XCTAssertEqual(store.records["agent"], stagedRecord)
+        // A failed atomic local write after server acceptance retains BOTH records.
+        store.replaceError = .keychainStatus(-1)
+        XCTAssertThrowsError(try authenticated { vault.commitKeyRotation(account: "agent", reason: "Commit",
+            acceptedIdentityJSON: stage.agentJson, acceptedPublicKey: key, completion: $0) } as String)
+        XCTAssertEqual(store.records["agent"], stagedRecord)
+        store.replaceError = nil
+        for _ in 0..<2 {
+            let committed: String = try authenticated { vault.commitKeyRotation(account: "agent", reason: "Reconcile",
+                acceptedIdentityJSON: stage.agentJson, acceptedPublicKey: key, completion: $0) }
+            XCTAssertEqual(committed, stage.agentJson)
+        }
+        let pending: MobilePublicIdentity? = try authenticated { vault.keyRotationStatus(account: "agent", reason: "Status", completion: $0) }
+        XCTAssertNil(pending)
+    }
+
+    func testRotationCancellationAndInspectNeverCreateOrLoseAStage() throws {
+        vault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+        let session: JacsBiometricSession = try authenticated { vault.createHuman(account: "agent", reason: "Create", completion: $0) }
+        session.close()
+        let record = store.records["agent"]
+        auth = FakeAuthorization()
+        let cancelled = expectation(description: "cancel before biometric")
+        let request = vault.prepareKeyRotation(account: "agent", reason: "Rotate") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("late stage escaped") }
+            cancelled.fulfill()
+        }
+        request.cancel(); auth.succeed()
+        wait(for: [cancelled], timeout: 10); worker.sync {}
+        XCTAssertEqual(store.records["agent"], record)
+        auth = FakeAuthorization()
+        let inspected = expectation(description: "nonprompting inspect")
+        vault.inspect(account: "agent") {
+            XCTAssertEqual(try? $0.get().state, .presentLocked)
+            XCTAssertNil(try? $0.get().identity)
+            inspected.fulfill()
+        }
+        wait(for: [inspected], timeout: 10)
+        XCTAssertNil(auth.callback)
+        let stage: MobilePublicIdentity = try authenticated { vault.prepareKeyRotation(account: "agent", reason: "Rotate", completion: $0) }
+        let identity = try JSONSerialization.jsonObject(with: Data(stage.agentJson.utf8)) as! [String: Any]
+        XCTAssertThrowsError(try authenticated { vault.discardKeyRotation(account: "agent", reason: "Discard", candidateVersion: "wrong-version", completion: $0) } as Void)
+        let _: Void = try authenticated { vault.discardKeyRotation(account: "agent", reason: "Discard", candidateVersion: identity["jacsVersion"] as! String, completion: $0) }
+        let pending: MobilePublicIdentity? = try authenticated { vault.keyRotationStatus(account: "agent", reason: "Status", completion: $0) }
+        XCTAssertNil(pending)
+        // Background after the durable write but before callback delivery must
+        // suppress the result while retaining the exact stage for reconciliation.
+        auth = FakeAuthorization()
+        callbacks.suspend()
+        let late = expectation(description: "persisted stage late result suppressed")
+        vault.prepareKeyRotation(account: "agent", reason: "Rotate") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("late stage escaped") }
+            late.fulfill()
+        }
+        auth.succeed(); worker.sync {}
+        let persisted = store.records["agent"]
+        vault.invalidate(); callbacks.resume()
+        wait(for: [late], timeout: 10)
+        XCTAssertEqual(store.records["agent"], persisted)
+        vault.resume()
+        let recovered: MobilePublicIdentity? = try authenticated { vault.keyRotationStatus(account: "agent", reason: "Reconcile", completion: $0) }
+        XCTAssertNotNil(recovered)
     }
 
     func testCancellationRejectsLateAndRepeatedBiometricCallbacks() {

@@ -33,6 +33,10 @@ export class CoreAgentHandle {
   exportEncryptedAgent(password: string): string;
   /** JSON {code, materialJson}; code is for explicit display only. */
   exportRecovery(): string;
+  prepareKeyRotation(password: string): string;
+  signRotationDocument(materialJson: string, password: string, dataJson: string): string;
+  exportRotationRecovery(materialJson: string, password: string): string;
+  commitKeyRotation(materialJson: string, password: string, acceptedIdentityJson: string, acceptedPublicKeyBase64: string): string;
   signDocumentJson(json: string): string;
   getPublicKeyBase64(): string;
   getPublicKeyHash(): string;

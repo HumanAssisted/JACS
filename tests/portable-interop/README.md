@@ -58,3 +58,9 @@ The older signing-agent verifier checks only the historical normalized key-hash
 alias; the explicit non-signing verifier supports portable raw-key hashes too.
 
 The standalone native document harness also checks canonical `ed25519` service receipts against the archived schema/verifier; the historical `ring-Ed25519` spelling remains accepted. Signed document bytes are never rewritten for alias compatibility.
+
+Set `JACS_INTEROP_RECOVERY=1 JACS_INTEROP_ROTATION=1` for staged rotation coverage:
+native stage → real worker candidate proof, worker stage → process restart →
+wrong acceptance refusal → candidate recovery readback → exact commit/replay,
+and native resumption/verification of the worker stage. Fixtures contain disposable
+encrypted test keys only and are removed by the runner.

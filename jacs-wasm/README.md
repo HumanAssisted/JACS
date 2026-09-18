@@ -334,3 +334,27 @@ syntax without KDF work. Backup read-back and save acknowledgment remain separat
 create complete JACS documents: exact JSON content, fresh signed root IDs/dates and
 standard checksum. Existing message methods are unchanged. The host still owns
 review, authorization and suppression of results arriving after cancellation.
+
+### Staged rotation in the worker
+
+`handle.prepareKeyRotation(storagePassword)` returns encrypted candidate
+`AgentMaterial` JSON and leaves the current handle active. Persist it beside the
+old material before registration. There is no second candidate-handle registry:
+`signRotationDocument(materialJson,password,dataJson)` and
+`exportRotationRecovery(materialJson,password)` validate and reopen the stage
+inside the worker, then drop the candidate signer. The latter returns the same
+`{code,materialJson}` recovery shape as `exportRecovery`. The document's `content`
+is the exact candidate possession challenge; old-key authorization uses the
+existing `handle.signDocument`.
+
+Reopen the old encrypted handle after interruption and reuse the same stage.
+Before `commitKeyRotation(materialJson,password,acceptedIdentityJson,
+acceptedPublicKeyBase64)`, reconcile authenticated registry acceptance of those
+exact pins and any required saved successor backup. Commit is idempotent and
+updates handle public-key metadata. The host owns atomic browser persistence and
+must retain both encrypted copies until promotion is durable. Discard only an
+authoritatively unaccepted stage; never regenerate/delete after a timeout without
+reconciliation. The main-thread WASM handle provides the same methods.
+Candidate public-key PEM can be obtained through the existing verification-only
+`createVerifier(candidate.public_key, candidate.algorithm).getPublicKeyPem()`;
+this needs no candidate private-key handle.

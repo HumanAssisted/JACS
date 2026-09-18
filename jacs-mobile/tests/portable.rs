@@ -396,3 +396,68 @@ fn recovery_readback_and_complete_document_use_public_only_results() {
     agent.clear_secrets().unwrap();
     assert!(agent.sign_document_json("{}".into()).is_err());
 }
+
+#[test]
+fn staged_rotation_reopens_ciphertext_and_checks_public_acceptance() {
+    let agent = MobileAgent::create_human().unwrap();
+    let password = "mobile rotation local wrapping secret".to_string();
+    let old = agent.export_agent_json().unwrap();
+    let old_material = agent.export_encrypted_agent(password.clone()).unwrap();
+    let stage = agent.prepare_key_rotation(password.clone()).unwrap();
+    agent.clear_secrets().unwrap();
+    assert!(
+        agent
+            .sign_rotation_document_json(stage.clone(), password.clone(), "{}".into())
+            .is_err()
+    );
+    let agent = MobileAgent::import_encrypted_agent(old_material, password.clone()).unwrap();
+    assert_eq!(
+        agent
+            .validate_key_rotation(stage.clone(), password.clone())
+            .unwrap(),
+        stage.agent_json
+    );
+    let proof = agent
+        .sign_rotation_document_json(stage.clone(), password.clone(), "{\"challenge\":1}".into())
+        .unwrap();
+    assert!(
+        jacs_mobile::verify_with_key(proof, stage.public_key.clone(), MobileAlgorithm::Pq2025)
+            .unwrap()
+            .valid
+    );
+    let recovery = agent
+        .export_rotation_recovery(stage.clone(), password.clone())
+        .unwrap();
+    let identity: serde_json::Value = serde_json::from_str(&stage.agent_json).unwrap();
+    assert_eq!(
+        jacs_mobile::verify_recovery(
+            recovery.material,
+            recovery.code,
+            identity["jacsId"].as_str().unwrap().into(),
+            stage.public_key.clone(),
+            MobileAlgorithm::Pq2025
+        )
+        .unwrap(),
+        stage.agent_json
+    );
+    assert_eq!(agent.export_agent_json().unwrap(), old);
+    agent
+        .commit_key_rotation(
+            stage.clone(),
+            password,
+            stage.agent_json.clone(),
+            stage.public_key.clone(),
+        )
+        .unwrap();
+    let metadata = agent.describe().unwrap();
+    assert_eq!(metadata.agent_json, stage.agent_json);
+    assert_eq!(
+        metadata.public_key_hash,
+        jacs_core::verify::sha256_hex(&stage.public_key)
+    );
+    assert!(
+        metadata
+            .public_key_pem
+            .starts_with("-----BEGIN PUBLIC KEY-----")
+    );
+}

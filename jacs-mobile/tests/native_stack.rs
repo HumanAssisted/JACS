@@ -98,6 +98,28 @@ fn small_stack_child() {
                 .unwrap(),
                 human.export_agent_json().unwrap()
             );
+            println!("staged rotation, candidate proof/recovery and commit");
+            let password = "Native-stack-rotation-test-only!".to_string();
+            let stage = human.prepare_key_rotation(password.clone()).unwrap();
+            let proof = human
+                .sign_rotation_document_json(stage.clone(), password.clone(), "{}".into())
+                .unwrap();
+            assert!(
+                jacs_mobile::verify_with_key(
+                    proof,
+                    stage.public_key.clone(),
+                    jacs_mobile::MobileAlgorithm::Pq2025
+                )
+                .unwrap()
+                .valid
+            );
+            let recovery = human
+                .export_rotation_recovery(stage.clone(), password.clone())
+                .unwrap();
+            assert!(!recovery.material.encrypted_private_key.is_empty());
+            human
+                .commit_key_rotation(stage.clone(), password, stage.agent_json, stage.public_key)
+                .unwrap();
             human.clear_secrets().unwrap();
             recovered.clear_secrets().unwrap();
             println!("complete");

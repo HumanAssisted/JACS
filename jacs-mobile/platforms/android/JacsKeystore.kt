@@ -29,7 +29,8 @@ import javax.crypto.spec.GCMParameterSpec
  * AndroidKeyStore AES key. The JACS signing key remains transferable ciphertext.
  */
 class JacsKeystore(private val alias: String) {
-    data class WrappedMaterial(val materialJson: String, val wrappedSecret: ByteArray)
+    data class WrappedMaterial(val materialJson: String, val wrappedSecret: ByteArray,
+        val pendingMaterialJson: String? = null)
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     /** Loading an existing alias never silently weakens the required policy. */
@@ -119,13 +120,19 @@ class JacsKeystore(private val alias: String) {
     /** Call after authenticating prepareUnlock's Cipher using BiometricPrompt.
      * The app must clearSecrets() on background/logout and after transfer.
      */
-    fun finishUnlock(wrapped: WrappedMaterial, authenticatedCipher: Cipher): MobileAgent {
+    fun finishUnlock(wrapped: WrappedMaterial, authenticatedCipher: Cipher): MobileAgent =
+        withUnlockedPassword(wrapped, authenticatedCipher) { password ->
+            MobileAgent.importEncryptedAgent(materialFromJson(wrapped.materialJson), password)
+        }
+
+    /** Native vault scope only; never return the local wrapping password. */
+    internal fun <T> withUnlockedPassword(wrapped: WrappedMaterial, authenticatedCipher: Cipher,
+        operation: (String) -> T): T {
         require(wrapped.wrappedSecret.size in 29..4096 && wrapped.wrappedSecret[0] == 1.toByte())
         authenticatedCipher.updateAAD(alias.toByteArray(Charsets.UTF_8))
         val password = authenticatedCipher.doFinal(wrapped.wrappedSecret.copyOfRange(13, wrapped.wrappedSecret.size))
         try {
-            return MobileAgent.importEncryptedAgent(materialFromJson(wrapped.materialJson),
-                String(password, Charsets.UTF_8))
+            return operation(String(password, Charsets.UTF_8))
         } finally { password.fill(0) }
     }
 

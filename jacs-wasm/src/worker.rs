@@ -216,6 +216,10 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
         | "exportEncryptedAgent"
         | "exportRecovery"
         | "signDocument"
+        | "prepareKeyRotation"
+        | "signRotationDocument"
+        | "exportRotationRecovery"
+        | "commitKeyRotation"
         | "getPublicKeyPem"
         | "getPublicKeyPemBase64"
         | "getPublicKeyHash" => op_agent_method(&req.op, req.args),
@@ -433,6 +437,24 @@ fn op_agent_method(op: &str, args: Value) -> Result<Value, WorkerError> {
             }
             "exportAgent" => handle.export_agent(),
             "exportRecovery" => handle.export_recovery(),
+            "prepareKeyRotation" => {
+                handle.prepare_key_rotation(require_str(&args, "password")?.to_string())
+            }
+            "signRotationDocument" => handle.sign_rotation_document(
+                require_str(&args, "materialJson")?,
+                require_str(&args, "password")?.to_string(),
+                require_str(&args, "dataJson")?,
+            ),
+            "exportRotationRecovery" => handle.export_rotation_recovery(
+                require_str(&args, "materialJson")?,
+                require_str(&args, "password")?.to_string(),
+            ),
+            "commitKeyRotation" => handle.commit_key_rotation(
+                require_str(&args, "materialJson")?,
+                require_str(&args, "password")?.to_string(),
+                require_str(&args, "acceptedIdentityJson")?,
+                require_str(&args, "acceptedPublicKeyBase64")?,
+            ),
             "signDocument" => handle.sign_document_json(require_str(&args, "dataJson")?),
             "exportEncryptedAgent" => {
                 handle.export_encrypted_agent(require_str(&args, "password")?.to_string())

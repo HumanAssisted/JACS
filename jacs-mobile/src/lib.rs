@@ -79,6 +79,33 @@ pub struct EncryptedAgentMaterial {
     pub algorithm: MobileAlgorithm,
 }
 
+/// Public, validated identity metadata. Contains no custody or unlock material.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MobilePublicIdentity {
+    pub agent_json: String,
+    pub public_key_base64: String,
+    pub public_key_hash: String,
+    pub public_key_pem: String,
+    pub algorithm: MobileAlgorithm,
+}
+
+#[uniffi::export]
+pub fn describe_public_identity(
+    agent_json: String,
+    public_key: Vec<u8>,
+    algorithm: MobileAlgorithm,
+) -> Result<MobilePublicIdentity, MobileError> {
+    let identity = parse_json(&agent_json)?;
+    CoreAgent::validate_identity(&identity, &public_key, algorithm.into())?;
+    Ok(MobilePublicIdentity {
+        agent_json: identity.to_string(),
+        public_key_base64: base64::engine::general_purpose::STANDARD.encode(&public_key),
+        public_key_hash: jacs_core::verify::sha256_hex(&public_key),
+        public_key_pem: jacs_core::sign::public_key_pem(&public_key, algorithm.into())?,
+        algorithm,
+    })
+}
+
 impl TryFrom<EncryptedAgentMaterial> for AgentMaterial {
     type Error = MobileError;
     fn try_from(value: EncryptedAgentMaterial) -> Result<Self, Self::Error> {
@@ -341,8 +368,93 @@ impl MobileAgent {
         })
     }
 
+    /// Ciphertext stage only. Persist it before submitting any registration.
+    pub fn prepare_key_rotation(
+        &self,
+        password: String,
+    ) -> Result<EncryptedAgentMaterial, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .prepare_key_rotation(None)?
+            .export_encrypted_material(&password)?
+            .into())
+    }
+
+    pub fn validate_key_rotation(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+    ) -> Result<String, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .resume_key_rotation(material.try_into()?, &password)?
+            .agent()
+            .to_string())
+    }
+
+    /// Full document with content equal to the candidate enrollment challenge.
+    pub fn sign_rotation_document_json(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+        json: String,
+    ) -> Result<String, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .resume_key_rotation(material.try_into()?, &password)?
+            .sign_document(&parse_json(&json)?)?
+            .to_string())
+    }
+
+    pub fn export_rotation_recovery(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+    ) -> Result<MobileRecoveryExport, MobileError> {
+        let password = Zeroizing::new(password);
+        let recovery = self
+            .lock()?
+            .resume_key_rotation(material.try_into()?, &password)?
+            .export_recovery()?;
+        Ok(MobileRecoveryExport {
+            code: recovery.code.to_string(),
+            material: recovery.material.into(),
+        })
+    }
+
+    /// The host must authenticate registry acceptance before supplying these pins.
+    pub fn commit_key_rotation(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+        accepted_identity_json: String,
+        accepted_public_key: Vec<u8>,
+    ) -> Result<String, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .commit_encrypted_key_rotation(
+                material.try_into()?,
+                &password,
+                &parse_json(&accepted_identity_json)?,
+                &accepted_public_key,
+            )?
+            .to_string())
+    }
+
     pub fn algorithm(&self) -> Result<MobileAlgorithm, MobileError> {
         Ok(self.lock()?.algorithm().into())
+    }
+    pub fn describe(&self) -> Result<MobilePublicIdentity, MobileError> {
+        let agent = self.lock()?;
+        describe_public_identity(
+            agent.export_agent().to_string(),
+            agent.public_key().to_vec(),
+            agent.algorithm().into(),
+        )
     }
     pub fn public_key(&self) -> Result<Vec<u8>, MobileError> {
         Ok(self.lock()?.public_key().to_vec())

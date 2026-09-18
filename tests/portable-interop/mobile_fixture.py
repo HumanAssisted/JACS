@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 # These passwords protect disposable test keys only. Never use them for real identities.
+ROTATION = os.environ.get("JACS_INTEROP_ROTATION") == "1"
 RECOVERY = os.environ.get("JACS_INTEROP_RECOVERY") == "1"
 TO_BROWSER_PASSWORD = "JacsInterop-MobileToBrowser-TestOnly-7pQ!"
 TO_MOBILE_PASSWORD = "JacsInterop-BrowserToMobile-TestOnly-9rS!"
@@ -49,8 +50,10 @@ def create_fixture(binding, path):
             require(json.loads(verified) == document, "native recovery readback")
         else:
             material_json = binding.material_to_json(agent.export_encrypted_agent(TO_BROWSER_PASSWORD))
+        rotation_material = binding.material_to_json(agent.prepare_key_rotation(TO_MOBILE_PASSWORD)) if ROTATION else None
         write_private_json(path, {
             "algorithm": "pq2025",
+            "rotation_material": rotation_material,
             "agent_id": document["jacsId"],
             "agent_version": document["jacsVersion"],
             "public_key_base64": agent.get_public_key_base64(),
@@ -100,6 +103,19 @@ def verify_return(binding, fixture_path, returned_path):
             "direction": "browser-to-mobile",
             "reply_to": fixture["challenge"]["nonce"],
         }, "mobile verifies browser response content")
+        if ROTATION:
+            stage = binding.material_from_json(returned["rotation_material"])
+            candidate = json.loads(stage.agent_json)
+            require(binding.verify_with_key(returned["rotation_proof"], stage.public_key, binding.MobileAlgorithm.PQ2025).valid, "native verifies worker candidate proof")
+            require(json.loads(agent.validate_key_rotation(stage, fixture["return_password"])) == candidate, "native resumes worker encrypted stage")
+            require(json.loads(agent.commit_key_rotation(stage, fixture["return_password"], stage.agent_json, stage.public_key)) == candidate, "native promotes exact accepted worker candidate")
+            stage.encrypted_private_key = bytes([stage.encrypted_private_key[0] ^ 1]) + stage.encrypted_private_key[1:]
+            rejected = False
+            try:
+                agent.commit_key_rotation(stage, fixture["return_password"], stage.agent_json, stage.public_key)
+            except Exception:
+                rejected = True
+            require(rejected, "native rejects corrupt ciphertext even on commit replay")
     finally:
         agent.clear_secrets()
     require(not agent.is_unlocked(), "mobile return clear")

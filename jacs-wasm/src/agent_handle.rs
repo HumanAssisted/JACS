@@ -124,6 +124,15 @@ fn map_core_err(err: CoreError) -> JsError {
     JsError::new(&payload)
 }
 
+fn rotation_material(json: &str) -> Result<AgentMaterial, JsError> {
+    let value = jacs_core::strict_json::parse_strict_json(json).map_err(map_core_err)?;
+    serde_json::from_value(value).map_err(|_| {
+        map_core_err(CoreError::MalformedDocument(
+            "invalid rotation material".into(),
+        ))
+    })
+}
+
 /// Convert a JS algorithm string into the canonical enum, returning a
 /// `JsError` with code `UnsupportedAlgorithm` on miss.
 fn parse_algorithm(raw: &str) -> Result<SigningAlgorithm, JsError> {
@@ -158,6 +167,96 @@ pub struct CoreAgentHandle {
 
 #[wasm_bindgen]
 impl CoreAgentHandle {
+    /// Encrypted stage; persist before registration. The active key is unchanged.
+    #[wasm_bindgen(js_name = prepareKeyRotation)]
+    pub fn prepare_key_rotation(&self, password: String) -> Result<String, JsError> {
+        let password = zeroize::Zeroizing::new(password);
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?;
+        let material = agent
+            .prepare_key_rotation(None)
+            .map_err(map_core_err)?
+            .export_encrypted_material(&password)
+            .map_err(map_core_err)?;
+        serde_json::to_string(&material).map_err(|_| {
+            map_core_err(CoreError::MalformedDocument(
+                "material encoding failed".into(),
+            ))
+        })
+    }
+
+    #[wasm_bindgen(js_name = signRotationDocument)]
+    pub fn sign_rotation_document(
+        &self,
+        material_json: &str,
+        password: String,
+        data_json: &str,
+    ) -> Result<String, JsError> {
+        let password = zeroize::Zeroizing::new(password);
+        let material = rotation_material(material_json)?;
+        let data = jacs_core::strict_json::parse_strict_json(data_json).map_err(map_core_err)?;
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?;
+        Ok(agent
+            .resume_key_rotation(material, &password)
+            .map_err(map_core_err)?
+            .sign_document(&data)
+            .map_err(map_core_err)?
+            .to_string())
+    }
+
+    #[wasm_bindgen(js_name = exportRotationRecovery)]
+    pub fn export_rotation_recovery(
+        &self,
+        material_json: &str,
+        password: String,
+    ) -> Result<String, JsError> {
+        let password = zeroize::Zeroizing::new(password);
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?;
+        let recovery = agent
+            .resume_key_rotation(rotation_material(material_json)?, &password)
+            .map_err(map_core_err)?
+            .export_recovery()
+            .map_err(map_core_err)?;
+        Ok(serde_json::json!({"code": recovery.code.as_str(), "materialJson": serde_json::to_string(&recovery.material)
+            .map_err(|_| map_core_err(CoreError::MalformedDocument("material encoding failed".into())))?}).to_string())
+    }
+
+    /// Pins must come from authenticated registry status; this performs no network I/O.
+    #[wasm_bindgen(js_name = commitKeyRotation)]
+    pub fn commit_key_rotation(
+        &self,
+        material_json: &str,
+        password: String,
+        accepted_identity_json: &str,
+        accepted_public_key_base64: &str,
+    ) -> Result<String, JsError> {
+        let password = zeroize::Zeroizing::new(password);
+        let identity = jacs_core::strict_json::parse_strict_json(accepted_identity_json)
+            .map_err(map_core_err)?;
+        let key = base64::engine::general_purpose::STANDARD
+            .decode(accepted_public_key_base64)
+            .map_err(|_| map_core_err(CoreError::MalformedKey("invalid accepted key".into())))?;
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?
+            .commit_encrypted_key_rotation(
+                rotation_material(material_json)?,
+                &password,
+                &identity,
+                &key,
+            )
+            .map_err(map_core_err)?
+            .to_string())
+    }
     /// Bind request authentication to the exact HTTP method, URL, bytes and
     /// audience. The transport must send these bytes without reserialization.
     #[wasm_bindgen(js_name = buildRequestAuthHeader)]
