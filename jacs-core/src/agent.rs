@@ -495,21 +495,43 @@ impl CoreAgent {
     /// the signature and computes the standard checksum. This does not authorize
     /// the content for an application, and does not change sign_message semantics.
     pub fn sign_document(&self, content: &Value) -> Result<Value, CoreError> {
-        use crate::{
-            PurposeIsolationAssurance, SignatureMetadataV2, SigningKeyScope, SigningPurpose,
-        };
         self.signer.as_ref().ok_or(CoreError::Locked)?;
-        let scope = SigningKeyScope::from_public_key(
+        let scope = self.document_signing_scope()?;
+        let prepared =
+            crate::prepare_message_v2(&scope, content, crate::SignatureMetadataV2::now())?;
+        self.sign_prepared_document(&prepared)
+    }
+
+    /// Sign an already frozen complete JACS document without wrapping its content
+    /// or regenerating IDs, dates, signature metadata or request context.
+    ///
+    /// The prepared value is untrusted: validate it against this agent's owned
+    /// identity and key before private-key dispatch. The caller remains responsible
+    /// for binding the document to the action the person reviewed and authorized.
+    /// Completion changes only the signature value and derived `jacsSha256`.
+    pub fn sign_prepared_document(
+        &self,
+        prepared: &crate::PreparedDocumentV2,
+    ) -> Result<Value, CoreError> {
+        self.signer.as_ref().ok_or(CoreError::Locked)?;
+        let scope = self.document_signing_scope()?;
+        prepared.validate(&scope, &self.public_key)?;
+        let signature = self.sign_raw_bytes(prepared.signature_input())?;
+        prepared
+            .clone()
+            .complete_with_signature(&scope, &self.public_key, &signature)
+    }
+
+    fn document_signing_scope(&self) -> Result<crate::SigningKeyScope, CoreError> {
+        use crate::{PurposeIsolationAssurance, SigningKeyScope, SigningPurpose};
+        SigningKeyScope::from_public_key(
             required_identity_string(&self.agent_json, "jacsId")?,
             required_identity_string(&self.agent_json, "jacsVersion")?,
             self.algorithm,
             &self.public_key,
             [SigningPurpose::Document, SigningPurpose::LegacyRaw],
             PurposeIsolationAssurance::SharedRawCapable,
-        )?;
-        let prepared = crate::prepare_message_v2(&scope, content, SignatureMetadataV2::now())?;
-        let signature = self.sign_raw_bytes(prepared.signature_input())?;
-        prepared.complete_with_signature(&scope, &self.public_key, &signature)
+        )
     }
 
     /// Sign `document` in place, attaching the signature object under

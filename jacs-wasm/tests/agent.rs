@@ -11,6 +11,66 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+#[wasm_bindgen_test]
+fn prepared_document_checks_frozen_input_and_owned_key() {
+    use base64::Engine as _;
+    use serde_json::{Value, json};
+    let handle = jacs_wasm::create_human().unwrap();
+    let identity: Value = serde_json::from_str(&handle.export_agent().unwrap()).unwrap();
+    let key = base64::engine::general_purpose::STANDARD
+        .decode(handle.get_public_key_base64().unwrap())
+        .unwrap();
+    let scope = jacs_core::SigningKeyScope::from_public_key(
+        identity["jacsId"].as_str().unwrap(),
+        identity["jacsVersion"].as_str().unwrap(),
+        jacs_core::SigningAlgorithm::Pq2025,
+        &key,
+        [
+            jacs_core::SigningPurpose::Document,
+            jacs_core::SigningPurpose::LegacyRaw,
+        ],
+        jacs_core::PurposeIsolationAssurance::SharedRawCapable,
+    )
+    .unwrap();
+    let prepared = jacs_core::prepare_message_v2(
+        &scope,
+        &json!({"frozen":"browser document"}),
+        jacs_core::SignatureMetadataV2::now(),
+    )
+    .unwrap();
+    let serialized = serde_json::to_string(&prepared).unwrap();
+    let signed: Value =
+        serde_json::from_str(&handle.sign_prepared_document(&serialized).unwrap()).unwrap();
+    assert!(
+        jacs_core::CoreAgent::verify_with_key(&signed, &key, jacs_core::SigningAlgorithm::Pq2025)
+            .unwrap()
+            .valid
+    );
+    assert_eq!(
+        signed["jacsSha256"],
+        jacs_core::document_hash_v1(&signed).unwrap()
+    );
+    let mut unsigned = signed;
+    unsigned.as_object_mut().unwrap().remove("jacsSha256");
+    unsigned["jacsSignature"]["signature"] = json!("");
+    assert_eq!(&unsigned, prepared.unsigned_envelope());
+    for pointer in [
+        "/envelope/content/frozen",
+        "/envelope/jacsSignature/jti",
+        "/signingRequestContext/identity",
+    ] {
+        let mut changed = serde_json::to_value(&prepared).unwrap();
+        *changed.pointer_mut(pointer).unwrap() = json!("changed");
+        assert!(handle.sign_prepared_document(&changed.to_string()).is_err());
+    }
+    let other = jacs_wasm::create_human().unwrap();
+    assert!(other.sign_prepared_document(&serialized).is_err());
+    let duplicate = format!("{{\"profile\":\"duplicate\",{}", &serialized[1..]);
+    assert!(handle.sign_prepared_document(&duplicate).is_err());
+    handle.clear_secrets().unwrap();
+    assert!(handle.sign_prepared_document(&serialized).is_err());
+}
+
 fn json_get<'a>(parsed: &'a serde_json::Value, key: &str) -> &'a serde_json::Value {
     parsed.get(key).expect(key)
 }

@@ -343,6 +343,16 @@ For a complete independently verifiable document, use iOS
 fresh root IDs/dates before signing and computes the standard `jacsSha256` afterward.
 Existing `signMessageJson` retains its original minimal-message semantics.
 
+For an already prepared complete unsigned document, use
+`session.signPreparedDocumentJSON` or Android `vault.signPreparedDocumentJson`
+(UniFFI: `MobileAgent.signPreparedDocumentJson`). Pass serialized core
+`PreparedDocumentV2`, including its frozen envelope, signature input and request
+context. The owned key validates the complete preparation before signing; the
+returned envelope changes only its signature value and derived checksum. The
+host still checks that this is the person's exact reviewed action. Existing
+authenticated-session, cancellation and background fences apply. These methods
+neither regenerate headers nor expose a private key.
+
 ### Staged key rotation
 
 Owned vaults expose `prepareKeyRotation`, `keyRotationStatus`,

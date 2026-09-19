@@ -490,6 +490,16 @@ impl MobileAgent {
         Ok(self.lock()?.sign_document(&parse_json(&json)?)?.to_string())
     }
 
+    /// Sign serialized PreparedDocumentV2 after validating its frozen envelope and
+    /// context against this owned key. Only the signature and checksum are filled.
+    pub fn sign_prepared_document_json(
+        &self,
+        prepared_json: String,
+    ) -> Result<String, MobileError> {
+        let prepared = serde_json::from_value(parse_json(&prepared_json)?)?;
+        Ok(self.lock()?.sign_prepared_document(&prepared)?.to_string())
+    }
+
     pub fn sign_message_json(&self, json: String) -> Result<String, MobileError> {
         Ok(self.lock()?.sign_message(&parse_json(&json)?)?.to_string())
     }

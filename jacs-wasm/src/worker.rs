@@ -216,6 +216,7 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
         | "exportEncryptedAgent"
         | "exportRecovery"
         | "signDocument"
+        | "signPreparedDocument"
         | "prepareKeyRotation"
         | "signRotationDocument"
         | "exportRotationRecovery"
@@ -456,6 +457,9 @@ fn op_agent_method(op: &str, args: Value) -> Result<Value, WorkerError> {
                 require_str(&args, "acceptedPublicKeyBase64")?,
             ),
             "signDocument" => handle.sign_document_json(require_str(&args, "dataJson")?),
+            "signPreparedDocument" => {
+                handle.sign_prepared_document(require_str(&args, "preparedJson")?)
+            }
             "exportEncryptedAgent" => {
                 handle.export_encrypted_agent(require_str(&args, "password")?.to_string())
             }
@@ -545,6 +549,67 @@ mod tests {
             op: op.to_string(),
             args,
         }
+    }
+
+    #[test]
+    fn worker_sign_prepared_document_preserves_frozen_envelope() {
+        use base64::Engine as _;
+        let created = dispatch_request(req(1, "createHuman", json!({})))
+            .result
+            .unwrap();
+        let handle_id = created["handleId"].clone();
+        let identity = dispatch_request(req(2, "exportAgent", json!({"handleId": handle_id})))
+            .result
+            .unwrap();
+        let identity: Value = serde_json::from_str(identity["value"].as_str().unwrap()).unwrap();
+        let key = base64::engine::general_purpose::STANDARD
+            .decode(created["publicKeyBase64"].as_str().unwrap())
+            .unwrap();
+        let scope = jacs_core::SigningKeyScope::from_public_key(
+            identity["jacsId"].as_str().unwrap(),
+            identity["jacsVersion"].as_str().unwrap(),
+            jacs_core::SigningAlgorithm::Pq2025,
+            &key,
+            [
+                jacs_core::SigningPurpose::Document,
+                jacs_core::SigningPurpose::LegacyRaw,
+            ],
+            jacs_core::PurposeIsolationAssurance::SharedRawCapable,
+        )
+        .unwrap();
+        let prepared = jacs_core::prepare_message_v2(
+            &scope,
+            &json!({"frozen": "worker envelope"}),
+            jacs_core::SignatureMetadataV2::now(),
+        )
+        .unwrap();
+        let response = dispatch_request(req(
+            3,
+            "signPreparedDocument",
+            json!({"handleId": handle_id,
+            "preparedJson": serde_json::to_string(&prepared).unwrap()}),
+        ));
+        assert!(response.ok, "{:?}", response.error);
+        let signed: Value =
+            serde_json::from_str(response.result.unwrap()["value"].as_str().unwrap()).unwrap();
+        assert!(
+            jacs_core::CoreAgent::verify_with_key(
+                &signed,
+                &key,
+                jacs_core::SigningAlgorithm::Pq2025
+            )
+            .unwrap()
+            .valid
+        );
+        assert_eq!(
+            signed["jacsSha256"],
+            jacs_core::document_hash_v1(&signed).unwrap()
+        );
+        let mut unsigned = signed;
+        unsigned.as_object_mut().unwrap().remove("jacsSha256");
+        unsigned["jacsSignature"]["signature"] = json!("");
+        assert_eq!(&unsigned, prepared.unsigned_envelope());
+        dispatch_request(req(4, "dropHandle", json!({"handleId": handle_id})));
     }
 
     #[test]

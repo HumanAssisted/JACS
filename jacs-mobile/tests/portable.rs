@@ -398,6 +398,62 @@ fn recovery_readback_and_complete_document_use_public_only_results() {
 }
 
 #[test]
+fn prepared_document_roundtrip_refuses_changed_context_wrong_key_duplicates_and_locked_handle() {
+    let agent = MobileAgent::create_human().unwrap();
+    let identity: serde_json::Value =
+        serde_json::from_str(&agent.export_agent_json().unwrap()).unwrap();
+    let scope = jacs_core::SigningKeyScope::from_public_key(
+        identity["jacsId"].as_str().unwrap(),
+        identity["jacsVersion"].as_str().unwrap(),
+        SigningAlgorithm::Pq2025,
+        &agent.public_key().unwrap(),
+        [
+            jacs_core::SigningPurpose::Document,
+            jacs_core::SigningPurpose::LegacyRaw,
+        ],
+        jacs_core::PurposeIsolationAssurance::SharedRawCapable,
+    )
+    .unwrap();
+    let prepared = jacs_core::prepare_message_v2(
+        &scope,
+        &serde_json::json!({"full": "frozen mobile document"}),
+        jacs_core::SignatureMetadataV2::now(),
+    )
+    .unwrap();
+    let serialized = serde_json::to_string(&prepared).unwrap();
+    let signed = agent
+        .sign_prepared_document_json(serialized.clone())
+        .unwrap();
+    assert!(agent.verify_json(signed.clone()).unwrap().valid);
+    let mut unsigned: serde_json::Value = serde_json::from_str(&signed).unwrap();
+    assert_eq!(
+        unsigned["jacsSha256"],
+        jacs_core::document_hash_v1(&unsigned).unwrap()
+    );
+    unsigned.as_object_mut().unwrap().remove("jacsSha256");
+    unsigned["jacsSignature"]["signature"] = serde_json::json!("");
+    assert_eq!(&unsigned, prepared.unsigned_envelope());
+    let mut changed = serde_json::to_value(&prepared).unwrap();
+    changed["signingRequestContext"]["identity"] = serde_json::json!("another-owner");
+    assert!(
+        agent
+            .sign_prepared_document_json(changed.to_string())
+            .is_err()
+    );
+    let other = MobileAgent::create_human().unwrap();
+    assert!(
+        other
+            .sign_prepared_document_json(serialized.clone())
+            .is_err()
+    );
+    let duplicate = format!("{{\"profile\":\"duplicate\",{}", &serialized[1..]);
+    assert!(agent.sign_prepared_document_json(duplicate).is_err());
+    agent.clear_secrets().unwrap();
+    assert!(matches!(agent.sign_prepared_document_json(serialized),
+        Err(MobileError::Core { code, .. }) if code == "Locked"));
+}
+
+#[test]
 fn staged_rotation_reopens_ciphertext_and_checks_public_acceptance() {
     let agent = MobileAgent::create_human().unwrap();
     let password = "mobile rotation local wrapping secret".to_string();

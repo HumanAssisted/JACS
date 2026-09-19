@@ -150,6 +150,10 @@ class JacsBiometricVault(
     fun signDocumentJson(json: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
         useSession(callback) { it.signDocumentJson(json) }
 
+    /** Complete a frozen prepared document only through the owned unlocked session. */
+    fun signPreparedDocumentJson(preparedJson: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
+        useSession(callback) { it.signPreparedDocumentJson(preparedJson) }
+
     fun describe(callback: JacsVaultCallback<MobilePublicIdentity>): JacsVaultRequest =
         useSession(callback) { it.describe() }
 

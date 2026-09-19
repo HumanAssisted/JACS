@@ -72,6 +72,9 @@ class RecoveryVaultLifecycleTest {
             val signing = Capture<String>()
             main { vault.signDocumentJson("{}", signing) }; signing.await()
             assertEquals(JacsVaultException.Code.LOCKED, signing.error?.code)
+            val preparedSigning = Capture<String>()
+            main { vault.signPreparedDocumentJson("{}", preparedSigning) }; preparedSigning.await()
+            assertEquals(JacsVaultException.Code.LOCKED, preparedSigning.error?.code)
             val badPaste = Capture<JacsVaultIdentity>()
             main { vault.receiveRecovery(wire, "bad-paste", id, human.publicKey(), "Restore", badPaste) }
             badPaste.await(); assertEquals(JacsVaultException.Code.INVALID_RECOVERY_CODE, badPaste.error?.code)

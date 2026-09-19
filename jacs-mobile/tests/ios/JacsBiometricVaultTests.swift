@@ -54,6 +54,7 @@ private final class FakeAgent: JacsSessionAgent {
         return "signed:" + json
     }
     func signDocument(_ json: String) throws -> String { try sign(json) }
+    func signPreparedDocument(_ preparedJson: String) throws -> String { try sign(preparedJson) }
     func recovery() throws -> MobileRecoveryExport {
         return MobileRecoveryExport(code: "0123-4567-89AB-CDEF-0123-4567-89AB-CDEF",
             material: try export("one two three four five six"))
@@ -603,6 +604,28 @@ final class JacsBiometricVaultTests: XCTestCase {
         vault.invalidate()
         callbacks.resume()
         wait(for: [signed], timeout: 5)
+    }
+
+    func testPreparedDocumentOwnedSessionSuppressesLateResultAndLockedDispatch() {
+        let session = createSession()
+        callbacks.suspend()
+        let cancelled = expectation(description: "prepared document invalidated")
+        session.signPreparedDocumentJSON("frozen-prepared-json") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late prepared signature escaped") }
+            cancelled.fulfill()
+        }
+        worker.sync {}
+        XCTAssertEqual(factory.restored[0].signCalls, 1)
+        vault.invalidate()
+        callbacks.resume()
+        wait(for: [cancelled], timeout: 5)
+        let locked = expectation(description: "closed session refuses prepared signing")
+        session.signPreparedDocumentJSON("frozen-prepared-json") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("closed session signed") }
+            locked.fulfill()
+        }
+        wait(for: [locked], timeout: 5)
+        XCTAssertEqual(factory.restored[0].signCalls, 1)
     }
 
     func testRecoveryLocksBeforeDeliveryAndCancellationSuppressesCode() {

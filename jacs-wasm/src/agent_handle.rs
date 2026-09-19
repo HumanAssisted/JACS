@@ -527,6 +527,27 @@ impl CoreAgentHandle {
             .to_string())
     }
 
+    /// Sign a serialized PreparedDocumentV2 using this owned key. Frozen envelope
+    /// and context validation precedes signing; no document metadata is regenerated.
+    #[wasm_bindgen(js_name = signPreparedDocument)]
+    pub fn sign_prepared_document(&self, prepared_json: &str) -> Result<String, JsError> {
+        let value =
+            jacs_core::strict_json::parse_strict_json(prepared_json).map_err(map_core_err)?;
+        let prepared = serde_json::from_value(value).map_err(|_| {
+            map_core_err(CoreError::MalformedDocument(
+                "invalid prepared document".into(),
+            ))
+        })?;
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::Locked))?;
+        Ok(agent
+            .sign_prepared_document(&prepared)
+            .map_err(map_core_err)?
+            .to_string())
+    }
+
     /// Generate a 128-bit recovery secret and return JSON {code, materialJson}.
     /// The caller owns display copies and must discard them on background.
     /// No local state or backup is replaced. Lock the handle after completing work.

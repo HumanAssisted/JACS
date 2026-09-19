@@ -38,6 +38,7 @@ export class CoreAgentHandle {
   exportRotationRecovery(materialJson: string, password: string): string;
   commitKeyRotation(materialJson: string, password: string, acceptedIdentityJson: string, acceptedPublicKeyBase64: string): string;
   signDocumentJson(json: string): string;
+  signPreparedDocument(preparedJson: string): string;
   getPublicKeyBase64(): string;
   getPublicKeyHash(): string;
   getPublicKeyPem(): string;

@@ -335,6 +335,16 @@ create complete JACS documents: exact JSON content, fresh signed root IDs/dates 
 standard checksum. Existing message methods are unchanged. The host still owns
 review, authorization and suppression of results arriving after cancellation.
 
+When the server has already prepared the complete unsigned document, use
+`handle.signPreparedDocument(preparedJson)` or
+`workerHandle.signPreparedDocument(preparedJson)`. The input is serialized
+`jacs_core::PreparedDocumentV2`, including its complete unsigned `envelope`, frozen
+signature input and request context. JACS validates these against the handle's
+owned identity/key before signing, then returns the full signed envelope. Only
+the signature value and derived checksum change; no IDs or timestamps are
+regenerated. The host must independently bind the prepared document to the
+reviewed action. This method does not turn content JSON into a new document.
+
 ### Staged rotation in the worker
 
 `handle.prepareKeyRotation(storagePassword)` returns encrypted candidate

@@ -114,6 +114,7 @@ public final class JacsBiometricOperation {
 internal protocol JacsSessionAgent: AnyObject {
     func sign(_ json: String) throws -> String
     func signDocument(_ json: String) throws -> String
+    func signPreparedDocument(_ preparedJson: String) throws -> String
     func recovery() throws -> MobileRecoveryExport
     func export(_ password: String) throws -> EncryptedAgentMaterial
     func requestAuth(method: String, url: String, body: Data, audience: String) throws -> String
@@ -141,6 +142,7 @@ internal final class RustSessionAgent: JacsSessionAgent {
     init(_ agent: MobileAgent) { self.agent = agent }
     func sign(_ json: String) throws -> String { try agent.signMessageJson(json: json) }
     func signDocument(_ json: String) throws -> String { try agent.signDocumentJson(json: json) }
+    func signPreparedDocument(_ preparedJson: String) throws -> String { try agent.signPreparedDocumentJson(preparedJson: preparedJson) }
     func recovery() throws -> MobileRecoveryExport { try agent.exportRecovery() }
     func export(_ password: String) throws -> EncryptedAgentMaterial {
         try agent.exportEncryptedAgent(password: password)
@@ -221,6 +223,12 @@ public final class JacsBiometricSession {
     public func signDocumentJSON(_ json: String,
         completion: @escaping (Result<String, JacsBiometricError>) -> Void) {
         perform({ try $0.signDocument(json) }, completion: completion)
+    }
+
+    /// Complete a frozen prepared document through the owned authenticated session.
+    public func signPreparedDocumentJSON(_ preparedJson: String,
+        completion: @escaping (Result<String, JacsBiometricError>) -> Void) {
+        perform({ try $0.signPreparedDocument(preparedJson) }, completion: completion)
     }
 
     public func signMessageJSON(_ json: String,

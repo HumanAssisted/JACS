@@ -177,6 +177,12 @@ export class WorkerAgentHandle {
     return result.value;
   }
 
+  /** Sign serialized PreparedDocumentV2 without changing its frozen envelope/context. */
+  async signPreparedDocument(preparedJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("signPreparedDocument", {handleId: this.handleId, preparedJson});
+    return result.value;
+  }
+
   async signMessage(dataJson: string): Promise<string> {
     const result = await dispatch<{ signedJson: string }>("signMessage", {
       handleId: this.handleId,

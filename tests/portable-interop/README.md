@@ -59,6 +59,10 @@ alias; the explicit non-signing verifier supports portable raw-key hashes too.
 
 The standalone native document harness also checks canonical `ed25519` service receipts against the archived schema/verifier; the historical `ring-Ed25519` spelling remains accepted. Signed document bytes are never rewritten for alias compatibility.
 
+It also completes a server-prepared PQ human document with
+`CoreAgent::sign_prepared_document`, verifies it through the archived verifier,
+and checks that every frozen field survives except the filled signature/checksum.
+
 Set `JACS_INTEROP_RECOVERY=1 JACS_INTEROP_ROTATION=1` for staged rotation coverage:
 native stage → real worker candidate proof, worker stage → process restart →
 wrong acceptance refusal → candidate recovery readback → exact commit/replay →
