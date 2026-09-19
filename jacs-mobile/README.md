@@ -351,7 +351,9 @@ context. The owned key validates the complete preparation before signing; the
 returned envelope changes only its signature value and derived checksum. The
 host still checks that this is the person's exact reviewed action. Existing
 authenticated-session, cancellation and background fences apply. These methods
-neither regenerate headers nor expose a private key.
+neither regenerate headers nor expose a private key. Prepared JSON has a separate
+3 MiB transport limit because it includes both the envelope and base64 signing
+input; the existing 1 MiB limit on other JSON entry points remains unchanged.
 
 ### Staged key rotation
 

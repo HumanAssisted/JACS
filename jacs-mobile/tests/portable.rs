@@ -3,7 +3,7 @@ use jacs_core::{CoreAgent, DetachedSigner, SigningAlgorithm};
 use jacs_mobile::*;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 #[test]
@@ -79,18 +79,20 @@ fn portable_material_roundtrip_and_locked_lifecycle() {
 }
 
 struct FakeHardware {
-    signer: P256Signer,
+    signer: Box<dyn DetachedSigner>,
     cleared: Arc<AtomicBool>,
     denied: Arc<AtomicBool>,
+    calls: Arc<AtomicUsize>,
 }
 impl PlatformSigner for FakeHardware {
     fn algorithm(&self) -> MobileAlgorithm {
-        MobileAlgorithm::Es256
+        self.signer.algorithm().into()
     }
     fn public_key(&self) -> Result<Vec<u8>, PlatformSignerError> {
         Ok(self.signer.public_key().to_vec())
     }
     fn sign(&self, message: Vec<u8>) -> Result<Vec<u8>, PlatformSignerError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         if self.denied.load(Ordering::SeqCst) {
             return Err(PlatformSignerError::Cancelled);
         }
@@ -120,9 +122,10 @@ fn callback_signer_cannot_export_and_identity_updates_remain_signed() {
     let cleared = Arc::new(AtomicBool::new(false));
     let denied = Arc::new(AtomicBool::new(false));
     let callback = FakeHardware {
-        signer: P256Signer::generate().unwrap(),
+        signer: Box::new(P256Signer::generate().unwrap()),
         cleared: cleared.clone(),
         denied: denied.clone(),
+        calls: Arc::new(AtomicUsize::new(0)),
     };
     let agent =
         MobileAgent::from_platform_signer(Box::new(callback), identity.to_string()).unwrap();
@@ -397,15 +400,17 @@ fn recovery_readback_and_complete_document_use_public_only_results() {
     assert!(agent.sign_document_json("{}".into()).is_err());
 }
 
-#[test]
-fn prepared_document_roundtrip_refuses_changed_context_wrong_key_duplicates_and_locked_handle() {
-    let agent = MobileAgent::create_human().unwrap();
+fn prepare_mobile_document(
+    agent: &MobileAgent,
+    algorithm: SigningAlgorithm,
+    content: &serde_json::Value,
+) -> jacs_core::PreparedDocumentV2 {
     let identity: serde_json::Value =
         serde_json::from_str(&agent.export_agent_json().unwrap()).unwrap();
     let scope = jacs_core::SigningKeyScope::from_public_key(
         identity["jacsId"].as_str().unwrap(),
         identity["jacsVersion"].as_str().unwrap(),
-        SigningAlgorithm::Pq2025,
+        algorithm,
         &agent.public_key().unwrap(),
         [
             jacs_core::SigningPurpose::Document,
@@ -414,12 +419,17 @@ fn prepared_document_roundtrip_refuses_changed_context_wrong_key_duplicates_and_
         jacs_core::PurposeIsolationAssurance::SharedRawCapable,
     )
     .unwrap();
-    let prepared = jacs_core::prepare_message_v2(
-        &scope,
+    jacs_core::prepare_message_v2(&scope, content, jacs_core::SignatureMetadataV2::now()).unwrap()
+}
+
+#[test]
+fn prepared_document_roundtrip_refuses_changed_context_wrong_key_duplicates_and_locked_handle() {
+    let agent = MobileAgent::create_human().unwrap();
+    let prepared = prepare_mobile_document(
+        &agent,
+        SigningAlgorithm::Pq2025,
         &serde_json::json!({"full": "frozen mobile document"}),
-        jacs_core::SignatureMetadataV2::now(),
-    )
-    .unwrap();
+    );
     let serialized = serde_json::to_string(&prepared).unwrap();
     let signed = agent
         .sign_prepared_document_json(serialized.clone())
@@ -451,6 +461,72 @@ fn prepared_document_roundtrip_refuses_changed_context_wrong_key_duplicates_and_
     agent.clear_secrets().unwrap();
     assert!(matches!(agent.sign_prepared_document_json(serialized),
         Err(MobileError::Core { code, .. }) if code == "Locked"));
+}
+
+#[test]
+fn prepared_transport_supports_existing_document_capacity_with_a_separate_bound() {
+    let agent = MobileAgent::create_human().unwrap();
+    let prepared = prepare_mobile_document(
+        &agent,
+        SigningAlgorithm::Pq2025,
+        &serde_json::json!({"exact": "界".repeat(160_000)}),
+    );
+    let serialized = serde_json::to_string(&prepared).unwrap();
+    assert!(serialized.len() > 1024 * 1024);
+    let signed = agent
+        .sign_prepared_document_json(serialized.clone())
+        .unwrap();
+    assert!(signed.len() < 512 * 1024);
+    assert!(agent.verify_json(signed.clone()).unwrap().valid);
+    let mut unsigned: serde_json::Value = serde_json::from_str(&signed).unwrap();
+    assert_eq!(
+        unsigned["jacsSha256"],
+        jacs_core::document_hash_v1(&unsigned).unwrap()
+    );
+    unsigned.as_object_mut().unwrap().remove("jacsSha256");
+    unsigned["jacsSignature"]["signature"] = serde_json::json!("");
+    assert_eq!(&unsigned, prepared.unsigned_envelope());
+    let duplicate = format!("{{\"profile\":\"duplicate\",{}", &serialized[1..]);
+    assert!(agent.sign_prepared_document_json(duplicate).is_err());
+    // Other JSON entry points retain their existing bound.
+    assert!(matches!(agent.sign_document_json(serialized),
+        Err(MobileError::Core { code, detail }) if code == "MalformedDocument" && detail.contains("1 MiB")));
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let hardware = MobileAgent::from_platform_signer(
+        Box::new(FakeHardware {
+            signer: Box::new(jacs_core::Pq2025Signer::generate().unwrap()),
+            cleared: Arc::new(AtomicBool::new(false)),
+            denied: Arc::new(AtomicBool::new(false)),
+            calls: calls.clone(),
+        }),
+        "{}".into(),
+    )
+    .unwrap();
+    let small = prepare_mobile_document(
+        &hardware,
+        SigningAlgorithm::Pq2025,
+        &serde_json::json!({"exact": "bounded"}),
+    );
+    let mut at_limit = serde_json::to_string(&small).unwrap();
+    at_limit.extend(std::iter::repeat_n(' ', 3 * 1024 * 1024 - at_limit.len()));
+    calls.store(0, Ordering::SeqCst);
+    // Valid JSON padded to the exact transport bound still signs once.
+    assert!(
+        hardware
+            .sign_prepared_document_json(at_limit.clone())
+            .is_ok()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    calls.store(0, Ordering::SeqCst);
+    at_limit.push(' ');
+    assert!(matches!(hardware.sign_prepared_document_json(at_limit),
+        Err(MobileError::Core { code, detail }) if code == "MalformedDocument" && detail.contains("3 MiB")));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "oversized transport must not reach the private signer"
+    );
 }
 
 #[test]

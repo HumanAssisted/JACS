@@ -496,7 +496,8 @@ impl MobileAgent {
         &self,
         prepared_json: String,
     ) -> Result<String, MobileError> {
-        let prepared = serde_json::from_value(parse_json(&prepared_json)?)?;
+        let prepared =
+            serde_json::from_value(parse_json_bounded(&prepared_json, MAX_PREPARED_JSON_BYTES)?)?;
         Ok(self.lock()?.sign_prepared_document(&prepared)?.to_string())
     }
 
@@ -671,9 +672,20 @@ pub fn reencrypt_transferred_material(
 }
 
 const MAX_JSON_BYTES: usize = 1024 * 1024;
+// Prepared transport carries the full envelope plus its base64 signature input
+// (about 7/3 of the document size) and context. Preserve the existing 1 MiB
+// document capacity without raising unrelated JSON or signed-document limits.
+const MAX_PREPARED_JSON_BYTES: usize = 3 * MAX_JSON_BYTES;
 fn parse_json(json: &str) -> Result<Value, MobileError> {
-    if json.len() > MAX_JSON_BYTES {
-        return Err(CoreError::MalformedDocument("JSON exceeds 1 MiB".into()).into());
+    parse_json_bounded(json, MAX_JSON_BYTES)
+}
+fn parse_json_bounded(json: &str, limit: usize) -> Result<Value, MobileError> {
+    if json.len() > limit {
+        return Err(CoreError::MalformedDocument(format!(
+            "JSON exceeds {} MiB",
+            limit / (1024 * 1024)
+        ))
+        .into());
     }
     Ok(jacs_core::strict_json::parse_strict_json(json)?)
 }
