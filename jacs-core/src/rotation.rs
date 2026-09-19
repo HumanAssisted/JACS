@@ -93,9 +93,72 @@ impl PreparedKeyRotation {
     pub fn export_encrypted_material(&self, password: &str) -> Result<AgentMaterial, CoreError> {
         self.candidate.export_encrypted_material(password)
     }
+
+    /// Prove candidate possession before registration without activating it.
+    pub fn sign_document(&self, content: &Value) -> Result<Value, CoreError> {
+        self.candidate.sign_document(content)
+    }
+
+    /// A fresh recovery generation for this candidate; never rewrites a backup.
+    pub fn export_recovery(&self) -> Result<crate::recovery::RecoveryExport, CoreError> {
+        crate::recovery::export_recovery(&self.candidate)
+    }
 }
 
 impl CoreAgent {
+    /// Resume an encrypted stage after interruption. The trusted active identity
+    /// authenticates the exact predecessor, candidate, keys and algorithms before
+    /// decryption. This neither activates the candidate nor changes the old key.
+    pub fn resume_key_rotation(
+        &self,
+        material: AgentMaterial,
+        password: &str,
+    ) -> Result<PreparedKeyRotation, CoreError> {
+        self.signer.as_ref().ok_or(CoreError::Locked)?;
+        crate::transfer::validate_transfer_material(&material)?;
+        self.verify_key_rotation(&material.agent, &material.public_key, material.algorithm)?;
+        let candidate =
+            CoreAgent::from_encrypted_material(material, crate::UnlockSecret::Password(password))?;
+        Ok(PreparedKeyRotation {
+            old_identity: self.export_agent(),
+            old_public_key: self.public_key.clone(),
+            old_algorithm: self.algorithm,
+            candidate,
+        })
+    }
+
+    /// Promote only the exact candidate confirmed by an authenticated registry.
+    /// These pins are NOT proof of server acceptance: the host must reconcile
+    /// server status before calling. Exact replay is idempotent after a lost
+    /// local response. Failed validation leaves the old usable state intact.
+    pub fn commit_encrypted_key_rotation(
+        &mut self,
+        material: AgentMaterial,
+        password: &str,
+        accepted_identity: &Value,
+        accepted_public_key: &[u8],
+    ) -> Result<Value, CoreError> {
+        self.signer.as_ref().ok_or(CoreError::Locked)?;
+        if &material.agent != accepted_identity || material.public_key != accepted_public_key {
+            return Err(invalid(
+                "accepted rotation pins do not match the staged candidate",
+            ));
+        }
+        if &self.agent_json == accepted_identity && self.public_key == accepted_public_key {
+            // A replay may be followed by durable storage of these bytes. Never
+            // acknowledge a corrupted envelope merely because its public pins match.
+            crate::transfer::validate_transfer_material(&material)?;
+            let mut reopened = CoreAgent::from_encrypted_material(
+                material,
+                crate::UnlockSecret::Password(password),
+            )?;
+            reopened.clear_secrets();
+            return Ok(self.export_agent());
+        }
+        let prepared = self.resume_key_rotation(material, password)?;
+        self.commit_key_rotation(prepared)
+    }
+
     /// Stage a fresh software key. Omission selects PQ2025. Post-quantum agents
     /// cannot downgrade to classical algorithms, even with an explicit request.
     /// This operation never changes the active identity or signer.

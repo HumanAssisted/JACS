@@ -298,3 +298,115 @@ PYTHONPATH=jacs-mobile/generated/python python3 jacs-mobile/tests/ffi_smoke.py
 
 This exercises actual cross-language calls, callback signatures, typed callback
 failures and secret eviction, but makes no claim about device biometrics.
+
+### Human signing and generated recovery
+
+`MobileAgent.createHuman()` generates an ML-DSA-87 human identity in its first
+self-signed version. Apps should use the owned `JacsBiometricVault.createHuman`
+entry point on iOS/Android, retaining biometric custody and lifecycle guards.
+No `MobileAgent` signing handle crosses an application bridge.
+
+For durable recovery, use iOS `session.createRecovery` or Android
+`vault.createRecovery`. The result contains a generated 128-bit code and encrypted
+`AgentMaterial`; owned sessions lock before delivery and reject late results.
+`vault.receiveRecovery` pins the expected ID/public key from authenticated
+registration, normalizes pasted code formatting, rewraps behind local biometric
+protection and refuses to replace any existing record. Wrong input leaves a
+working record unchanged. Local restore alone never authorizes an application action.
+
+The underlying UniFFI `exportRecovery()` returns `MobileRecoveryExport { code,
+material }`; `importRecovery` takes the material, code and ID/key/algorithm pins.
+These APIs expose no plaintext private key or OS wrapping secret. Display/input
+copies of a recovery code are host-managed strings: never log or persist them,
+and discard them on background. The six-word transfer APIs remain separate.
+
+`verifyRecovery` on each owned vault performs a noninteractive read-back check and
+returns only the verified signed identity JSON. It neither persists the material
+nor installs an unlocked session. Compare its `jacsVersion` with the current
+registered version before treating a backup as current. UniFFI's
+`normalizeRecoveryCode` provides cheap syntax validation before prompts; malformed
+paste is rejected before `receiveRecovery` requests biometrics. Native errors
+separate invalid recovery code, identity mismatch, malformed material and locked
+state; they never expose foreign exception details. A well-formed wrong code still
+fails authenticated decryption; it cannot reliably be distinguished from modified
+ciphertext with an invalid authentication tag.
+
+On iOS, `createRecovery` returns `JacsBiometricRecovery` with redacted descriptions
+and reflection. `delete(account:completion:)` deliberately removes only that local
+record and closes its sessions. Cancellation before the mutation keeps the record.
+For an invalidated record, first verify the candidate recovery and current version,
+then explicitly delete and restore. `receiveRecovery` never auto-overwrites a record.
+
+For a complete independently verifiable document, use iOS
+`session.signDocumentJSON` or Android `vault.signDocumentJson` (UniFFI:
+`MobileAgent.signDocumentJson`). Exact input JSON becomes `content`; JACS generates
+fresh root IDs/dates before signing and computes the standard `jacsSha256` afterward.
+Existing `signMessageJson` retains its original minimal-message semantics.
+
+For an already prepared complete unsigned document, use
+`session.signPreparedDocumentJSON` or Android `vault.signPreparedDocumentJson`
+(UniFFI: `MobileAgent.signPreparedDocumentJson`). Pass serialized core
+`PreparedDocumentV2`, including its frozen envelope, signature input and request
+context. The owned key validates the complete preparation before signing; the
+returned envelope changes only its signature value and derived checksum. The
+host still checks that this is the person's exact reviewed action. Existing
+authenticated-session, cancellation and background fences apply. These methods
+neither regenerate headers nor expose a private key. Prepared JSON has a separate
+3 MiB transport limit because it includes both the envelope and base64 signing
+input; the existing 1 MiB limit on other JSON entry points remains unchanged.
+
+### Staged key rotation
+
+Owned vaults expose `prepareKeyRotation`, `keyRotationStatus`,
+`signRotationDocumentJSON` (Android `signRotationDocumentJson`),
+`createRotationRecovery`, `commitKeyRotation` and `discardKeyRotation`.
+Each uses fresh existing biometric protection. iOS takes `account`, `reason` and
+`completion`; Android takes `title` and `callback`. Candidate signing/recovery
+and discard also require the exact `candidateVersion`. Preparation/status returns
+`MobilePublicIdentity` with validated public identity, key, hash and PEM. No candidate handle or local password
+crosses the application bridge; sign/recovery operations clear temporary signers
+before returning.
+
+Preparation atomically stores at most one encrypted candidate beside the old
+material. Repeated preparation returns that candidate. The old identity retains
+its ID/original version and authorizes the V2 rotation proof. This differs from a
+management-credential replacement that creates a new lineage. Existing biometric
+ACL/Keystore policies and the JACS envelope remain unchanged. Legacy vault records
+remain readable; Android uses its v2 record container only while a stage exists.
+
+Persist the candidate before server submission. Sign the candidate enrollment
+challenge through `signRotationDocumentJSON` and the old-key management challenge
+through the existing old-key session. If the old key has a committed recovery copy,
+export the candidate recovery generation, read it back with `verifyRecovery` pinned
+to the candidate, and obtain save acknowledgment before server activation. HAI owns
+these generation and acknowledgment transactions; JACS never marks a code saved.
+
+After server acceptance, reconcile authenticated status and pass that exact signed
+identity JSON and public key to `commitKeyRotation`. Promotion atomically replaces
+the active material and removes the pending copy. A failed local write leaves both
+old and pending ciphertext available; reopen and reconcile. Exact commit replay
+is safe. Cancellation/background suppresses late results but does not discard a
+persisted candidate. Call `discardKeyRotation` only after authoritative
+nonacceptance; never discard merely because a response was lost. Removing a local
+vault deliberately removes both copies and remains separate from server revocation.
+An unreadable or unverifiable pending stage blocks rotation without replacing the
+working active key. This does not trigger automatic deletion of either copy.
+
+UniFFI supplies `prepareKeyRotation(password)`, `validateKeyRotation(material,
+password)`, `signRotationDocumentJson(material,password,json)`,
+`exportRotationRecovery(material,password)` and
+`commitKeyRotation(material,password,acceptedIdentityJson,acceptedPublicKey)`.
+These low-level native methods are implementation details of the owned vault and
+must not be bridged as unlocked handles or wrapping passwords.
+
+`vault.inspect` is nonprompting and reports absent, present/locked or unreadable.
+It does not claim biometric usability or invalidation. Android validates the public
+identity already present in its encrypted-material record; iOS returns no identity
+from a locked Keychain value. After unlock, iOS `session.describe` and Android
+`vault.describe` return `MobilePublicIdentity` containing validated `agentJson`,
+`publicKeyBase64`, `publicKeyHash`, `publicKeyPem` and `algorithm`. No secondary
+public metadata store is created. Obtain authoritative pins from registration
+before restore or activation, regardless of local inspect metadata.
+iOS reports a known decode failure as unreadable and returns other unexpected
+Keychain statuses as typed errors; an entitlement or storage failure is not a
+claim that the stored identity needs restoring.

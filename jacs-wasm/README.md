@@ -303,3 +303,68 @@ The active CLI and MCP are thin Rust consumers of `jacs-core`.
 ## License
 
 Apache-2.0. See [`LICENSE-APACHE`](../LICENSE-APACHE).
+
+### Human creation and generated-code recovery
+
+Use `await createHuman()` or `await createHumanInWorker()` for a first-version,
+self-signed human identity (ML-DSA-87 only). Existing `createEphemeral` behavior
+is unchanged. `handle.exportRecovery()` returns a JSON string containing
+`{ code, materialJson }`; `WorkerAgentHandle.exportRecovery()` returns that
+object directly. The code contains 128 generated bits in eight hexadecimal
+groups. Show it only after an explicit recovery action and never send it to the
+backup service. The ciphertext uses the existing `AgentMaterial` wire shape.
+
+`await importRecovery(materialJson, code, expectedAgentId,
+expectedPublicKeyBase64, expectedAlgorithm)` and `importRecoveryInWorker(...)`
+restore with independently authenticated registration pins. Spaces/hyphens and
+case are normalized; short transfer codes are rejected. Errors keep core codes,
+including `InvalidPasswordFormat`, `InvalidPassword`, `MalformedKey`,
+`MalformedEnvelope` and `Locked`. A failed import leaves other handles intact.
+After completing work, call `clearSecrets()`/`drop()`; discard late results after
+background/cancel/account change and erase displayed code copies in the host.
+The worker provides responsiveness, not protection against same-origin scripts.
+
+`verifyRecovery(...)` / `verifyRecoveryInWorker(...)` return signed public identity
+JSON without a retained handle or storage mutation. Check the returned version
+against current authenticated registration as well as the supplied ID/key pins.
+`normalizeRecoveryCode(...)` / `normalizeRecoveryCodeInWorker(...)` validate pasted
+syntax without KDF work. Backup read-back and save acknowledgment remain separate.
+
+`handle.signDocumentJson(contentJson)` / `workerHandle.signDocument(contentJson)`
+create complete JACS documents: exact JSON content, fresh signed root IDs/dates and
+standard checksum. Existing message methods are unchanged. The host still owns
+review, authorization and suppression of results arriving after cancellation.
+
+When the server has already prepared the complete unsigned document, use
+`handle.signPreparedDocument(preparedJson)` or
+`workerHandle.signPreparedDocument(preparedJson)`. The input is serialized
+`jacs_core::PreparedDocumentV2`, including its complete unsigned `envelope`, frozen
+signature input and request context. JACS validates these against the handle's
+owned identity/key before signing, then returns the full signed envelope. Only
+the signature value and derived checksum change; no IDs or timestamps are
+regenerated. The host must independently bind the prepared document to the
+reviewed action. This method does not turn content JSON into a new document.
+
+### Staged rotation in the worker
+
+`handle.prepareKeyRotation(storagePassword)` returns encrypted candidate
+`AgentMaterial` JSON and leaves the current handle active. Persist it beside the
+old material before registration. There is no second candidate-handle registry:
+`signRotationDocument(materialJson,password,dataJson)` and
+`exportRotationRecovery(materialJson,password)` validate and reopen the stage
+inside the worker, then drop the candidate signer. The latter returns the same
+`{code,materialJson}` recovery shape as `exportRecovery`. The document's `content`
+is the exact candidate possession challenge; old-key authorization uses the
+existing `handle.signDocument`.
+
+Reopen the old encrypted handle after interruption and reuse the same stage.
+Before `commitKeyRotation(materialJson,password,acceptedIdentityJson,
+acceptedPublicKeyBase64)`, reconcile authenticated registry acceptance of those
+exact pins and any required saved successor backup. Commit is idempotent and
+updates handle public-key metadata. The host owns atomic browser persistence and
+must retain both encrypted copies until promotion is durable. Discard only an
+authoritatively unaccepted stage; never regenerate/delete after a timeout without
+reconciliation. The main-thread WASM handle provides the same methods.
+Candidate public-key PEM can be obtained through the existing verification-only
+`createVerifier(candidate.public_key, candidate.algorithm).getPublicKeyPem()`;
+this needs no candidate private-key handle.

@@ -35,8 +35,9 @@ use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 
 use crate::agent_handle::{
-    create_ephemeral, generate_transfer_code, import_encrypted_agent,
-    import_encrypted_agent_pinned, reencrypt_transferred_agent,
+    CoreAgentHandle, create_ephemeral, create_human, generate_recovery_code,
+    generate_transfer_code, import_encrypted_agent, import_encrypted_agent_pinned, import_recovery,
+    normalize_recovery_code, reencrypt_transferred_agent, verify_recovery,
 };
 
 // ---------------------------------------------------------------------------
@@ -187,6 +188,17 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
     let reply_id = req.id;
     let result = match req.op.as_str() {
         "createEphemeral" => op_create_ephemeral(req.args),
+        "createHuman" => store_created_handle(create_human().map_err(WorkerError::from_js)),
+        "importRecovery" => op_import_recovery(req.args),
+        "verifyRecovery" => op_verify_recovery(req.args),
+        "normalizeRecoveryCode" => require_str(&req.args, "code").and_then(|code| {
+            normalize_recovery_code(code.to_string())
+                .map(|code| json!({"code": code}))
+                .map_err(WorkerError::from_js)
+        }),
+        "generateRecoveryCode" => generate_recovery_code()
+            .map(|code| json!({ "code": code }))
+            .map_err(WorkerError::from_js),
         "signMessage" => op_sign_message(req.args),
         "verify" => op_verify(req.args),
         "importEncryptedAgent" => op_import_encrypted_agent(req.args),
@@ -202,6 +214,13 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
         | "commitAgentUpdate"
         | "exportAgent"
         | "exportEncryptedAgent"
+        | "exportRecovery"
+        | "signDocument"
+        | "signPreparedDocument"
+        | "prepareKeyRotation"
+        | "signRotationDocument"
+        | "exportRotationRecovery"
+        | "commitKeyRotation"
         | "getPublicKeyPem"
         | "getPublicKeyPemBase64"
         | "getPublicKeyHash" => op_agent_method(&req.op, req.args),
@@ -239,6 +258,42 @@ fn require_u32(args: &Value, key: &str) -> Result<u32, WorkerError> {
         .ok_or_else(|| {
             WorkerError::malformed_input(format!("missing or out-of-range '{}' field", key))
         })
+}
+
+fn store_created_handle(
+    handle: Result<CoreAgentHandle, WorkerError>,
+) -> Result<Value, WorkerError> {
+    let handle = handle?;
+    let key = handle
+        .get_public_key_base64()
+        .map_err(WorkerError::from_js)?;
+    let algorithm = handle.algorithm().map_err(WorkerError::from_js)?;
+    Ok(json!({ "handleId": store_handle(handle), "publicKeyBase64": key, "algorithm": algorithm }))
+}
+
+fn op_verify_recovery(args: Value) -> Result<Value, WorkerError> {
+    verify_recovery(
+        require_str(&args, "materialJson")?,
+        require_str(&args, "code")?.to_string(),
+        require_str(&args, "expectedAgentId")?,
+        require_str(&args, "expectedPublicKeyBase64")?,
+        require_str(&args, "expectedAlgorithm")?,
+    )
+    .map(|identity| json!({"identityJson": identity}))
+    .map_err(WorkerError::from_js)
+}
+
+fn op_import_recovery(args: Value) -> Result<Value, WorkerError> {
+    store_created_handle(
+        import_recovery(
+            require_str(&args, "materialJson")?,
+            require_str(&args, "code")?.to_string(),
+            require_str(&args, "expectedAgentId")?,
+            require_str(&args, "expectedPublicKeyBase64")?,
+            require_str(&args, "expectedAlgorithm")?,
+        )
+        .map_err(WorkerError::from_js),
+    )
 }
 
 fn op_create_ephemeral(args: Value) -> Result<Value, WorkerError> {
@@ -382,6 +437,29 @@ fn op_agent_method(op: &str, args: Value) -> Result<Value, WorkerError> {
                 handle.commit_agent_update_json(require_str(&args, "preparedJson")?)
             }
             "exportAgent" => handle.export_agent(),
+            "exportRecovery" => handle.export_recovery(),
+            "prepareKeyRotation" => {
+                handle.prepare_key_rotation(require_str(&args, "password")?.to_string())
+            }
+            "signRotationDocument" => handle.sign_rotation_document(
+                require_str(&args, "materialJson")?,
+                require_str(&args, "password")?.to_string(),
+                require_str(&args, "dataJson")?,
+            ),
+            "exportRotationRecovery" => handle.export_rotation_recovery(
+                require_str(&args, "materialJson")?,
+                require_str(&args, "password")?.to_string(),
+            ),
+            "commitKeyRotation" => handle.commit_key_rotation(
+                require_str(&args, "materialJson")?,
+                require_str(&args, "password")?.to_string(),
+                require_str(&args, "acceptedIdentityJson")?,
+                require_str(&args, "acceptedPublicKeyBase64")?,
+            ),
+            "signDocument" => handle.sign_document_json(require_str(&args, "dataJson")?),
+            "signPreparedDocument" => {
+                handle.sign_prepared_document(require_str(&args, "preparedJson")?)
+            }
             "exportEncryptedAgent" => {
                 handle.export_encrypted_agent(require_str(&args, "password")?.to_string())
             }
@@ -471,6 +549,108 @@ mod tests {
             op: op.to_string(),
             args,
         }
+    }
+
+    #[test]
+    fn worker_sign_prepared_document_preserves_frozen_envelope() {
+        use base64::Engine as _;
+        let created = dispatch_request(req(1, "createHuman", json!({})))
+            .result
+            .unwrap();
+        let handle_id = created["handleId"].clone();
+        let identity = dispatch_request(req(2, "exportAgent", json!({"handleId": handle_id})))
+            .result
+            .unwrap();
+        let identity: Value = serde_json::from_str(identity["value"].as_str().unwrap()).unwrap();
+        let key = base64::engine::general_purpose::STANDARD
+            .decode(created["publicKeyBase64"].as_str().unwrap())
+            .unwrap();
+        let scope = jacs_core::SigningKeyScope::from_public_key(
+            identity["jacsId"].as_str().unwrap(),
+            identity["jacsVersion"].as_str().unwrap(),
+            jacs_core::SigningAlgorithm::Pq2025,
+            &key,
+            [
+                jacs_core::SigningPurpose::Document,
+                jacs_core::SigningPurpose::LegacyRaw,
+            ],
+            jacs_core::PurposeIsolationAssurance::SharedRawCapable,
+        )
+        .unwrap();
+        let prepared = jacs_core::prepare_message_v2(
+            &scope,
+            &json!({"frozen": "worker envelope"}),
+            jacs_core::SignatureMetadataV2::now(),
+        )
+        .unwrap();
+        let response = dispatch_request(req(
+            3,
+            "signPreparedDocument",
+            json!({"handleId": handle_id,
+            "preparedJson": serde_json::to_string(&prepared).unwrap()}),
+        ));
+        assert!(response.ok, "{:?}", response.error);
+        let signed: Value =
+            serde_json::from_str(response.result.unwrap()["value"].as_str().unwrap()).unwrap();
+        assert!(
+            jacs_core::CoreAgent::verify_with_key(
+                &signed,
+                &key,
+                jacs_core::SigningAlgorithm::Pq2025
+            )
+            .unwrap()
+            .valid
+        );
+        assert_eq!(
+            signed["jacsSha256"],
+            jacs_core::document_hash_v1(&signed).unwrap()
+        );
+        let mut unsigned = signed;
+        unsigned.as_object_mut().unwrap().remove("jacsSha256");
+        unsigned["jacsSignature"]["signature"] = json!("");
+        assert_eq!(&unsigned, prepared.unsigned_envelope());
+        dispatch_request(req(4, "dropHandle", json!({"handleId": handle_id})));
+    }
+
+    #[test]
+    fn worker_human_recovery_preserves_first_version() {
+        let created = dispatch_request(req(101, "createHuman", json!({})))
+            .result
+            .unwrap();
+        let handle_id = created["handleId"].clone();
+        let identity = dispatch_request(req(102, "exportAgent", json!({"handleId": handle_id})))
+            .result
+            .unwrap();
+        let identity: Value = serde_json::from_str(identity["value"].as_str().unwrap()).unwrap();
+        assert_eq!(identity["jacsAgentType"], "human");
+        assert_eq!(identity["jacsVersion"], identity["jacsOriginalVersion"]);
+        let backup = dispatch_request(req(103, "exportRecovery", json!({"handleId": handle_id})))
+            .result
+            .unwrap();
+        let backup: Value = serde_json::from_str(backup["value"].as_str().unwrap()).unwrap();
+        assert_eq!(backup["code"].as_str().unwrap().len(), 39);
+        let imported = dispatch_request(req(104, "importRecovery", json!({
+            "materialJson": backup["materialJson"], "code": backup["code"],
+            "expectedAgentId": identity["jacsId"], "expectedPublicKeyBase64": created["publicKeyBase64"],
+            "expectedAlgorithm": "pq2025"
+        }))).result.unwrap();
+        let restored = dispatch_request(req(
+            105,
+            "exportAgent",
+            json!({"handleId": imported["handleId"]}),
+        ))
+        .result
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(restored["value"].as_str().unwrap()).unwrap(),
+            identity
+        );
+        dispatch_request(req(106, "dropHandle", json!({"handleId": handle_id})));
+        dispatch_request(req(
+            107,
+            "dropHandle",
+            json!({"handleId": imported["handleId"]}),
+        ));
     }
 
     #[test]

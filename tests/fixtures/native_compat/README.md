@@ -17,3 +17,12 @@ tests generate fresh keys at runtime and do not recover the fixed vector's key
 for signing. The archive follows the same policy for raw private-key test files.
 
 These fixtures retain the repository's Apache-2.0 license.
+
+`human_complete_document.json` is a synthetic public fixture for first-version
+human identity and complete document signing. It contains only signed public
+identity/document bytes, public key and expected content/checksum. Both artifacts
+were checked with archived `NonSigningVerifier::verify_with_key` and
+`Agent::verify_hash`; no private key or recovery secret is included. The standalone
+`tests/portable-interop/native_document_check.rs` harness verifies this fixture,
+fresh output and tamper rejection without adding archived dependencies to the
+active portable workspace.

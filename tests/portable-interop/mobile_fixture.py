@@ -9,6 +9,8 @@ from pathlib import Path
 import sys
 
 # These passwords protect disposable test keys only. Never use them for real identities.
+ROTATION = os.environ.get("JACS_INTEROP_ROTATION") == "1"
+RECOVERY = os.environ.get("JACS_INTEROP_RECOVERY") == "1"
 TO_BROWSER_PASSWORD = "JacsInterop-MobileToBrowser-TestOnly-7pQ!"
 TO_MOBILE_PASSWORD = "JacsInterop-BrowserToMobile-TestOnly-9rS!"
 
@@ -33,15 +35,25 @@ def write_private_json(path, value):
 
 
 def create_fixture(binding, path):
-    agent = binding.MobileAgent.create(binding.MobileAlgorithm.PQ2025)
+    agent = binding.MobileAgent.create_human() if RECOVERY else binding.MobileAgent.create(binding.MobileAlgorithm.PQ2025)
     try:
         require(agent.algorithm() == binding.MobileAlgorithm.PQ2025, "source algorithm")
         document = json.loads(agent.export_agent_json())
         challenge = {"test": "jacs-portable-pq-interop", "direction": "mobile-to-browser", "nonce": document["jacsId"]}
-        signed_challenge = agent.sign_message_json(json.dumps(challenge))
-        material_json = binding.material_to_json(agent.export_encrypted_agent(TO_BROWSER_PASSWORD))
+        signed_challenge = agent.sign_document_json(json.dumps(challenge)) if RECOVERY else agent.sign_message_json(json.dumps(challenge))
+        if RECOVERY:
+            require(document["jacsAgentType"] == "human", "human first version")
+            require(document["jacsVersion"] == document["jacsOriginalVersion"], "no AI predecessor")
+            recovery = agent.export_recovery()
+            material_json = binding.material_to_json(recovery.material)
+            verified = binding.verify_recovery(recovery.material, recovery.code, document["jacsId"], agent.public_key(), binding.MobileAlgorithm.PQ2025)
+            require(json.loads(verified) == document, "native recovery readback")
+        else:
+            material_json = binding.material_to_json(agent.export_encrypted_agent(TO_BROWSER_PASSWORD))
+        rotation_material = binding.material_to_json(agent.prepare_key_rotation(TO_MOBILE_PASSWORD)) if ROTATION else None
         write_private_json(path, {
             "algorithm": "pq2025",
+            "rotation_material": rotation_material,
             "agent_id": document["jacsId"],
             "agent_version": document["jacsVersion"],
             "public_key_base64": agent.get_public_key_base64(),
@@ -49,7 +61,8 @@ def create_fixture(binding, path):
             "material_json": material_json,
             "signed_challenge": signed_challenge,
             "challenge": challenge,
-            "transfer_password": TO_BROWSER_PASSWORD,
+            "recovery": RECOVERY,
+            "transfer_password": recovery.code if RECOVERY else TO_BROWSER_PASSWORD,
             "return_password": TO_MOBILE_PASSWORD,
         })
     finally:
@@ -67,7 +80,15 @@ def verify_return(binding, fixture_path, returned_path):
     require(returned["verified_mobile"] is True, "browser verified source")
     material = binding.material_from_json(returned["material_json"])
     public_key = base64.b64decode(fixture["public_key_base64"], validate=True)
-    agent = binding.MobileAgent.import_pinned(material, fixture["return_password"], fixture["agent_id"], public_key, binding.MobileAlgorithm.PQ2025)
+    if RECOVERY:
+        agent = binding.MobileAgent.import_recovery(material, returned["recovery_code"], fixture["agent_id"], public_key, binding.MobileAlgorithm.PQ2025)
+        for document in returned["created_humans"]:
+            key = base64.b64decode(document["public_key_base64"], validate=True)
+            outcome = binding.verify_with_key(document["signed_identity"], key, binding.MobileAlgorithm.PQ2025)
+            require(outcome.valid, "native verifies web and worker human constructors")
+            require(json.loads(document["signed_identity"])["jacsAgentType"] == "human", "created human type")
+    else:
+        agent = binding.MobileAgent.import_pinned(material, fixture["return_password"], fixture["agent_id"], public_key, binding.MobileAlgorithm.PQ2025)
     try:
         require(agent.is_unlocked(), "mobile return unlock")
         require(agent.algorithm() == binding.MobileAlgorithm.PQ2025, "mobile return algorithm")
@@ -82,6 +103,19 @@ def verify_return(binding, fixture_path, returned_path):
             "direction": "browser-to-mobile",
             "reply_to": fixture["challenge"]["nonce"],
         }, "mobile verifies browser response content")
+        if ROTATION:
+            stage = binding.material_from_json(returned["rotation_material"])
+            candidate = json.loads(stage.agent_json)
+            require(binding.verify_with_key(returned["rotation_proof"], stage.public_key, binding.MobileAlgorithm.PQ2025).valid, "native verifies worker candidate proof")
+            require(json.loads(agent.validate_key_rotation(stage, fixture["return_password"])) == candidate, "native resumes worker encrypted stage")
+            require(json.loads(agent.commit_key_rotation(stage, fixture["return_password"], stage.agent_json, stage.public_key)) == candidate, "native promotes exact accepted worker candidate")
+            stage.encrypted_private_key = bytes([stage.encrypted_private_key[0] ^ 1]) + stage.encrypted_private_key[1:]
+            rejected = False
+            try:
+                agent.commit_key_rotation(stage, fixture["return_password"], stage.agent_json, stage.public_key)
+            except Exception:
+                rejected = True
+            require(rejected, "native rejects corrupt ciphertext even on commit replay")
     finally:
         agent.clear_secrets()
     require(not agent.is_unlocked(), "mobile return clear")

@@ -8,7 +8,8 @@ class JacsVaultException(val code: Code, cause: Throwable? = null) :
     enum class Code {
         CANCELLED, BACKGROUNDED, CLOSED, BUSY, LOCKED, UNAVAILABLE, NOT_ENROLLED,
         LOCKOUT, PERMANENT_LOCKOUT, KEY_INVALIDATED, KEY_POLICY, MISSING_RECORD,
-        ALREADY_EXISTS, INVALID_RECORD, INTEGRITY, STORAGE, CRYPTO
+        ALREADY_EXISTS, INVALID_RECORD, INTEGRITY, STORAGE, CRYPTO,
+        INVALID_RECOVERY_CODE, IDENTITY_MISMATCH, MALFORMED_MATERIAL
     }
 }
 
@@ -64,6 +65,10 @@ internal class JacsVaultState<S> {
         pending = null
         ticket.cipher = null
         return true
+    }
+    @Synchronized fun mutate(ticket: Ticket, action: () -> Unit) {
+        if (!current(ticket)) throw JacsVaultException(JacsVaultException.Code.CANCELLED)
+        action()
     }
     @Synchronized fun isUnlocked(): Boolean = !closed && session != null && pending?.cancelled?.get() != true
     @Synchronized fun invalidate(permanently: Boolean = false): Invalidated<S> {

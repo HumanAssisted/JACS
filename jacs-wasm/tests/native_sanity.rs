@@ -758,3 +758,49 @@ fn metrics_verifier_handle_increments_verify_count() {
     // Discard base64 binding so unused-import lint doesn't fire.
     let _ = base64::engine::general_purpose::STANDARD.encode([0u8]);
 }
+
+#[test]
+fn human_recovery_crosses_wasm_facade_and_core_without_changing_identity() {
+    use base64::Engine as _;
+    use jacs_core::{CoreAgent, SigningAlgorithm};
+    let wasm = jacs_wasm::create_human().unwrap();
+    let identity: Value = serde_json::from_str(&wasm.export_agent().unwrap()).unwrap();
+    assert_eq!(identity["jacsAgentType"], "human");
+    assert_eq!(wasm.algorithm().unwrap(), "pq2025");
+    let public_key = base64::engine::general_purpose::STANDARD
+        .decode(wasm.get_public_key_base64().unwrap())
+        .unwrap();
+    assert!(
+        CoreAgent::verify_with_key(&identity, &public_key, SigningAlgorithm::Pq2025)
+            .unwrap()
+            .valid
+    );
+    let backup: Value = serde_json::from_str(&wasm.export_recovery().unwrap()).unwrap();
+    let core = jacs_core::recovery::import_recovery(
+        serde_json::from_str(backup["materialJson"].as_str().unwrap()).unwrap(),
+        backup["code"].as_str().unwrap(),
+        identity["jacsId"].as_str().unwrap(),
+        &public_key,
+        SigningAlgorithm::Pq2025,
+    )
+    .unwrap();
+    assert_eq!(core.export_agent(), identity);
+    let exported = jacs_core::recovery::export_recovery(&core).unwrap();
+    let restored = jacs_wasm::import_recovery(
+        &serde_json::to_string(&exported.material).unwrap(),
+        exported.code.to_lowercase(),
+        identity["jacsId"].as_str().unwrap(),
+        &wasm.get_public_key_base64().unwrap(),
+        "pq2025",
+    )
+    .unwrap();
+    assert_eq!(
+        restored.export_agent().unwrap(),
+        wasm.export_agent().unwrap()
+    );
+    assert!(
+        core.verify(&serde_json::from_str(&restored.sign_message_json("{}").unwrap()).unwrap())
+            .unwrap()
+            .valid
+    );
+}

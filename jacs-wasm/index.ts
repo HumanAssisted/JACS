@@ -16,6 +16,11 @@ import __wbg_init, {
   CoreAgentHandle,
   createAgreementJson,
   createEphemeral as _createEphemeralRaw,
+  createHuman as _createHumanRaw,
+  importRecovery as _importRecoveryRaw,
+  generateRecoveryCode as _generateRecoveryCodeRaw,
+  normalizeRecoveryCode as _normalizeRecoveryCodeRaw,
+  verifyRecovery as _verifyRecoveryRaw,
   createVerifier as _createVerifierRaw,
   importEncryptedAgent as _importEncryptedAgentRaw,
   importEncryptedAgentPinned as _importEncryptedAgentPinnedRaw,
@@ -105,6 +110,40 @@ export async function createEphemeral(
 ): Promise<CoreAgentHandle> {
   await initJacsWasm();
   return _createEphemeralRaw(algorithm);
+}
+
+/** Create a human identity in its first signed version, ML-DSA-87 only. */
+export async function createHuman(): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _createHumanRaw();
+}
+
+/** Generate 128 random recovery bits. Never persist/upload the plaintext code. */
+export async function generateRecoveryCode(): Promise<string> {
+  await initJacsWasm();
+  return _generateRecoveryCodeRaw();
+}
+
+/** Syntax-only recovery input validation before prompts/KDF. */
+export async function normalizeRecoveryCode(code: string): Promise<string> {
+  await initJacsWasm();
+  return _normalizeRecoveryCodeRaw(code);
+}
+
+/** Read-back returns signed public identity JSON; compare registered current version. */
+export async function verifyRecovery(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm): Promise<string> {
+  await initJacsWasm();
+  return _verifyRecoveryRaw(materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm);
+}
+
+/** Durable recovery with independent identity/key pins; accepts grouped pasted codes. */
+export async function importRecovery(
+  materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _importRecoveryRaw(materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm);
 }
 
 /** Import an encrypted agent from a JSON-serialized `AgentMaterial`

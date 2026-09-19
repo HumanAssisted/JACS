@@ -34,3 +34,38 @@ Every external path is configurable:
 For a custom Chromium distribution, set its executable and optional launch-configuration module. The harness does not disable browser web security or site isolation. It binds HTTP to loopback on an ephemeral port and runs the browser/server in the same process environment.
 
 A pass proves native UniFFI/WASM key-envelope and signature interoperability. It does not replace Android/iOS application packaging, physical-device biometric, or hardware-keystore tests. Host UniFFI uses the same Rust mobile API, but this harness does not run on a phone.
+
+Run `JACS_INTEROP_RECOVERY=1 node tests/portable-interop/run.mjs` for generated
+128-bit recovery instead of the compatibility test passwords. This additionally
+creates human identities via UniFFI, browser WASM and a real Web Worker, verifies
+browser/worker identities in native UniFFI, and checks worker rejection of wrong
+codes, wrong pins, malformed material, short transfer codes and locked exports.
+Recovery codes exist only in mode-0600 disposable fixtures which are deleted by
+the harness; none appear in status output or HTTP routes.
+
+Recovery mode also exercises complete `signDocument` envelopes, syntax
+normalization and noninteractive `verifyRecovery` read-back on native/WASM/worker.
+The read-back result is public identity JSON, never an unlocked handle.
+
+`native_document_check.rs` checks the public golden fixture and fresh core output
+against archived `jacs::verification::NonSigningVerifier` plus its native checksum
+implementation. Run it from a temporary standalone Cargo manifest outside this
+workspace, with `jacs` pointing to `archive/native/jacs` (`default-features=false`),
+`jacs-core` pointing to `jacs-core`, `serde_json="1"`, `base64="0.23"`, and a `[[bin]]`
+path to that source. Use `cargo run --manifest-path <temporary-manifest> --bin
+native-document-check`. Do not add archived dependencies to the active workspace.
+The older signing-agent verifier checks only the historical normalized key-hash
+alias; the explicit non-signing verifier supports portable raw-key hashes too.
+
+The standalone native document harness also checks canonical `ed25519` service receipts against the archived schema/verifier; the historical `ring-Ed25519` spelling remains accepted. Signed document bytes are never rewritten for alias compatibility.
+
+It also completes a server-prepared PQ human document with
+`CoreAgent::sign_prepared_document`, verifies it through the archived verifier,
+and checks that every frozen field survives except the filled signature/checksum.
+
+Set `JACS_INTEROP_RECOVERY=1 JACS_INTEROP_ROTATION=1` for staged rotation coverage:
+native stage → real worker candidate proof, worker stage → process restart →
+wrong acceptance refusal → candidate recovery readback → exact commit/replay →
+new-key signing and verification after both commit and replay,
+and native resumption/verification of the worker stage. Fixtures contain disposable
+encrypted test keys only and are removed by the runner.

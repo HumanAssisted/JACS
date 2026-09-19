@@ -136,14 +136,51 @@ export function terminateWorker(): void {
 
 export class WorkerAgentHandle {
   readonly handleId: number;
-  readonly publicKeyBase64: string;
-  readonly algorithm: Algorithm;
+  publicKeyBase64: string;
+  algorithm: Algorithm;
 
   /** @internal */
   constructor(handleId: number, publicKeyBase64: string, algorithm: Algorithm) {
     this.handleId = handleId;
     this.publicKeyBase64 = publicKeyBase64;
     this.algorithm = algorithm;
+  }
+
+  /** Persist this encrypted stage beside the active material before registration. */
+  async prepareKeyRotation(password: string): Promise<string> {
+    return (await dispatch<{value: string}>("prepareKeyRotation", {handleId: this.handleId, password})).value;
+  }
+
+  /** Candidate possession proof; content is the exact enrollment challenge. */
+  async signRotationDocument(materialJson: string, password: string, dataJson: string): Promise<string> {
+    return (await dispatch<{value: string}>("signRotationDocument", {handleId: this.handleId, materialJson, password, dataJson})).value;
+  }
+
+  async exportRotationRecovery(materialJson: string, password: string): Promise<{code: string; materialJson: string}> {
+    return JSON.parse((await dispatch<{value: string}>("exportRotationRecovery", {handleId: this.handleId, materialJson, password})).value);
+  }
+
+  /** Authenticate server status and exact candidate pins before calling. Preserve
+   * encrypted active/staged records until successful durable local promotion. */
+  async commitKeyRotation(materialJson: string, password: string, acceptedIdentityJson: string,
+    acceptedPublicKeyBase64: string): Promise<string> {
+    const value = (await dispatch<{value: string}>("commitKeyRotation", {handleId: this.handleId, materialJson,
+      password, acceptedIdentityJson, acceptedPublicKeyBase64})).value;
+    this.publicKeyBase64 = acceptedPublicKeyBase64;
+    this.algorithm = JSON.parse(materialJson).algorithm;
+    return value;
+  }
+
+  /** Exact content in a complete document with locally generated signed root IDs. */
+  async signDocument(dataJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("signDocument", {handleId: this.handleId, dataJson});
+    return result.value;
+  }
+
+  /** Sign serialized PreparedDocumentV2 without changing its frozen envelope/context. */
+  async signPreparedDocument(preparedJson: string): Promise<string> {
+    const result = await dispatch<{ value: string }>("signPreparedDocument", {handleId: this.handleId, preparedJson});
+    return result.value;
   }
 
   async signMessage(dataJson: string): Promise<string> {
@@ -221,6 +258,13 @@ export class WorkerAgentHandle {
     return result.value;
   }
 
+  /** Generated 128-bit code and ciphertext; display code only on explicit request.
+   * The host must clear visible copies and lock/drop on completion or background. */
+  async exportRecovery(): Promise<{ code: string; materialJson: string }> {
+    const result = await dispatch<{ value: string }>("exportRecovery", { handleId: this.handleId });
+    return JSON.parse(result.value);
+  }
+
   async exportEncryptedAgent(password: string): Promise<string> {
     const result = await dispatch<{ value: string }>("exportEncryptedAgent", {
       handleId: this.handleId, password,
@@ -250,6 +294,53 @@ export class WorkerAgentHandle {
 // ---------------------------------------------------------------------------
 // Constructors.
 // ---------------------------------------------------------------------------
+
+/** First-version human metadata; ML-DSA-87 only. */
+export async function createHumanInWorker(
+  options?: { workerUrl?: URL | string },
+): Promise<WorkerAgentHandle> {
+  const result = await dispatch<{
+    handleId: number; publicKeyBase64: string; algorithm: Algorithm;
+  }>("createHuman", {}, options?.workerUrl);
+  return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+/** Pins come from authenticated registration, never from the backup itself. */
+export async function importRecoveryInWorker(
+  materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm,
+  options?: { workerUrl?: URL | string },
+): Promise<WorkerAgentHandle> {
+  const result = await dispatch<{
+    handleId: number; publicKeyBase64: string; algorithm: Algorithm;
+  }>("importRecovery", {
+    materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
+  }, options?.workerUrl);
+  return new WorkerAgentHandle(result.handleId, result.publicKeyBase64, result.algorithm);
+}
+
+/** No handle/persistence: signed identity JSON only; caller checks current version. */
+export async function verifyRecoveryInWorker(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: Algorithm,
+  options?: {workerUrl?: URL | string}): Promise<string> {
+  const result = await dispatch<{identityJson: string}>("verifyRecovery", {
+    materialJson, code, expectedAgentId, expectedPublicKeyBase64, expectedAlgorithm,
+  }, options?.workerUrl);
+  return result.identityJson;
+}
+
+export async function normalizeRecoveryCodeInWorker(code: string,
+  options?: {workerUrl?: URL | string}): Promise<string> {
+  const result = await dispatch<{code: string}>("normalizeRecoveryCode", {code}, options?.workerUrl);
+  return result.code;
+}
+
+export async function generateRecoveryCodeInWorker(
+  options?: { workerUrl?: URL | string },
+): Promise<string> {
+  const result = await dispatch<{ code: string }>("generateRecoveryCode", {}, options?.workerUrl);
+  return result.code;
+}
 
 export async function createEphemeralInWorker(
   algorithm: Algorithm = "pq2025",

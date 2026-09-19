@@ -16,6 +16,7 @@ pub mod human_approval;
 pub mod identity;
 pub mod lifecycle;
 pub mod material;
+pub mod recovery;
 pub mod request_auth;
 pub mod response_context;
 pub mod rotation;

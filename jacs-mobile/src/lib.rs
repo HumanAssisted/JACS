@@ -79,6 +79,33 @@ pub struct EncryptedAgentMaterial {
     pub algorithm: MobileAlgorithm,
 }
 
+/// Public, validated identity metadata. Contains no custody or unlock material.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MobilePublicIdentity {
+    pub agent_json: String,
+    pub public_key_base64: String,
+    pub public_key_hash: String,
+    pub public_key_pem: String,
+    pub algorithm: MobileAlgorithm,
+}
+
+#[uniffi::export]
+pub fn describe_public_identity(
+    agent_json: String,
+    public_key: Vec<u8>,
+    algorithm: MobileAlgorithm,
+) -> Result<MobilePublicIdentity, MobileError> {
+    let identity = parse_json(&agent_json)?;
+    CoreAgent::validate_identity(&identity, &public_key, algorithm.into())?;
+    Ok(MobilePublicIdentity {
+        agent_json: identity.to_string(),
+        public_key_base64: base64::engine::general_purpose::STANDARD.encode(&public_key),
+        public_key_hash: jacs_core::verify::sha256_hex(&public_key),
+        public_key_pem: jacs_core::sign::public_key_pem(&public_key, algorithm.into())?,
+        algorithm,
+    })
+}
+
 impl TryFrom<EncryptedAgentMaterial> for AgentMaterial {
     type Error = MobileError;
     fn try_from(value: EncryptedAgentMaterial) -> Result<Self, Self::Error> {
@@ -102,6 +129,13 @@ impl From<AgentMaterial> for EncryptedAgentMaterial {
             algorithm: value.algorithm.into(),
         }
     }
+}
+
+/// Explicit display/input only. Do not log, persist or send the code to storage.
+#[derive(uniffi::Record)]
+pub struct MobileRecoveryExport {
+    pub code: String,
+    pub material: EncryptedAgentMaterial,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -242,6 +276,12 @@ impl MobileAgent {
         Self::create(MobileAlgorithm::Pq2025)
     }
 
+    /// Human identity, self-signed as human in its first version; PQ only.
+    #[uniffi::constructor]
+    pub fn create_human() -> Result<Arc<Self>, MobileError> {
+        Ok(Self::wrap(CoreAgent::create_human()?))
+    }
+
     /// Explicit algorithm selection for compatibility. Prefer create_default
     /// for new portable identities.
     #[uniffi::constructor]
@@ -299,8 +339,122 @@ impl MobileAgent {
         )?))
     }
 
+    /// Durable recovery import. Pins come from trusted registration, not material.
+    #[uniffi::constructor]
+    pub fn import_recovery(
+        material: EncryptedAgentMaterial,
+        code: String,
+        expected_agent_id: String,
+        expected_public_key: Vec<u8>,
+        expected_algorithm: MobileAlgorithm,
+    ) -> Result<Arc<Self>, MobileError> {
+        let code = Zeroizing::new(code);
+        Ok(Self::wrap(jacs_core::recovery::import_recovery(
+            material.try_into()?,
+            &code,
+            &expected_agent_id,
+            &expected_public_key,
+            expected_algorithm.into(),
+        )?))
+    }
+
+    /// The owned native vault calls this; never expose MobileAgent through an app bridge.
+    pub fn export_recovery(&self) -> Result<MobileRecoveryExport, MobileError> {
+        let agent = self.lock()?;
+        let recovery = jacs_core::recovery::export_recovery(&agent)?;
+        Ok(MobileRecoveryExport {
+            code: recovery.code.to_string(),
+            material: recovery.material.into(),
+        })
+    }
+
+    /// Ciphertext stage only. Persist it before submitting any registration.
+    pub fn prepare_key_rotation(
+        &self,
+        password: String,
+    ) -> Result<EncryptedAgentMaterial, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .prepare_key_rotation(None)?
+            .export_encrypted_material(&password)?
+            .into())
+    }
+
+    pub fn validate_key_rotation(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+    ) -> Result<String, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .resume_key_rotation(material.try_into()?, &password)?
+            .agent()
+            .to_string())
+    }
+
+    /// Full document with content equal to the candidate enrollment challenge.
+    pub fn sign_rotation_document_json(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+        json: String,
+    ) -> Result<String, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .resume_key_rotation(material.try_into()?, &password)?
+            .sign_document(&parse_json(&json)?)?
+            .to_string())
+    }
+
+    pub fn export_rotation_recovery(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+    ) -> Result<MobileRecoveryExport, MobileError> {
+        let password = Zeroizing::new(password);
+        let recovery = self
+            .lock()?
+            .resume_key_rotation(material.try_into()?, &password)?
+            .export_recovery()?;
+        Ok(MobileRecoveryExport {
+            code: recovery.code.to_string(),
+            material: recovery.material.into(),
+        })
+    }
+
+    /// The host must authenticate registry acceptance before supplying these pins.
+    pub fn commit_key_rotation(
+        &self,
+        material: EncryptedAgentMaterial,
+        password: String,
+        accepted_identity_json: String,
+        accepted_public_key: Vec<u8>,
+    ) -> Result<String, MobileError> {
+        let password = Zeroizing::new(password);
+        Ok(self
+            .lock()?
+            .commit_encrypted_key_rotation(
+                material.try_into()?,
+                &password,
+                &parse_json(&accepted_identity_json)?,
+                &accepted_public_key,
+            )?
+            .to_string())
+    }
+
     pub fn algorithm(&self) -> Result<MobileAlgorithm, MobileError> {
         Ok(self.lock()?.algorithm().into())
+    }
+    pub fn describe(&self) -> Result<MobilePublicIdentity, MobileError> {
+        let agent = self.lock()?;
+        describe_public_identity(
+            agent.export_agent().to_string(),
+            agent.public_key().to_vec(),
+            agent.algorithm().into(),
+        )
     }
     pub fn public_key(&self) -> Result<Vec<u8>, MobileError> {
         Ok(self.lock()?.public_key().to_vec())
@@ -329,6 +483,22 @@ impl MobileAgent {
     ) -> Result<EncryptedAgentMaterial, MobileError> {
         let password = Zeroizing::new(password);
         Ok(self.lock()?.export_encrypted_material(&password)?.into())
+    }
+
+    /// Complete JACS document, with exact input JSON as content and fresh root headers.
+    pub fn sign_document_json(&self, json: String) -> Result<String, MobileError> {
+        Ok(self.lock()?.sign_document(&parse_json(&json)?)?.to_string())
+    }
+
+    /// Sign serialized PreparedDocumentV2 after validating its frozen envelope and
+    /// context against this owned key. Only the signature and checksum are filled.
+    pub fn sign_prepared_document_json(
+        &self,
+        prepared_json: String,
+    ) -> Result<String, MobileError> {
+        let prepared =
+            serde_json::from_value(parse_json_bounded(&prepared_json, MAX_PREPARED_JSON_BYTES)?)?;
+        Ok(self.lock()?.sign_prepared_document(&prepared)?.to_string())
     }
 
     pub fn sign_message_json(&self, json: String) -> Result<String, MobileError> {
@@ -438,6 +608,40 @@ pub fn material_from_json(json: String) -> Result<EncryptedAgentMaterial, Mobile
     Ok(jacs_core::strict_json::deserialize_strict_json::<AgentMaterial>(&json)?.into())
 }
 
+/// Cheap paste validation; no KDF, handle, storage or biometrics.
+#[uniffi::export]
+pub fn normalize_recovery_code(code: String) -> Result<String, MobileError> {
+    let code = Zeroizing::new(code);
+    Ok(jacs_core::recovery::normalize_recovery_code(&code)?.to_string())
+}
+
+/// Verify downloaded ciphertext against trusted registration. Only public identity
+/// JSON is returned; the temporary unlocked key is cleared inside core.
+#[uniffi::export]
+pub fn verify_recovery(
+    material: EncryptedAgentMaterial,
+    code: String,
+    expected_agent_id: String,
+    expected_public_key: Vec<u8>,
+    expected_algorithm: MobileAlgorithm,
+) -> Result<String, MobileError> {
+    let code = Zeroizing::new(code);
+    Ok(jacs_core::recovery::verify_recovery(
+        material.try_into()?,
+        &code,
+        &expected_agent_id,
+        &expected_public_key,
+        expected_algorithm.into(),
+    )?
+    .to_string())
+}
+
+/// Durable recovery code: 128 CSPRNG bits, distinct from device transfer.
+#[uniffi::export]
+pub fn generate_recovery_code() -> Result<String, MobileError> {
+    Ok(jacs_core::recovery::generate_recovery_code()?.to_string())
+}
+
 /// Six independently sampled words (66 bits); display only on the sending device.
 #[uniffi::export]
 pub fn generate_transfer_code() -> Result<String, MobileError> {
@@ -468,9 +672,20 @@ pub fn reencrypt_transferred_material(
 }
 
 const MAX_JSON_BYTES: usize = 1024 * 1024;
+// Prepared transport carries the full envelope plus its base64 signature input
+// (about 7/3 of the document size) and context. Preserve the existing 1 MiB
+// document capacity without raising unrelated JSON or signed-document limits.
+const MAX_PREPARED_JSON_BYTES: usize = 3 * MAX_JSON_BYTES;
 fn parse_json(json: &str) -> Result<Value, MobileError> {
-    if json.len() > MAX_JSON_BYTES {
-        return Err(CoreError::MalformedDocument("JSON exceeds 1 MiB".into()).into());
+    parse_json_bounded(json, MAX_JSON_BYTES)
+}
+fn parse_json_bounded(json: &str, limit: usize) -> Result<Value, MobileError> {
+    if json.len() > limit {
+        return Err(CoreError::MalformedDocument(format!(
+            "JSON exceeds {} MiB",
+            limit / (1024 * 1024)
+        ))
+        .into());
     }
     Ok(jacs_core::strict_json::parse_strict_json(json)?)
 }
