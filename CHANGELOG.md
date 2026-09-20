@@ -1,5 +1,10 @@
 ## Unreleased
 
+### 2026-09-19 — Shared Rust cache for worktrees
+
+- Add optional `rust-cache-preview`, `rust-cache-setup`, `rust-cache-status` and `rust-cache-smoke` Make targets. One checksum-pinned kache setup serves JACS, haiai, musubi and hai under the same Cargo home, preserving existing configuration and native compiler choices.
+- Document setup, rollback and disk limits in README; require cache checks, isolated outputs and scoped cleanup in AGENTS.md. `make check` passes all 219 tests; the offline smoke passes reuse, invalidation and bypass checks with 2/2 warm hits through reflinks. Full JACS and platform qualification remains separate.
+
 ### 2026-09-15 — Trust and timestamp documentation boundaries
 
 - Correct archival-signature timestamp guidance: the validator limits future skew, has no maximum-age setting, and does not replace request-bound nonce/replay checks. Distinguish signing-key provenance from authorship or human approval.
