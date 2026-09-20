@@ -62,7 +62,7 @@ signature = "2.2.0"
 moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
 sha2 = "0.10.8"
-phf = { version = "0.11.3", features = ["macros"] }
+phf = { version = "0.13.1", features = ["macros"] }
 strum = "0.27.1"
 strum_macros = "0.27.0"
 secrecy = "0.10.3"
