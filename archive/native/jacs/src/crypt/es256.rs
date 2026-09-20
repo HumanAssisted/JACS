@@ -30,7 +30,8 @@
 use crate::error::JacsError;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::Generate;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use sha2::{Digest, Sha256};
 
@@ -57,7 +58,8 @@ pub(crate) struct Es256Keypair {
 
 /// Generate a new P-256 keypair for the `ecosystem_signing` role.
 pub(crate) fn generate_es256_keypair() -> Result<Es256Keypair, JacsError> {
-    let secret = p256::SecretKey::random(&mut rand_core::OsRng);
+    let secret = p256::SecretKey::try_generate_from_rng(&mut rand::rngs::SysRng)
+        .map_err(|e| JacsError::CryptoError(format!("ES256 keygen failed: {e}")))?;
     let public = secret.public_key();
 
     // `to_pkcs8_der` yields a zeroizing `SecretDocument`; the one plaintext
@@ -75,7 +77,7 @@ pub(crate) fn generate_es256_keypair() -> Result<Es256Keypair, JacsError> {
         .to_public_key_pem(p256::pkcs8::LineEnding::LF)
         .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI encoding failed: {e}")))?;
 
-    let point = public.to_encoded_point(false);
+    let point = public.to_sec1_point(false);
     let public_sec1_uncompressed = point.as_bytes().to_vec();
 
     let kid = rfc7638_thumbprint_p256(&public_sec1_uncompressed)?;
@@ -146,7 +148,7 @@ pub fn multikey_from_spki_pem(pem: &str) -> Result<String, JacsError> {
     use p256::pkcs8::DecodePublicKey;
     let public = p256::PublicKey::from_public_key_pem(pem)
         .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI PEM parse failed: {e}")))?;
-    let compressed = public.to_encoded_point(true);
+    let compressed = public.to_sec1_point(true);
     let mut bytes = vec![0x80u8, 0x24u8]; // varint multicodec p256-pub (0x1200)
     bytes.extend_from_slice(compressed.as_bytes());
     Ok(format!("z{}", bs58::encode(bytes).into_string()))
@@ -196,7 +198,7 @@ pub fn jwk_xy_from_spki_pem(pem: &str) -> Result<(String, String), JacsError> {
     use p256::pkcs8::DecodePublicKey;
     let public = p256::PublicKey::from_public_key_pem(pem)
         .map_err(|e| JacsError::CryptoError(format!("ES256 SPKI PEM parse failed: {e}")))?;
-    let point = public.to_encoded_point(false);
+    let point = public.to_sec1_point(false);
     jwk_xy_from_sec1(point.as_bytes())
 }
 

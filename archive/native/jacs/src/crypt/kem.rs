@@ -13,7 +13,7 @@ use aes_gcm::{
 use fips203::ml_kem_768;
 use fips203::traits::{Decaps, Encaps, KeyGen, SerDes};
 use hkdf::Hkdf;
-use rand::Rng;
+use rand::RngExt;
 use sha2::Sha256;
 
 /// Generate ML-KEM-768 keypair

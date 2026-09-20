@@ -378,8 +378,9 @@ mod tests {
         PinnedHumanApprovalAuthorityV1,
         PinnedJacsProvenanceV1,
     ) {
-        let key = SigningKey::random(&mut rand_core::OsRng);
-        let point = key.verifying_key().to_encoded_point(false);
+        use p256::elliptic_curve::Generate;
+        let key = SigningKey::try_generate_from_rng(&mut rand::rngs::SysRng).unwrap();
+        let point = key.verifying_key().to_sec1_point(false);
         let passkey: Passkey = serde_json::from_value(json!({"cred": {
             "cred_id": encode_binary(&[7;32]),
             "cred": {"type_":"ES256", "key":{"EC_EC2": {
