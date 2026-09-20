@@ -6,8 +6,8 @@
 //!   fixture are denied by default and remain available only through explicit
 //!   compatibility/migration mode;
 //! * the native signature schema enum stays exactly
-//!   `["ring-Ed25519", "pq2025", "es256"]` — the jacs-core lowercase `"ed25519"`
-//!   wire form remains an intentional, pinned gap;
+//!   `["ring-Ed25519", "ed25519", "pq2025", "es256"]` — canonical portable
+//!   Ed25519 and historical native signatures both remain schema-valid;
 //! * native key creation still rejects ES256; portable/platform ES256 keys
 //!   verify natively only with the canonical `"es256"` wire spelling and the
 //!   explicitly trusted public key; uppercase/ring aliases remain schema-invalid;
@@ -34,7 +34,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The one and only native signature algorithm enum, pinned.
-const NATIVE_SIGNING_ALGORITHMS: [&str; 3] = ["ring-Ed25519", "pq2025", "es256"];
+const NATIVE_SIGNING_ALGORITHMS: [&str; 4] = ["ring-Ed25519", "ed25519", "pq2025", "es256"];
 
 /// The jacs crate's copy of the signature component schema (the jacs-core
 /// copy is compared against it in `legacy_lowercase_ed25519_wire_form_is_pinned`).
@@ -280,8 +280,7 @@ fn legacy_pq2025_fixture_still_verifies() {
 }
 
 // ---------------------------------------------------------------------------
-// 3 — the lowercase "ed25519" wire form is an intentional, pinned gap:
-// jacs-core crypto-verifies it, the native schema rejects it.
+// 3 — canonical portable Ed25519 and historical native aliases both validate.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -308,18 +307,12 @@ fn legacy_lowercase_ed25519_wire_form_is_pinned() {
     .expect("core verify runs");
     assert!(outcome.valid, "core verify errors: {:?}", outcome.errors);
 
-    // ...but is NOT native-schema-valid: the enum rejects "ed25519".
+    // The portable spelling is accepted without rewriting any signed bytes.
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").expect("native schema");
-    let err = schema
-        .validate_signature(&signed["jacsSignature"])
-        .expect_err("lowercase 'ed25519' must fail the native signature schema");
-    assert!(
-        err.to_string().contains("signingAlgorithm"),
-        "schema rejection must be about signingAlgorithm: {err}"
-    );
+    schema.validate_signature(&signed["jacsSignature"])
+        .expect("canonical 'ed25519' must pass the native signature schema");
 
-    // The enum is the ONLY reason: the same signature object with the
-    // native alias passes the component schema.
+    // Historical spelling remains schema-valid as well.
     let mut native_form = signed["jacsSignature"].clone();
     native_form["signingAlgorithm"] = json!("ring-Ed25519");
     schema
@@ -332,7 +325,7 @@ fn legacy_lowercase_ed25519_wire_form_is_pinned() {
     assert_eq!(
         jacs_schema["properties"]["signingAlgorithm"]["enum"],
         json!(NATIVE_SIGNING_ALGORITHMS),
-        "native verification schema enum must stay exactly ring-Ed25519 | pq2025 | es256"
+        "native verification schema enum must stay exactly ring-Ed25519 | ed25519 | pq2025 | es256"
     );
     let core_schema_str = jacs_core::schema::DEFAULT_SCHEMA_STRINGS
         .get("schemas/components/signature/v1/signature.schema.json")

@@ -155,7 +155,7 @@ fn signature_schema_supports_portable_and_hardware_algorithms() {
         .collect();
     assert_eq!(
         enum_vals,
-        vec!["ring-Ed25519", "pq2025", "es256"],
+        vec!["ring-Ed25519", "ed25519", "pq2025", "es256"],
         "signature schema must support every portable signing algorithm"
     );
 

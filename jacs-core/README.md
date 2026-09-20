@@ -224,3 +224,40 @@ as malformed legacy PBKDF2 noise.
 ## License
 
 Apache-2.0. See [`LICENSE-APACHE`](../LICENSE-APACHE).
+
+### Human identity and durable recovery
+
+`CoreAgent::create_human()` creates an ML-DSA-87 identity whose first self-signed
+version has `jacsAgentType: "human"`. Existing AI constructors are unchanged.
+The type is metadata; applications must independently bind a human to an account.
+
+`recovery::export_recovery(&agent)` generates 128 CSPRNG bits, formatted as eight
+four-digit hexadecimal groups, and returns `RecoveryExport { code, material }`.
+It uses the ordinary `AgentMaterial` and Argon2id/AES-GCM envelope. It does not
+change the active identity, persist a backup, or lock the caller's handle.
+`recovery::import_recovery(material, code, expected_id, expected_key, algorithm)`
+accepts case-insensitive pasted codes with ASCII whitespace/hyphens, verifies the
+independently trusted registration pins and restores the same signed identity.
+Wrong secrets, pins or malformed material fail. The six-word, 66-bit transfer
+code is a separate short-lived protocol and is not a durable recovery code.
+
+Keep the code separate from its ciphertext, never log either, and clear displayed
+codes and unlocked handles on background/logout. Server backup generations,
+read-back, save acknowledgment and key replacement are application responsibilities.
+
+`recovery::verify_recovery` returns only verified identity JSON and clears the
+temporary imported key; it does not persist a record or change the source handle.
+The application must compare the identity's version to current registration.
+`CoreAgent::sign_document(content)` uses the existing native-header preparation
+and verified completion pipeline to produce fresh signed document/version IDs,
+exact `content` and `jacsSha256`. It confers no application authority and leaves
+`sign_message` behavior unchanged.
+
+Encrypted rotation stages resume through `CoreAgent::resume_key_rotation` using
+an existing `AgentMaterial` envelope. It verifies the V2 predecessor/candidate
+proof and private/public-key match before returning `PreparedKeyRotation`.
+That stage can `sign_document` for candidate possession and `export_recovery`
+before activation. `commit_encrypted_key_rotation` requires the exact accepted
+identity and public key, validates encrypted bytes even on an idempotent replay,
+and leaves the current signer intact on failure. Acceptance pins must come from
+an authenticated registry: the library does not establish network acceptance.

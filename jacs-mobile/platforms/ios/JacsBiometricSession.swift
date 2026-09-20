@@ -16,6 +16,40 @@ public enum JacsBiometricError: Error, Equatable {
     case unsupportedAlgorithm
     case keychainStatus(Int32)
     case cryptographyFailed
+    case invalidRecoveryCode
+    case identityMismatch
+    case malformedMaterial
+    case locked
+}
+
+/// Stable categories only: no foreign error description is exposed to the app.
+internal func mapMobileError(_ error: Error) -> JacsBiometricError {
+    if let error = error as? JacsBiometricError { return error }
+    guard let error = error as? MobileError else { return .cryptographyFailed }
+    switch error {
+    case .Core(let code, _):
+        switch code {
+        case "InvalidPassword", "InvalidPasswordFormat": return .invalidRecoveryCode
+        case "MalformedKey", "AlgorithmMismatch": return .identityMismatch
+        case "MalformedDocument", "MalformedEnvelope", "SignatureInvalid", "SchemaInvalid": return .malformedMaterial
+        case "Locked": return .locked
+        default: return .cryptographyFailed
+        }
+    case .InvalidJson: return .malformedMaterial
+    case .Busy: return .busy
+    case .Unavailable: return .inactive
+    }
+}
+
+/// Only explicit property access reveals the display code. Diagnostic descriptions
+/// and ordinary reflection expose neither code nor encrypted material.
+public struct JacsBiometricRecovery: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public let code: String
+    public let material: EncryptedAgentMaterial
+    internal init(_ value: MobileRecoveryExport) { code = value.code; material = value.material }
+    public var description: String { "JacsBiometricRecovery(<redacted>)" }
+    public var debugDescription: String { description }
+    public var customMirror: Mirror { Mirror(self, children: [:]) }
 }
 
 /// Display the code directly to the receiver; send only encrypted material to
@@ -24,6 +58,7 @@ public struct JacsBiometricTransfer {
     public let code: String
     public let material: EncryptedAgentMaterial
 }
+
 
 /// Cancels a pending operation, including a result awaiting callback delivery.
 /// Cancelling after completion does not close a returned session; use close().
@@ -60,6 +95,14 @@ public final class JacsBiometricOperation {
         return true
     }
 
+    /// Linearizes a short irreversible local mutation with cancellation.
+    /// Cancellation that wins this lock prevents the mutation entirely.
+    internal func mutateIfPending(_ mutation: () throws -> Void) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard !completed && !cancelled else { throw JacsBiometricError.cancelled }
+        try mutation()
+    }
+
     internal func claimWork() -> Bool {
         lock.lock(); defer { lock.unlock() }
         guard !completed && !workStarted else { return false }
@@ -70,16 +113,37 @@ public final class JacsBiometricOperation {
 
 internal protocol JacsSessionAgent: AnyObject {
     func sign(_ json: String) throws -> String
+    func signDocument(_ json: String) throws -> String
+    func signPreparedDocument(_ preparedJson: String) throws -> String
+    func recovery() throws -> MobileRecoveryExport
     func export(_ password: String) throws -> EncryptedAgentMaterial
     func requestAuth(method: String, url: String, body: Data, audience: String) throws -> String
     func identity() throws -> String
+    func describe() throws -> MobilePublicIdentity
     func clear()
+    func prepareRotation(_ password: String) throws -> EncryptedAgentMaterial
+    func validateRotation(_ material: EncryptedAgentMaterial, password: String) throws -> String
+    func signRotation(_ material: EncryptedAgentMaterial, password: String, json: String) throws -> String
+    func rotationRecovery(_ material: EncryptedAgentMaterial, password: String) throws -> MobileRecoveryExport
+    func commitRotation(_ material: EncryptedAgentMaterial, password: String, identity: String, key: Data) throws -> String
+}
+
+internal extension JacsSessionAgent {
+    func describe() throws -> MobilePublicIdentity { throw JacsBiometricError.cryptographyFailed }
+    func prepareRotation(_ password: String) throws -> EncryptedAgentMaterial { throw JacsBiometricError.cryptographyFailed }
+    func validateRotation(_ material: EncryptedAgentMaterial, password: String) throws -> String { throw JacsBiometricError.cryptographyFailed }
+    func signRotation(_ material: EncryptedAgentMaterial, password: String, json: String) throws -> String { throw JacsBiometricError.cryptographyFailed }
+    func rotationRecovery(_ material: EncryptedAgentMaterial, password: String) throws -> MobileRecoveryExport { throw JacsBiometricError.cryptographyFailed }
+    func commitRotation(_ material: EncryptedAgentMaterial, password: String, identity: String, key: Data) throws -> String { throw JacsBiometricError.cryptographyFailed }
 }
 
 internal final class RustSessionAgent: JacsSessionAgent {
     let agent: MobileAgent
     init(_ agent: MobileAgent) { self.agent = agent }
     func sign(_ json: String) throws -> String { try agent.signMessageJson(json: json) }
+    func signDocument(_ json: String) throws -> String { try agent.signDocumentJson(json: json) }
+    func signPreparedDocument(_ preparedJson: String) throws -> String { try agent.signPreparedDocumentJson(preparedJson: preparedJson) }
+    func recovery() throws -> MobileRecoveryExport { try agent.exportRecovery() }
     func export(_ password: String) throws -> EncryptedAgentMaterial {
         try agent.exportEncryptedAgent(password: password)
     }
@@ -87,7 +151,21 @@ internal final class RustSessionAgent: JacsSessionAgent {
         try agent.buildRequestAuthHeader(method: method, url: url, body: body, audience: audience)
     }
     func identity() throws -> String { try agent.exportAgentJson() }
+    func describe() throws -> MobilePublicIdentity { try agent.describe() }
     func clear() { try? agent.clearSecrets() }
+    func prepareRotation(_ password: String) throws -> EncryptedAgentMaterial { try agent.prepareKeyRotation(password: password) }
+    func validateRotation(_ material: EncryptedAgentMaterial, password: String) throws -> String {
+        try agent.validateKeyRotation(material: material, password: password)
+    }
+    func signRotation(_ material: EncryptedAgentMaterial, password: String, json: String) throws -> String {
+        try agent.signRotationDocumentJson(material: material, password: password, json: json)
+    }
+    func rotationRecovery(_ material: EncryptedAgentMaterial, password: String) throws -> MobileRecoveryExport {
+        try agent.exportRotationRecovery(material: material, password: password)
+    }
+    func commitRotation(_ material: EncryptedAgentMaterial, password: String, identity: String, key: Data) throws -> String {
+        try agent.commitKeyRotation(material: material, password: password, acceptedIdentityJson: identity, acceptedPublicKey: key)
+    }
     deinit { clear() }
 }
 
@@ -97,7 +175,7 @@ internal final class RustSessionAgent: JacsSessionAgent {
 public final class JacsBiometricSession {
     private let lock = NSLock()
     private var active = true
-    private var pendingTransfer: UUID?
+    private var pendingExport: UUID?
     private let agent: JacsSessionAgent
     private let worker: DispatchQueue
     private let callbacks: DispatchQueue
@@ -117,7 +195,7 @@ public final class JacsBiometricSession {
         lock.lock()
         let wasActive = active
         active = false
-        pendingTransfer = nil
+        pendingExport = nil
         lock.unlock()
         if wasActive { worker.async { [agent] in agent.clear() } }
     }
@@ -132,7 +210,7 @@ public final class JacsBiometricSession {
                 result = .failure(.inactive)
             } else {
                 do { result = .success(try operation(agent)) }
-                catch { result = .failure(.cryptographyFailed) }
+                catch { result = .failure(mapMobileError(error)) }
             }
             callbacks.async { [self] in
                 // A background/logout event can occur after Rust returns and
@@ -140,6 +218,17 @@ public final class JacsBiometricSession {
                 completion(isActive ? result : .failure(.inactive))
             }
         }
+    }
+
+    public func signDocumentJSON(_ json: String,
+        completion: @escaping (Result<String, JacsBiometricError>) -> Void) {
+        perform({ try $0.signDocument(json) }, completion: completion)
+    }
+
+    /// Complete a frozen prepared document through the owned authenticated session.
+    public func signPreparedDocumentJSON(_ preparedJson: String,
+        completion: @escaping (Result<String, JacsBiometricError>) -> Void) {
+        perform({ try $0.signPreparedDocument(preparedJson) }, completion: completion)
     }
 
     public func signMessageJSON(_ json: String,
@@ -158,27 +247,41 @@ public final class JacsBiometricSession {
     /// delivery. Background/logout/cancellation still suppress queued results.
     public func createTransfer(
         completion: @escaping (Result<JacsBiometricTransfer, JacsBiometricError>) -> Void) {
+        exportAndClose({ agent in
+            let code = try generateTransferCode()
+            return JacsBiometricTransfer(code: code, material: try agent.export(code))
+        }, completion: completion)
+    }
+
+    /// Generate a durable 128-bit recovery secret in Rust. Lock before returning;
+    /// expose the code only for explicit display and never persist it with material.
+    public func createRecovery(
+        completion: @escaping (Result<JacsBiometricRecovery, JacsBiometricError>) -> Void) {
+        exportAndClose({ JacsBiometricRecovery(try $0.recovery()) }, completion: completion)
+    }
+
+    private func exportAndClose<T>(_ operation: @escaping (JacsSessionAgent) throws -> T,
+        completion: @escaping (Result<T, JacsBiometricError>) -> Void) {
         worker.async { [self] in
-            let result: Result<JacsBiometricTransfer, JacsBiometricError>
+            let result: Result<T, JacsBiometricError>
             if !isActive {
                 result = .failure(.inactive)
             } else {
                 do {
-                    let code = try generateTransferCode()
-                    result = .success(JacsBiometricTransfer(code: code, material: try agent.export(code)))
-                } catch { result = .failure(.cryptographyFailed) }
+                    result = .success(try operation(agent))
+                } catch { result = .failure(mapMobileError(error)) }
             }
             let delivery = UUID()
             lock.lock()
             let allowed = active
             active = false
-            pendingTransfer = allowed ? delivery : nil
+            pendingExport = allowed ? delivery : nil
             lock.unlock()
             agent.clear()
             callbacks.async { [self] in
                 lock.lock()
-                let deliver = pendingTransfer == delivery
-                if deliver { pendingTransfer = nil }
+                let deliver = pendingExport == delivery
+                if deliver { pendingExport = nil }
                 lock.unlock()
                 completion(deliver ? result : .failure(.inactive))
             }
@@ -194,5 +297,9 @@ public final class JacsBiometricSession {
     public func exportIdentityJSON(
         completion: @escaping (Result<String, JacsBiometricError>) -> Void) {
         perform({ try $0.identity() }, completion: completion)
+    }
+
+    public func describe(completion: @escaping (Result<MobilePublicIdentity, JacsBiometricError>) -> Void) {
+        perform({ try $0.describe() }, completion: completion)
     }
 }

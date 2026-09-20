@@ -31,6 +31,14 @@ export class CoreAgentHandle {
   clearSecrets(): void;
   exportAgent(): string;
   exportEncryptedAgent(password: string): string;
+  /** JSON {code, materialJson}; code is for explicit display only. */
+  exportRecovery(): string;
+  prepareKeyRotation(password: string): string;
+  signRotationDocument(materialJson: string, password: string, dataJson: string): string;
+  exportRotationRecovery(materialJson: string, password: string): string;
+  commitKeyRotation(materialJson: string, password: string, acceptedIdentityJson: string, acceptedPublicKeyBase64: string): string;
+  signDocumentJson(json: string): string;
+  signPreparedDocument(preparedJson: string): string;
   getPublicKeyBase64(): string;
   getPublicKeyHash(): string;
   getPublicKeyPem(): string;
@@ -80,6 +88,13 @@ export class CoreAgentHandle {
 }
 
 export function createEphemeral(algorithm: string): CoreAgentHandle;
+export function createHuman(): CoreAgentHandle;
+export function generateRecoveryCode(): string;
+export function normalizeRecoveryCode(code: string): string;
+export function verifyRecovery(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: string): string;
+export function importRecovery(materialJson: string, code: string, expectedAgentId: string,
+  expectedPublicKeyBase64: string, expectedAlgorithm: string): CoreAgentHandle;
 
 export function createVerifier(
   public_key_base64: string,

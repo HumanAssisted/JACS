@@ -182,12 +182,24 @@ impl CoreAgent {
     /// Generate a new self-signed identity and software keypair. The same
     /// exported identity can be imported and verified on every target.
     pub fn ephemeral(algorithm: SigningAlgorithm) -> Result<Self, CoreError> {
+        Self::create_identity(algorithm, "ai")
+    }
+
+    /// Create a human's first self-signed identity with ML-DSA-87. The type is
+    /// part of the initial signed bytes; it is not a post-signing JSON edit.
+    /// This declares identity metadata, not authenticated human authority.
+    pub fn create_human() -> Result<Self, CoreError> {
+        Self::create_identity(SigningAlgorithm::Pq2025, "human")
+    }
+
+    fn create_identity(algorithm: SigningAlgorithm, agent_type: &str) -> Result<Self, CoreError> {
         let signer: Box<dyn DetachedSigner> = match algorithm {
             SigningAlgorithm::Ed25519 => Box::new(Ed25519DalekSigner::generate()?),
             SigningAlgorithm::Pq2025 => Box::new(Pq2025Signer::generate()?),
             SigningAlgorithm::Es256 => Box::new(P256Signer::generate()?),
         };
-        let agent_json = ephemeral_agent_json(algorithm, signer.public_key());
+        let mut agent_json = ephemeral_agent_json(algorithm, signer.public_key());
+        agent_json["jacsAgentType"] = json!(agent_type);
         Self::from_signer(signer, agent_json)
     }
 
@@ -476,6 +488,50 @@ impl CoreAgent {
         });
         self.sign_document_inplace(&mut document, JACS_SIGNATURE_FIELDNAME)?;
         Ok(document)
+    }
+
+    /// Wrap exact JSON content in a complete native-compatible JACS document.
+    /// Fresh document/version IDs are frozen before signing; completion verifies
+    /// the signature and computes the standard checksum. This does not authorize
+    /// the content for an application, and does not change sign_message semantics.
+    pub fn sign_document(&self, content: &Value) -> Result<Value, CoreError> {
+        self.signer.as_ref().ok_or(CoreError::Locked)?;
+        let scope = self.document_signing_scope()?;
+        let prepared =
+            crate::prepare_message_v2(&scope, content, crate::SignatureMetadataV2::now())?;
+        self.sign_prepared_document(&prepared)
+    }
+
+    /// Sign an already frozen complete JACS document without wrapping its content
+    /// or regenerating IDs, dates, signature metadata or request context.
+    ///
+    /// The prepared value is untrusted: validate it against this agent's owned
+    /// identity and key before private-key dispatch. The caller remains responsible
+    /// for binding the document to the action the person reviewed and authorized.
+    /// Completion changes only the signature value and derived `jacsSha256`.
+    pub fn sign_prepared_document(
+        &self,
+        prepared: &crate::PreparedDocumentV2,
+    ) -> Result<Value, CoreError> {
+        self.signer.as_ref().ok_or(CoreError::Locked)?;
+        let scope = self.document_signing_scope()?;
+        prepared.validate(&scope, &self.public_key)?;
+        let signature = self.sign_raw_bytes(prepared.signature_input())?;
+        prepared
+            .clone()
+            .complete_with_signature(&scope, &self.public_key, &signature)
+    }
+
+    fn document_signing_scope(&self) -> Result<crate::SigningKeyScope, CoreError> {
+        use crate::{PurposeIsolationAssurance, SigningKeyScope, SigningPurpose};
+        SigningKeyScope::from_public_key(
+            required_identity_string(&self.agent_json, "jacsId")?,
+            required_identity_string(&self.agent_json, "jacsVersion")?,
+            self.algorithm,
+            &self.public_key,
+            [SigningPurpose::Document, SigningPurpose::LegacyRaw],
+            PurposeIsolationAssurance::SharedRawCapable,
+        )
     }
 
     /// Sign `document` in place, attaching the signature object under
