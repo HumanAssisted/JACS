@@ -487,7 +487,7 @@ fn build_jacs_mime_part_named(boundary: &str, doc: &[u8], filename: &str) -> Str
 
 /// Generate a unique MIME boundary string.
 fn generate_boundary() -> String {
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
     let random: u64 = rng.random();
     format!("jacs_{:016x}", random)
