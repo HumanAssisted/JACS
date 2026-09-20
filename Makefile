@@ -1,8 +1,25 @@
 # Active portable workspace. Historical targets remain in archive/native/Makefile.
 .PHONY: help test test-all test-jacs-core test-jacs-cli test-jacs-mcp test-jacs-wasm build check check-versions check-release-matrix check-project-license check-third-party-notices third-party-notices release-preflight plan-release-everything
+.PHONY: rust-cache-preview rust-cache-setup rust-cache-status rust-cache-smoke
 
 help:
 	@echo 'make build | test | check | third-party-notices | plan-release-everything'
+	@echo 'make rust-cache-preview  Preview shared Rust cache setup (no changes)'
+	@echo 'make rust-cache-setup    Configure kache once per user/Cargo home'
+	@echo 'make rust-cache-status   Show shared cache usage and hits'
+	@echo 'make rust-cache-smoke    Check reuse, invalidation and bypass offline'
+
+rust-cache-preview:
+	@python3 scripts/rust-cache.py
+
+rust-cache-setup:
+	@python3 scripts/rust-cache.py --apply
+
+rust-cache-status:
+	@kache stats
+
+rust-cache-smoke:
+	@python3 scripts/rust-cache-smoke.py
 
 build:
 	cargo build --locked -p jacs-cli
