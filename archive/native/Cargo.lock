@@ -3353,7 +3353,7 @@ dependencies = [
  "similar",
  "sqlx",
  "strum 0.27.2",
- "strum_macros 0.27.2",
+ "strum_macros 0.28.0",
  "tempfile",
  "testcontainers",
  "testcontainers-modules",
