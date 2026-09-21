@@ -1,6 +1,6 @@
 ## 0.15.0
 
-(unreleased)
+(Publication in progress; see the [verified artifacts](release/0.15.0-verification.json).)
 
 - **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
   primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
@@ -26,6 +26,17 @@
   marked released.
 
 ## Unreleased
+
+### 2026-09-21 — Make publication retries reliable
+
+- Cache only Cargo downloads and tools in the Rust publish job, using a fresh
+  cache key so a retry cannot restore an old `target/crate-release` directory.
+  Preparation still refuses existing output; exact-package verification and
+  registry checks remain required. This workflow correction follows the 0.15.0
+  release commit.
+- Retry the exact PyPI wheel installation while registry indexes propagate,
+  then run the existing smoke checks. A version-listing response alone no longer
+  ends the readiness wait.
 
 ### 2026-09-20 — Restore Make release commands
 
