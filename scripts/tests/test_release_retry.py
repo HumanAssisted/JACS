@@ -3,7 +3,10 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -127,15 +130,74 @@ class FakeResponse:
 
 
 class MakeReleaseTests(unittest.TestCase):
+    def run_make(self, target: str, *, fail: tuple[str, ...] = ()):
+        # Exercise Make's routing and prerequisite ordering without contacting
+        # registries, building artifacts, or modifying real release tags.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "scripts").mkdir()
+            (root / "scripts/check-action-pins.sh").write_text("exit 0\n")
+            python = root / "bin/python3"
+            python.write_text(
+                f"#!{sys.executable}\n"
+                "import json, os, sys\n"
+                "print(json.dumps(sys.argv[1:]))\n"
+                "sys.exit(1 if sys.argv[1:] == json.loads(os.environ['JACS_MAKE_TEST_FAIL']) else 0)\n"
+            )
+            python.chmod(0o755)
+            result = subprocess.run(
+                ["make", "--no-print-directory", "-s", "-f", str(ROOT / "Makefile"), target],
+                cwd=root,
+                env={**os.environ, "PATH": str(root / "bin") + os.pathsep + os.environ.get("PATH", ""), "JACS_MAKE_TEST_FAIL": json.dumps(fail)},
+                capture_output=True, text=True, timeout=30,
+            )
+            calls = [json.loads(line) for line in result.stdout.splitlines()]
+            return result, calls
+
     def test_make_release_planning_is_read_only_and_uses_safe_helper(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         plan = make_target_block(makefile, "plan-release-everything")
         self.assertIn("check-versions", plan.splitlines()[0])
         self.assertIn("scripts/release_retry.py release-all", plan)
-        self.assertNotIn("--execute", makefile)
+        self.assertNotIn("--execute", plan)
         self.assertNotIn("cargo publish", makefile)
         self.assertNotIn("git tag", makefile)
         self.assertNotIn("git push", makefile)
+
+    def test_make_plans_and_retries_route_only_to_active_surfaces(self) -> None:
+        for suffix, surface in (("jacs", "crate"), ("cli", "cli"), ("jacs-wasm", "wasm"), ("everything", None)):
+            for operation in ("release", "retry"):
+                command = [operation, "--surface", surface] if surface else ["release-all" if operation == "release" else "retry-everything"]
+                with self.subTest(target=f"plan-{operation}-{suffix}"):
+                    result, calls = self.run_make(f"plan-{operation}-{suffix}")
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(calls, [["scripts/check-release-matrix.py"], ["scripts/release_retry.py", *command]])
+                if operation == "retry":
+                    with self.subTest(target=f"retry-{suffix}"):
+                        result, calls = self.run_make(f"retry-{suffix}")
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(calls, [["scripts/check-release-matrix.py"], ["scripts/release_retry.py", *command, "--execute"]])
+
+        for target in ("release-jacsnpm", "release-jacspy", "release-jacsgo", "publish-jacs-wasm"):
+            with self.subTest(archived_target=target):
+                result, calls = self.run_make(target)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(calls, [])
+
+    def test_make_release_execution_stops_when_preflight_fails(self) -> None:
+        clean = ["scripts/release_retry.py", "check-worktree"]
+        for suffix, surface in (("jacs", "crate"), ("cli", "cli"), ("jacs-wasm", "wasm"), ("everything", None)):
+            command = ["release", "--surface", surface] if surface else ["release-all"]
+            for failure in ((), ("scripts/check-release-matrix.py",), tuple(clean)):
+                with self.subTest(target=f"release-{suffix}", failure=failure):
+                    result, calls = self.run_make(f"release-{suffix}", fail=failure)
+                    if failure:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(any("--execute" in call for call in calls))
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(calls[-2:], [clean, ["scripts/release_retry.py", *command, "--execute"]])
 
     def test_release_preflight_checks_source_and_clean_worktree(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")

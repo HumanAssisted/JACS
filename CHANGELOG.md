@@ -17,6 +17,18 @@
 
 ## Unreleased
 
+### 2026-09-20 — Restore Make release commands
+
+- Restore patch, minor and major version bumps with read-only previews, plus
+  release and retry targets for the portable crates, CLI binaries and WASM npm
+  package. Release targets retain source checks and clean-worktree preflight.
+- Keep the release matrix's source version aligned during bumps while preserving
+  recorded registry versions and publication evidence. Regression coverage checks
+  all three bump sizes, previews without writes, and refusal to publish after a
+  failed preflight.
+- Restore ignores for generated test data and binding builds at the old native
+  paths, preserving those files locally.
+
 ### 2026-09-19 — Shared Rust cache for worktrees
 
 - Add optional `rust-cache-preview`, `rust-cache-setup`, `rust-cache-status` and `rust-cache-smoke` Make targets. One checksum-pinned kache setup serves JACS, haiai, musubi and hai under the same Cargo home, preserving existing configuration and native compiler choices.

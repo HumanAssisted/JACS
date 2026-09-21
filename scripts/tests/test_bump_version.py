@@ -21,6 +21,7 @@ class BumpVersionTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        shutil.copy2(ROOT / "Makefile", self.root / "Makefile")
         (self.root / "scripts").mkdir()
         for name in ("bump-version.sh", "bump_version.py", "seal-changelog.sh"):
             shutil.copy2(ROOT / "scripts" / name, self.root / "scripts" / name)
@@ -31,6 +32,7 @@ class BumpVersionTests(unittest.TestCase):
             self.write(f"{crate}/src/lib.rs", '// Disposable fixture.\n')
         self.write("jacs-wasm/package.template.json", '{"name":"@jacs/wasm","version":"0.13.0","license":"Apache-2.0"}\n')
         self.write("jacs-mcp/contract/jacs-mcp-contract.json", '{"server":{"name":"jacs-mcp","version":"0.13.0"},"tools":[]}\n')
+        self.write("release/shipped-artifacts.json", json.dumps({"source_version": "0.13.0", "observed_at": "2026-09-20", "artifacts": {"crate": {"version": "0.12.7", "status": "published", "checksum": "recorded-checksum"}, "wasm": {"version": None, "status": "unpublished"}}}) + '\n')
         lock = 'version = 4\n\n'
         for crate in CRATES:
             dependency = '' if crate == 'jacs-core' else 'dependencies = [\n "jacs-core 0.13.0",\n "external",\n]\n'
@@ -87,6 +89,8 @@ class BumpVersionTests(unittest.TestCase):
                             self.assertEqual(dependency, 'jacs-core ' + expected)
                 self.assertEqual(json.loads((self.root / 'jacs-wasm/package.template.json').read_text())['version'], expected)
                 self.assertEqual(json.loads((self.root / 'jacs-mcp/contract/jacs-mcp-contract.json').read_text())['server']['version'], expected)
+                matrix = json.loads((self.root / 'release/shipped-artifacts.json').read_text())
+                self.assertEqual(matrix, {**json.loads(before['release/shipped-artifacts.json']), 'source_version': expected})
                 self.assertTrue((self.root / 'CHANGELOG.md').read_text().startswith(f'## {expected}\n\n(unreleased)'))
                 for directory in ('jacs', 'binding-core'):
                     manifest = tomllib.loads((self.root / f'archive/native/{directory}/Cargo.toml').read_text())
@@ -117,6 +121,7 @@ class BumpVersionTests(unittest.TestCase):
             ('jacs-wasm/Cargo.toml', 'path = "../jacs-core"', 'path = "../archive/native/jacs-core"'),
             ('jacs-wasm/package.template.json', '"version":"0.13.0"', '"version":"0.12.0"'),
             ('jacs-mcp/contract/jacs-mcp-contract.json', '"version":"0.13.0"', '"version":"0.13.0","version":"0.13.0"'),
+            ('release/shipped-artifacts.json', '"source_version": "0.13.0"', '"source_version": "0.12.0"'),
             ('Cargo.lock', '"jacs-core 0.13.0"', '"jacs-core 0.12.0"'),
             ('Cargo.toml', '"jacs-cli"', '"archive/native/jacs"'),
             ('jacs-core/Cargo.toml', 'version = "0.13.0"', 'version = "0.13.0-beta.1"'),
@@ -145,6 +150,26 @@ class BumpVersionTests(unittest.TestCase):
         for args in [[], ['invalid'], ['patch', 'unexpected']]:
             self.assertNotEqual(self.run_bump(*args).returncode, 0)
             self.assertEqual(self.snapshot(), before)
+
+    def test_make_bump_choices_and_read_only_previews(self):
+        for bump, expected in [('patch', '0.13.1'), ('minor', '0.14.0'), ('major', '1.0.0')]:
+            with self.subTest(bump=bump):
+                before = self.snapshot()
+                preview = subprocess.run(['make', f'plan-bump-{bump}'], cwd=self.root, capture_output=True, text=True, timeout=15)
+                self.assertEqual(preview.returncode, 0, preview.stderr)
+                self.assertIn(f'0.13.0 -> {expected}', preview.stdout)
+                self.assertEqual(self.snapshot(), before)
+
+                applied = subprocess.run(['make', f'bump-{bump}'], cwd=self.root, capture_output=True, text=True, timeout=15)
+                self.assertEqual(applied.returncode, 0, applied.stderr)
+                for crate in CRATES:
+                    manifest = tomllib.loads((self.root / crate / 'Cargo.toml').read_text())
+                    self.assertEqual(manifest['package']['version'], expected)
+                self.assertEqual(json.loads((self.root / 'jacs-wasm/package.template.json').read_text())['version'], expected)
+                matrix = json.loads((self.root / 'release/shipped-artifacts.json').read_text())
+                self.assertEqual(matrix, {**json.loads(before['release/shipped-artifacts.json']), 'source_version': expected})
+                for name, value in before.items():
+                    (self.root / name).write_bytes(value)
 
     def test_missing_file_and_symlink_are_rejected_before_writing(self):
         path = self.root / 'jacs-mcp/contract/jacs-mcp-contract.json'

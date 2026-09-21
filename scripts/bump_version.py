@@ -144,15 +144,15 @@ def lock_edit(text, current, new, *, crates=CRATES, allow_missing=False):
     return result
 
 
-def json_edit(text, current, new, server=False):
+def json_edit(text, current, new, server=False, field="version"):
     parsed = parse_json(text)
     require(isinstance(parsed, dict), "JSON package/contract must be an object")
     require(not server or isinstance(parsed.get("server"), dict), "JSON contract must contain a server object")
     target = parsed["server"] if server else parsed
-    require(target.get("version") == current, "JSON package/contract version mismatch")
+    require(target.get(field) == current, f"JSON metadata {field} mismatch")
     expected = copy.deepcopy(parsed)
-    (expected["server"] if server else expected)["version"] = new
-    result = replace_once(rf'("version"\s*:\s*"){re.escape(current)}(")', rf'\g<1>{new}\2', text, "JSON metadata")
+    (expected["server"] if server else expected)[field] = new
+    result = replace_once(rf'("{re.escape(field)}"\s*:\s*"){re.escape(current)}(")', rf'\g<1>{new}\2', text, "JSON metadata")
     require(parse_json(result) == expected, "JSON candidate changed unrelated metadata")
     return result
 
@@ -184,6 +184,10 @@ def prepare(root, bump):
         edits[root / relative] = manifest_edit(root, crate, text, current, new)
     for relative, server in [("jacs-wasm/package.template.json", False), ("jacs-mcp/contract/jacs-mcp-contract.json", True)]:
         edits[root / relative] = json_edit(read(relative), current, new, server)
+    # Align the source candidate without changing observed registry versions,
+    # publication status, checksums, or provenance from previous releases.
+    relative = "release/shipped-artifacts.json"
+    edits[root / relative] = json_edit(read(relative), current, new, field="source_version")
     edits[root / "Cargo.lock"] = lock_edit(read("Cargo.lock"), current, new)
     # These preserved compatibility packages intentionally depend on the active
     # core. Their own versions and all other archived dependencies remain fixed.
