@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import tomllib
@@ -93,6 +95,7 @@ class RustReleaseTests(unittest.TestCase):
     def test_vendor_fetch_is_locked_but_can_populate_a_fresh_ci_cache(self):
         for relative in release.SOURCE_LOCKS:
             self.write(relative, "version=4\n")
+            self.write(str(Path(relative).with_name("Cargo.toml")), "[workspace]\n")
         with mock.patch.object(release, "run", return_value="[source]\n") as runner:
             allowed, config = release.vendor_reviewed_dependencies(self.root, self.root)
         command = runner.call_args.args[0]
@@ -101,6 +104,104 @@ class RustReleaseTests(unittest.TestCase):
         self.assertEqual(command.count("--sync"), 2)
         self.assertFalse(allowed)
         self.assertEqual(config.read_text(), "[source]\n")
+
+    def test_vendor_failure_restores_standalone_manifest_bytes(self):
+        for relative in release.SOURCE_LOCKS:
+            self.write(relative, "version=4\n")
+            self.write(str(Path(relative).with_name("Cargo.toml")), "[workspace]\n")
+        manifest = self.write("archive/native/jacs-surrealdb/Cargo.toml",
+                              '[package]\nname="fixture-backend"\nversion="0.15.0"\n')
+        original = manifest.read_bytes()
+
+        def fail_vendor(*args, **kwargs):
+            self.assertEqual(tomllib.loads(manifest.read_text())["workspace"], {})
+            raise subprocess.CalledProcessError(101, args[0])
+
+        with mock.patch.object(release, "run", side_effect=fail_vendor):
+            with self.assertRaises(subprocess.CalledProcessError):
+                release.vendor_reviewed_dependencies(self.root, self.root)
+        self.assertEqual(manifest.read_bytes(), original)
+        self.assertFalse((self.root / "vendor-config.toml").exists())
+
+    @unittest.skipUnless(shutil.which("cargo"), "Cargo is needed for the nested staging regression")
+    def test_nested_prepare_preserves_source_workspaces_and_locked_dependencies(self):
+        catalog = {
+            "fixture-core": "core/Cargo.toml",
+            "fixture-compat": "archive/native/compat/Cargo.toml",
+            "fixture-backend": "archive/native/jacs-surrealdb/Cargo.toml",
+        }
+        self.write("Cargo.toml", '[workspace]\nmembers=["core"]\nexclude=["archive/native"]\n'
+                   'resolver="3"\n[workspace.package]\nlicense="Apache-2.0"\n')
+        self.write("archive/native/Cargo.toml", '[workspace]\nmembers=["compat"]\n'
+                   'exclude=["jacs-surrealdb"]\nresolver="3"\n')
+        for name, relative in catalog.items():
+            manifest = self.write(relative, f'[package]\nname="{name}"\nversion="0.15.0"\nedition="2024"\n')
+            (manifest.parent / "src").mkdir()
+            (manifest.parent / "src/lib.rs").write_text("pub fn fixture() {}\n")
+            (manifest.parent / "THIRD-PARTY-NOTICES").write_text("Fixture notices\n")
+        with (self.root / catalog["fixture-compat"]).open("a") as stream:
+            stream.write('[dependencies]\nfixture-core={version="0.15.0",path="../../../core"}\n')
+        with (self.root / catalog["fixture-backend"]).open("a") as stream:
+            stream.write('[dependencies]\nfixture-compat={version="0.15.0",path="../compat"}\n')
+        self.write("THIRD-PARTY-NOTICES", "Portable fixture notices\n")
+
+        cargo_env = dict(os.environ, CARGO_NET_OFFLINE="true")
+        original_run = release.run
+
+        def metadata(source, manifest="Cargo.toml", *, locked=True):
+            command = ["cargo", "metadata", "--offline", "--no-deps", "--format-version", "1",
+                       "--manifest-path", str(source / manifest)]
+            if locked:
+                command.append("--locked")
+            result = subprocess.run(command, cwd=source, env=cargo_env, check=True,
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return json.loads(result.stdout)
+
+        for relative in release.SOURCE_LOCKS:
+            manifest = str(Path(relative).with_name("Cargo.toml"))
+            subprocess.run(["cargo", "generate-lockfile", "--offline", "--manifest-path", manifest],
+                           cwd=self.root, env=cargo_env, check=True, capture_output=True)
+        before = {path.relative_to(self.root).as_posix(): path.read_bytes()
+                  for path in self.root.rglob("*") if path.is_file()}
+        source_members = metadata(self.root)["workspace_members"]
+        native_members = metadata(self.root, "archive/native/Cargo.toml")["workspace_members"]
+        self.assertEqual(len(source_members), 1)
+        self.assertEqual(len(native_members), 1)
+
+        def staged_run(command, **kwargs):
+            # Only Git identity is synthetic; Cargo actually resolves and vendors
+            # all three reviewed workspaces inside the outer fixture checkout.
+            if command[:2] == ["git", "status"]:
+                return ""
+            if command[:2] == ["git", "ls-files"]:
+                return "\0".join(before) + "\0"
+            if command[:2] == ["git", "rev-parse"]:
+                return "1" * 40 + "\n"
+            return original_run(command, **kwargs)
+
+        output = self.root / "target/crate-release"
+        with mock.patch.object(release, "CRATE_MANIFESTS", catalog), mock.patch.object(
+            release, "CRATES", tuple(catalog),
+        ), mock.patch.object(release, "run", side_effect=staged_run), mock.patch.dict(
+            os.environ, {"CARGO_NET_OFFLINE": "true"},
+        ):
+            release.prepare(self.root, output, "0.15.0")
+
+        for relative, contents in before.items():
+            self.assertEqual((self.root / relative).read_bytes(), contents, relative)
+        self.assertEqual(metadata(self.root)["workspace_members"], source_members)
+        self.assertEqual(metadata(self.root, "archive/native/Cargo.toml")["workspace_members"], native_members)
+        source = output / "source"
+        backend = catalog["fixture-backend"]
+        self.assertEqual((source / backend).read_bytes(), before[backend])
+        combined = metadata(source)
+        self.assertEqual(Path(combined["workspace_root"]).resolve(), source.resolve())
+        self.assertEqual({item["name"] for item in combined["packages"]}, set(catalog))
+        self.assertEqual(len(combined["workspace_members"]), len(catalog))
+        candidate = json.loads((output / "candidate.json").read_text())
+        self.assertEqual(candidate["source_lock_sha256"],
+                         {relative: release.sha256(self.root / relative) for relative in release.SOURCE_LOCKS})
+        self.assertEqual(candidate["candidate_lock_sha256"], release.sha256(source / "Cargo.lock"))
 
     def test_combined_candidates_retain_both_notice_inventories_and_license_texts(self):
         portable = "Portable notice\n  - parser 1.1.3+spec-1.1.0 (https://example.invalid)\nPortable license\n"

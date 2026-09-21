@@ -93,11 +93,26 @@ def vendor_reviewed_dependencies(source, output):
         identities[key] = checksum
     # Fetching is deliberately allowed here: a fresh CI cache must work. Cargo's
     # --locked gate and archive checksums bind downloads to the reviewed locks.
-    configuration = run([
-        "cargo", "vendor", "--locked", "--versioned-dirs",
-        "--sync", "archive/native/Cargo.toml",
-        "--sync", "archive/native/jacs-surrealdb/Cargo.toml", str(output / "vendor"),
-    ], cwd=source, capture=True)
+    standalone_manifests = {}
+    try:
+        # An excluded package without its own [workspace] can discover the
+        # outer checkout when this source copy lives below its target directory.
+        # Give each separately locked package an explicit boundary for vendoring
+        # only. Restore exact bytes before assembling the combined candidate.
+        for relative in SOURCE_LOCKS:
+            manifest = (source / relative).with_name("Cargo.toml")
+            original = manifest.read_bytes()
+            if "workspace" not in tomllib.loads(original.decode()):
+                standalone_manifests[manifest] = original
+                manifest.write_bytes(original + b"\n[workspace]\n")
+        configuration = run([
+            "cargo", "vendor", "--locked", "--versioned-dirs",
+            "--sync", "archive/native/Cargo.toml",
+            "--sync", "archive/native/jacs-surrealdb/Cargo.toml", str(output / "vendor"),
+        ], cwd=source, capture=True)
+    finally:
+        for manifest, original in standalone_manifests.items():
+            manifest.write_bytes(original)
     config_path = output / "vendor-config.toml"
     config_path.write_text(configuration)
     return allowed, config_path
