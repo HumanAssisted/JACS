@@ -1,3 +1,20 @@
+## 0.14.0
+
+(unreleased)
+
+- **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
+  primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
+  the focused portable surface; historical native integrations remain archived
+  and are not republished as part of this release.
+- Browser and phone bindings include human-agent creation, encrypted recovery,
+  signing-key replacement and prepared-document signing support. New agents
+  default to `pq2025`; hardware-protected mobile custody wraps software PQ keys.
+- Coordinated publication targets `jacs-core`, `jacs-mcp`, `jacs-cli`, CLI
+  binaries and `@jacs/wasm`. Mobile stays `publish=false`; native CI packages and
+  physical-device acceptance are separate from registry publication. Candidate
+  verification and exact artifact provenance must pass before these notes are
+  marked released.
+
 ## Unreleased
 
 ### 2026-09-19 — Shared Rust cache for worktrees

@@ -1,6 +1,6 @@
 [package]
 name = "jacs-cli"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 rust-version.workspace = true
 license.workspace = true
@@ -18,8 +18,8 @@ name = "jacs"
 path = "src/main.rs"
 
 [dependencies]
-jacs-core = { version = "0.13.0", path = "../jacs-core" }
-jacs-mcp = { version = "0.13.0", path = "../jacs-mcp" }
+jacs-core = { version = "0.14.0", path = "../jacs-core" }
+jacs-mcp = { version = "0.14.0", path = "../jacs-mcp" }
 clap = { version = "4.5", features = ["derive"] }
 base64 = "0.23"
 rpassword = "7.3"

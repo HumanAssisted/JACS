@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "observed_at": "2026-09-17",
+  "observed_at": "2026-09-20",
   "review_baseline": "portable-source-scope",
-  "source_version": "0.13.0",
+  "source_version": "0.14.0",
   "historical_matrix": "archive/native/release/shipped-artifacts.json",
   "artifacts": {
     "crate": {

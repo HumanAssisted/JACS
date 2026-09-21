@@ -1,10 +1,12 @@
 # Portable release status
 
 The active source scope was observed
-2026-09-17 against source version 0.13.0. This is an unreleased source change,
-not evidence that registries contain the trimmed implementation. A coordinated
-release requires an unused version if existing registry versions contain
-different immutable package bytes.
+2026-09-20 against source version 0.14.0. This candidate includes the incompatible
+portable CLI/MCP/API changes and browser/mobile signing primitives. It is not
+published: existing 0.13.0 registry artifacts contain earlier source, and the
+public npm registry has no `@jacs/wasm` package. The active inventory remains
+unpublished until exact candidate checksums and release provenance are verified.
+Archived package versions remain unchanged.
 
 <!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->
 | Surface | Shipped version/status | Prebuilt targets | CI/runtime evidence and limits |

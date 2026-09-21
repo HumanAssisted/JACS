@@ -217,7 +217,7 @@ containing generated Kotlin, the biometric vault/state/Keystore sources,
 the biometric manifest permission and consumer R8 rules. The script also
 produces a **local** Maven repository at
 `generated/android-project/library/build/maven`, with coordinate
-`ai.hai:jacs-mobile:0.13.0` and the transitive JNA Android dependency. Consume
+`ai.hai:jacs-mobile:0.14.0` and the transitive JNA Android dependency. Consume
 that Maven bundle to retain dependency metadata. When importing the bare AAR,
 also declare `implementation("net.java.dev.jna:jna:5.18.1@aar")` in the app;
 an AAR does not embed its Maven dependencies. The vault provides the platform
