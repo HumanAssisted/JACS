@@ -1,0 +1,59 @@
+name: Homebrew Install Smoke Tests
+
+on:
+  pull_request:
+    paths:
+      - 'Formula/**'
+      - 'scripts/homebrew_release.py'
+      - 'scripts/verify_github_release_attestations.py'
+      - '.github/workflows/homebrew.yml'
+      - '.github/workflows/release-homebrew.yml'
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+        default: ''
+      source_commit:
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Reproduce formula from source-attested public assets
+        env:
+          RELEASE_VERSION: ${{ inputs.version || '' }}
+          RELEASE_SOURCE_COMMIT: ${{ inputs.source_commit || '' }}
+        run: |
+          set -euo pipefail
+          version="$RELEASE_VERSION"
+          source_commit="$RELEASE_SOURCE_COMMIT"
+          if [ -z "$version" ]; then
+            version="$(python3 -c 'import pathlib,re; print(re.search(r"^  version \"([^\"]+)\"$",pathlib.Path("Formula/jacs.rb").read_text(),re.M)[1])')"
+            source_commit="$(git rev-parse "refs/tags/cli/v${version}^{commit}")"
+          fi
+          python3 scripts/homebrew_release.py --version "$version" --source-commit "$source_commit" --output "$RUNNER_TEMP/jacs.rb"
+          if [ -z "$RELEASE_VERSION" ]; then diff -u Formula/jacs.rb "$RUNNER_TEMP/jacs.rb"; fi
+      - name: Install and test the prepared formula
+        run: |
+          set -euo pipefail
+          brew tap-new humanassisted/jacs-ci
+          cp "$RUNNER_TEMP/jacs.rb" "$(brew --repository humanassisted/jacs-ci)/Formula/jacs.rb"
+          brew install humanassisted/jacs-ci/jacs
+          brew test humanassisted/jacs-ci/jacs
+          python3 scripts/smoke-portable-cli.py --binary "$(brew --prefix humanassisted/jacs-ci/jacs)/bin/jacs"

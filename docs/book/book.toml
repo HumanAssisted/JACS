@@ -1,0 +1,8 @@
+[book]
+authors = ["Human Assisted Intelligence, PBC"]
+language = "en"
+src = "src"
+title = "JACS: MCP and portable signed JSON"
+
+[output.html]
+git-repository-url = "https://github.com/HumanAssisted/JACS"

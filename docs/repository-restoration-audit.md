@@ -8,6 +8,22 @@ This is a source inventory, not a claim that every archived test or command work
 
 ## Restored in this follow-up
 
+### Prepared after the 0.15.0 publication
+
+The post-publication follow-up restores root browser/doc build commands, native
+test and maintenance entry points, a separate `mcp-compat` launcher, an
+attestation-verified Homebrew formula generator, Homebrew install CI, and a
+Pages build/deploy workflow. See the [developer commands](developer-commands.md)
+and [native MCP profiles](native-mcp.md). Homebrew tap publication and Pages
+deployment are prepared operations, not claims that those destinations changed.
+
+Native MCP is documented by its actual 1/9/14-tool runtime profiles. The remaining
+compiled tools still require their authorization implementation; this follow-up
+does not treat the 42-name contract as a runtime grant. The comparison tables
+below retain the historical release-candidate inventory.
+
+### Restored before publication
+
 The root [`sloc.sh`](../sloc.sh) is restored byte-for-byte from its original
 version, which was moved unchanged to `archive/native/sloc.sh` by `51903ce9`.
 Run `./sloc.sh` from the repository root with `tokei` installed. It prints the

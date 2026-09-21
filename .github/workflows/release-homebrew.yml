@@ -1,0 +1,82 @@
+name: Sync Homebrew Tap
+
+# A separate, explicit publication after the CLI release has passed validation.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published CLI version, without v
+        required: true
+      source_commit:
+        description: Reviewed full source commit of the published CLI
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  security-gate:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+
+  formula-test:
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      version: ${{ inputs.version }}
+      source_commit: ${{ inputs.source_commit }}
+    permissions:
+      contents: read
+
+  sync:
+    needs: [security-gate, formula-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: homebrew
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify public CLI release and generate formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: python3 scripts/homebrew_release.py --version "$RELEASE_VERSION" --source-commit "$RELEASE_SOURCE_COMMIT" --output generated/jacs.rb
+      - name: Require tap publication credential
+        env:
+          HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        run: test "$HAS_TAP_TOKEN" = true || { echo '::error::Configure HOMEBREW_TAP_TOKEN for HumanAssisted/homebrew-jacs'; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: HumanAssisted/homebrew-jacs
+          ref: master
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+          persist-credentials: false
+      - name: Update only the JACS formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          cp generated/jacs.rb tap/Formula/jacs.rb
+          cd tap
+          git add Formula/jacs.rb
+          if git diff --cached --quiet -- Formula/jacs.rb; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Update JACS formula from verified CLI release'
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+          cat > "$askpass" <<'SCRIPT'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$HOMEBREW_TAP_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SCRIPT
+          chmod 700 "$askpass"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git push https://github.com/HumanAssisted/homebrew-jacs.git HEAD:master

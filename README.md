@@ -58,6 +58,11 @@ The compatibility MCP and CLI crates publish as `jacs-mcp-compat` and
 `jacs-cli-compat`; the portable `jacs mcp` remains the primary documented entry.
 See [releasing](RELEASING.md) for registry setup and the release commands.
 
+For the native agreement and media server, see [native MCP profiles](docs/native-mcp.md).
+The [developer command reference](docs/developer-commands.md) covers restored
+browser, documentation, native test and Homebrew entry points. `make build-jacsbook`
+builds the current MCP guide and a labelled native compatibility reference.
+
 ## Shared Rust cache for local worktrees
 
 JACS, haiai, musubi and hai can use one [kache](https://github.com/kunobi-ninja/kache)
