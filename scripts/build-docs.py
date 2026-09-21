@@ -2,11 +2,15 @@
 """Build the current MCP-first guide and label the preserved native reference."""
 
 import argparse
+import html
+import json
+import os
 import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "target/jacsbook"
@@ -22,6 +26,31 @@ NOTICE = (
     "[release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) "
     "for published versions.\n\n"
 )
+
+
+def preserve_reference_urls():
+    """Keep existing deep links while the current guide owns the landing page."""
+    count = 0
+    for chapter in (OUTPUT / "native").rglob("*.html"):
+        previous = OUTPUT / chapter.relative_to(OUTPUT / "native")
+        if previous.exists():
+            # Current guide pages, including index/print/404, take precedence.
+            continue
+        target = quote(Path(os.path.relpath(chapter, previous.parent)).as_posix(), safe="/.")
+        link = html.escape(target, quote=True)
+        previous.parent.mkdir(parents=True, exist_ok=True)
+        previous.write_text(
+            '<!doctype html><html lang="en"><meta charset="utf-8">'
+            '<title>JACS library documentation</title>'
+            f'<link rel="canonical" href="{link}">'
+            f'<meta http-equiv="refresh" content="0; url={link}">'
+            '<script>location.replace(' + json.dumps(target) +
+            '+location.search+location.hash);</script>'
+            f'<p><a href="{link}">Continue to the JACS library documentation</a>.</p>'
+            '</html>\n'
+        )
+        count += 1
+    print(f"Preserved {count} existing reference URLs")
 
 
 def main():
@@ -56,6 +85,7 @@ def main():
                 content = NOTICE + content
             page.write_text(content)
         subprocess.run(["mdbook", "build", str(staged), "--dest-dir", str(OUTPUT / "native")], check=True)
+    preserve_reference_urls()
     print(f"Built documentation at {OUTPUT}")
 
 

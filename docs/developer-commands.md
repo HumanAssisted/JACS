@@ -64,5 +64,7 @@ The documentation workflow builds on relevant PRs. Pages deployment runs only
 from `main`, using the `github-pages` environment and a separate job with Pages
 and OIDC permissions. The downloaded mdBook binary has a pinned checksum.
 The current MCP-first guide is the landing page; preserved native chapters
-carry a compatibility notice. A prepared workflow is not a claim of a live
+carry current package guidance. Existing chapter URLs redirect to their new
+locations, preserving query strings and section anchors in browsers with
+JavaScript enabled. A prepared workflow is not a claim of a live
 site deployment.
