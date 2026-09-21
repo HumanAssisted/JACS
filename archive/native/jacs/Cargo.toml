@@ -57,7 +57,7 @@ pem = "3.0.5"
 rand = "0.10.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-signature = "2.2.0"
+signature = "3.0.0"
 moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
 sha2 = "0.10.8"
