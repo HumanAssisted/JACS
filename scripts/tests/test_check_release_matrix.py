@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 from pathlib import Path
 import copy
@@ -16,6 +17,92 @@ SPEC = importlib.util.spec_from_file_location("check_release_matrix", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 release_matrix = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_matrix)
+
+
+class SourceVersionAlignmentTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.sources = {
+            **{f"{crate}/Cargo.toml": crate for crate in (
+                "jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli",
+            )},
+            "jacs-wasm/package.template.json": "@jacs/wasm (npm)",
+            "jacs-mcp/contract/jacs-mcp-contract.json": "jacs-mcp contract",
+        }
+        for relative in self.sources:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if relative.endswith("Cargo.toml"):
+                path.write_text('[package]\nversion = "1.2.3"\n')
+            elif "contract" in relative:
+                path.write_text('{"server": {"version": "1.2.3"}}\n')
+            else:
+                path.write_text('{"version": "1.2.3"}\n')
+        matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
+        matrix["source_version"] = "1.2.3"
+        matrix_path = self.root / "shipped-artifacts.json"
+        matrix_path.write_text(json.dumps(matrix))
+        docs_path = self.root / "release-status.md"
+        docs_path.write_text(release_matrix.render_documentation_matrix(matrix))
+        patch = mock.patch.multiple(
+            release_matrix, ROOT=self.root, MATRIX_PATH=matrix_path,
+            DEPLOYMENT_DOC_PATH=docs_path,
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def check(self, *args: str):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr), mock.patch.object(
+            release_matrix, "get_json", side_effect=AssertionError("offline check contacted a registry"),
+        ):
+            status = release_matrix.main(list(args))
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def test_all_active_package_and_contract_mismatches_fail(self) -> None:
+        for relative, label in self.sources.items():
+            path = self.root / relative
+            original = path.read_text()
+            path.write_text(original.replace("1.2.3", "9.9.9"))
+            for args in ((), ("--show-versions",)):
+                with self.subTest(source=relative, args=args):
+                    status, stdout, stderr = self.check(*args)
+                    self.assertEqual(status, 1)
+                    self.assertIn(f"{label} source version 9.9.9 != matrix source 1.2.3", stderr)
+                    self.assertNotIn("OK:", stdout)
+            path.write_text(original)
+
+    def test_listing_covers_all_sources_without_changing_files(self) -> None:
+        before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        status, stdout, stderr = self.check("--show-versions")
+        self.assertEqual(status, 0, stderr)
+        for label in (*self.sources.values(), "release matrix"):
+            self.assertIn(f"  {label:<24} 1.2.3", stdout)
+        self.assertEqual(before, {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()})
+
+    def test_missing_active_metadata_fails(self) -> None:
+        for relative in self.sources:
+            with self.subTest(source=relative):
+                path = self.root / relative
+                original = path.read_bytes()
+                path.unlink()
+                status, stdout, stderr = self.check()
+                self.assertEqual(status, 1)
+                self.assertIn("cannot read active source versions", stderr)
+                self.assertNotIn("OK:", stdout)
+                path.write_bytes(original)
+
+    def test_archived_versions_do_not_need_to_match(self) -> None:
+        path = self.root / "archive/native/jacsnpm/package.json"
+        path.parent.mkdir(parents=True)
+        original = '{"name": "@hai.ai/jacs", "version": "0.10.1", "private": true}\n'
+        path.write_text(original)
+        status, stdout, stderr = self.check("--show-versions")
+        self.assertEqual(status, 0, stderr)
+        self.assertNotIn("@hai.ai/jacs", stdout)
+        self.assertEqual(path.read_text(), original)
 
 
 class ReleasePlatformEvidenceTests(unittest.TestCase):

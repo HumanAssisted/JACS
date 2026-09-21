@@ -22,6 +22,8 @@
 - Restore patch, minor and major version bumps with read-only previews, plus
   release and retry targets for the portable crates, CLI binaries and WASM npm
   package. Release targets retain source checks and clean-worktree preflight.
+- Restore `make version` / `make versions` and check all five active crates,
+  WASM npm metadata and the MCP contract for source version alignment.
 - Keep the release matrix's source version aligned during bumps while preserving
   recorded registry versions and publication evidence. Regression coverage checks
   all three bump sizes, previews without writes, and refusal to publish after a

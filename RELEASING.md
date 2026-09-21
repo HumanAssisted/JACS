@@ -12,6 +12,13 @@ Mobile CI artifacts are review candidates. Distribution to an app store, Maven r
 
 ## Make commands
 
+`make versions` (or `make version`) displays and checks all five active Cargo
+package versions, the `@jacs/wasm` npm template and the MCP contract against the
+release matrix's source version. `make check-versions` performs the same checks
+without the listing. Both commands fail on a mismatch. Archived packages retain
+their historical versions and are not required to match this release; these
+offline checks do not claim that the source versions have been published.
+
 Choose one bump size. Preview it first; the preview validates all version edits
 without changing files:
 

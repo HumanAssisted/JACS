@@ -99,11 +99,17 @@ def load_toml(path: Path) -> dict:
 
 
 def source_versions() -> dict[str, str]:
-    return {
-        "crate": load_toml(ROOT / "jacs-core" / "Cargo.toml")["package"]["version"],
-        "cli": load_toml(ROOT / "jacs-cli" / "Cargo.toml")["package"]["version"],
-        "wasm": load_toml(ROOT / "jacs-wasm" / "Cargo.toml")["package"]["version"],
+    versions = {
+        crate: load_toml(ROOT / crate / "Cargo.toml")["package"]["version"]
+        for crate in ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli")
     }
+    versions["@jacs/wasm (npm)"] = json.loads(
+        (ROOT / "jacs-wasm/package.template.json").read_text()
+    )["version"]
+    versions["jacs-mcp contract"] = json.loads(
+        (ROOT / "jacs-mcp/contract/jacs-mcp-contract.json").read_text()
+    )["server"]["version"]
+    return versions
 
 
 def get_json(
@@ -248,7 +254,7 @@ def fail(message: str, failures: list[str]) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--online", action="store_true", help="query public registries")
     parser.add_argument(
@@ -261,7 +267,12 @@ def main() -> int:
         action="store_true",
         help="refresh the generated deployment matrix from shipped-artifacts.json",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--show-versions",
+        action="store_true",
+        help="display every active source version while checking alignment",
+    )
+    args = parser.parse_args(argv)
     if args.require_parity:
         args.online = True
 
@@ -284,8 +295,16 @@ def main() -> int:
     except (OSError, ValueError, KeyError, TypeError) as error:
         fail(f"deployment artifact table validation failed: {error}", failures)
 
-    versions = source_versions()
-    versions["jacs-mcp"] = load_toml(ROOT / "jacs-mcp" / "Cargo.toml")["package"]["version"]
+    try:
+        versions = source_versions()
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        fail(f"cannot read active source versions: {error}", failures)
+        return 1
+    if args.show_versions:
+        print("Active source versions (not published registry versions):")
+        for name, version in versions.items():
+            print(f"  {name:<24} {version}")
+        print(f"  {'release matrix':<24} {declared}")
     for surface, version in versions.items():
         if version != declared:
             fail(f"{surface} source version {version} != matrix source {declared}", failures)

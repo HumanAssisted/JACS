@@ -1,12 +1,15 @@
 # Active portable workspace. Historical targets remain in archive/native/Makefile.
 .PHONY: help test test-all test-jacs-core test-jacs-cli test-jacs-mcp test-jacs-wasm build check check-versions check-release-matrix check-project-license check-third-party-notices third-party-notices release-preflight plan-release-everything
 .PHONY: rust-cache-preview rust-cache-setup rust-cache-status rust-cache-smoke
+.PHONY: version versions
 .PHONY: bump-patch bump-minor bump-major plan-bump-patch plan-bump-minor plan-bump-major
 .PHONY: plan-release-jacs plan-release-cli plan-release-jacs-wasm release-jacs release-cli release-jacs-wasm release-everything
 .PHONY: plan-retry-jacs plan-retry-cli plan-retry-jacs-wasm plan-retry-everything retry-jacs retry-cli retry-jacs-wasm retry-everything
 
 help:
 	@echo 'make build | test | check | third-party-notices | plan-release-everything'
+	@echo 'make versions          Show and check all active package and contract versions'
+	@echo 'make check-versions    Fail if active source versions are out of sync'
 	@echo 'make plan-bump-patch | plan-bump-minor | plan-bump-major  Preview a version bump'
 	@echo 'make bump-patch | bump-minor | bump-major                 Apply one version bump'
 	@echo 'make plan-release-jacs | plan-release-cli | plan-release-jacs-wasm | plan-release-everything'
@@ -60,6 +63,11 @@ check: check-versions check-project-license check-third-party-notices
 
 check-versions check-release-matrix:
 	python3 scripts/check-release-matrix.py
+
+version: versions
+
+versions:
+	@python3 scripts/check-release-matrix.py --show-versions
 
 check-project-license:
 	python3 scripts/check_project_license.py
