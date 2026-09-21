@@ -99,18 +99,30 @@ pub fn prepare_temp_workspace_ed25519() -> (PathBuf, PathBuf) {
     (cfg_path, base)
 }
 
-/// Resolve the `jacs` binary from jacs-cli in the workspace target directory.
-/// Requires `cargo build -p jacs-cli` to have been run first.
+/// Resolve the `jacs-compat` binary from jacs-cli-compat in the native target directory.
+/// Requires `cargo build -p jacs-cli-compat` in the native workspace first.
 pub fn jacs_cli_bin() -> PathBuf {
     let current_exe = std::env::current_exe().expect("current_exe");
-    let target_dir = current_exe
+    let mut target_dir = current_exe
         .parent()
         .and_then(Path::parent)
-        .expect("target dir for integration test binary");
-    let bin = target_dir.join(format!("jacs{}", std::env::consts::EXE_SUFFIX));
+        .expect("target dir for integration test binary")
+        .to_path_buf();
+    // Cargo can place integration-test executables in a separate build
+    // directory while keeping the CLI in the final target directory. Preserve
+    // the profile (and target triple, when present) while mapping between them.
+    if let (Some(build_dir), Some(output_dir)) = (
+        std::env::var_os("CARGO_BUILD_BUILD_DIR"),
+        std::env::var_os("CARGO_BUILD_TARGET_DIR").or_else(|| std::env::var_os("CARGO_TARGET_DIR")),
+    ) {
+        if let Ok(relative) = target_dir.strip_prefix(build_dir) {
+            target_dir = PathBuf::from(output_dir).join(relative);
+        }
+    }
+    let bin = target_dir.join(format!("jacs-compat{}", std::env::consts::EXE_SUFFIX));
     assert!(
         bin.exists(),
-        "jacs binary not found at {}. Run `cargo build -p jacs-cli` first.",
+        "jacs-compat binary not found at {}. Run `cargo build -p jacs-cli-compat` in archive/native first.",
         bin.display()
     );
     bin

@@ -1,5 +1,18 @@
 # Focused JACS MCP
 
+Install the public Rust CLI and start its MCP server:
+
+```sh
+cargo install jacs-cli
+jacs mcp
+```
+
+`jacs-cli` installs the `jacs` executable; the `jacs-mcp` crate provides its
+server library. The install command selects the latest published version.
+The 0.15.0 source candidate is still awaiting publication; see
+[release status](../docs/release-status.md). To run this checkout's server, use
+`cargo run --locked -p jacs-cli -- mcp` from the repository root.
+
 `jacs mcp` serves local cryptographic operations over stdio. It depends on
 `jacs-core`; it has no legacy native JACS, database, email, DNS, registry,
 attestation, media, or network integration.

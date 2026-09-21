@@ -4,7 +4,9 @@ import copy
 import importlib.util
 from pathlib import Path
 import re
+import shlex
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -97,6 +99,31 @@ class WorkspaceBoundaryTests(unittest.TestCase):
             for relative in paths:
                 with self.subTest(workflow=workflow.name, source=relative):
                     self.assertTrue((ROOT / relative).is_file(), f"missing workflow source: {relative}")
+
+    def test_native_ci_commands_select_native_workspace_packages(self):
+        native = ROOT / "archive/native"
+        workspace = tomllib.loads((native / "Cargo.toml").read_text())["workspace"]
+        members = {
+            tomllib.loads((native / member / "Cargo.toml").read_text())["package"]["name"]
+            for member in workspace["members"]
+        }
+        checked = 0
+        for workflow in (ROOT / ".github/workflows").glob("*.yml"):
+            for command in re.findall(r"\bcargo (?:build|check|test) [^\n]+", workflow.read_text()):
+                tokens = shlex.split(command)
+                if "--manifest-path" not in tokens:
+                    continue
+                manifest = tokens[tokens.index("--manifest-path") + 1]
+                if manifest != "archive/native/Cargo.toml":
+                    continue
+                for index, token in enumerate(tokens[:-1]):
+                    if token not in {"-p", "--package"}:
+                        continue
+                    package = tokens[index + 1]
+                    with self.subTest(workflow=workflow.name, command=command, package=package):
+                        self.assertIn(package, members, "CI selects a package outside the native workspace")
+                    checked += 1
+        self.assertGreater(checked, 0, "no native CI package selections were checked")
 
     def test_compatibility_vectors_exclude_raw_private_keys(self):
         vectors = ROOT / "tests/fixtures/native_compat/wasm_compat"

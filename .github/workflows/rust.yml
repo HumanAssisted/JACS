@@ -50,7 +50,7 @@ jobs:
           python3 scripts/smoke-portable-cli.py --binary target/debug/jacs
 
   archive-compatibility:
-    name: Archived SDK compatibility (no publishing)
+    name: Native SDK compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -61,13 +61,13 @@ jobs:
         with:
           toolchain: "1.97.0"
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
-      - name: Validate the unpublished legacy SDK boundary
+      - name: Validate the native SDK boundary
         run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs -p jacs-binding-core --no-default-features
-      - name: Build the archived CLI for process-level regression tests
-        run: cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs-cli --no-default-features --features mcp,agreements
+      - name: Build the compatibility CLI for process-level regression tests
+        run: cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs-cli-compat --no-default-features --features mcp,agreements
       - name: Preserve upstream MCP redaction and advisory visibility
-        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-mcp --features full-tools --test stdio_protocol --test visibility_meta
+        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-mcp-compat --features full-tools --test stdio_protocol --test visibility_meta
       - name: Preserve the isolated MCP-to-MIME verification flow
-        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-cli --no-default-features --features mcp,agreements --test mcp_mime_demo
+        run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-cli-compat --no-default-features --features mcp,agreements --test mcp_mime_demo
       - name: Preserve the native A2A peer authority boundary
         run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a --test a2a_v1_peer
