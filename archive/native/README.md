@@ -1,5 +1,7 @@
-> **Native compatibility workspace.** This code supports existing HAI SDK and
-> native integrations while remaining outside the five-crate portable workspace.
+> **Supported native libraries.** This workspace provides native Rust, Node.js,
+> Python, Go and integration APIs outside the five-crate portable workspace.
+> Its directory name does not deprecate these packages. Start with the
+> [current library guide](../../docs/libraries.md) or [MCP use cases](../../USECASES.md).
 > Rust, Node, Python and Go builds and publication are enabled through the root
 > Makefile and CI. All release packages are coordinated at 0.15.0; existing
 > licenses and notices remain in force.

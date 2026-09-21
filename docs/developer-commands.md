@@ -8,8 +8,8 @@ to the five portable crates. SurrealDB retains its own Cargo workspace.
 | Work | Root command | Prerequisites and scope |
 |---|---|---|
 | Portable CLI | `make build` or `make build-jacs` | Rust; builds without installing over a user binary |
-| Native compatibility CLI | `make build-jacs-compat` | Rust; executable is `jacs-compat` |
-| Native MCP | `make mcp-compat` | Verify-only unless explicit host configuration selects local signing; see [profiles](native-mcp.md) |
+| Extended Rust CLI | `make build-jacs-compat` | Rust; executable is `jacs-compat` |
+| Extended MCP | `make mcp-compat` | Verify-only unless explicit host configuration selects local signing; see [profiles](native-mcp.md) |
 | Browser package | `make build-wasm` | `wasm-pack`, `wasm32-unknown-unknown`; finalizes `@hai.ai/jacs-wasm` metadata |
 | Browser tests | `make test-wasm` | `wasm-pack`, Chrome and matching ChromeDriver; separate from native sanity tests |
 | Documentation | `make build-jacsbook` | mdBook (CI pins 0.4.52); current guide and labelled native reference in `target/jacsbook` |

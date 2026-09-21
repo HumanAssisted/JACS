@@ -2,17 +2,15 @@
 
 Cryptographic identity, signing, and verification for AI agents — from Go.
 
-**Status:** Go bindings are community-maintained and use CGo. At the
-2026-07-09 distribution baseline, the Go module had only a pseudo-version and
-no matching native-library release. Use the full-repository source build below
-until a semantic `jacsgo/vX.Y.Z` release and its assets actually exist.
+**Published 0.15.0:** The Go bindings remain supported and use CGo. The semantic
+module tag and matching macOS/Linux native libraries are published and verified;
+see the [release inventory](../../../docs/release-status.md).
 
 `go get` alone is not sufficient because CGo also needs a version-matched Rust
-shared library. After the first semantic release, the registry install contract
-will be:
+shared library. In a module that imports `github.com/HumanAssisted/JACS/jacsgo`:
 
 ```bash
-JACSGO_VERSION=vX.Y.Z # replace with a version that actually has jacsgo release assets
+JACSGO_VERSION=v0.15.0
 go get "github.com/HumanAssisted/JACS/jacsgo@${JACSGO_VERSION}"
 go mod vendor
 go run "github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@${JACSGO_VERSION}" \
@@ -149,14 +147,14 @@ require Rust. Building the native library from source requires the full JACS
 repository and Rust 1.97; the nested Go module alone does not contain its Rust
 path dependencies.
 
-## Planned semantic-release targets
+## Published 0.15.0 native targets
 
 | Go target | Release runner | Status |
 |---|---|---|
-| `darwin/arm64` | `macos-latest` | Configured release target; not shipped at the review baseline |
-| `darwin/amd64` | `macos-14` | Configured release target; not shipped at the review baseline |
-| `linux/amd64` (glibc) | `ubuntu-latest` | Configured release target; not shipped at the review baseline |
-| `linux/arm64` (glibc) | `ubuntu-24.04-arm` | Configured release target; not shipped at the review baseline |
+| `darwin/arm64` | `macos-latest` | Published and verified |
+| `darwin/amd64` | `macos-14` | Published and verified |
+| `linux/amd64` (glibc) | `ubuntu-latest` | Published and verified |
+| `linux/arm64` (glibc) | `ubuntu-24.04-arm` | Published and verified |
 | Windows | — | No prebuilt library; unsupported by the current CGo directives |
 | Linux musl/Alpine | — | No prebuilt library; build and compatibility are unverified |
 

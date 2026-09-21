@@ -2,10 +2,10 @@ name: Build and deploy documentation
 
 on:
   pull_request:
-    paths: ['docs/book/**', 'docs/native-mcp.md', 'archive/native/jacs/docs/jacsbook/**', 'scripts/build-docs.py', '.github/workflows/static.yml']
+    paths: ['docs/book/**', 'docs/native-mcp.md', 'docs/mcp-quickstart.md', 'docs/libraries.md', 'USECASES.md', 'archive/native/jacs/docs/jacsbook/**', 'scripts/build-docs.py', '.github/workflows/static.yml']
   push:
     branches: [main]
-    paths: ['docs/book/**', 'docs/native-mcp.md', 'archive/native/jacs/docs/jacsbook/**', 'scripts/build-docs.py', '.github/workflows/static.yml']
+    paths: ['docs/book/**', 'docs/native-mcp.md', 'docs/mcp-quickstart.md', 'docs/libraries.md', 'USECASES.md', 'archive/native/jacs/docs/jacsbook/**', 'scripts/build-docs.py', '.github/workflows/static.yml']
   workflow_dispatch:
 
 permissions: {}

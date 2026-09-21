@@ -22,6 +22,27 @@ compiled tools still require their authorization implementation; this follow-up
 does not treat the 42-name contract as a runtime grant. The comparison tables
 below retain the historical release-candidate inventory.
 
+MCP is the documentation's primary path. Direct Rust, Node.js, Python and Go
+libraries remain supported and published, with prominent language navigation
+and current install instructions in the [library guide](libraries.md).
+Root [use cases](../USECASES.md), [A2A guidance](../A2A_QUICKSTART.md) and an
+[example index](../examples/README.md) restore access to the retained APIs.
+
+### Recommended next restoration work
+
+| Priority | Work still needed | Evidence required |
+|---|---|---|
+| Examples and fixtures | Update retained demos for current paths, package names and `jacs-compat`; generate temporary identities where removed private fixtures were assumed | Run each advertised example against installed packages; retain canonical public vectors |
+| Native regression coverage | Restore meaningful CI coverage for Agreement v2, A2A, text/media/email, attestation, trust, adapters and storage; compare old workflow invocations with consolidated CI | Passing functional, cross-language and tamper/error tests; explicit service prerequisites for storage/network suites |
+| Reference refresh | Migrate old chapter commands, package names, release claims and internal links to current behavior | Documentation build, link checks and executable examples; keep API detail visible beside MCP use cases |
+| Broader MCP profiles | Add selected A2A/discovery, attestation, trust, W3C and export/search capabilities behind their actual authority boundaries | Matching discovery/dispatch, capability expiry/revocation, approval and scope-denial tests; preserve verify-only default |
+| Distribution follow-through | Merge the verified Homebrew/Pages preparation, then publish through their configured workflows | Successful tap and Pages deployment evidence; no claim that preparation is publication |
+
+Restoring all old files wholesale is unnecessary: coordinated storage releases
+and language workflows already replace some old entry points. Removed private
+keys should be replaced by temporary test identities, and licenses and the
+portable/native dependency boundary remain intact.
+
 ### Restored before publication
 
 The root [`sloc.sh`](../sloc.sh) is restored byte-for-byte from its original
@@ -59,7 +80,7 @@ PR #189. The later release restoration (`c10ac650` and `1f9c3d5f`) restored
 coordinated package builds and publishing, but did not restore every old
 developer command, automation workflow or public interface.
 
-## Remaining differences with practical impact
+## Historical differences at the release candidate
 
 | Area | Current state |
 |---|---|

@@ -1,5 +1,9 @@
 # Start with MCP
 
+Verify another agent's output, sign an audit record, preserve an agreement
+transcript, or verify text and images. Start with the [use cases](use-cases.md)
+to choose the appropriate MCP profile, then [connect your client](mcp-quickstart.md).
+
 JACS signs structured data and verifies it using explicit public evidence.
 MCP is the primary integration. Install the portable CLI and start its stdio
 server:
@@ -20,5 +24,10 @@ the host's prompt or designated environment variable, never in MCP parameters.
 
 See the [complete MCP contract and configuration guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md)
 and [CLI commands](https://github.com/HumanAssisted/JACS/blob/main/jacs-cli/README.md).
-The [native MCP profiles](native-mcp.md) provide separate agreement and media
+The [extended MCP profiles](native-mcp.md) provide separate agreement and media
 capabilities for existing integrations.
+
+Rust, Node.js, Python and Go remain supported direct libraries, alongside
+browser and mobile bindings. See [supported packages](packages.md) or choose
+your language in the navigation. Native APIs include capabilities beyond the
+portable MCP tool set; they remain in their own dependency workspace.

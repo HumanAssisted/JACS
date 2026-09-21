@@ -6,3 +6,4 @@ title = "JACS: MCP and portable signed JSON"
 
 [output.html]
 git-repository-url = "https://github.com/HumanAssisted/JACS"
+site-url = "/JACS/"
