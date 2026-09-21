@@ -2,14 +2,13 @@
 
 Cryptographic identity, signing, and verification for AI agents from Node.js.
 
-> **Registry status (observed 2026-07-11):** npm still serves
-> `@hai.ai/jacs@0.10.1`. This README describes source `0.13.0`; Agreement v2 and
-> other newer methods are unavailable from the current registry package. Pin a
-> version and inspect its exported methods until a coordinated release closes
-> the gap.
+> **Published 0.15.0:** `@hai.ai/jacs` remains a supported native Node.js library.
+> Installed-package checks and provenance are recorded in the
+> [release inventory](../../../docs/release-status.md). Its source lives in the
+> separate native workspace; MCP remains the primary integration guide.
 
 ```bash
-npm install @hai.ai/jacs
+npm install --save-exact @hai.ai/jacs@0.15.0
 ```
 
 Prebuilt native bindings are included. A normal install does not require compiling Rust.
@@ -40,11 +39,11 @@ npx jacs-cli --diagnose
 
 For a standalone CLI, use `cargo install jacs-cli`.
 
-> **Building for the browser?** Use the source-built
-> [`@jacs/wasm`](../jacs-wasm/README.md) package instead. It is not yet
-> published on npm. `@hai.ai/jacs` ships a `.node` native module that does not
-> load in a browser context; `@jacs/wasm` is the WebAssembly build with the
-> browser protocol surface (sign / verify / agreements / localStorage).
+> **Building for the browser?** Use the published
+> [`@hai.ai/jacs-wasm`](../../../jacs-wasm/README.md) package, also at 0.15.0.
+> `@hai.ai/jacs` ships a `.node` native module that does not load in a browser.
+> Browser WASM provides the portable crypto and encrypted-storage surface;
+> it does not expose every native integration.
 
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
