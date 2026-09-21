@@ -51,12 +51,12 @@
     "wasm": {
       "package": "@hai.ai/jacs-wasm",
       "registry": "npm",
-      "version": null,
-      "status": "source-only-publication-blocked",
+      "version": "0.15.0",
+      "status": "published-verified",
       "platforms": [
-        "browser source build; release package unavailable"
+        "browser WASM (Chromium verified)"
       ],
-      "evidence": "Candidate browser, checksum and security gates passed, but first publication failed with npm EOTP. The bootstrap credential needs create-package write access and CI 2FA bypass; trusted publishing and credential removal follow successful publication. No npm release is claimed."
+      "evidence": "The registry tarball matches its source-bound attested candidate checksum and has verified npm signature/provenance. The registry-installed browser package passes PQ sign/verify and tamper tests. Its durable checksum and SPDX SBOM are attested; trusted-publisher credential migration is tracked separately."
     },
     "npm": {
       "package": "@hai.ai/jacs",

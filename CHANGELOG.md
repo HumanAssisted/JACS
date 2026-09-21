@@ -1,6 +1,6 @@
 ## 0.15.0
 
-(Publication in progress; see the [verified artifacts](release/0.15.0-verification.json).)
+(Released 2026-09-21; see the [verified artifacts](release/0.15.0-verification.json).)
 
 - **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
   primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
@@ -16,7 +16,7 @@
   the primary documented integration. All catalogued Rust crates and language
   packages advance together to 0.15; extended MCP/CLI compatibility crates
   publish as `jacs-mcp-compat` and `jacs-cli-compat`.
-- Name the unpublished WASM npm package `@hai.ai/jacs-wasm` under the
+- Name the WASM npm package `@hai.ai/jacs-wasm` under the
   existing `@hai.ai` organization; align release checks and browser consumers.
 - Coordinated CI publication covers all 17 Rust crates (including WASM,
   mobile, bindings and storage), CLI binaries, Python wheels/source, Go native

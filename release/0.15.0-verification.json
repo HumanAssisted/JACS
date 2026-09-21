@@ -2,8 +2,8 @@
   "schema_version": 1,
   "version": "0.15.0",
   "source_commit": "10c16ba07d56b872e9c6c6ddd83a45af7bd8f94a",
-  "observed_at": "2026-09-21T18:27:00.277580+00:00",
-  "publication_complete": false,
+  "observed_at": "2026-09-21T18:40:45.307402+00:00",
+  "publication_complete": true,
   "cli": {
     "status": "published-verified",
     "release": "https://github.com/HumanAssisted/JACS/releases/tag/cli/v0.15.0",
@@ -90,9 +90,7 @@
       }
     ]
   },
-  "remaining": {
-    "wasm": "https://github.com/HumanAssisted/JACS/actions/runs/35629665375"
-  },
+  "remaining": {},
   "limits": [
     "This record describes only observed published artifacts. Unfinished workflows do not establish publication.",
     "Mobile bundle delivery, deployed HAI email/API acceptance, Homebrew and documentation deployment are separate."
@@ -483,8 +481,62 @@
     ]
   },
   "wasm": {
-    "status": "unpublished",
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/wasm-v0.15.0",
     "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/35629665375",
-    "blocker": "npm rejected bootstrap publication with EOTP. Credentials require correction before retry; no release is claimed."
+    "workflow_completion": "success",
+    "attempt": 2,
+    "source_ref": "refs/tags/wasm-v0.15.0",
+    "registry": {
+      "shasum": "bc252a49ea28c6e7f5fc72ece0d5c323af13f120",
+      "tarball": "https://registry.npmjs.org/@hai.ai/jacs-wasm/-/jacs-wasm-0.15.0.tgz",
+      "fileCount": 13,
+      "integrity": "sha512-D6YuD5xg2do8Ayt7+IbtUj8eNtVoN1EfjYpxyfKFfp1hNEP3Qp9mEFBTXLl9sJ597md1gnY5cY9F5ZGmy6mh6g==",
+      "signatures": [
+        {
+          "sig": "MEYCIQDNrx7kPtUFFP3LAWTULXw9Z0x7+bcRBLMIBHODpjKiTQIhAP5uYg2aQ25rK/xqU9jeRZC1yvxbSyyFXDA/SfFWpC7s",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@hai.ai%2fjacs-wasm@0.15.0",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 6441170
+    },
+    "registry_sha256": "d372465c0461cb2b2de496095b5504747f680f5b3c87bf9b2edaf5f725df075b",
+    "evidence_assets": [
+      {
+        "name": "hai.ai-jacs-wasm-0.15.0.tgz.sha256",
+        "size": 94,
+        "digest": "sha256:1aa5fe29d27c31d7d45b663a2dade234e44e8030e91074508ba715c927778c3e",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/wasm-v0.15.0/hai.ai-jacs-wasm-0.15.0.tgz.sha256"
+      },
+      {
+        "name": "jacs-wasm.spdx.json",
+        "size": 913,
+        "digest": "sha256:0fa86714083924bf02d5c9d68cd41a434af73df9de8cf34207b52b704da3521e",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/wasm-v0.15.0/jacs-wasm.spdx.json"
+      }
+    ],
+    "verification": [
+      "The exact registry tarball matches the attested candidate SHA-256.",
+      "Both public evidence assets pass hosted GitHub attestations bound to release-wasm.yml, refs/tags/wasm-v0.15.0 and the approved source digest.",
+      "A fresh registry installation passes npm signature and provenance verification.",
+      "CI builds and exercises the registry-installed package in Chromium, including PQ signing, verification and tamper rejection."
+    ]
+  },
+  "credential_migration": {
+    "wasm_trusted_publisher": "awaiting maintainer configuration with interactive npm authentication",
+    "bootstrap_cleanup": "Remove the npm environment bootstrap flag and secret after configuration is confirmed; revoke the temporary token in npm.",
+    "expected_github_publisher": {
+      "repository": "HumanAssisted/JACS",
+      "workflow": "release-wasm.yml",
+      "environment": "npm",
+      "allow_publish": true
+    },
+    "next_oidc_publication": "Not yet exercised; this initial publication used the bootstrap token."
   }
 }
