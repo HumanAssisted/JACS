@@ -1,3 +1,13 @@
-# Source boundary
-
-The active portable workspace contains jacs-core, jacs-wasm, jacs-mobile, jacs-mcp and jacs-cli. Historical native integration sources and the prior count are retained in archive/native. Use `python3 scripts/check_workspace_boundary.py` to verify the resolved dependency boundary; line count alone does not establish isolation.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Language              Files        Lines         Code     Comments       Blanks
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Go                       56        18545        14364         2180         2001
+ Python                  205        64834        54533         1415         8886
+ TypeScript               52        14356         9969         3316         1071
+─────────────────────────────────────────────────────────────────────────────────
+ Rust                    418       196894       169419         8830        18645
+ |- Markdown             348        14391          513        11679         2199
+ (Total)                           211285       169932        20509        20844
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Total                   731       309020       248798        27420        32802
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
