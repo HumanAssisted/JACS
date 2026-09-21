@@ -76,7 +76,7 @@ fn a2a_server_commands_expose_a_canonical_origin_option() {
 
 #[test]
 fn public_plaintext_listener_fails_before_agent_or_password_setup() {
-    let mut command = assert_cmd::Command::cargo_bin("jacs").expect("jacs binary");
+    let mut command = assert_cmd::Command::cargo_bin("jacs-compat").expect("jacs binary");
     command
         .args(["a2a", "serve", "--host", "0.0.0.0", "--port", "8080"])
         .assert()

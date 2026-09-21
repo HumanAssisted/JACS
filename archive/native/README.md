@@ -1,13 +1,14 @@
-> **Archived native compatibility workspace.** This code is retained for existing
-> HAI SDK/native integrations and is excluded from the active JACS workspace.
-> Rust publishing is disabled, the npm package is private, and the Python package
-> carries a do-not-upload classifier. Existing licenses and notices are unchanged.
+> **Native compatibility workspace.** This code supports existing HAI SDK and
+> native integrations while remaining outside the five-crate portable workspace.
+> Rust, Node, Python and Go builds and publication are enabled through the root
+> Makefile and CI. All release packages are coordinated at 0.15.0; existing
+> licenses and notices remain in force.
 >
-> From the repository root, use `cargo check --manifest-path archive/native/Cargo.toml
-> -p jacs -p jacs-binding-core` (on one line). The archive has its own lockfile;
-> `jacs-core` is its only path dependency on the active workspace. SurrealDB and the
-> observability example keep standalone manifests. The original documentation and
-> automation below are historical; their release commands must not be used.
+> Follow the [current root release guide](../../RELEASING.md). Extended MCP/CLI
+> crates use `jacs-mcp-compat` and `jacs-cli-compat`; the compatibility executable
+> is `jacs-compat`. Historical commands below describe the pre-move layout.
+> SurrealDB and the observability example retain separate lockfiles. The example
+> remains unpublished; storage crates are in the coordinated release catalog.
 
 # JACS
 

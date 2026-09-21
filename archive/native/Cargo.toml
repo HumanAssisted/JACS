@@ -1,6 +1,6 @@
 [workspace]
-# Historical native integrations remain independently buildable for SDK compatibility.
-# They are excluded from the active portable workspace and are not release candidates.
+# Native integrations remain independently buildable and publishable for SDK compatibility.
+# They are excluded from the active portable workspace.
 default-members = ["jacs", "binding-core"]
 members = [
     "jacs", "jacs-cli", "jacs-mcp", "jacs-media", "binding-core",

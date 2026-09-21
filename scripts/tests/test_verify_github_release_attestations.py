@@ -182,7 +182,7 @@ class ReleaseInventoryTests(unittest.TestCase):
         specs = module.recorded_release_specs(matrix)
         self.assertEqual(
             [spec.tag for spec in specs],
-            ["cli/v0.11.4"],
+            ["cli/v0.11.4", "jacsgo/v0.11.4"],
         )
 
     def test_matrix_mode_cryptographically_verifies_each_recorded_release(self) -> None:
@@ -217,7 +217,7 @@ class ReleaseInventoryTests(unittest.TestCase):
                 verify_options={"attempts": 2, "command_timeout_seconds": 9},
             )
 
-        self.assertEqual([call[0] for call in calls], ["cli/v0.11.4"])
+        self.assertEqual([call[0] for call in calls], ["cli/v0.11.4", "jacsgo/v0.11.4"])
         self.assertTrue(all(call[2]["attempts"] == 2 for call in calls))
         self.assertTrue(
             all(call[2]["command_timeout_seconds"] == 9 for call in calls)

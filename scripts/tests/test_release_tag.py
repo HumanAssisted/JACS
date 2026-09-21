@@ -16,6 +16,9 @@ WORKFLOWS = {
     "release-crate.yml": "crate",
     "release-cli.yml": "cli",
     "release-wasm.yml": "wasm",
+    "release-npm.yml": "npm",
+    "release-pypi.yml": "pypi",
+    "release-jacsgo.yml": "jacsgo",
 }
 TAG_RELEASE_WORKFLOWS = tuple(WORKFLOWS)
 
@@ -98,6 +101,9 @@ class ReleaseTagParserTests(unittest.TestCase):
 
     def test_accepts_exact_release_prefixes_and_strict_semver(self) -> None:
         cases = {
+            "npm": ("refs/tags/npm/v0.15.0", {"version": "0.15.0"}),
+            "pypi": ("refs/tags/pypi/v0.15.0", {"version": "0.15.0"}),
+            "jacsgo": ("refs/tags/jacsgo/v0.15.0", {"version": "0.15.0"}),
             "crate": ("refs/tags/crate/v0.13.0", {"version": "0.13.0"}),
             "cli": ("refs/tags/cli/v1.2.3-rc.1+build.7", {"version": "1.2.3-rc.1+build.7"}),
             "wasm": ("refs/tags/wasm-v0.13.0", {"version": "0.13.0"}),
@@ -108,9 +114,9 @@ class ReleaseTagParserTests(unittest.TestCase):
 
     def test_rejects_shell_payload_wrong_prefix_and_invalid_semver(self) -> None:
         invalid = (
-            ("npm", "refs/tags/npm/v0.13.0"),
-            ("pypi", "refs/tags/pypi/v0.13.0"),
-            ("jacsgo", "refs/tags/jacsgo/v0.13.0"),
+            ("npm", "refs/tags/npm/v0.15.0;evil"),
+            ("pypi", "refs/tags/pypi/v0.13.0;evil"),
+            ("jacsgo", "refs/tags/jacsgo/v0.13.0;evil"),
             ("wasm", "refs/tags/wasm-v0.11.4`touch${IFS}TAG_INJECTION_PROVED`"),
             ("cli", "refs/tags/npm/v0.11.4"),
             ("crate", "refs/tags/crate/v01.2.3"),

@@ -5,6 +5,8 @@ import json
 import unittest
 from pathlib import Path
 
+from scripts.release_catalog import CRATES
+
 from workflow_policy_helpers import checkout_step_blocks
 
 
@@ -44,6 +46,9 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
             "release-crate.yml",
             "release-readiness.yml",
             "release-wasm.yml",
+            "release-npm.yml",
+            "release-pypi.yml",
+            "release-jacsgo.yml",
         )
         for workflow_name in workflows:
             text = workflow_text(workflow_name)
@@ -82,9 +87,12 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
 
     def test_release_rust_builds_pin_toolchain_and_lock_resolution(self) -> None:
         publish = job_block(workflow_text("release-crate.yml"), "publish")
-        self.assertIn('toolchain: "1.97"', publish)
+        self.assertIn('toolchain: "1.97.0"', publish)
         self.assertIn('RUSTFLAGS: "-D warnings"', publish)
-        self.assertIn("cargo check --locked", publish)
+        self.assertIn("scripts/rust_release.py package", publish)
+        helper = (ROOT / "scripts/rust_release.py").read_text()
+        self.assertIn('"package", "--workspace", "--locked"', helper)
+        self.assertNotIn("--no-verify", helper)
         for line in publish.splitlines():
             if ("cargo publish " in line or "cargo package " in line) and "echo " not in line and not line.lstrip().startswith("#"):
                 self.assertIn("--locked", line)
@@ -109,12 +117,11 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
 
     def test_rust_publish_preserves_portable_dependency_order(self) -> None:
         publish = job_block(workflow_text("release-crate.yml"), "publish")
-        crates = ("jacs-core", "jacs-mcp", "jacs-cli")
-        positions = [publish.index(f"- name: Publish {name} to crates.io") for name in crates]
+        positions = [publish.index(f"scripts/rust_release.py publish-one --crate {name}\n") for name in CRATES]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("`jacs-core`, `jacs-mcp`, `jacs-cli`", (ROOT / "RELEASING.md").read_text())
-        self.assertIn("cargo package --locked --manifest-path jacs-core/Cargo.toml", publish)
-        self.assertIn("scripts/crates_release_gate.py verify", publish)
+        self.assertIn("scripts/rust_release.py prepare", publish)
+        self.assertLess(publish.index("scripts/rust_release.py package"), min(positions))
+        self.assertLess(publish.index("Gate publish on complete Rust candidate evidence"), min(positions))
 
     def test_registry_matrix_runs_after_every_publication_workflow(self) -> None:
         text = workflow_text("release-readiness.yml")
@@ -122,7 +129,10 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
         for workflow_name in (
             "Release CLI Binaries",
             "Release crates.io",
-            "Release @jacs/wasm",
+            "Release @hai.ai/jacs-wasm",
+            "Release native npm",
+            "Release PyPI",
+            "Release jacsgo Native Libraries",
         ):
             self.assertIn(workflow_name, text)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
@@ -158,8 +168,10 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
         self.assertIn("id-token: write", publish)
         self.assertIn("node-version: 24", publish)
         self.assertIn("npm@11.18.0", publish)
-        self.assertNotIn("NODE_AUTH_TOKEN", publish)
-        self.assertNotIn("NPM_TOKEN", publish)
+        self.assertIn("vars.JACS_NPM_WASM_BOOTSTRAP == 'true' && secrets.NPM_WASM_BOOTSTRAP_TOKEN", publish)
+        self.assertIn("python3 scripts/check_npm_bootstrap.py", publish)
+        self.assertIn("unset NODE_AUTH_TOKEN", publish)
+        self.assertIn("--access public --provenance", publish)
         self.assertNotIn("npm whoami", preflight)
         self.assertIn("npm audit signatures", post_publish)
         self.assertIn("JACS_WASM_PACKAGE_ROOT", post_publish)
@@ -214,16 +226,10 @@ class ExecutableSupplyChainTests(unittest.TestCase):
             "rust-lang/crates-io-auth-action@"
             "c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1"
         )
-        cases = (
-            (
-                "release-crate.yml",
-                (
-                    ("jacs-core", "auth_jacs_core", "Publish jacs-core to crates.io"),
-                    ("jacs-mcp", "auth_jacs_mcp", "Publish jacs-mcp to crates.io"),
-                    ("jacs-cli", "auth_jacs_cli", "Publish jacs-cli to crates.io"),
-                ),
-            ),
-        )
+        cases = (("release-crate.yml", tuple(
+            (name, "auth_" + name.replace("-", "_"), f"Verify and publish {name} to crates.io")
+            for name in CRATES
+        )),)
 
         for workflow_name, publishes in cases:
             publish = job_block(workflow_text(workflow_name), "publish")

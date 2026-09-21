@@ -68,7 +68,7 @@ fn explicit_local_signing_config_is_preserved() {
 
 #[test]
 fn local_signing_profile_without_config_cannot_start() {
-    Command::cargo_bin("jacs")
+    Command::cargo_bin("jacs-compat")
         .expect("jacs binary")
         .env_remove("JACS_CONFIG")
         .args(["mcp", "--profile", "local-sign"])
@@ -80,7 +80,7 @@ fn local_signing_profile_without_config_cannot_start() {
 
 #[test]
 fn invalid_cli_profile_fails_before_agent_loading() {
-    Command::cargo_bin("jacs")
+    Command::cargo_bin("jacs-compat")
         .expect("jacs binary")
         .env_remove("JACS_CONFIG")
         .args(["mcp", "--profile", "nonsense"])
@@ -94,7 +94,7 @@ fn invalid_cli_profile_fails_before_agent_loading() {
 
 #[test]
 fn verify_only_startup_does_not_require_agent_config() {
-    Command::cargo_bin("jacs")
+    Command::cargo_bin("jacs-compat")
         .expect("jacs binary")
         .env("RUST_LOG", "info")
         .env("JACS_MCP_PROFILE", "verify-only")
@@ -111,7 +111,7 @@ fn verify_only_startup_does_not_require_agent_config() {
 
 #[test]
 fn invalid_environment_profile_fails_before_agent_loading() {
-    Command::cargo_bin("jacs")
+    Command::cargo_bin("jacs-compat")
         .expect("jacs binary")
         .env("JACS_MCP_PROFILE", "nonsense")
         .env_remove("JACS_CONFIG")
@@ -137,7 +137,7 @@ fn documented_desktop_config_launches_without_signing_configuration() {
     assert_eq!(server["args"], serde_json::json!(["mcp"]));
     assert!(server.get("env").is_none());
 
-    let output = Command::cargo_bin("jacs")
+    let output = Command::cargo_bin("jacs-compat")
         .expect("jacs binary")
         .current_dir(directory.path())
         .env_remove("JACS_CONFIG")

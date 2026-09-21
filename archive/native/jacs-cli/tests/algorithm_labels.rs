@@ -50,7 +50,7 @@ fn assert_quickstart_emits_requested_algorithm(
                 .expect("canonical temp dir"),
         )
         .expect("temporary quickstart directory");
-    let mut command = Command::cargo_bin("jacs").expect("jacs binary should exist");
+    let mut command = Command::cargo_bin("jacs-compat").expect("jacs binary should exist");
     command
         .current_dir(directory.path())
         .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)

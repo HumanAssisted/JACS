@@ -13,6 +13,11 @@ from pathlib import Path
 SURFACE_PREFIXES = {
     "crate": "refs/tags/crate/v",
     "cli": "refs/tags/cli/v",
+    "npm": "refs/tags/npm/v",
+    "python": "refs/tags/pypi/v",
+    "pypi": "refs/tags/pypi/v",
+    "go": "refs/tags/jacsgo/v",
+    "jacsgo": "refs/tags/jacsgo/v",
     "wasm": "refs/tags/wasm-v",
 }
 

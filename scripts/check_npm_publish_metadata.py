@@ -25,6 +25,8 @@ def package_errors(path: Path) -> list[str]:
         repository.get("url") if isinstance(repository, dict) else repository
     )
     errors: list[str] = []
+    if package.get("private") is True:
+        errors.append("release package must not be private")
     if repository_url != EXPECTED_REPOSITORY_URL:
         errors.append(
             "repository.url must exactly match the npm trusted publisher: "

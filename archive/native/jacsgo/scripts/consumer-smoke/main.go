@@ -86,7 +86,7 @@ func main() {
 	verifyPublicProof(os.Args[1])
 
 	// Keep the ordinary signing contract as a separate, subsequent check.
-	algorithm := "ed25519"
+	algorithm := "pq2025"
 	agent, _, err := jacs.EphemeralSimpleAgent(&algorithm)
 	if err != nil {
 		panic(err)
@@ -106,6 +106,13 @@ func main() {
 	}
 	if !verified.Valid || verified.SignerID == "" {
 		panic("external sign/verify contract did not authenticate a signer")
+	}
+	tampered := strings.Replace(signed.Raw, `"approve"`, `"tampered"`, 1)
+	if tampered == signed.Raw {
+		panic("smoke payload was not present in the signed document")
+	}
+	if result, verifyErr := agent.Verify(tampered); verifyErr == nil && result.Valid {
+		panic("external verifier accepted a tampered document")
 	}
 	fmt.Printf("jacsgo external consumer: valid=%t signer=%s\n", verified.Valid, verified.SignerID)
 }

@@ -128,7 +128,9 @@ class ReleaseArtifactLicenseTests(unittest.TestCase):
         self.assertIn("bash jacs-wasm/scripts/finalize-pkg.sh", workflow)
         self.assertIn("bash jacs-wasm/scripts/tests/finalize-pkg.test.sh", workflow)
         self.assertIn("bash jacs-wasm/scripts/tests/package-consumption.test.sh", workflow)
-        self.assertFalse((ROOT / ".github/workflows/release-jacsgo.yml").exists())
+        go = (ROOT / ".github/workflows/release-jacsgo.yml").read_text()
+        self.assertIn("THIRD-PARTY-NOTICES", go)
+        self.assertIn("LICENSE-APACHE", go)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ fn a2a_trust_warns_that_agent_cards_are_unverified_bookmarks() {
     )
     .expect("write card");
 
-    let mut cmd = Command::cargo_bin("jacs").expect("cargo bin jacs");
+    let mut cmd = Command::cargo_bin("jacs-compat").expect("cargo bin jacs");
     cmd.env("JACS_TRUST_STORE_DIR", &trust_dir).args([
         "a2a",
         "trust",

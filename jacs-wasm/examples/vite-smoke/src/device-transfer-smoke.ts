@@ -1,11 +1,11 @@
 import {
   createEphemeral, generateTransferCode, importEncryptedAgent,
   importEncryptedAgentPinned, localStore, reencryptTransferredAgent,
-} from "@jacs/wasm";
+} from "@hai.ai/jacs-wasm";
 import {
   createEphemeralInWorker, generateTransferCodeInWorker,
   importEncryptedAgentPinnedInWorker, terminateWorker,
-} from "@jacs/wasm/worker";
+} from "@hai.ai/jacs-wasm/worker";
 
 function check(condition: boolean, description: string): void {
   if (!condition) throw new Error(description);

@@ -1,4 +1,4 @@
-//! WebLocalStorage helpers for `@jacs/wasm` (Task 017).
+//! WebLocalStorage helpers for `@hai.ai/jacs-wasm` (Task 017).
 //!
 //! Browser callers persist encrypted key material and signed documents via
 //! `window.localStorage`. This module wraps the raw `web-sys` API behind a

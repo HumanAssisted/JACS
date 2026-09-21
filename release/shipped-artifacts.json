@@ -1,32 +1,51 @@
 {
   "schema_version": 2,
   "observed_at": "2026-09-20",
-  "review_baseline": "portable-source-scope",
-  "source_version": "0.14.0",
+  "review_baseline": "coordinated-portable-and-native-source",
+  "source_version": "0.15.0",
   "historical_matrix": "archive/native/release/shipped-artifacts.json",
   "artifacts": {
     "crate": {
-      "package": "jacs-core, jacs-mcp, jacs-cli",
+      "package": "jacs-core, jacs-media, jacs, jacs-binding-core, jacs-mcp, jacs-cli, jacs-mcp-compat, jacs-cli-compat, jacs-wasm, jacs-mobile, jacsnpm, jacspy, jacsgo, jacs-duckdb, jacs-postgresql, jacs-redb, jacs-surrealdb",
       "registry": "crates.io",
-      "version": null,
-      "status": "source-only-unreleased-trim",
+      "version": "0.13.0",
+      "status": "historical-version-observed-candidate-unreleased",
       "platforms": [
-        "portable core; thin native CLI and MCP source"
+        "portable Rust and isolated native compatibility crates; storage backends"
       ],
-      "evidence": "The active publication set contains only jacs-core, jacs-mcp and jacs-cli. Trimmed source has not been published; historical registry versions do not attest these new source bytes. Exact candidate checksums, SPDX and provenance gates remain required."
+      "evidence": "All 17 catalogued crates are coordinated at source 0.15.0 and enabled for CI publication. Per-crate registry observations describe older or absent releases; no 0.15.0 publication is claimed. Exact archives, checksums, audits, SPDX and provenance are required.",
+      "versions": {
+        "jacs-core": "0.13.0",
+        "jacs-media": "0.13.0",
+        "jacs": "0.13.0",
+        "jacs-binding-core": "0.13.0",
+        "jacs-mcp": "0.13.0",
+        "jacs-cli": "0.13.0",
+        "jacs-mcp-compat": null,
+        "jacs-cli-compat": null,
+        "jacs-wasm": null,
+        "jacs-mobile": null,
+        "jacsnpm": null,
+        "jacspy": null,
+        "jacsgo": null,
+        "jacs-duckdb": "0.1.20",
+        "jacs-postgresql": "0.1.20",
+        "jacs-redb": "0.1.20",
+        "jacs-surrealdb": "0.1.21"
+      }
     },
     "cli": {
       "package": "jacs-cli",
       "registry": "crates.io and GitHub Releases",
-      "version": null,
-      "status": "source-only-unreleased-trim",
+      "version": "0.13.0",
+      "status": "historical-version-observed-candidate-unreleased",
       "platforms": [
         "source build; no trimmed prebuilt artifact recorded"
       ],
       "evidence": "The thin CLI delegates key creation, signing, verification, rotation and re-encryption to the portable core. No historical native CLI download is claimed to contain the trimmed implementation. Release assets still require exact inventories, SHA-256 digests and attestations."
     },
     "wasm": {
-      "package": "@jacs/wasm",
+      "package": "@hai.ai/jacs-wasm",
       "registry": "npm",
       "version": null,
       "status": "source-only-not-published",
@@ -34,6 +53,36 @@
         "browser source build; release package unavailable"
       ],
       "evidence": "Browser source and cross-runtime crypto checks are available. No npm publication or installed-browser compatibility is implied by source validation; publication retains npm integrity, provenance and post-publish checks."
+    },
+    "npm": {
+      "package": "@hai.ai/jacs",
+      "registry": "npm",
+      "version": "0.10.1",
+      "status": "historical-version-observed-candidate-unreleased",
+      "platforms": [
+        "native Node.js; release matrix qualifies macOS and Linux addons"
+      ],
+      "evidence": "Native npm builds and publication are restored from the isolated compatibility workspace. The 0.15.0 candidate retains the native API over portable core; no registry publication is claimed. Exact packed-artifact runtime checks, audits, SPDX and provenance remain required."
+    },
+    "python": {
+      "package": "jacs",
+      "registry": "PyPI",
+      "version": "0.13.0",
+      "status": "historical-version-observed-candidate-unreleased",
+      "platforms": [
+        "macOS, Linux and Windows wheel matrix; source distribution"
+      ],
+      "evidence": "Python wheels and source distribution are restored from the native compatibility workspace at 0.15.0. CI qualifies exact installed candidates and source archives before publishing, then verifies PEP 740 provenance."
+    },
+    "go": {
+      "package": "github.com/HumanAssisted/JACS/jacsgo",
+      "registry": "Go module proxy and GitHub Releases",
+      "version": "0.13.0",
+      "status": "historical-version-observed-candidate-unreleased",
+      "platforms": [
+        "macOS arm64/amd64; Linux arm64/amd64"
+      ],
+      "evidence": "The public jacsgo module path and native library release are restored at source 0.15.0. Staged consumer checks, library checksums, SPDX and GitHub attestations precede recorded publication."
     }
   }
 }

@@ -18,12 +18,12 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^@jacs\/wasm\/worker$/,
-        replacement: wasmPackage.aliases["@jacs/wasm/worker"],
+        find: /^@hai\.ai\/jacs-wasm\/worker$/,
+        replacement: wasmPackage.aliases["@hai.ai/jacs-wasm/worker"],
       },
       {
-        find: /^@jacs\/wasm$/,
-        replacement: wasmPackage.aliases["@jacs/wasm"],
+        find: /^@hai\.ai\/jacs-wasm$/,
+        replacement: wasmPackage.aliases["@hai.ai/jacs-wasm"],
       },
     ],
   },

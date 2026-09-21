@@ -1,0 +1,775 @@
+package jacs
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+)
+
+// Global agent instance for simplified API
+var (
+	globalAgent *JacsAgent
+	globalMutex sync.Mutex
+	agentInfo   *AgentInfo
+)
+
+// CreateAgentOptions contains options for programmatic agent creation.
+type CreateAgentOptions struct {
+	// Password for encrypting the private key. Required unless JACS_PRIVATE_KEY_PASSWORD is set.
+	Password string
+	// Algorithm is the signing algorithm: "pq2025" (default) or "ed25519".
+	// "ring-Ed25519" remains accepted as a legacy input alias.
+	Algorithm string
+	// DataDirectory is the directory for agent data (default: "./jacs_data").
+	DataDirectory string
+	// KeyDirectory is the directory for cryptographic keys (default: "./jacs_keys").
+	KeyDirectory string
+	// ConfigPath is the path to write the config file (default: "./jacs.config.json").
+	ConfigPath string
+	// AgentType is the agent type: "ai" (default), "human", or "hybrid".
+	AgentType string
+	// Description of the agent's purpose.
+	Description string
+	// Domain for DNS-based agent discovery.
+	Domain string
+	// DefaultStorage is the storage backend: "fs" (default).
+	DefaultStorage string
+}
+
+// Create creates a new JACS agent with cryptographic keys.
+//
+// This is a fully programmatic API. If opts is nil, default options are used.
+// The password must be provided in opts or via JACS_PRIVATE_KEY_PASSWORD env var.
+//
+// Parameters:
+//   - name: Human-readable name for the agent
+//   - opts: Optional creation options (nil for defaults)
+//
+// Returns AgentInfo containing the agent ID and file paths.
+func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
+	if opts == nil {
+		opts = &CreateAgentOptions{}
+	}
+
+	algorithm := opts.Algorithm
+	if algorithm == "" {
+		algorithm = "pq2025"
+	}
+
+	password := opts.Password
+	if password == "" {
+		password = os.Getenv("JACS_PRIVATE_KEY_PASSWORD")
+	}
+	if password == "" {
+		return nil, NewSimpleError("create", errors.New(
+			"password is required: provide it in CreateAgentOptions.Password or set JACS_PRIVATE_KEY_PASSWORD env var",
+		))
+	}
+
+	dataDir := opts.DataDirectory
+	if dataDir == "" {
+		dataDir = "./jacs_data"
+	}
+	keyDir := opts.KeyDirectory
+	if keyDir == "" {
+		keyDir = "./jacs_keys"
+	}
+	configPath := opts.ConfigPath
+	if configPath == "" {
+		configPath = "./jacs.config.json"
+	}
+	defaultStorage := opts.DefaultStorage
+	if defaultStorage == "" {
+		defaultStorage = "fs"
+	}
+	agentType := opts.AgentType
+	if agentType == "" {
+		agentType = "ai"
+	}
+
+	resultJSON, err := CreateAgent(
+		name,
+		password,
+		&algorithm,
+		&dataDir,
+		&keyDir,
+		&configPath,
+		&agentType,
+		&opts.Description,
+		&opts.Domain,
+		&defaultStorage,
+	)
+	if err != nil {
+		return nil, NewSimpleError("create", err)
+	}
+
+	// Load the created agent
+	if err := Load(&configPath); err != nil {
+		return nil, NewSimpleError("create", err)
+	}
+
+	info := &AgentInfo{
+		Name:       name,
+		ConfigPath: configPath,
+	}
+
+	if err := json.Unmarshal([]byte(resultJSON), info); err != nil {
+		return nil, NewSimpleError("create", fmt.Errorf("parse create agent result: %w", err))
+	}
+	if info.Name == "" {
+		info.Name = name
+	}
+	if info.ConfigPath == "" {
+		info.ConfigPath = configPath
+	}
+
+	agentInfo = info
+	return info, nil
+}
+
+// Load loads an existing agent from a configuration file.
+//
+// Parameters:
+//   - configPath: Path to jacs.config.json (nil for default "./jacs.config.json")
+func Load(configPath *string) error {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	path := "./jacs.config.json"
+	if configPath != nil {
+		path = *configPath
+	}
+
+	// Create new agent instance
+	agent, err := NewJacsAgent()
+	if err != nil {
+		return NewSimpleError("load", err)
+	}
+
+	// Load config
+	if err := agent.Load(path); err != nil {
+		agent.Close()
+		return NewSimpleError("load", err)
+	}
+
+	// Close old agent if exists
+	if globalAgent != nil {
+		globalAgent.Close()
+	}
+
+	globalAgent = agent
+	agentInfo = &AgentInfo{
+		ConfigPath: path,
+	}
+
+	return nil
+}
+
+// VerifySelf verifies the loaded agent's own integrity.
+//
+// This checks:
+// - Self-signature validity
+// - Document hash integrity
+func VerifySelf() (*VerificationResult, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+
+	if err := globalAgent.VerifyAgent(nil); err != nil {
+		return &VerificationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
+	return &VerificationResult{
+		Valid:    true,
+		SignerID: agentInfo.AgentID,
+	}, nil
+}
+
+// SignMessage signs arbitrary data as a JACS message.
+//
+// Parameters:
+//   - data: The data to sign (will be JSON-serialized if not already a string)
+//
+// Returns a SignedDocument containing the full signed document.
+func SignMessage(data interface{}) (*SignedDocument, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+
+	// Convert data to JSON if needed
+	var jsonData string
+	switch v := data.(type) {
+	case []byte:
+		jsonBytes, err := json.Marshal(string(v))
+		if err != nil {
+			return nil, NewSimpleError("sign_message", err)
+		}
+		jsonData = string(jsonBytes)
+	default:
+		jsonBytes, err := json.Marshal(data)
+		if err != nil {
+			return nil, NewSimpleError("sign_message", err)
+		}
+		jsonData = string(jsonBytes)
+	}
+
+	// Create document structure
+	docStruct := map[string]interface{}{
+		"jacsType":  "message",
+		"jacsLevel": "raw",
+		"content":   json.RawMessage(jsonData),
+	}
+
+	docJSON, err := json.Marshal(docStruct)
+	if err != nil {
+		return nil, NewSimpleError("sign_message", err)
+	}
+
+	// Sign using agent
+	noSave := true
+	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, noSave, nil, nil)
+	if err != nil {
+		return nil, NewSimpleError("sign_message", err)
+	}
+
+	// Parse result to extract fields
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &doc); err != nil {
+		return nil, NewSimpleError("sign_message", err)
+	}
+
+	signed := &SignedDocument{
+		Raw:        result,
+		DocumentID: getStringField(doc, "jacsId"),
+		Timestamp:  getNestedStringField(doc, "jacsSignature", "date"),
+		AgentID:    getNestedStringField(doc, "jacsSignature", "agentID"),
+	}
+
+	return signed, nil
+}
+
+// SignFile signs a file with optional content embedding.
+//
+// Parameters:
+//   - filePath: Path to the file to sign
+//   - embed: If true, embed file content in the document
+//
+// Returns a SignedDocument containing the signed file reference.
+func SignFile(filePath string, embed bool) (*SignedDocument, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+
+	// Check file exists before calling into Rust (which silently drops missing files)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, NewSimpleError("sign_file", fmt.Errorf("file not found: %s", filePath))
+	}
+
+	// Create document structure
+	docStruct := map[string]interface{}{
+		"jacsType":  "file",
+		"jacsLevel": "raw",
+		"filename":  filePath,
+	}
+
+	docJSON, err := json.Marshal(docStruct)
+	if err != nil {
+		return nil, NewSimpleError("sign_file", err)
+	}
+
+	// Sign with attachment
+	noSave := true
+	result, err := globalAgent.CreateDocument(string(docJSON), nil, nil, noSave, &filePath, &embed)
+	if err != nil {
+		return nil, NewSimpleError("sign_file", err)
+	}
+
+	// Parse result to extract fields
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &doc); err != nil {
+		return nil, NewSimpleError("sign_file", err)
+	}
+
+	signed := &SignedDocument{
+		Raw:        result,
+		DocumentID: getStringField(doc, "jacsId"),
+		Timestamp:  getNestedStringField(doc, "jacsSignature", "date"),
+		AgentID:    getNestedStringField(doc, "jacsSignature", "agentID"),
+	}
+
+	return signed, nil
+}
+
+// Verify verifies a signed document and extracts its content.
+//
+// Parameters:
+//   - signedDocument: The JSON string of the signed document
+//
+// Returns a VerificationResult with the verification status and extracted content.
+func Verify(signedDocument string) (*VerificationResult, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+
+	// Detect non-JSON input and provide helpful error
+	trimmed := strings.TrimSpace(signedDocument)
+	if len(trimmed) > 0 && trimmed[0] != '{' && trimmed[0] != '[' {
+		preview := trimmed
+		if len(preview) > 50 {
+			preview = preview[:50] + "..."
+		}
+		return &VerificationResult{
+			Valid: false,
+			Errors: []string{
+				"Input does not appear to be a JSON document. If you have a document ID (e.g., 'uuid:version'), use VerifyById() instead. Received: '" + preview + "'",
+			},
+		}, nil
+	}
+
+	// Parse document first
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(signedDocument), &doc); err != nil {
+		return &VerificationResult{
+			Valid:  false,
+			Errors: []string{"invalid JSON: " + err.Error()},
+		}, nil
+	}
+
+	// Verify using agent
+	err := globalAgent.VerifyDocument(signedDocument)
+	legacySignature := false
+	if signature, ok := doc["jacsSignature"].(map[string]interface{}); ok {
+		_, hasContentVersion := signature["signatureContentVersion"]
+		legacySignature = !hasContentVersion
+	}
+
+	result := &VerificationResult{
+		Valid: err == nil,
+		Data:  doc["content"],
+	}
+
+	if err != nil {
+		result.Errors = []string{err.Error()}
+	} else if !legacySignature {
+		result.SignerID = getNestedStringField(doc, "jacsSignature", "agentID")
+		result.Timestamp = getNestedStringField(doc, "jacsSignature", "date")
+	}
+
+	return result, nil
+}
+
+// VerifyById verifies a document by its storage ID.
+//
+// Use this when you have a document ID (e.g., "uuid:version") rather than
+// the full JSON string. The document will be loaded from storage and verified.
+//
+// Parameters:
+//   - documentId: The document ID in "uuid:version" format
+func VerifyById(documentId string) (*VerificationResult, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+
+	if !strings.Contains(documentId, ":") {
+		return &VerificationResult{
+			Valid: false,
+			Errors: []string{
+				"Document ID must be in 'uuid:version' format, got '" + documentId + "'. Use Verify() with the full JSON string instead.",
+			},
+		}, nil
+	}
+
+	err := globalAgent.VerifyDocumentById(documentId)
+	if err != nil {
+		return &VerificationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
+	return &VerificationResult{
+		Valid: true,
+	}, nil
+}
+
+// VerifyOptions configures standalone verification (no agent required).
+type VerifyOptions struct {
+	KeyResolution string // e.g. "local,hai" (default "local")
+	DataDirectory string
+	KeyDirectory  string
+}
+
+// VerifyStandalone verifies a signed document without loading an agent.
+// Does not use globalAgent. Call with opts nil to use defaults.
+func VerifyStandalone(signedDocument string, opts *VerifyOptions) (*VerificationResult, error) {
+	var kr, dd, kd string
+	if opts != nil {
+		kr, dd, kd = opts.KeyResolution, opts.DataDirectory, opts.KeyDirectory
+	}
+	return VerifyDocumentStandalone(signedDocument, kr, dd, kd)
+}
+
+// GetDnsRecord returns the DNS TXT record line for the loaded agent (for DNS-based discovery).
+// Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=jacs; jacs_agent_id=...; alg=SHA-256; enc=base64; jac_public_key_hash=..."
+func GetDnsRecord(domain string, ttl uint32) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return "", err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(agentJSON), &doc); err != nil {
+		return "", err
+	}
+	jacsID := getStringField(doc, "jacsId")
+	if jacsID == "" {
+		if v, _ := doc["agentId"].(string); v != "" {
+			jacsID = v
+		}
+	}
+	sig, _ := doc["jacsSignature"].(map[string]interface{})
+	publicKeyHash := ""
+	if sig != nil {
+		if v, _ := sig["publicKeyHash"].(string); v != "" {
+			publicKeyHash = v
+		}
+	}
+	d := strings.TrimSuffix(domain, ".")
+	owner := "_v1.agent.jacs." + d + "."
+	txt := "v=jacs; jacs_agent_id=" + jacsID + "; alg=SHA-256; enc=base64; jac_public_key_hash=" + publicKeyHash
+	if ttl == 0 {
+		ttl = 3600
+	}
+	return fmt.Sprintf("%s %d IN TXT \"%s\"", owner, ttl, txt), nil
+}
+
+// GetWellKnownJson returns the well-known JSON object for the loaded agent (e.g. for /.well-known/jacs-pubkey.json).
+// Keys: publicKey, publicKeyHash, algorithm, agentId.
+func GetWellKnownJson() (map[string]interface{}, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	if globalAgent == nil {
+		return nil, ErrAgentNotLoaded
+	}
+	agentJSON, err := globalAgent.GetJSON()
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(agentJSON), &doc); err != nil {
+		return nil, err
+	}
+	jacsID := getStringField(doc, "jacsId")
+	if jacsID == "" {
+		if v, _ := doc["agentId"].(string); v != "" {
+			jacsID = v
+		}
+	}
+	sig, _ := doc["jacsSignature"].(map[string]interface{})
+	publicKeyHash := ""
+	if sig != nil {
+		if v, _ := sig["publicKeyHash"].(string); v != "" {
+			publicKeyHash = v
+		}
+	}
+	publicKey, _ := GetPublicKeyPEM()
+	return map[string]interface{}{
+		"publicKey":     publicKey,
+		"publicKeyHash": publicKeyHash,
+		"algorithm":     "SHA-256",
+		"agentId":       jacsID,
+	}, nil
+}
+
+// ReencryptKey re-encrypts the agent's private key with a new password.
+//
+// Parameters:
+//   - oldPassword: The current password for the private key
+//   - newPassword: The new password (must meet password requirements: 8+ chars, mixed case, number, special)
+func ReencryptKey(oldPassword, newPassword string) error {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return ErrAgentNotLoaded
+	}
+
+	return globalAgent.ReencryptKey(oldPassword, newPassword)
+}
+
+// ExportAgent exports the current agent's identity JSON for P2P exchange.
+func ExportAgent() (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.GetJSON()
+}
+
+// GetPublicKeyPEM returns the current agent's public key in PEM format.
+func GetPublicKeyPEM() (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.GetPublicKeyPEM()
+}
+
+// GetAgentInfo returns information about the currently loaded agent.
+func GetAgentInfo() *AgentInfo {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	return agentInfo
+}
+
+// IsLoaded returns true if an agent is currently loaded.
+func IsLoaded() bool {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	return globalAgent != nil
+}
+
+// Helper functions
+
+func getStringField(m map[string]interface{}, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// AuditOptions configures a security audit.
+type AuditOptions struct {
+	// ConfigPath is an optional path to the jacs config file.
+	ConfigPath string
+	// RecentN is the number of recent documents to re-verify (0 for default).
+	RecentN int
+}
+
+// Audit runs a read-only security audit and returns the result.
+//
+// The result is a map with keys like "risks", "health_checks", "summary", and "overall_status".
+// Does not require a loaded agent — it reads config and storage directly.
+//
+// Parameters:
+//   - opts: Optional audit options (nil for defaults)
+func Audit(opts *AuditOptions) (map[string]interface{}, error) {
+	configPath := ""
+	recentN := 0
+	if opts != nil {
+		configPath = opts.ConfigPath
+		recentN = opts.RecentN
+	}
+	resultStr, err := RunAudit(configPath, recentN)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(resultStr), &out); err != nil {
+		return nil, fmt.Errorf("parse audit result: %w", err)
+	}
+	return out, nil
+}
+
+// CreateAttestation creates a signed attestation document using the global agent.
+//
+// Parameters:
+//   - paramsJSON: JSON string with subject, claims, and optional evidence/derivation/policyContext
+//
+// Returns the signed attestation document as a JSON string.
+// Requires the library to be built with the attestation feature.
+func CreateAttestation(paramsJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.CreateAttestation(paramsJSON)
+}
+
+// VerifyAttestationJSON verifies an attestation and returns the raw JSON result.
+//
+// Parameters:
+//   - documentKey: Document key in "jacsId:jacsVersion" format
+//   - full: If true, performs full-tier verification (evidence + chain checks)
+//
+// Returns the verification result as a raw JSON string.
+func VerifyAttestationJSON(documentKey string, full bool) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.VerifyAttestation(documentKey, full)
+}
+
+// VerifyAttestationResult verifies an attestation and returns a typed result.
+//
+// Parameters:
+//   - documentKey: Document key in "jacsId:jacsVersion" format
+//   - full: If true, performs full-tier verification (evidence + chain checks)
+func VerifyAttestationResult(documentKey string, full bool) (*AttestationVerificationResult, error) {
+	jsonStr, err := VerifyAttestationJSON(documentKey, full)
+	if err != nil {
+		return nil, err
+	}
+
+	var result AttestationVerificationResult
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return nil, fmt.Errorf("parse attestation verification result: %w", err)
+	}
+
+	return &result, nil
+}
+
+// LiftToAttestation lifts an existing signed document into an attestation
+// with additional claims, using the global agent.
+//
+// Parameters:
+//   - signedDocJSON: The signed JACS document JSON string
+//   - claimsJSON: JSON array of claim objects
+//
+// Returns the new attestation document as a JSON string.
+func LiftToAttestation(signedDocJSON, claimsJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.LiftToAttestation(signedDocJSON, claimsJSON)
+}
+
+// ExportAttestationDSSE exports an attestation as a DSSE envelope using the global agent.
+//
+// Parameters:
+//   - attestationJSON: The attestation document JSON string
+//
+// Returns the DSSE envelope as a JSON string.
+func ExportAttestationDSSE(attestationJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.ExportAttestationDSSE(attestationJSON)
+}
+
+// ============================================================================
+// A2A Simple API - Agent-to-Agent protocol operations using global agent
+// ============================================================================
+
+// ExportAgentCard exports an A2A Agent Card for the loaded agent.
+func ExportAgentCard() (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.ExportAgentCard()
+}
+
+// SignA2AArtifact wraps an artifact with a JACS signature for A2A exchange.
+func SignA2AArtifact(artifactJSON string, artifactType string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.SignA2AArtifact(artifactJSON, artifactType)
+}
+
+// VerifyA2AArtifact verifies a JACS-wrapped A2A artifact (crypto-only).
+func VerifyA2AArtifact(wrappedJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.VerifyA2AArtifact(wrappedJSON)
+}
+
+// VerifyA2AArtifactWithPolicy verifies a JACS-wrapped artifact with trust policy enforcement.
+func VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy)
+}
+
+// AssessA2AAgent assesses an agent's trustworthiness against a trust policy.
+func AssessA2AAgent(agentCardJSON, policy string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.AssessA2AAgent(agentCardJSON, policy)
+}
+
+func getNestedStringField(m map[string]interface{}, keys ...string) string {
+	current := m
+	for i, key := range keys {
+		if i == len(keys)-1 {
+			return getStringField(current, key)
+		}
+		if nested, ok := current[key].(map[string]interface{}); ok {
+			current = nested
+		} else {
+			return ""
+		}
+	}
+	return ""
+}

@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1064
+Third-party packages: 1059
 License expressions: 46
 Distinct Cargo license files: 4
 
@@ -182,7 +182,7 @@ Used by 3 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR MIT
-Used by 90 package(s):
+Used by 91 package(s):
 
   - addr2line 0.25.1 (https://github.com/gimli-rs/addr2line)
   - aes-gcm 0.10.3 (https://github.com/RustCrypto/AEADs)
@@ -237,6 +237,7 @@ Used by 90 package(s):
   - p384 0.13.1 (https://github.com/RustCrypto/elliptic-curves/tree/master/p384)
   - parking 2.2.1 (https://github.com/smol-rs/parking)
   - pem-rfc7468 0.7.0 (https://github.com/RustCrypto/formats/tree/master/pem-rfc7468)
+  - pem-rfc7468 1.0.0 (https://github.com/RustCrypto/formats)
   - phc 0.6.1 (https://github.com/RustCrypto/formats)
   - pin-project 1.1.13 (https://github.com/taiki-e/pin-project)
   - pin-project-internal 1.1.13 (https://github.com/taiki-e/pin-project)
@@ -398,7 +399,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 202 package(s):
+Used by 199 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -408,7 +409,6 @@ Used by 202 package(s):
   - bcrypt 0.18.0 (https://github.com/Keats/rust-bcrypt)
   - bincode 2.0.1 (https://github.com/bincode-org/bincode)
   - bincode_derive 2.0.1 (https://github.com/bincode-org/bincode)
-  - bitvec 1.1.1 (https://github.com/bitvecto-rs/bitvec)
   - boxcar 0.2.14 (https://github.com/ibraheemdev/boxcar)
   - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
   - castaway 0.2.4 (https://github.com/sagebind/castaway)
@@ -447,7 +447,6 @@ Used by 202 package(s):
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
   - fs_extra 1.3.0 (https://github.com/webdesus/fs_extra)
   - fsevent-sys 4.1.0 (https://github.com/octplane/fsevent-rust/tree/master/fsevent-sys)
-  - funty 2.0.0 (https://github.com/myrrlyn/funty)
   - fuzzy-matcher 0.3.7 (https://github.com/lotabout/fuzzy-matcher)
   - generic-array 0.12.4 (https://github.com/fizyk20/generic-array.git)
   - generic-array 0.13.3 (https://github.com/fizyk20/generic-array.git)
@@ -503,19 +502,22 @@ Used by 202 package(s):
   - openssl-sys 0.9.117 (https://github.com/rust-openssl/rust-openssl)
   - outref 0.5.2 (https://github.com/Nugine/outref)
   - owo-colors 4.4.0 (https://github.com/owo-colors/owo-colors)
-  - oxipng 9.1.5 (https://github.com/shssoichiro/oxipng)
+  - oxipng 10.2.1 (https://github.com/oxipng/oxipng)
   - papaya 0.2.4 (https://github.com/ibraheemdev/papaya)
   - pem 3.0.6 (https://github.com/jcreekmore/pem-rs.git)
   - phf 0.11.3 (https://github.com/rust-phf/rust-phf)
   - phf 0.13.1 (https://github.com/rust-phf/rust-phf)
+  - phf 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_codegen 0.11.3 (https://github.com/rust-phf/rust-phf)
   - phf_codegen 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf_generator 0.11.3 (https://github.com/rust-phf/rust-phf)
   - phf_generator 0.13.1 (https://github.com/rust-phf/rust-phf)
-  - phf_macros 0.11.3 (https://github.com/rust-phf/rust-phf)
+  - phf_generator 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_macros 0.13.1 (https://github.com/rust-phf/rust-phf)
+  - phf_macros 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.11.3 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.13.1 (https://github.com/rust-phf/rust-phf)
+  - phf_shared 0.14.0 (https://github.com/rust-phf/rust-phf)
   - plotters 0.3.7 (https://github.com/plotters-rs/plotters)
   - plotters-backend 0.3.7 (https://github.com/plotters-rs/plotters)
   - plotters-svg 0.3.7 (https://github.com/plotters-rs/plotters.git)
@@ -524,7 +526,6 @@ Used by 202 package(s):
   - pulldown-cmark-escape 0.10.1 (https://github.com/raphlinus/pulldown-cmark)
   - quick-xml 0.41.0 (https://github.com/tafia/quick-xml)
   - quick_cache 0.6.24 (https://github.com/arthurprs/quick-cache)
-  - radium 0.7.0 (https://github.com/bitvecto-rs/radium)
   - reblessive 0.4.3 (https://github.com/DelSkayn/reblessive.git)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
   - redox_syscall 0.9.4 (https://gitlab.redox-os.org/redox-os/kernel)
@@ -560,10 +561,8 @@ Used by 202 package(s):
   - strum_macros 0.28.0 (https://github.com/Peternator7/strum)
   - synstructure 0.13.2 (https://github.com/mystor/synstructure)
   - sysinfo 0.37.2 (https://github.com/GuillaumeGomez/sysinfo)
-  - tap 1.0.1 (https://github.com/myrrlyn/tap)
   - termtree 0.5.1 (https://github.com/rust-cli/termtree)
   - testcontainers-modules 0.15.0 (https://github.com/testcontainers/testcontainers-rs-modules-community)
-  - tokio 1.52.3 (https://github.com/tokio-rs/tokio)
   - tokio 1.53.1 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.0 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.2 (https://github.com/tokio-rs/tokio)
@@ -592,14 +591,13 @@ Used by 202 package(s):
   - unsafe-libyaml 0.2.11 (https://github.com/dtolnay/unsafe-libyaml)
   - urlencoding 2.1.3 (https://github.com/kornelski/rust_urlencoding)
   - uuid-simd 0.8.0 (https://github.com/Nugine/simd)
-  - validator 0.20.0 (https://github.com/Keats/validator)
+  - validator 0.21.0 (https://github.com/Keats/validator)
   - valuable 0.1.1 (https://github.com/tokio-rs/valuable)
   - virtue 0.0.18 (https://github.com/bincode-org/virtue)
   - vsimd 0.8.0 (https://github.com/Nugine/simd)
   - want 0.3.1 (https://github.com/seanmonstar/want)
   - wasmtimer 0.4.3 (https://github.com/whizsid/wasmtimer-rs)
   - winnow 1.0.4 (https://github.com/winnow-rs/winnow)
-  - wyz 0.5.1 (https://github.com/myrrlyn/wyz)
   - zip 6.0.0 (https://github.com/zip-rs/zip2.git)
   - zmij 1.0.23 (https://github.com/dtolnay/zmij)
 
@@ -617,7 +615,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 499 package(s):
+Used by 496 package(s):
 
   - aead 0.5.2 (https://github.com/RustCrypto/traits)
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
@@ -672,10 +670,10 @@ Used by 499 package(s):
   - chunked_transfer 1.5.0 (https://github.com/frewsxcv/rust-chunked-transfer)
   - cipher 0.4.4 (https://github.com/RustCrypto/traits)
   - cipher 0.5.2 (https://github.com/RustCrypto/traits)
-  - clap 4.6.6 (https://github.com/clap-rs/clap)
-  - clap_builder 4.6.6 (https://github.com/clap-rs/clap)
+  - clap 4.6.7 (https://github.com/clap-rs/clap)
+  - clap_builder 4.6.7 (https://github.com/clap-rs/clap)
   - clap_complete 4.6.9 (https://github.com/clap-rs/clap)
-  - clap_derive 4.6.4 (https://github.com/clap-rs/clap)
+  - clap_derive 4.6.7 (https://github.com/clap-rs/clap)
   - clap_lex 1.1.0 (https://github.com/clap-rs/clap)
   - cmake 0.1.58 (https://github.com/rust-lang/cmake-rs)
   - color-eyre 0.6.5 (https://github.com/eyre-rs/eyre)
@@ -793,11 +791,11 @@ Used by 499 package(s):
   - hermit-abi 0.5.2 (https://github.com/hermit-os/hermit-rs)
   - hex 0.4.3 (https://github.com/KokaKiwi/rust-hex)
   - hickory-net 0.26.1 (https://github.com/hickory-dns/hickory-dns)
-  - hickory-net 0.26.2 (https://github.com/hickory-dns/hickory-dns)
+  - hickory-net 0.26.3 (https://github.com/hickory-dns/hickory-dns)
   - hickory-proto 0.26.1 (https://github.com/hickory-dns/hickory-dns)
-  - hickory-proto 0.26.2 (https://github.com/hickory-dns/hickory-dns)
+  - hickory-proto 0.26.3 (https://github.com/hickory-dns/hickory-dns)
   - hickory-resolver 0.26.1 (https://github.com/hickory-dns/hickory-dns)
-  - hickory-resolver 0.26.2 (https://github.com/hickory-dns/hickory-dns)
+  - hickory-resolver 0.26.3 (https://github.com/hickory-dns/hickory-dns)
   - hkdf 0.12.4 (https://github.com/RustCrypto/KDFs/)
   - hmac 0.12.1 (https://github.com/RustCrypto/MACs)
   - hmac 0.13.0 (https://github.com/RustCrypto/MACs)
@@ -960,15 +958,11 @@ Used by 499 package(s):
   - security-framework 3.7.0 (https://github.com/kornelski/rust-security-framework)
   - security-framework-sys 2.17.0 (https://github.com/kornelski/rust-security-framework)
   - semver 1.0.28 (https://github.com/dtolnay/semver)
-  - serde 1.0.228 (https://github.com/serde-rs/serde)
   - serde 1.0.229 (https://github.com/serde-rs/serde)
   - serde_cbor_2 0.13.0 (https://github.com/kanidm/cbor)
-  - serde_core 1.0.228 (https://github.com/serde-rs/serde)
   - serde_core 1.0.229 (https://github.com/serde-rs/serde)
-  - serde_derive 1.0.228 (https://github.com/serde-rs/serde)
   - serde_derive 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive_internals 0.30.0 (https://github.com/serde-rs/serde)
-  - serde_json 1.0.150 (https://github.com/serde-rs/json)
   - serde_json 1.0.151 (https://github.com/serde-rs/json)
   - serde_path_to_error 0.1.20 (https://github.com/dtolnay/path-to-error)
   - serde_repr 0.1.21 (https://github.com/dtolnay/serde-repr)
@@ -1002,6 +996,7 @@ Used by 499 package(s):
   - structmeta-derive 0.3.0 (https://github.com/frozenlib/structmeta)
   - syn 2.0.119 (https://github.com/dtolnay/syn)
   - syn 3.0.5 (https://github.com/dtolnay/syn)
+  - syn 3.0.6 (https://github.com/dtolnay/syn)
   - system-configuration 0.7.0 (https://github.com/mullvad/system-configuration-rs)
   - system-configuration-sys 0.6.0 (https://github.com/mullvad/system-configuration-rs)
   - tar 0.4.46 (https://github.com/composefs/tar-rs)
@@ -1377,12 +1372,12 @@ Cargo-deny normalized XXH32: 0xbb1191d7
 License source path: LICENSE
 Used by 6 package(s):
 
-  - surrealdb 3.2.1 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-collections 3.2.1 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-core 3.2.1 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-strand 3.2.1 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-types 3.2.1 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-types-derive 3.2.1 (https://github.com/surrealdb/surrealdb)
+  - surrealdb 3.2.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-collections 3.2.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-core 3.2.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-strand 3.2.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-types 3.2.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-types-derive 3.2.4 (https://github.com/surrealdb/surrealdb)
 
 License text (the SHA-256 above identifies the source bytes):
 

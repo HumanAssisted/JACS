@@ -1,5 +1,5 @@
 [workspace]
-# Only the portable primitive and its thin platform/front-end boundaries ship.
+# This workspace contains the portable primitive and its thin platform boundaries.
 members = ["jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli"]
 default-members = ["jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli"]
 # Historical native integrations have their own manifest, lock and license.

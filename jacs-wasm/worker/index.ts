@@ -1,11 +1,11 @@
-// Main-thread API for `@jacs/wasm/worker`. Spawns a Web Worker, posts
+// Main-thread API for `@hai.ai/jacs-wasm/worker`. Spawns a Web Worker, posts
 // messages, and resolves promises against the worker's structured
 // `{ id, ok, result | error }` replies.
 //
 // Usage:
 //
 // ```ts
-// import { createEphemeralInWorker } from "@jacs/wasm/worker";
+// import { createEphemeralInWorker } from "@hai.ai/jacs-wasm/worker";
 // const agent = await createEphemeralInWorker("pq2025");
 // const signed = await agent.signMessage('{"hello":"world"}');
 // const outcome = JSON.parse(await agent.verify(signed));

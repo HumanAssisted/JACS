@@ -1,7 +1,7 @@
 name: WASM PR validation
 
 # PR-blocking validation for `jacs-core` + `jacs-wasm` + the
-# `@jacs/wasm` npm package (Issue 003 / Task 028).
+# `@hai.ai/jacs-wasm` npm package (Issue 003 / Task 028).
 #
 # Mirrors the publish-time checks in `release-wasm.yml` so a PR cannot
 # merge unless the browser-side surface and packaging path are green.
@@ -156,7 +156,7 @@ jobs:
 
       - name: package-consumption test (Issue 009)
         # Packs the finalized pkg into a tarball, installs it in a
-        # fresh sandbox with no Vite alias, and asserts that `@jacs/wasm`
+        # fresh sandbox with no Vite alias, and asserts that `@hai.ai/jacs-wasm`
         # resolves through the metadata (main / module / types /
         # exports) to the hand-written wrapper rather than the raw
         # wasm-bindgen module.

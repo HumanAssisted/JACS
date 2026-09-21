@@ -24,7 +24,7 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         archive = self.root / "archive/native"
         (archive / "jacs").mkdir(parents=True)
         (archive / "Cargo.toml").write_text('[workspace]\nmembers = ["jacs"]\n')
-        (archive / "jacs/Cargo.toml").write_text('[package]\nname = "jacs"\npublish = false\n')
+        (archive / "jacs/Cargo.toml").write_text('[package]\nname = "jacs"\npublish = true\n')
         self.metadata = {
             "packages": [
                 {"id": name, "name": name, "manifest_path": str(self.root / name / "Cargo.toml")}
@@ -67,12 +67,14 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "archived integration"):
             self.validate()
 
-    def test_archived_package_must_explicitly_disable_publication(self):
+    def test_catalogued_native_package_must_allow_publication(self):
         manifest = self.root / "archive/native/jacs/Cargo.toml"
         for declaration in ("", "publish = true\n"):
             manifest.write_text('[package]\nname = "jacs"\n' + declaration)
-            with self.subTest(declaration=declaration), self.assertRaisesRegex(ValueError, "publish=false"):
-                self.validate()
+            self.assertEqual(self.validate(), 5)
+        manifest.write_text('[package]\nname = "jacs"\npublish = false\n')
+        with self.assertRaisesRegex(ValueError, "publishing disabled"):
+            self.validate()
 
     def test_standalone_archived_package_cannot_publish(self):
         archive = self.root / "archive/native"
@@ -80,7 +82,7 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         (archive / "standalone").mkdir()
         standalone = archive / "standalone/Cargo.toml"
         standalone.write_text('[package]\nname = "standalone"\npublish = true\n[workspace]\n')
-        with self.assertRaisesRegex(ValueError, "publish=false"):
+        with self.assertRaisesRegex(ValueError, "uncatalogued"):
             self.validate()
         standalone.write_text('[package]\nname = "standalone"\npublish = false\n[workspace]\n')
         self.assertEqual(self.validate(), 5)
@@ -90,7 +92,7 @@ class WorkspaceBoundaryTests(unittest.TestCase):
             text = workflow.read_text()
             paths = re.findall(r"uses:\s+\./([^\s]+)", text)
             # Windows source archives add a checkout prefix to these same paths.
-            source_text = text.replace("$prefix/", "")
+            source_text = text.replace("$prefix/", "").replace("$GITHUB_WORKSPACE/", "").replace("${GITHUB_WORKSPACE}/", "")
             paths += re.findall(r"(?<![\w/.-])((?:[\w-]+/)*scripts/[\w/.-]+\.(?:py|sh|mjs))\b", source_text)
             for relative in paths:
                 with self.subTest(workflow=workflow.name, source=relative):

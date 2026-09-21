@@ -5,6 +5,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tomllib
+try:
+    from release_catalog import CRATE_MANIFESTS
+except ModuleNotFoundError:
+    from scripts.release_catalog import CRATE_MANIFESTS
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = {"jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli"}
@@ -36,8 +40,13 @@ def validate(metadata):
     manifest = tomllib.loads(archive.read_text())
     for relative in manifest["workspace"]["members"] + manifest["workspace"].get("exclude", []):
         package = tomllib.loads((archive.parent / relative / "Cargo.toml").read_text())["package"]
-        if package.get("publish") is not False:
-            raise ValueError(f"archived package must be publish=false: {relative}")
+        manifest_path = f"archive/native/{relative}/Cargo.toml"
+        expected = CRATE_MANIFESTS.get(package["name"])
+        if expected == manifest_path:
+            if package.get("publish") is False:
+                raise ValueError(f"release catalog package has publishing disabled: {relative}")
+        elif package.get("publish") is not False:
+            raise ValueError(f"uncatalogued example/integration cannot be published: {relative}")
     return len(seen)
 
 def main():

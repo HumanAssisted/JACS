@@ -1,4 +1,4 @@
-name: Release @jacs/wasm
+name: Release @hai.ai/jacs-wasm
 
 on:
   push:
@@ -253,7 +253,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm install --no-save --ignore-scripts "${tarballs[0]}"
           npx playwright install --with-deps chromium
-          export JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@jacs/wasm"
+          export JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@hai.ai/jacs-wasm"
           export JACS_WASM_EXPECTED_VERSION="$VERSION"
           npm run build
           npm run test
@@ -301,6 +301,10 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -316,9 +320,21 @@ jobs:
           name: jacs-wasm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: release
 
-      - name: Publish @jacs/wasm with OIDC trusted publishing
+      # npm requires an existing package before its trusted publisher can be
+      # registered. Bootstrap is explicit, protected by the npm environment,
+      # and refuses a package that already exists. Revoke the token afterward.
+      - name: Publish verified @hai.ai/jacs-wasm candidate
+        env:
+          JACS_NPM_WASM_BOOTSTRAP: ${{ vars.JACS_NPM_WASM_BOOTSTRAP }}
+          NODE_AUTH_TOKEN: ${{ vars.JACS_NPM_WASM_BOOTSTRAP == 'true' && secrets.NPM_WASM_BOOTSTRAP_TOKEN || '' }}
         run: |
           set -euo pipefail
+          if [ "${JACS_NPM_WASM_BOOTSTRAP:-false}" = true ]; then
+            test -n "${NODE_AUTH_TOKEN:-}" || { echo '::error::Missing one-time WASM bootstrap credential'; exit 1; }
+            python3 scripts/check_npm_bootstrap.py
+          else
+            unset NODE_AUTH_TOKEN
+          fi
           mapfile -t tarballs < <(find release -type f -name '*.tgz')
           mapfile -t checksums < <(find release -type f -name '*.tgz.sha256')
           if [[ "${#tarballs[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
@@ -356,11 +372,11 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 30); do
-            if [ "$(npm view "@jacs/wasm@${VERSION}" version 2>/dev/null || true)" = "$VERSION" ]; then
+            if [ "$(npm view "@hai.ai/jacs-wasm@${VERSION}" version 2>/dev/null || true)" = "$VERSION" ]; then
               break
             fi
             if [ "$attempt" = 30 ]; then
-              echo "::error::@jacs/wasm@${VERSION} did not become available"
+              echo "::error::@hai.ai/jacs-wasm@${VERSION} did not become available"
               exit 1
             fi
             sleep 10
@@ -368,8 +384,8 @@ jobs:
           mkdir /tmp/jacs-wasm-release-smoke
           cd /tmp/jacs-wasm-release-smoke
           npm init -y >/dev/null
-          npm install --ignore-scripts "@jacs/wasm@${VERSION}"
-          node -e 'const p=require("./node_modules/@jacs/wasm/package.json"); if (!p.exports || !p.types) throw new Error("published WASM package lacks exports/types");'
+          npm install --ignore-scripts "@hai.ai/jacs-wasm@${VERSION}"
+          node -e 'const p=require("./node_modules/@hai.ai/jacs-wasm/package.json"); if (!p.exports || !p.types) throw new Error("published WASM package lacks exports/types");'
           npm audit signatures
       - name: Browser sign and verify with exact registry-installed package
         working-directory: jacs-wasm/examples/vite-smoke
@@ -378,9 +394,9 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --ignore-scripts --no-audit --no-fund
-          npm install --no-save --ignore-scripts "@jacs/wasm@${VERSION}"
+          npm install --no-save --ignore-scripts "@hai.ai/jacs-wasm@${VERSION}"
           npx playwright install --with-deps chromium
-          export JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@jacs/wasm"
+          export JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@hai.ai/jacs-wasm"
           export JACS_WASM_EXPECTED_VERSION="$VERSION"
           npm run build
           npm run test

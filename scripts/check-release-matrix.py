@@ -22,11 +22,13 @@ from pathlib import Path
 try:
     from http_policy import open_no_redirect
     from verify_github_release_attestations import release_spec as _release_spec
+    from release_catalog import CRATE_MANIFESTS
 except ModuleNotFoundError:  # Imported as scripts.check_release_matrix in tests.
     from scripts.http_policy import open_no_redirect
     from scripts.verify_github_release_attestations import (
         release_spec as _release_spec,
     )
+    from scripts.release_catalog import CRATE_MANIFESTS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,9 +49,12 @@ CLI_PLATFORM_ASSETS = {
 
 
 SURFACE_LABELS = {
-    "crate": "Rust (`jacs-core`, `jacs-mcp`, `jacs-cli`)",
+    "crate": "Rust (17 portable and native crates)",
     "cli": "CLI (`jacs-cli`)",
-    "wasm": "Browser (`@jacs/wasm`)",
+    "npm": "Node.js (`@hai.ai/jacs`)",
+    "python": "Python (`jacs`)",
+    "go": "Go (`github.com/HumanAssisted/JACS/jacsgo`)",
+    "wasm": "Browser (`@hai.ai/jacs-wasm`)",
 }
 
 
@@ -62,7 +67,7 @@ def render_documentation_matrix(matrix: dict) -> str:
     ]
     artifacts = matrix["artifacts"]
     if set(artifacts) != set(SURFACE_LABELS):
-        raise ValueError("active artifact scope must be exactly crate, cli and wasm")
+        raise ValueError("active artifact scope must be exactly crate, cli, npm, python, go and wasm")
     for surface in SURFACE_LABELS:
         artifact = artifacts[surface]
         version = artifact["version"]
@@ -99,17 +104,58 @@ def load_toml(path: Path) -> dict:
 
 
 def source_versions() -> dict[str, str]:
-    versions = {
-        crate: load_toml(ROOT / crate / "Cargo.toml")["package"]["version"]
-        for crate in ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli")
-    }
-    versions["@jacs/wasm (npm)"] = json.loads(
+    versions = {}
+    for name, relative in CRATE_MANIFESTS.items():
+        package = load_toml(ROOT / relative)["package"]
+        if not isinstance(package, dict) or package.get("name") != name:
+            raise ValueError(f"{relative}: Cargo package name mismatch")
+        versions[name] = package["version"]
+    versions["@hai.ai/jacs-wasm (npm)"] = json.loads(
         (ROOT / "jacs-wasm/package.template.json").read_text()
     )["version"]
+    npm = json.loads((ROOT / "archive/native/jacsnpm/package.json").read_text())
+    if not isinstance(npm, dict) or npm.get("name") != "@hai.ai/jacs":
+        raise ValueError("native npm package must be named @hai.ai/jacs")
+    versions["@hai.ai/jacs (npm)"] = npm["version"]
     versions["jacs-mcp contract"] = json.loads(
         (ROOT / "jacs-mcp/contract/jacs-mcp-contract.json").read_text()
     )["server"]["version"]
+    versions["jacs-mcp-compat contract"] = json.loads(
+        (ROOT / "archive/native/jacs-mcp/contract/jacs-mcp-contract.json").read_text()
+    )["server"]["version"]
+    python = load_toml(ROOT / "archive/native/jacspy/pyproject.toml")["project"]
+    if not isinstance(python, dict) or python.get("name") != "jacs":
+        raise ValueError("native Python project must be named jacs")
+    versions["jacs (Python)"] = python["version"]
+    module = (ROOT / "jacsgo/go.mod").read_text()
+    if re.findall(r"(?m)^module\s+(\S+)\s*$", module) != ["github.com/HumanAssisted/JACS/jacsgo"]:
+        raise ValueError("public Go facade module identity mismatch")
+    # Go versions are module tags; the native library is its versioned source.
+    versions["jacsgo (Go)"] = versions["jacsgo"]
+    android_versions = re.findall(
+        r'^version[ \t]*=[ \t]*"([^"\r\n]+)"[ \t]*$',
+        (ROOT / "jacs-mobile/distribution/android/library/build.gradle.kts").read_text(),
+        flags=re.MULTILINE,
+    )
+    if len(android_versions) != 1:
+        raise ValueError("Android Maven metadata: expected one literal version field")
+    versions["jacs-mobile (Android)"] = android_versions[0]
     return versions
+
+
+def validate_npm_lock_version(version: str) -> None:
+    lock = json.loads((ROOT / "archive/native/jacsnpm/package-lock.json").read_text())
+    if not isinstance(lock, dict) or lock.get("lockfileVersion") not in (2, 3):
+        raise ValueError("native npm package-lock: unsupported format")
+    packages = lock.get("packages")
+    if not isinstance(packages, dict):
+        raise ValueError("native npm package-lock: package entries missing")
+    root_package = packages.get("")
+    for metadata in (lock, root_package):
+        if not isinstance(metadata, dict) or metadata.get("name") != "@hai.ai/jacs":
+            raise ValueError("native npm package-lock: package name mismatch")
+        if metadata.get("version") != version:
+            raise ValueError("native npm package-lock: version does not match package.json")
 
 
 def get_json(
@@ -161,21 +207,34 @@ def get_json(
     ) from last_error
 
 
-def registry_versions() -> dict[str, str | None]:
+def registry_crate_versions() -> dict[str, str | None]:
     crates = {}
-    for package in ("jacs-core", "jacs-mcp", "jacs-cli"):
+    for package in CRATE_MANIFESTS:
         metadata = get_json(
             f"https://crates.io/api/v1/crates/{package}", missing_is_none=True
         )
         crates[package] = None if metadata is None else metadata["crate"]["max_version"]
-    if len(set(crates.values())) != 1:
-        raise ValueError(f"active crates have different recorded registry versions: {crates}")
+    return crates
+
+
+def registry_versions(crates: dict[str, str | None] | None = None) -> dict[str, str | None]:
+    if crates is None:
+        crates = registry_crate_versions()
+    npm = get_json("https://registry.npmjs.org/@hai.ai%2Fjacs/latest", missing_is_none=True)
     wasm = get_json(
-        "https://registry.npmjs.org/@jacs%2Fwasm/latest", missing_is_none=True
+        "https://registry.npmjs.org/@hai.ai%2Fjacs-wasm/latest", missing_is_none=True
+    )
+    python = get_json("https://pypi.org/pypi/jacs/json", missing_is_none=True)
+    go = get_json(
+        "https://proxy.golang.org/github.com/!human!assisted/!j!a!c!s/jacsgo/@latest",
+        missing_is_none=True,
     )
     return {
         "crate": crates["jacs-core"],
         "cli": crates["jacs-cli"],
+        "npm": None if npm is None else npm["version"],
+        "python": None if python is None else python["info"]["version"],
+        "go": None if go is None else go["Version"].removeprefix("v"),
         "wasm": None if wasm is None else wasm["version"],
     }
 
@@ -241,12 +300,14 @@ def validate_online_asset_evidence(matrix: dict, failures: list[str]) -> None:
             ) is None:
                 fail(f"CLI asset {asset_name} has no GitHub SHA-256 digest", failures)
 
-    wasm = artifacts["wasm"]
-    wasm_version = wasm["version"]
-    if wasm_version is not None and wasm["status"].startswith("published"):
-        npm_release_with_provenance(
-            "@jacs%2Fwasm", wasm_version, "WASM npm", failures
-        )
+    for surface, package, label in (
+        ("npm", "@hai.ai%2Fjacs", "Node npm"),
+        ("wasm", "@hai.ai%2Fjacs-wasm", "WASM npm"),
+    ):
+        artifact = artifacts[surface]
+        version = artifact["version"]
+        if version is not None and artifact["status"].startswith("published"):
+            npm_release_with_provenance(package, version, label, failures)
 
 
 def fail(message: str, failures: list[str]) -> None:
@@ -279,6 +340,13 @@ def main(argv: list[str] | None = None) -> int:
     matrix = json.loads(MATRIX_PATH.read_text())
     declared = matrix["source_version"]
     failures: list[str] = []
+    observed_crates = matrix.get("artifacts", {}).get("crate", {}).get("versions")
+    if not isinstance(observed_crates, dict) or set(observed_crates) != set(CRATE_MANIFESTS):
+        fail("crate registry observations must cover exactly the release catalog", failures)
+        observed_crates = {}
+    elif any(value is not None and (not isinstance(value, str) or not re.fullmatch(r"\d+\.\d+\.\d+", value))
+             for value in observed_crates.values()):
+        fail("crate registry observations must be release versions or null", failures)
 
     try:
         rendered_docs = render_documentation_matrix(matrix)
@@ -308,10 +376,20 @@ def main(argv: list[str] | None = None) -> int:
     for surface, version in versions.items():
         if version != declared:
             fail(f"{surface} source version {version} != matrix source {declared}", failures)
+    try:
+        validate_npm_lock_version(versions["@hai.ai/jacs (npm)"])
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        fail(f"npm source metadata validation failed: {error}", failures)
 
     if args.online:
         try:
-            live = registry_versions()
+            live_crates = registry_crate_versions()
+            for crate, version in live_crates.items():
+                if version != observed_crates.get(crate):
+                    fail(f"{crate} registry version {version!r} != observed matrix {observed_crates.get(crate)!r}; refresh registry evidence", failures)
+                if args.require_parity and version != declared:
+                    fail(f"{crate} registry version {version!r} != release {declared!r}", failures)
+            live = registry_versions(live_crates)
         except (OSError, RuntimeError, ValueError, KeyError) as error:
             fail(f"registry query failed: {error}", failures)
             live = {}

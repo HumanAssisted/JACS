@@ -18,6 +18,7 @@ SPEC.loader.exec_module(metadata)
 class NpmPublishMetadataTests(unittest.TestCase):
     def test_release_manifests_match_trusted_publisher_repository(self) -> None:
         for relative in (
+            "archive/native/jacsnpm/package.json",
             "jacs-wasm/package.template.json",
         ):
             with self.subTest(package=relative):
@@ -47,6 +48,7 @@ class NpmPublishMetadataTests(unittest.TestCase):
 
     def test_wasm_release_uses_the_shared_validator(self) -> None:
         cases = {
+            "release-npm.yml": "archive/native/jacsnpm/package.json",
             "release-wasm.yml": "jacs-wasm/package.template.json",
         }
         for workflow, package in cases.items():
@@ -57,10 +59,18 @@ class NpmPublishMetadataTests(unittest.TestCase):
                     text,
                 )
 
-    def test_archived_native_npm_package_cannot_publish(self) -> None:
+    def test_native_npm_release_keeps_the_full_package_surface(self) -> None:
         package = json.loads((ROOT / "archive/native/jacsnpm/package.json").read_text())
-        self.assertIs(package.get("private"), True)
-        self.assertFalse((ROOT / ".github/workflows/release-npm.yml").exists())
+        self.assertIsNot(package.get("private"), True)
+        self.assertTrue((ROOT / ".github/workflows/release-npm.yml").exists())
+        for entry in (".", "./client", "./simple", "./mcp", "./a2a", "./signing-input"):
+            self.assertIn(entry, package["exports"])
+
+    def test_private_release_manifest_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / "package.json"
+            package.write_text(json.dumps({"private": True, "repository": metadata.EXPECTED_REPOSITORY_URL}))
+            self.assertIn("release package must not be private", metadata.package_errors(package))
 
 
 if __name__ == "__main__":

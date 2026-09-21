@@ -1,11 +1,11 @@
-// Vite bundler smoke for `@jacs/wasm`. Validates that the npm package
+// Vite bundler smoke for `@hai.ai/jacs-wasm`. Validates that the npm package
 // shape works end-to-end inside a real bundler: initialize the wasm,
 // create an ephemeral agent, sign + verify a message, assert success.
 //
 // The Playwright check (tests/smoke.spec.ts) loads this page and reads
 // the `#output` element.
 
-import { createEphemeral, initJacsWasm } from "@jacs/wasm";
+import { createEphemeral, initJacsWasm } from "@hai.ai/jacs-wasm";
 import { deviceTransferSmoke } from "./device-transfer-smoke";
 
 async function main(): Promise<void> {

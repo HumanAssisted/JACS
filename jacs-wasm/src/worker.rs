@@ -1,8 +1,8 @@
-//! Web Worker bridge for `@jacs/wasm` (Task 019).
+//! Web Worker bridge for `@hai.ai/jacs-wasm` (Task 019).
 //!
 //! pq2025 keygen + signing is CPU-intensive (PRD §3.1). Running it on
 //! the main thread blocks the UI; we ship a separate JS entry point
-//! (`@jacs/wasm/worker`) that posts messages to a worker-side bootstrap
+//! (`@hai.ai/jacs-wasm/worker`) that posts messages to a worker-side bootstrap
 //! and resolves promises. The Rust side here exposes
 //! [`worker_handle_message`] — the dispatcher the worker bootstrap
 //! invokes for every inbound `postMessage`.

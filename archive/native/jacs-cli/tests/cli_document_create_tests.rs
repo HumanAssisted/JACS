@@ -6,7 +6,7 @@ use tempfile::TempDir;
 const TEST_PASSWORD: &str = "DocumentCreateTest!2026";
 
 fn cmd() -> Command {
-    let mut command = Command::cargo_bin("jacs").expect("jacs binary should exist");
+    let mut command = Command::cargo_bin("jacs-compat").expect("jacs binary should exist");
     command.env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
     command
 }

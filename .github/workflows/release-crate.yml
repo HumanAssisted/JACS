@@ -23,6 +23,11 @@ jobs:
       contents: read
     uses: ./.github/workflows/rust.yml
 
+  native-functional-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/native-bindings.yml
+
   verify-version:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -38,31 +43,24 @@ jobs:
         id: extract
         run: python3 scripts/release_tag.py --surface crate
 
-      - name: Check Cargo.toml version matches tag (jacs-core + jacs-mcp + jacs-cli)
+      - name: Validate every crate identity, version and publication dependency
         env:
           TAG_VERSION: ${{ steps.extract.outputs.version }}
-        run: |
-          set -euo pipefail
-          for dir in jacs-core jacs-mcp jacs-cli; do
-            CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-            echo "$dir Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
-            if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-              echo "::error::Version mismatch! $dir/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
-              exit 1
-            fi
-          done
-          echo "Version match confirmed for jacs-core, jacs-mcp, and jacs-cli"
+        run: python3 scripts/rust_release.py validate --version "$TAG_VERSION"
 
   publish:
-    needs: [security-gate, functional-gate, verify-version]
+    needs: [security-gate, functional-gate, native-functional-gate, verify-version]
     environment: crates-io
     permissions:
       contents: read
       id-token: write
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       VERSION: ${{ needs.verify-version.outputs.version }}
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,7 +69,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          toolchain: "1.97"
+          toolchain: "1.97.0"
 
       # Transitional fallback only: keep CRATES_IO_TOKEN until every crate has
       # a crates.io trusted publisher for this workflow and environment. Then
@@ -80,49 +78,30 @@ jobs:
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED != 'true'
         run: echo "::warning::Trusted publishing is not enabled; using the CRATES_IO_TOKEN migration fallback"
 
-      - name: Pre-publish compile check (all crates)
-        env:
-          RUSTFLAGS: "-D warnings"
-        run: |
-          echo "Checking all publishable crates compile cleanly with -D warnings..."
-          cargo check --locked -p jacs-core -p jacs-mcp -p jacs-cli
-          echo "All crates compile cleanly"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
 
-      # Build the complete immutable candidate set before the first
-      # irreversible crates.io upload. `--no-verify` is intentional here:
-      # dependent crates cannot complete Cargo's package verification until
-      # the earlier crates in this release are indexed. Each crate is still
-      # packaged and verified normally immediately before its publish step.
-      - name: Build complete pre-publish Rust candidate set
+      - name: Install native crate build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev pkg-config libssl-dev libdbus-1-dev
+
+      - name: Prepare the complete Rust release workspace
+        run: python3 scripts/rust_release.py prepare --version "$VERSION"
+
+      - name: Audit the combined source-pinned dependency closure
         run: |
-          set -euo pipefail
-          mkdir -p security-candidates/archives security-candidates/extracted
-          candidates=(
-            "jacs-core:jacs-core"
-            "jacs-mcp:jacs-mcp"
-            "jacs-cli:jacs-cli"
-          )
-          # One invocation packages the whole set: cargo resolves the sibling
-          # crates from the workspace, whereas packaging each manifest alone
-          # fails because jacs-core@${VERSION} is not on crates.io until this
-          # very release publishes it.
-          cargo package --locked --no-verify \
-            -p jacs-core -p jacs-mcp -p jacs-cli
-          for candidate in "${candidates[@]}"; do
-            package="${candidate#*:}"
-            archive="target/package/${package}-${VERSION}.crate"
-            test -f "$archive"
-            cp "$archive" security-candidates/archives/
-            mkdir -p "security-candidates/extracted/${package}"
-            tar -xzf "$archive" -C "security-candidates/extracted/${package}"
-          done
-          actual="$(find security-candidates/archives -maxdepth 1 -type f -name '*.crate' | wc -l | tr -d ' ')"
-          test "$actual" = 3
+          cargo install cargo-audit --locked --version 0.22.1
+          # Same deadline- and reachability-checked SurrealDB exception as security.yml.
+          # The required security-gate validates the exception before publication.
+          cargo audit --file target/crate-release/source/Cargo.lock --ignore RUSTSEC-2023-0071
+
+      - name: Build and compile-verify every pre-publish Rust candidate
+        run: python3 scripts/rust_release.py package
 
       - name: Generate pre-publish Rust candidate SPDX SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
-          path: security-candidates/extracted
+          path: target/crate-release/extracted
           format: spdx-json
           output-file: pre-publish-rust-candidates.spdx.json
           upload-artifact: false
@@ -134,151 +113,220 @@ jobs:
           set -euo pipefail
           jq -e '.spdxVersion | startswith("SPDX-2.")' pre-publish-rust-candidates.spdx.json >/dev/null
           jq -e '((.packages // []) | length) > 0' pre-publish-rust-candidates.spdx.json >/dev/null
-          for package in jacs-core jacs-mcp jacs-cli; do
-            test -f "security-candidates/archives/${package}-${VERSION}.crate"
-          done
-
-      # ---------------------------------------------------------------------
-      # Publish the core primitive before the thin MCP and CLI boundaries.
-      # ---------------------------------------------------------------------
-      - name: Build exact jacs-core crate candidate
-        run: |
-          set -euo pipefail
-          cargo package --locked --manifest-path jacs-core/Cargo.toml
-          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-core
-          cp "target/package/jacs-core-${VERSION}.crate" packaged-crates/archives/
-          tar -xzf "target/package/jacs-core-${VERSION}.crate" -C packaged-crates/extracted/jacs-core
+          (cd target/crate-release/archives && sha256sum -c ../sha256sums.txt)
 
       - name: Authenticate jacs-core publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_core
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
-      - name: Publish jacs-core to crates.io
+      - name: Verify and publish jacs-core to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_core.outputs.token || secrets.CRATES_IO_TOKEN }}
-        run: |
-          set -euo pipefail
-          gate=(python3 scripts/crates_release_gate.py check --crate jacs-core --version "$VERSION")
-          if "${gate[@]}"; then
-            echo "jacs-core $VERSION already published, skipping"
-          else
-            status=$?
-            if [ "$status" -ne 3 ]; then
-              exit "$status"
-            fi
-            if ! (cd jacs-core && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-core.log); then
-              if ! "${gate[@]}"; then
-                echo "::error::publishing jacs-core $VERSION failed (real error, not already-exists)"
-                exit 1
-              fi
-              echo "::warning::cargo publish failed after jacs-core $VERSION became visible; continuing"
-            fi
-          fi
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-core
 
-      - name: Wait for jacs-core to appear on crates.io
-        run: python3 scripts/crates_release_gate.py wait --crate jacs-core --version "$VERSION"
+      - name: Authenticate jacs-media publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_media
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
-      - name: Build exact jacs-mcp crate candidate
-        run: |
-          set -euo pipefail
-          cargo package --locked --manifest-path jacs-mcp/Cargo.toml
-          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-mcp
-          cp "target/package/jacs-mcp-${VERSION}.crate" packaged-crates/archives/
-          tar -xzf "target/package/jacs-mcp-${VERSION}.crate" -C packaged-crates/extracted/jacs-mcp
+      - name: Verify and publish jacs-media to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_media.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-media
+
+      - name: Authenticate jacs publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs
+
+      - name: Authenticate jacs-binding-core publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_binding_core
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-binding-core to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_binding_core.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-binding-core
 
       - name: Authenticate jacs-mcp publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_mcp
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
-      - name: Publish jacs-mcp to crates.io
+      - name: Verify and publish jacs-mcp to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_mcp.outputs.token || secrets.CRATES_IO_TOKEN }}
-        run: |
-          set -euo pipefail
-          gate=(python3 scripts/crates_release_gate.py check --crate jacs-mcp --version "$VERSION")
-          if "${gate[@]}"; then
-            echo "jacs-mcp $VERSION already published, skipping"
-          else
-            status=$?
-            if [ "$status" -ne 3 ]; then
-              exit "$status"
-            fi
-            if ! (cd jacs-mcp && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-mcp.log); then
-              if ! "${gate[@]}"; then
-                echo "::error::publishing jacs-mcp $VERSION failed (real error, not already-exists)"
-                exit 1
-              fi
-              echo "::warning::cargo publish failed after jacs-mcp $VERSION became visible; continuing"
-            fi
-          fi
-
-      - name: Wait for jacs-mcp to appear on crates.io
-        run: python3 scripts/crates_release_gate.py wait --crate jacs-mcp --version "$VERSION"
-
-      - name: Build exact jacs-cli crate candidate
-        run: |
-          set -euo pipefail
-          cargo package --locked --manifest-path jacs-cli/Cargo.toml
-          mkdir -p packaged-crates/archives packaged-crates/extracted/jacs-cli
-          cp "target/package/jacs-cli-${VERSION}.crate" packaged-crates/archives/
-          tar -xzf "target/package/jacs-cli-${VERSION}.crate" -C packaged-crates/extracted/jacs-cli
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-mcp
 
       - name: Authenticate jacs-cli publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_cli
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
-      - name: Publish jacs-cli to crates.io
+      - name: Verify and publish jacs-cli to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_cli.outputs.token || secrets.CRATES_IO_TOKEN }}
-        run: |
-          set -euo pipefail
-          gate=(python3 scripts/crates_release_gate.py check --crate jacs-cli --version "$VERSION")
-          if "${gate[@]}"; then
-            echo "jacs-cli $VERSION already published, skipping"
-          else
-            status=$?
-            if [ "$status" -ne 3 ]; then
-              exit "$status"
-            fi
-            if ! (cd jacs-cli && cargo publish --locked 2>&1 | tee /tmp/publish-jacs-cli.log); then
-              if ! "${gate[@]}"; then
-                echo "::error::publishing jacs-cli $VERSION failed (real error, not already-exists)"
-                exit 1
-              fi
-              echo "::warning::cargo publish failed after jacs-cli $VERSION became visible; continuing"
-            fi
-          fi
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-cli
 
-      - name: Verify exact crate candidate set
-        run: |
-          set -euo pipefail
-          actual="$(find packaged-crates/archives -maxdepth 1 -type f -name '*.crate' | wc -l | tr -d ' ')"
-          if [[ "$actual" != 3 ]]; then
-            echo "::error::expected 3 packaged Rust crate candidates, found $actual"
-            exit 1
-          fi
+      - name: Authenticate jacs-mcp-compat publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_mcp_compat
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
 
-      - name: Record exact Rust crate candidate digests
-        run: |
-          set -euo pipefail
-          sha256sum packaged-crates/archives/*.crate \
-            | sed 's#packaged-crates/archives/##' \
-            | sort -k2 \
-            > "jacs-rust-${VERSION}-sha256sums.txt"
-          test "$(wc -l < "jacs-rust-${VERSION}-sha256sums.txt" | tr -d ' ')" = 3
+      - name: Verify and publish jacs-mcp-compat to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_mcp_compat.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-mcp-compat
 
-      - name: Verify published crates match the exact reviewed candidates
+      - name: Authenticate jacs-cli-compat publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_cli_compat
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-cli-compat to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_cli_compat.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-cli-compat
+
+      - name: Authenticate jacs-wasm publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_wasm
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-wasm to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_wasm.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-wasm
+
+      - name: Authenticate jacs-mobile publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_mobile
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-mobile to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_mobile.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-mobile
+
+      - name: Authenticate jacsnpm publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacsnpm
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacsnpm to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacsnpm.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacsnpm
+
+      - name: Authenticate jacspy publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacspy
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacspy to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacspy.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacspy
+
+      - name: Authenticate jacsgo publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacsgo
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacsgo to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacsgo.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacsgo
+
+      - name: Authenticate jacs-duckdb publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_duckdb
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-duckdb to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_duckdb.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-duckdb
+
+      - name: Authenticate jacs-postgresql publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_postgresql
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-postgresql to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_postgresql.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-postgresql
+
+      - name: Authenticate jacs-redb publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_redb
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-redb to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_redb.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-redb
+
+      - name: Authenticate jacs-surrealdb publish via crates.io OIDC
+        if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: auth_jacs_surrealdb
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+
+      - name: Verify and publish jacs-surrealdb to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth_jacs_surrealdb.outputs.token || secrets.CRATES_IO_TOKEN }}
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: python3 scripts/rust_release.py publish-one --crate jacs-surrealdb
+
+      - name: Preserve exact registry-verified Rust candidates
         run: |
           set -euo pipefail
-          for package in jacs-core jacs-mcp jacs-cli; do
-            python3 scripts/crates_release_gate.py verify \
-              --crate "$package" \
-              --version "$VERSION" \
-              --archive "packaged-crates/archives/${package}-${VERSION}.crate"
-          done
+          mkdir -p packaged-crates
+          cp -R target/crate-release/archives packaged-crates/
+          cp -R target/crate-release/extracted packaged-crates/
+          cp target/crate-release/sha256sums.txt "jacs-rust-${VERSION}-sha256sums.txt"
+          cp target/crate-release/candidate.json packaged-crates/source.json
 
       - name: Generate packaged Rust-crate SPDX SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2

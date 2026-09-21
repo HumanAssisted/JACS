@@ -13,7 +13,7 @@ fn mcp_signed_report_survives_mime_and_verifies_in_an_isolated_recipient() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/mcp_mime_demo.py");
     let output = Command::new("python3")
         .args(["-I", script.to_str().expect("script path"), "--jacs-bin"])
-        .arg(env!("CARGO_BIN_EXE_jacs"))
+        .arg(env!("CARGO_BIN_EXE_jacs-compat"))
         .arg("--temp-root")
         .arg(scratch.path())
         .arg("--json")

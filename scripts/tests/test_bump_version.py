@@ -8,6 +8,8 @@ import tempfile
 import tomllib
 import unittest
 
+from scripts.release_catalog import CRATE_MANIFESTS
+
 ROOT = Path(__file__).resolve().parents[2]
 CRATES = ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli")
 ARCHIVE_LOCKS = (
@@ -23,15 +25,24 @@ class BumpVersionTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         shutil.copy2(ROOT / "Makefile", self.root / "Makefile")
         (self.root / "scripts").mkdir()
-        for name in ("bump-version.sh", "bump_version.py", "seal-changelog.sh"):
+        for name in ("bump-version.sh", "bump_version.py", "release_catalog.py", "seal-changelog.sh"):
             shutil.copy2(ROOT / "scripts" / name, self.root / "scripts" / name)
         self.write("Cargo.toml", '[workspace]\nmembers = ' + json.dumps(CRATES) + '\nexclude = ["archive/native"]\n')
         for crate in CRATES:
             dependency = '' if crate == 'jacs-core' else 'jacs-core = { version = "0.13.0", path = "../jacs-core" }\n'
             self.write(f"{crate}/Cargo.toml", f'[package]\nname = "{crate}"\nversion = "0.13.0"\n\n[dependencies]\n{dependency}external = {{ version = "0.13.0", features = ["version"] }}\n')
             self.write(f"{crate}/src/lib.rs", '// Disposable fixture.\n')
-        self.write("jacs-wasm/package.template.json", '{"name":"@jacs/wasm","version":"0.13.0","license":"Apache-2.0"}\n')
+        self.write("jacs-wasm/package.template.json", '{"name":"@hai.ai/jacs-wasm","version":"0.13.0","license":"Apache-2.0"}\n')
+        self.write("archive/native/jacsnpm/package.json", '{"name":"@hai.ai/jacs","version":"0.13.0","license":"Apache-2.0"}\n')
+        self.write("archive/native/jacsnpm/package-lock.json", json.dumps({
+            "name": "@hai.ai/jacs", "version": "0.13.0", "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "@hai.ai/jacs", "version": "0.13.0"},
+                "node_modules/example": {"version": "0.13.0", "integrity": "sha512-preserved"},
+            },
+        }) + '\n')
         self.write("jacs-mcp/contract/jacs-mcp-contract.json", '{"server":{"name":"jacs-mcp","version":"0.13.0"},"tools":[]}\n')
+        self.write("jacs-mobile/distribution/android/library/build.gradle.kts", 'group = "ai.hai"\nversion = "0.13.0"\ndependencies { implementation("example:external:0.13.0") }\n')
         self.write("release/shipped-artifacts.json", json.dumps({"source_version": "0.13.0", "observed_at": "2026-09-20", "artifacts": {"crate": {"version": "0.12.7", "status": "published", "checksum": "recorded-checksum"}, "wasm": {"version": None, "status": "unpublished"}}}) + '\n')
         lock = 'version = 4\n\n'
         for crate in CRATES:
@@ -41,15 +52,30 @@ class BumpVersionTests(unittest.TestCase):
         self.write("Cargo.lock", lock)
         self.write("CHANGELOG.md", '## 0.13.0\n\n(unreleased)\n\nExisting release notes.\n')
         self.write("archive/native/Cargo.toml", '[workspace]\nmembers = ["jacs", "binding-core"]\n')
-        for directory, name in [('jacs', 'jacs'), ('binding-core', 'jacs-binding-core')]:
-            self.write(f"archive/native/{directory}/Cargo.toml", f'[package]\nname = "{name}"\nversion = "0.12.7"\n\n[dependencies]\njacs-core = {{ version = "0.13.0", path = "../../../jacs-core" }}\n')
-            self.write(f"archive/native/{directory}/src/lib.rs", '// Preserved archive fixture.\n')
-        archived_lock = ('version = 4\n\n[[package]]\nname = "jacs"\nversion = "0.12.7"\ndependencies = [\n "jacs-core 0.13.0",\n]\n\n'
-                         '[[package]]\nname = "jacs-cli"\nversion = "0.13.0"\n\n'
-                         '[[package]]\nname = "jacs-core"\nversion = "0.13.0"\n\n'
-                         '[[package]]\nname = "external"\nversion = "0.13.0"\nsource = "registry+https://example.invalid/index"\nchecksum = "archived-third-party-sentinel"\n')
+        for name, relative in CRATE_MANIFESTS.items():
+            if not relative.startswith("archive/native/"):
+                continue
+            directory = str(Path(relative).parent)
+            dependency = 'jacs-core = { version = "0.13.0", path = "../../../jacs-core" }\n' if name in ('jacs', 'jacs-binding-core') else ''
+            if name == 'jacs-cli-compat':
+                dependency = 'jacs-mcp = { package = "jacs-mcp-compat", version = "0.13.0", path = "../jacs-mcp" }\n'
+            self.write(relative, f'[package]\nname = "{name}"\nversion = "0.13.0"\n\n[dependencies]\n{dependency}')
+            self.write(f"{directory}/src/lib.rs", '// Native fixture.\n')
+        self.write("archive/native/jacspy/pyproject.toml", '[project]\nname = "jacs"\nversion = "0.13.0"\ndependencies = ["external==0.13.0"]\n')
+        self.write("archive/native/jacspy/uv.lock", 'version = 1\n\n[[package]]\nname = "jacs"\nversion = "0.13.0"\nsource = { editable = "." }\n\n[[package]]\nname = "external"\nversion = "0.13.0"\nsource = { registry = "https://example.invalid" }\n')
+        self.write("archive/native/jacs-mcp/contract/jacs-mcp-contract.json", '{"server":{"name":"jacs-mcp","version":"0.13.0"},"tools":[]}\n')
+        archived_lock = 'version = 4\n\n'
+        for name, relative in CRATE_MANIFESTS.items():
+            if not relative.startswith("archive/native/") and name != 'jacs-core':
+                continue
+            dependency = 'dependencies = [\n "jacs-core 0.13.0",\n]\n' if name == 'jacs' else ''
+            archived_lock += f'[[package]]\nname = "{name}"\nversion = "0.13.0"\n{dependency}\n'
+        archived_lock += '[[package]]\nname = "external"\nversion = "0.13.0"\nsource = "registry+https://example.invalid/index"\nchecksum = "archived-third-party-sentinel"\n'
         for relative in ARCHIVE_LOCKS:
-            self.write(relative, archived_lock)
+            contents = archived_lock
+            if relative == ARCHIVE_LOCKS[0]:
+                contents = contents.replace('[[package]]\nname = "jacs-surrealdb"\nversion = "0.13.0"\n\n', '')
+            self.write(relative, contents)
         self.write('archive/native/untouched.txt', 'ARCHIVED SENTINEL\n')
 
     def tearDown(self):
@@ -88,25 +114,42 @@ class BumpVersionTests(unittest.TestCase):
                         if dependency.startswith('jacs-core '):
                             self.assertEqual(dependency, 'jacs-core ' + expected)
                 self.assertEqual(json.loads((self.root / 'jacs-wasm/package.template.json').read_text())['version'], expected)
+                self.assertEqual(json.loads((self.root / 'archive/native/jacsnpm/package.json').read_text())['version'], expected)
+                npm_lock_path = 'archive/native/jacsnpm/package-lock.json'
+                expected_npm_lock = json.loads(before[npm_lock_path])
+                expected_npm_lock['version'] = expected
+                expected_npm_lock['packages']['']['version'] = expected
+                self.assertEqual(json.loads((self.root / npm_lock_path).read_text()), expected_npm_lock)
                 self.assertEqual(json.loads((self.root / 'jacs-mcp/contract/jacs-mcp-contract.json').read_text())['server']['version'], expected)
+                android = 'jacs-mobile/distribution/android/library/build.gradle.kts'
+                self.assertEqual((self.root / android).read_text(), before[android].decode().replace('\nversion = "0.13.0"\n', f'\nversion = "{expected}"\n'))
                 matrix = json.loads((self.root / 'release/shipped-artifacts.json').read_text())
                 self.assertEqual(matrix, {**json.loads(before['release/shipped-artifacts.json']), 'source_version': expected})
                 self.assertTrue((self.root / 'CHANGELOG.md').read_text().startswith(f'## {expected}\n\n(unreleased)'))
                 for directory in ('jacs', 'binding-core'):
                     manifest = tomllib.loads((self.root / f'archive/native/{directory}/Cargo.toml').read_text())
-                    self.assertEqual(manifest['package']['version'], '0.12.7')
+                    self.assertEqual(manifest['package']['version'], expected)
                     self.assertEqual(manifest['dependencies']['jacs-core']['version'], expected)
                 for relative in ARCHIVE_LOCKS:
                     old_packages = tomllib.loads(before[relative].decode())['package']
                     packages = tomllib.loads((self.root / relative).read_text())['package']
                     for previous, updated in zip(old_packages, packages, strict=True):
-                        if previous['name'] == 'jacs-core':
+                        if previous['name'] == 'jacs':
+                            self.assertEqual(updated, {**previous, 'version': expected, 'dependencies': ['jacs-core ' + expected]})
+                        elif previous['name'] in CRATE_MANIFESTS:
                             self.assertEqual(updated, {**previous, 'version': expected})
-                        elif previous['name'] == 'jacs':
-                            self.assertEqual(updated, {**previous, 'dependencies': ['jacs-core ' + expected]})
                         else:
                             self.assertEqual(updated, previous)
-                editable_archive = {*ARCHIVE_LOCKS, 'archive/native/jacs/Cargo.toml', 'archive/native/binding-core/Cargo.toml'}
+                editable_archive = {*ARCHIVE_LOCKS, *CRATE_MANIFESTS.values(), 'archive/native/jacsnpm/package.json', 'archive/native/jacsnpm/package-lock.json', 'archive/native/jacspy/pyproject.toml', 'archive/native/jacspy/uv.lock', 'archive/native/jacs-mcp/contract/jacs-mcp-contract.json'}
+                for relative in CRATE_MANIFESTS.values():
+                    self.assertEqual(tomllib.loads((self.root / relative).read_text())['package']['version'], expected)
+                python = tomllib.loads((self.root / 'archive/native/jacspy/pyproject.toml').read_text())['project']
+                self.assertEqual(python['version'], expected)
+                self.assertEqual(python['dependencies'], ['external==0.13.0'])
+                python_lock = tomllib.loads((self.root / 'archive/native/jacspy/uv.lock').read_text())['package']
+                self.assertEqual([package['version'] for package in python_lock], [expected, '0.13.0'])
+                alias = tomllib.loads((self.root / 'archive/native/jacs-cli/Cargo.toml').read_text())['dependencies']['jacs-mcp']
+                self.assertEqual(alias, {'package': 'jacs-mcp-compat', 'version': expected, 'path': '../jacs-mcp'})
                 for name, value in before.items():
                     if name.startswith('archive/') and name not in editable_archive:
                         self.assertEqual((self.root / name).read_bytes(), value)
@@ -116,10 +159,18 @@ class BumpVersionTests(unittest.TestCase):
 
     def test_late_mismatches_or_invalid_inputs_never_partially_write(self):
         cases = [
+            ('jacs-mobile/distribution/android/library/build.gradle.kts', 'version = "0.13.0"', 'version = "0.12.0"'),
+            ('jacs-mobile/distribution/android/library/build.gradle.kts', 'version = "0.13.0"', 'version = "0.13.0"\nversion = "0.13.0"'),
+            ('jacs-mobile/distribution/android/library/build.gradle.kts', 'version = "0.13.0"', 'version = project.property("version")'),
             ('jacs-cli/Cargo.toml', 'version = "0.13.0"', 'version = "0.12.0"'),
             ('jacs-wasm/Cargo.toml', 'version = "0.13.0", path', 'version = "0.12.0", path'),
             ('jacs-wasm/Cargo.toml', 'path = "../jacs-core"', 'path = "../archive/native/jacs-core"'),
             ('jacs-wasm/package.template.json', '"version":"0.13.0"', '"version":"0.12.0"'),
+            ('archive/native/jacsnpm/package.json', '"version":"0.13.0"', '"version":"0.12.0"'),
+            ('archive/native/jacsnpm/package.json', '"name":"@hai.ai/jacs"', '"name":"@other/jacs"'),
+            ('archive/native/jacsnpm/package-lock.json', '"version": "0.13.0"', '"version": "0.12.0"'),
+            ('archive/native/jacsnpm/package-lock.json', '"lockfileVersion": 3', '"lockfileVersion": 1'),
+            ('archive/native/jacsnpm/package-lock.json', '"name": "@hai.ai/jacs"', '"name": "@other/jacs"'),
             ('jacs-mcp/contract/jacs-mcp-contract.json', '"version":"0.13.0"', '"version":"0.13.0","version":"0.13.0"'),
             ('release/shipped-artifacts.json', '"source_version": "0.13.0"', '"source_version": "0.12.0"'),
             ('Cargo.lock', '"jacs-core 0.13.0"', '"jacs-core 0.12.0"'),
@@ -128,6 +179,11 @@ class BumpVersionTests(unittest.TestCase):
             ('CHANGELOG.md', '## 0.13.0', '## 0.13.1'),
             ('archive/native/jacs/Cargo.toml', 'version = "0.13.0", path', 'version = "0.12.0", path'),
             ('archive/native/binding-core/Cargo.toml', 'path = "../../../jacs-core"', 'path = "../jacs-core"'),
+            ('archive/native/jacs-cli/Cargo.toml', 'package = "jacs-mcp-compat"', 'package = "jacs-mcp"'),
+            ('archive/native/jacs-redb/Cargo.toml', 'version = "0.13.0"', 'version = "0.12.0"'),
+            ('archive/native/jacspy/pyproject.toml', 'version = "0.13.0"', 'version = "0.12.0"'),
+            ('archive/native/jacspy/uv.lock', 'version = "0.13.0"', 'version = "0.12.0"'),
+            ('archive/native/Cargo.lock', 'name = "jacs-redb"', 'name = "missing-native-entry"'),
             ('archive/native/jacs-surrealdb/Cargo.lock', 'name = "jacs-core"\nversion = "0.13.0"', 'name = "jacs-core"\nversion = "0.12.0"'),
         ]
         for filename, old, new in cases:
@@ -151,6 +207,14 @@ class BumpVersionTests(unittest.TestCase):
             self.assertNotEqual(self.run_bump(*args).returncode, 0)
             self.assertEqual(self.snapshot(), before)
 
+    def test_path_only_dev_dependencies_remain_unpublished(self):
+        path = self.root / 'archive/native/jacs/Cargo.toml'
+        path.write_text(path.read_text() + '\n[dev-dependencies]\njacs-binding-core = { path = "../binding-core" }\n')
+        completed = self.run_bump('minor')
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        manifest = tomllib.loads(path.read_text())
+        self.assertEqual(manifest['dev-dependencies']['jacs-binding-core'], {'path': '../binding-core'})
+
     def test_make_bump_choices_and_read_only_previews(self):
         for bump, expected in [('patch', '0.13.1'), ('minor', '0.14.0'), ('major', '1.0.0')]:
             with self.subTest(bump=bump):
@@ -166,6 +230,8 @@ class BumpVersionTests(unittest.TestCase):
                     manifest = tomllib.loads((self.root / crate / 'Cargo.toml').read_text())
                     self.assertEqual(manifest['package']['version'], expected)
                 self.assertEqual(json.loads((self.root / 'jacs-wasm/package.template.json').read_text())['version'], expected)
+                android = 'jacs-mobile/distribution/android/library/build.gradle.kts'
+                self.assertEqual((self.root / android).read_text(), before[android].decode().replace('\nversion = "0.13.0"\n', f'\nversion = "{expected}"\n'))
                 matrix = json.loads((self.root / 'release/shipped-artifacts.json').read_text())
                 self.assertEqual(matrix, {**json.loads(before['release/shipped-artifacts.json']), 'source_version': expected})
                 for name, value in before.items():
@@ -218,7 +284,7 @@ class BumpVersionTests(unittest.TestCase):
         packages = json.loads(metadata.stdout)['packages']
         self.assertEqual({package['name'] for package in packages}, {'jacs', 'jacs-binding-core'})
         for package in packages:
-            self.assertEqual(package['version'], '0.12.7')
+            self.assertEqual(package['version'], '0.14.0')
             core = next(dep for dep in package['dependencies'] if dep['name'] == 'jacs-core')
             self.assertEqual(core['req'], '^0.14.0')
             self.assertEqual(Path(core['path']), self.root / 'jacs-core')

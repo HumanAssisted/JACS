@@ -13,14 +13,10 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "crates_release_gate.py"
 
-MAIN_CRATES = {
-    "jacs-core": "jacs-core/Cargo.toml",
-    "jacs-mcp": "jacs-mcp/Cargo.toml",
-    "jacs-cli": "jacs-cli/Cargo.toml",
-}
-PUBLISHABLE_CRATES = MAIN_CRATES
+from scripts.release_catalog import CRATE_MANIFESTS
+
+PUBLISHABLE_CRATES = CRATE_MANIFESTS
 IGNORED_MANIFEST_PARTS = {
-    "archive",
     ".git",
     ".venv",
     "node_modules",
@@ -111,9 +107,6 @@ class CratesReleaseGateTests(unittest.TestCase):
 
     def test_publishable_crates_ship_exact_project_license_and_notices(self) -> None:
         workspace = read_manifest(ROOT / "Cargo.toml")
-        canonical = {
-            filename: (ROOT / filename).read_bytes() for filename in PACKAGE_LEGAL_FILES
-        }
 
         for name, manifest_relative in PUBLISHABLE_CRATES.items():
             with self.subTest(crate=name):
@@ -123,7 +116,9 @@ class CratesReleaseGateTests(unittest.TestCase):
                 self.assertEqual(resolved_license(document, workspace), "Apache-2.0")
 
                 package_root = manifest.parent
-                for filename, expected in canonical.items():
+                legal_root = ROOT / "archive/native" if manifest_relative.startswith("archive/native/") else ROOT
+                for filename in PACKAGE_LEGAL_FILES:
+                    expected = (legal_root / filename).read_bytes()
                     packaged_copy = package_root / filename
                     self.assertTrue(
                         packaged_copy.is_file(),
@@ -139,7 +134,7 @@ class CratesReleaseGateTests(unittest.TestCase):
                 exclude = package.get("exclude")
                 if include is not None:
                     for filename in PACKAGE_LEGAL_FILES:
-                        self.assertIn(filename, include)
+                        self.assertIn(filename, [pattern.removeprefix("/") for pattern in include])
                 elif exclude is not None:
                     self.fail(
                         f"{manifest_relative}: explicit exclusions require an "
@@ -333,18 +328,12 @@ class CratesReleaseGateTests(unittest.TestCase):
                     fetch_checksum=lambda *_args, **_kwargs: "b" * 64,
                 )
 
-    def test_release_workflow_uses_shared_exact_gate_for_all_three_crates(self) -> None:
+    def test_release_workflow_uses_shared_exact_gate_for_all_catalogued_crates(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-crate.yml").read_text()
         self.assertNotIn("max_version", workflow)
         self.assertNotIn("https://crates.io/api/v1/crates/", workflow)
-        self.assertEqual(workflow.count("scripts/crates_release_gate.py check"), 3)
-        self.assertEqual(workflow.count("scripts/crates_release_gate.py wait"), 3)
-        self.assertIn("scripts/crates_release_gate.py verify", workflow)
-        for crate in (
-            "jacs-core",
-            "jacs-mcp",
-            "jacs-cli",
-        ):
+        self.assertEqual(workflow.count("scripts/rust_release.py publish-one"), len(PUBLISHABLE_CRATES))
+        for crate in PUBLISHABLE_CRATES:
             self.assertIn(f"--crate {crate}", workflow)
 
 

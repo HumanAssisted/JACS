@@ -310,7 +310,7 @@ class LoopbackRelease:
             raise RuntimeError("loopback release server did not stop within 5 seconds")
 
 
-def _write_project_manifest(project: Path) -> None:
+def _write_project_manifest(project: Path, package: str) -> None:
     project.mkdir(mode=0o700)
     (project / "package.json").write_text(
         json.dumps(
@@ -318,6 +318,9 @@ def _write_project_manifest(project: Path) -> None:
                 "name": "jacs-normal-postinstall-smoke",
                 "version": "1.0.0",
                 "private": True,
+                # Recent npm releases require project approval for dependency
+                # lifecycle scripts. Authorize only the exact package under test.
+                "allowScripts": {package: True},
             },
             sort_keys=True,
         )
@@ -421,7 +424,7 @@ def smoke_package(
     ) as directory:
         temporary = Path(directory)
         project = temporary / "consumer"
-        _write_project_manifest(project)
+        _write_project_manifest(project, package)
         with LoopbackRelease(version) as release:
             env = _smoke_environment(temporary, release.base_url)
             run(

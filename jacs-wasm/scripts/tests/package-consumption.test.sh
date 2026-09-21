@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test fixture for Issue 009 — verify that `npm install` of the finalized
-# `@jacs/wasm` tarball resolves to the hand-written wrapper via top-level
+# `@hai.ai/jacs-wasm` tarball resolves to the hand-written wrapper via top-level
 # `main` / `module` / `types` *without* a Vite alias. Catches regressions
 # where the legacy fields would otherwise point at the raw wasm-bindgen
 # output.
@@ -58,10 +58,10 @@ cat > "${CONSUMER_DIR}/package.json" <<JSON
 JSON
 ( cd "${CONSUMER_DIR}" && npm install --silent --no-audit --no-fund "${TARBALL}" >/dev/null )
 
-# 3. Resolve `@jacs/wasm`'s package.json from the sandbox and assert the
+# 3. Resolve `@hai.ai/jacs-wasm`'s package.json from the sandbox and assert the
 # top-level legacy fields point at the wrapper (Issue 009 contract). We
 # write the verification script into the sandbox and run it there so
-# Node resolves `@jacs/wasm` from the freshly installed tarball without
+# Node resolves `@hai.ai/jacs-wasm` from the freshly installed tarball without
 # the wrapper repo's `node_modules` shadowing it.
 cat > "${CONSUMER_DIR}/verify.mjs" <<'NODE'
 import fs from "node:fs";
@@ -73,7 +73,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Read package.json directly from the installed tarball location — the
 // package itself doesn't have to expose './package.json' via the
 // `exports` map for this verification to work.
-const pkgPath = path.join(__dirname, "node_modules", "@jacs", "wasm", "package.json");
+const pkgPath = path.join(__dirname, "node_modules", "@hai.ai", "jacs-wasm", "package.json");
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
 const licensePath = path.join(path.dirname(pkgPath), "LICENSE");
 
@@ -82,8 +82,8 @@ function expect(cond, msg) {
   if (!cond) errors.push(msg);
 }
 
-expect(pkg.name === "@jacs/wasm",
-  `name=${pkg.name}, expected '@jacs/wasm'`);
+expect(pkg.name === "@hai.ai/jacs-wasm",
+  `name=${pkg.name}, expected '@hai.ai/jacs-wasm'`);
 expect(pkg.main === "index.js",
   `main=${pkg.main}, expected 'index.js' (Issue 009)`);
 expect(pkg.module === "index.js",
@@ -110,16 +110,16 @@ if (fs.existsSync(licensePath)) {
 // Resolve the root specifier — must land at the wrapper, not the raw
 // wasm-bindgen module. `import.meta.resolve` honours the `exports` map,
 // which is the resolution path real ESM consumers exercise.
-const rootEntry = import.meta.resolve("@jacs/wasm");
+const rootEntry = import.meta.resolve("@hai.ai/jacs-wasm");
 const rootUrl = new URL(rootEntry);
 const rootBase = path.basename(rootUrl.pathname);
 expect(rootBase === "index.js",
-  `resolve('@jacs/wasm') → '${rootBase}', expected 'index.js'`);
+  `resolve('@hai.ai/jacs-wasm') → '${rootBase}', expected 'index.js'`);
 // Worker subpath should also be exposed.
-const workerEntry = import.meta.resolve("@jacs/wasm/worker");
+const workerEntry = import.meta.resolve("@hai.ai/jacs-wasm/worker");
 const workerBase = path.basename(new URL(workerEntry).pathname);
 expect(workerBase === "index.js",
-  `resolve('@jacs/wasm/worker') → '${workerBase}', expected 'index.js'`);
+  `resolve('@hai.ai/jacs-wasm/worker') → '${workerBase}', expected 'index.js'`);
 
 if (errors.length) {
   console.error("PACKAGE-CONSUMPTION TEST FAILED:");
@@ -128,7 +128,7 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log("package-consumption.test: OK — npm package metadata routes @jacs/wasm to the hand-written wrapper");
+console.log("package-consumption.test: OK — npm package metadata routes @hai.ai/jacs-wasm to the hand-written wrapper");
 NODE
 
 ( cd "${CONSUMER_DIR}" && node verify.mjs )

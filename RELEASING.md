@@ -1,64 +1,224 @@
-# Releasing the portable primitive
+# Releasing JACS
 
-This change is source work, not a published release. The historical publication record is retained in `archive/native/release/shipped-artifacts.json`; the active matrix describes only the portable surfaces. Assign a fresh coordinated version before releasing these incompatible CLI/MCP/API changes. Never overwrite an existing registry version or treat an existing legacy artifact as this candidate.
+The coordinated candidate is **0.15.0**. It has not been published. MCP is the
+primary documented integration; Rust, Node, Python, Go and browser packages all
+remain supported release surfaces. Existing registry versions are recorded in
+[release status](docs/release-status.md), separately from source versions.
 
-The active Rust publication order is `jacs-core`, `jacs-mcp`, `jacs-cli`. `jacs-wasm` is packaged as `@jacs/wasm`; `jacs-mobile` remains `publish=false` and produces Android AAR/Maven and iOS XCFramework/SwiftPM bundles. Archived native/binding/backend crates are all `publish=false`; their historical workflows are inert under `archive/native/.github/workflows`.
+## Version and build commands
 
-Run `make check` and `make test`, then the browser and mobile workflow gates. A release must pass the full active source suite, dependency/license audits, full-history secret scan and package consumer checks. Rust releases build the complete three-crate candidate set before uploading, verify registry archive digests, produce SPDX SBOMs and attest durable evidence. CLI releases smoke the exact staged binary, preserve license/notices, verify checksums and attest every public release asset. WASM releases retain browser tests and npm provenance. Do not bypass these gates to reuse an already published version.
+`make versions` displays and checks all 17 Rust crates, native npm, WASM npm,
+Python, Go, mobile metadata and both MCP contracts. `make check-versions` performs
+the same alignment check without the listing.
 
-Use `scripts/release_retry.py` to plan release/retry actions without writes. Tag conventions remain `crate/vVERSION`, `cli/vVERSION`, and `wasm-vVERSION`; execution is explicit. The protected `crates-io` environment supports OIDC trusted publishing; the existing credential migration fallback applies only until its maintainers enable trusted publishers. No archive publication, tap sync, PyPI, native npm binding or Go release runs from the active workflows.
-
-Mobile CI artifacts are review candidates. Distribution to an app store, Maven registry or Swift package repository, actual HAI API deployment and mobile app integration are separate authorized steps. Physical-device biometrics and enrollment/lifecycle behavior remain release acceptance requirements beyond emulator/simulator results.
-
-## Make commands
-
-`make versions` (or `make version`) displays and checks all five active Cargo
-package versions, the `@jacs/wasm` npm template and the MCP contract against the
-release matrix's source version. `make check-versions` performs the same checks
-without the listing. Both commands fail on a mismatch. Archived packages retain
-their historical versions and are not required to match this release; these
-offline checks do not claim that the source versions have been published.
-
-Choose one bump size. Preview it first; the preview validates all version edits
-without changing files:
-
-| Change | Preview | Apply |
+| Change | Preview without edits | Apply |
 |---|---|---|
-| Patch (`0.14.0` → `0.14.1`) | `make plan-bump-patch` | `make bump-patch` |
-| Minor (`0.14.0` → `0.15.0`) | `make plan-bump-minor` | `make bump-minor` |
-| Major (`0.14.0` → `1.0.0`) | `make plan-bump-major` | `make bump-major` |
+| Patch | `make plan-bump-patch` | `make bump-patch` |
+| Minor | `make plan-bump-minor` | `make bump-minor` |
+| Major | `make plan-bump-major` | `make bump-major` |
 
-Skip the bump if the intended unpublished version is already prepared. Bumps
-update the five portable packages together using `scripts/bump-version.sh`;
-the release matrix's source version follows the bump, while recorded registry
-versions and publication evidence stay unchanged. Bumps do not create tags or
-publish packages. Review the diff and release notes,
-regenerate notices with `make third-party-notices`, and complete the gates above.
-Commit the candidate before running a release target, which requires a clean
-worktree including untracked files.
+The bump helper updates the coordinated sources and lockfile identities. It
+preserves observations of already published versions and never publishes.
+**Do not bump again for this release: the source is already 0.15.0.**
 
-| Surface | Preview | Start publication |
-|---|---|---|
-| `jacs-core`, `jacs-mcp`, `jacs-cli` | `make plan-release-jacs` | `make release-jacs` |
-| CLI binaries | `make plan-release-cli` | `make release-cli` |
-| npm `@jacs/wasm` | `make plan-release-jacs-wasm` | `make release-jacs-wasm` |
-| All three active surfaces | `make plan-release-everything` | `make release-everything` |
+```sh
+make build-jacsnpm       # Native @hai.ai/jacs tarball
+make build-jacspy        # Python jacs wheel
+make build-jacsgo        # Go native library
+make test-bindings       # Build and test fresh installed consumers for all three
+```
 
-Release targets run `make release-preflight`, then use the checked helper to
-create/push the version tags and start GitHub Actions. Wait for the workflows,
-registry checks and provenance verification before recording a release as
-published. These commands do not configure registry credentials or bootstrap a
-previously unpublished npm package. Archived native npm/Python/Go packages and
-the `jacs-wasm` crates.io package remain outside this release set.
+These commands use the isolated native workspace and write candidates under
+`target/native-bindings/artifacts`. The five-member portable Cargo workspace
+stays separate. The extended native MCP and CLI publish as `jacs-mcp-compat` and
+`jacs-cli-compat`, preserving library imports with Cargo dependency aliases; the
+compatibility executable is `jacs-compat`. The primary CLI remains `jacs` from
+`cargo install jacs-cli`, and MCP starts with `jacs mcp`.
 
-For a failed publication, inspect `make plan-retry-jacs`, `make plan-retry-cli`,
-`make plan-retry-jacs-wasm`, or `make plan-retry-everything`. The corresponding
-`make retry-*` target executes the retry using the original tag identity; it
-does not move an existing version to new source. `retry-everything` checks
-registry evidence and retries only incomplete surfaces. Retry commands still
-validate source version alignment, but allow unrelated worktree changes because
-the original tag determines the source being retried.
+## One-time registry setup
 
-## Trusted-publishing migration
+CI publication uses the `crates-io`, `pypi` and `npm` GitHub environments. A local
+`npm login` authorizes local commands; it does not configure CI authentication.
+Configure publisher identities in the registry before creating release tags.
 
-Configure the three crates.io trusted publishers for `.github/workflows/release-crate.yml` and the protected `crates-io` environment. Set `CRATES_IO_TRUSTED_PUBLISHING_ENABLED=true` only after verifying those publishers. The `CRATES_IO_TOKEN` secret is a temporary migration fallback; after a successful OIDC release, revoke the old crates.io API token and remove the secret. Keep the immutable workflow references and existing `npm@11.18.0` OIDC/provenance requirements in `.github/workflows/release-wasm.yml`. See the archived release guide for historical package publisher configuration; it does not authorize publishing archived code.
+### npm
+
+For existing `@hai.ai/jacs`, configure a GitHub trusted publisher with:
+
+| Setting | Value |
+|---|---|
+| Organization | `HumanAssisted` |
+| Repository | `JACS` |
+| Workflow filename | `release-npm.yml` |
+| Environment | `npm` |
+| Allowed action | Direct `npm publish` |
+
+Use the package's npm Settings page, or npm 11.15+ with an interactive login
+and account 2FA:
+
+```sh
+npm trust github @hai.ai/jacs --repo HumanAssisted/JACS --file release-npm.yml --env npm --allow-publish
+```
+
+The new `@hai.ai/jacs-wasm` package does not yet exist. npm requires an existing
+package before a trusted publisher can be registered. Its first release still
+runs entirely through CI:
+
+1. Create a short-lived npm granular token with write access to create packages
+   in `@hai.ai` and the CI 2FA bypass permission. Store it as the GitHub `npm`
+   environment secret **`NPM_WASM_BOOTSTRAP_TOKEN`**; do not put it in Git or chat.
+2. Set the `npm` environment variable **`JACS_NPM_WASM_BOOTSTRAP=true`**.
+3. Run the normal WASM release command below. The workflow requires the package
+   itself to return authoritative HTTP 404, runs all candidate/browser gates,
+   and publishes the exact tarball with provenance. Existing packages cannot
+   use this bootstrap mode.
+4. After the first successful publication, configure its trusted publisher with
+   the same organization/repository/environment and **`release-wasm.yml`**:
+
+   ```sh
+   npm trust github @hai.ai/jacs-wasm --repo HumanAssisted/JACS --file release-wasm.yml --env npm --allow-publish
+   ```
+
+5. Remove the bootstrap variable and secret, and revoke that temporary token.
+   Later releases use OIDC. If publication succeeded but a later job failed,
+   finish this switch before retrying the workflow.
+
+The npm CLI refuses publisher-setting changes authenticated only by a granular
+token that bypasses 2FA. Use the website or an interactive 2FA session for those
+settings. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
+
+### Rust and Python
+
+- **crates.io:** `release-crate.yml` publishes every entry in
+  [the ordered release catalog](scripts/release_catalog.py), including WASM,
+  mobile, bindings and four storage backends. Configure each crate's trusted
+  publisher for `HumanAssisted/JACS`, `release-crate.yml`, and the
+  `crates-io` environment. Keep the protected `CRATES_IO_TOKEN` migration credential for
+  first publication/new crate names until all publisher identities exist and
+  are verified. Then set `CRATES_IO_TRUSTED_PUBLISHING_ENABLED=true` and revoke
+  the old crates.io API token; remove its secret. Rust publication is enabled.
+- **PyPI:** configure the existing `jacs` project's trusted publisher for owner
+  `HumanAssisted`, repository `JACS`, workflow **`release-pypi.yml`**,
+  environment **`pypi`**. No PyPI API token is used. CI publishes the tested
+  wheels and source distribution with PEP 740 attestations.
+- **Go and CLI:** GitHub Actions creates the tagged releases and their attested
+  native assets. The Go module remains
+  `github.com/HumanAssisted/JACS/jacsgo`; its `jacsgo/vVERSION` tag is also the
+  Go submodule version tag. No separate Go registry token is needed.
+
+## Release 0.15.0, one step at a time
+
+1. Confirm the intended version:
+
+   ```sh
+   make versions
+   ```
+
+2. Regenerate notices if dependencies changed, then run the source checks:
+
+   ```sh
+   make third-party-notices
+   make check
+   ```
+
+   These commands cover both portable and native dependency notices. Finish
+   the affected Rust, browser, mobile and native installed-consumer checks.
+   CI repeats the required functional, audit, license and secret-scan gates.
+
+3. Review and commit the complete candidate, including restored workflows and
+   package sources, then push that reviewed commit. Release commands require
+   a clean worktree, including untracked files:
+
+   ```sh
+   git status
+   git push origin HEAD
+   ```
+
+4. Preview all release tags. This does not create or push tags:
+
+   ```sh
+   make plan-release-everything
+   ```
+
+5. Start Rust publication and wait for **Release crates.io** to pass:
+
+   ```sh
+   make release-jacs
+   ```
+
+   All 17 candidates are prepared before the first upload; registry dependencies
+   publish in catalog order. Exact archive checksums, audits, SPDX SBOMs and
+   durable attested evidence remain mandatory.
+
+6. Release CLI binaries and wait for **Release CLI Binaries**:
+
+   ```sh
+   make release-cli
+   ```
+
+   Native npm's installation check consumes this matching CLI release.
+
+7. Release native npm and wait for **Release native npm**:
+
+   ```sh
+   make release-jacsnpm
+   ```
+
+8. Release Python and wait for **Release PyPI**:
+
+   ```sh
+   make release-jacspy
+   ```
+
+9. Release Go and wait for **Release jacsgo Native Libraries**:
+
+   ```sh
+   make release-jacsgo
+   ```
+
+10. Release browser npm and wait for **Release @hai.ai/jacs-wasm**:
+
+    ```sh
+    make release-jacs-wasm
+    ```
+
+11. Record the actual published versions and verified evidence in
+    `release/shipped-artifacts.json`, regenerate its documentation, and verify
+    coordinated parity:
+
+    ```sh
+    python3 scripts/check-release-matrix.py --write-docs
+    python3 scripts/check-release-matrix.py --require-parity
+    ```
+
+    The Shipped artifact matrix workflow also cryptographically verifies
+    recorded npm/PyPI provenance and complete CLI/Go release inventories.
+
+`make release-everything` is available when you want to start all six workflows
+at once. It pushes all six tags; it does not wait between workflows. The
+step-by-step sequence above makes failures easier to resolve before continuing.
+
+## Plans, retries and evidence
+
+Every release target has a corresponding `plan-release-*`, `plan-retry-*` and
+`retry-*` command (`jacs`, `cli`, `jacsnpm`, `jacspy`, `jacsgo`, `jacs-wasm`).
+`make plan-retry-everything` probes exact registry versions and checks GitHub
+release inventories before proposing retries. An unavailable registry or an
+unverifiable existing asset fails closed. Retries preserve the original tag's
+source identity; they never move a published version to new source.
+
+| Surface | Tag |
+|---|---|
+| All catalogued Rust crates | `crate/v0.15.0` |
+| CLI binaries | `cli/v0.15.0` |
+| Native npm | `npm/v0.15.0` |
+| Python | `pypi/v0.15.0` |
+| Go module/native libraries | `jacsgo/v0.15.0` |
+| Browser npm | `wasm-v0.15.0` |
+
+A source build is not a published release. Check workflow completion, exact
+registry bytes and provenance before describing 0.15.0 as shipped. Mobile
+XCFramework/AAR builds remain separate from app-store/Maven/Swift repository
+publication and physical-device acceptance. Actual HAI deployment is separate
+from source compatibility qualification.

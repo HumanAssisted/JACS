@@ -1,11 +1,15 @@
 [package]
 name = "jacsgo"
-version = "0.13.0"
-publish = false
+version = "0.15.0"
+publish = true
 edition = "2024"
 rust-version = "1.97"
 resolver = "3"
 license = "Apache-2.0"
+description = "JACS native Go C ABI bindings"
+repository = "https://github.com/HumanAssisted/JACS"
+
+include = ["/src/**", "/build.rs", "/Cargo.toml", "/README.md", "/LICENSE", "/LICENSE-APACHE", "/THIRD-PARTY-NOTICES"]
 
 [lib]
 name = "jacsgo"
@@ -21,8 +25,8 @@ human-approval-vendored = ["human-approval", "jacs-binding-core/human-approval-v
 
 [dependencies]
 lazy_static = "1.5.0"
-jacs = { path = "../../jacs" }
-jacs-binding-core = { path = "../../binding-core" }
+jacs = { version = "0.15.0", path = "../../jacs" }
+jacs-binding-core = { version = "0.15.0", path = "../../binding-core" }
 serde_json = "1.0.140"
 log = "0.4.27"
 serde = { version = "1.0", features = ["derive"] }

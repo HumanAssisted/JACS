@@ -1,17 +1,27 @@
-## 0.14.0
+## 0.15.0
 
 (unreleased)
 
 - **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
   primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
-  the focused portable surface; historical native integrations remain archived
-  and are not republished as part of this release.
+  the focused portable surface; native Rust integrations remain isolated in the
+  compatibility workspace and publish through the coordinated Rust workflow.
 - Browser and phone bindings include human-agent creation, encrypted recovery,
   signing-key replacement and prepared-document signing support. New agents
   default to `pq2025`; hardware-protected mobile custody wraps software PQ keys.
-- Coordinated publication targets `jacs-core`, `jacs-mcp`, `jacs-cli`, CLI
-  binaries and `@jacs/wasm`. Mobile stays `publish=false`; native CI packages and
-  physical-device acceptance are separate from registry publication. Candidate
+- Restore Make commands for coordinated version bumps, version checks, releases
+  and retries. Version bumps and checks include the Android Maven package metadata.
+- Restore Node, Python and Go package builds and installed-consumer checks;
+  restore native `@hai.ai/jacs` npm publication with its full API. MCP remains
+  the primary documented integration. All catalogued Rust crates and language
+  packages advance together to 0.15; extended MCP/CLI compatibility crates
+  publish as `jacs-mcp-compat` and `jacs-cli-compat`.
+- Name the unpublished WASM npm package `@hai.ai/jacs-wasm` under the
+  existing `@hai.ai` organization; align release checks and browser consumers.
+- Coordinated CI publication covers all 17 Rust crates (including WASM,
+  mobile, bindings and storage), CLI binaries, Python wheels/source, Go native
+  libraries/module tags, `@hai.ai/jacs` and `@hai.ai/jacs-wasm`. Mobile bundle
+  distribution and physical-device acceptance remain separate. Candidate
   verification and exact artifact provenance must pass before these notes are
   marked released.
 

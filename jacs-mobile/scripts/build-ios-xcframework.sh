@@ -20,15 +20,16 @@ for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
     [[ $'\n'"$installed_targets"$'\n' == *$'\n'"$target"$'\n'* ]] || \
         fail "Missing Rust target $target; add it with rustup target add $target first."
 done
-stage="$repo_root/jacs-mobile/generated/ios-package"
+generated="${JACS_MOBILE_GENERATED_DIR:-$repo_root/jacs-mobile/generated}"
+stage="$generated/ios-package"
 [[ ! -e "$stage/JacsMobileFFI.xcframework" ]] || \
     fail "Output already exists at $stage/JacsMobileFFI.xcframework. Move it aside before rebuilding."
-export CARGO_TARGET_DIR="$repo_root/target"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
 export CARGO_INCREMENTAL=0
 export IPHONEOS_DEPLOYMENT_TARGET=13.0
 if [[ "$reuse_bindings" == true ]]; then
     for filename in JacsMobile.swift JacsMobileFFI.h JacsMobileFFI.modulemap; do
-        [[ -f "jacs-mobile/generated/swift/$filename" ]] || \
+        [[ -f "$generated/swift/$filename" ]] || \
             fail "Generate current Swift bindings before using --reuse-bindings."
     done
 else
@@ -41,15 +42,15 @@ mkdir -p "$stage/Sources/JacsMobile" "$stage/Sources/JacsMobilePlatform" \
     "$stage/Tests/JacsMobilePlatformTests" \
     "$stage/build/headers" "$stage/build/device" "$stage/build/simulator"
 cp jacs-mobile/distribution/ios/Package.swift "$stage/Package.swift"
-cp jacs-mobile/generated/swift/JacsMobile.swift "$stage/Sources/JacsMobile/"
+cp "$generated/swift/JacsMobile.swift" "$stage/Sources/JacsMobile/"
 cp jacs-mobile/platforms/ios/*.swift "$stage/Sources/JacsMobilePlatform/"
 cp jacs-mobile/tests/ios/*.swift "$stage/Tests/JacsMobilePlatformTests/"
-cp jacs-mobile/generated/swift/JacsMobileFFI.h "$stage/build/headers/"
-cp jacs-mobile/generated/swift/JacsMobileFFI.modulemap "$stage/build/headers/module.modulemap"
-cp target/aarch64-apple-ios/release/libjacs_mobile.a "$stage/build/device/libJacsMobileFFI.a"
+cp "$generated/swift/JacsMobileFFI.h" "$stage/build/headers/"
+cp "$generated/swift/JacsMobileFFI.modulemap" "$stage/build/headers/module.modulemap"
+cp "$CARGO_TARGET_DIR/aarch64-apple-ios/release/libjacs_mobile.a" "$stage/build/device/libJacsMobileFFI.a"
 xcrun lipo -create \
-    target/aarch64-apple-ios-sim/release/libjacs_mobile.a \
-    target/x86_64-apple-ios/release/libjacs_mobile.a \
+    "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/release/libjacs_mobile.a" \
+    "$CARGO_TARGET_DIR/x86_64-apple-ios/release/libjacs_mobile.a" \
     -output "$stage/build/simulator/libJacsMobileFFI.a"
 xcodebuild -create-xcframework \
     -library "$stage/build/device/libJacsMobileFFI.a" -headers "$stage/build/headers" \

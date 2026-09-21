@@ -8,7 +8,7 @@ const AGREEMENT_V2_SCENARIO: &str =
     include_str!("../../binding-core/tests/fixtures/agreement_v2_scenarios.json");
 
 fn cmd() -> Command {
-    let mut c = Command::cargo_bin("jacs").expect("jacs binary should exist");
+    let mut c = Command::cargo_bin("jacs-compat").expect("jacs binary should exist");
     c.env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
     c
 }

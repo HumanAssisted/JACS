@@ -1,4 +1,4 @@
-# @jacs/wasm
+# @hai.ai/jacs-wasm
 
 **JACS sign + verify in the browser. No backend required.**
 
@@ -7,7 +7,7 @@
 > an install contract only after the release workflow publishes and smoke-tests
 > the package.
 
-`@jacs/wasm` is the WebAssembly bindings for [JACS](https://github.com/HumanAssisted/JACS).
+`@hai.ai/jacs-wasm` is the WebAssembly bindings for [JACS](https://github.com/HumanAssisted/JACS).
 From a source-built package, await one init call and you can create JACS
 agents, sign messages, verify signed documents, and run multi-party agreements
 entirely client-side.
@@ -30,13 +30,13 @@ npm install /absolute/path/to/JACS/jacs-wasm/pkg
 ```
 
 After the first registry publication, the consumer command becomes
-`npm install @jacs/wasm`. Do not use that registry command until an npm version
+`npm install @hai.ai/jacs-wasm`. Do not use that registry command until an npm version
 exists.
 
 ## Quick start
 
 ```ts
-import { initJacsWasm, createEphemeral } from "@jacs/wasm";
+import { initJacsWasm, createEphemeral } from "@hai.ai/jacs-wasm";
 
 await initJacsWasm();
 
@@ -122,7 +122,7 @@ On the receiving device, obtain the expected agent ID, public key, and
 algorithm from an authenticated registration independently of the blob:
 
 ```ts
-import { reencryptTransferredAgent, localStore, importEncryptedAgent } from "@jacs/wasm";
+import { reencryptTransferredAgent, localStore, importEncryptedAgent } from "@hai.ai/jacs-wasm";
 
 // Inputs: ciphertext from the link relay, the code entered by the user,
 // independently authenticated registration, and a distinct local secret.
@@ -205,7 +205,7 @@ the page's JS.
 
 ### What this means in practice
 
-- **`@jacs/wasm` is not a replacement for a hardware-backed signing
+- **`@hai.ai/jacs-wasm` is not a replacement for a hardware-backed signing
   service.** If the threat model includes XSS, malicious extensions, or
   hostile third-party JS on the same origin, the keys are reachable from
   that JS. Use a hardware key, a secure-enclave-backed
@@ -243,7 +243,7 @@ still belongs to the consuming application.
 namespaces every key under `jacs:` and refuses plaintext-secret payloads:
 
 ```ts
-import { importEncryptedAgent, localStore } from "@jacs/wasm";
+import { importEncryptedAgent, localStore } from "@hai.ai/jacs-wasm";
 
 const password = prompt("Protect this signing key with a strong password")!;
 const encryptedMaterial = agent.exportEncryptedAgent(password);
@@ -260,7 +260,7 @@ localStore.clearAll();                                       // only removes `ja
 ## Observability (`metrics()` + `JACS_WASM_DEBUG`)
 
 The browser has no stdout, no log files, no `/metrics` endpoint —
-`@jacs/wasm` does not pretend otherwise. What it does give you:
+`@hai.ai/jacs-wasm` does not pretend otherwise. What it does give you:
 
 - **Per-handle metrics.** Every `CoreAgentHandle` keeps in-memory
   counters and last-call durations. Call `agent.metrics()` to get a
@@ -278,14 +278,14 @@ The browser has no stdout, no log files, no `/metrics` endpoint —
   operation. Off by default — no spam in production. The flag is
   read every call, so flipping it at runtime takes immediate effect.
 
-## Workers (`@jacs/wasm/worker`)
+## Workers (`@hai.ai/jacs-wasm/worker`)
 
 Long-running ops like pq2025 key generation block the main thread for
 hundreds of milliseconds. The worker subpath lets you push them
 off-thread:
 
 ```ts
-import { createEphemeralInWorker, signMessageInWorker } from "@jacs/wasm/worker";
+import { createEphemeralInWorker, signMessageInWorker } from "@hai.ai/jacs-wasm/worker";
 
 const agent = await createEphemeralInWorker(); // pq2025; keeps key generation off the UI thread
 const signed = await signMessageInWorker(agent, JSON.stringify({ hello: "world" }));

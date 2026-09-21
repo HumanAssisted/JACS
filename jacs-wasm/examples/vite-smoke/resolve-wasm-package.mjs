@@ -6,7 +6,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-const PACKAGE_NAME = "@jacs/wasm";
+const PACKAGE_NAME = "@hai.ai/jacs-wasm";
 const PACKAGE_ROOT_ENV = "JACS_WASM_PACKAGE_ROOT";
 const EXPECTED_VERSION_ENV = "JACS_WASM_EXPECTED_VERSION";
 
@@ -24,8 +24,8 @@ function endsWithInstalledPackageRoot(candidate) {
   return (
     parts.length >= 3 &&
     parts.at(-3) === "node_modules" &&
-    parts.at(-2) === "@jacs" &&
-    parts.at(-1) === "wasm"
+    parts.at(-2) === "@hai.ai" &&
+    parts.at(-1) === "jacs-wasm"
   );
 }
 
@@ -119,7 +119,7 @@ export function resolveWasmPackage({ exampleDir, env = process.env }) {
 
   const requestedRoot = path.normalize(configuredRoot);
   if (!endsWithInstalledPackageRoot(requestedRoot)) {
-    fail(`${PACKAGE_ROOT_ENV} must end in node_modules/@jacs/wasm`);
+    fail(`${PACKAGE_ROOT_ENV} must end in node_modules/@hai.ai/jacs-wasm`);
   }
 
   let rootMetadata;
@@ -137,7 +137,7 @@ export function resolveWasmPackage({ exampleDir, env = process.env }) {
 
   const packageRoot = realpathSync(requestedRoot);
   if (!endsWithInstalledPackageRoot(packageRoot)) {
-    fail(`${PACKAGE_ROOT_ENV} resolves outside node_modules/@jacs/wasm`);
+    fail(`${PACKAGE_ROOT_ENV} resolves outside node_modules/@hai.ai/jacs-wasm`);
   }
   if (packageRoot === localRoot) {
     fail(`${PACKAGE_ROOT_ENV} must not resolve to the local ../../pkg build`);

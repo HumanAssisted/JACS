@@ -1,4 +1,4 @@
-// `@jacs/wasm` main entry point. Hand-written wrapper around the
+// `@hai.ai/jacs-wasm` main entry point. Hand-written wrapper around the
 // wasm-bindgen output (Issues 002 / 007 / Tasks 027 / 032). The wasm-
 // bindgen functions are imported under `_*Raw` aliases; the *public*
 // names re-exported below are PRD §4.3-shaped:
@@ -68,7 +68,7 @@ export async function initJacsWasm(
 export type Algorithm = "ed25519" | "pq2025" | "es256";
 
 /**
- * Stable wire shape of every error thrown by `@jacs/wasm`. The `code`
+ * Stable wire shape of every error thrown by `@hai.ai/jacs-wasm`. The `code`
  * is the load-bearing discriminator; `message` is human-readable but
  * not stable across releases.
  */

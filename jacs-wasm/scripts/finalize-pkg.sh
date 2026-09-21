@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Finalize the wasm-pack-produced `jacs-wasm/pkg/` directory into a
-# publishable `@jacs/wasm` npm package (Task 020).
+# publishable `@hai.ai/jacs-wasm` npm package (Task 020).
 #
 # 1. Reads the version from `jacs-wasm/Cargo.toml` so the npm version
 #    matches the Rust crate version (PRD §4.8 + version-bump checklist).
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 JACS_WASM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PKG_DIR="${JACS_WASM_DIR}/pkg"
+PKG_DIR="${JACS_WASM_PKG_DIR:-${JACS_WASM_DIR}/pkg}"
 TEMPLATE="${JACS_WASM_DIR}/package.template.json"
 LICENSE_SOURCE="${JACS_WASM_DIR}/../LICENSE-APACHE"
 NOTICES_SOURCE="${JACS_WASM_DIR}/../THIRD-PARTY-NOTICES"

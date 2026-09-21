@@ -1,4 +1,4 @@
-// Checked-in declaration stub for `@jacs/wasm` source-tree TypeScript
+// Checked-in declaration stub for `@hai.ai/jacs-wasm` source-tree TypeScript
 // validation (Issue 007 / Task 032).
 //
 // The hand-written wrappers in `index.ts` and `worker/jacs-worker.ts`

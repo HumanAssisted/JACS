@@ -1,0 +1,140 @@
+#ifndef JACS_CGO_H
+#define JACS_CGO_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+// Shared opaque handle types
+typedef void* JacsAgentHandle;
+
+// Memory management
+void jacs_free_string(char* s);
+
+char* jacs_audit(const char* config_path, int recent_n);
+char* jacs_create_agent(const char* name, const char* password, const char* algorithm, const char* data_directory, const char* key_directory, const char* config_path, const char* agent_type, const char* description, const char* domain, const char* default_storage);
+
+// A2A API
+char* jacs_agent_export_agent_card(JacsAgentHandle handle);
+char* jacs_agent_sign_a2a_artifact(JacsAgentHandle handle, const char* artifact_json, const char* artifact_type);
+char* jacs_agent_verify_a2a_artifact(JacsAgentHandle handle, const char* wrapped_json);
+char* jacs_agent_verify_a2a_artifact_with_policy(JacsAgentHandle handle, const char* wrapped_json, const char* agent_card_json, const char* policy);
+char* jacs_agent_assess_a2a_agent(JacsAgentHandle handle, const char* agent_card_json, const char* policy);
+
+// Protocol API
+char* jacs_agent_get_public_key_pem(JacsAgentHandle handle);
+char* jacs_agent_build_auth_header(JacsAgentHandle handle);
+char* jacs_agent_build_request_auth_header(JacsAgentHandle handle, const char* method, const char* url, const uint8_t* body, size_t body_len, const char* audience);
+char* jacs_agent_canonicalize_json(JacsAgentHandle handle, const char* json);
+char* jacs_agent_sign_response(JacsAgentHandle handle, const char* payload_json);
+char* jacs_agent_encode_verify_payload(JacsAgentHandle handle, const char* document);
+char* jacs_agent_decode_verify_payload(JacsAgentHandle handle, const char* encoded);
+char* jacs_agent_extract_document_id(JacsAgentHandle handle, const char* document);
+char* jacs_agent_prepare_signed_event_replay(JacsAgentHandle handle, const char* event_json, const char* server_keys_json, uint64_t max_age_seconds);
+char* jacs_agent_unwrap_signed_event(JacsAgentHandle handle, const char* event_json, const char* server_keys_json);
+
+// Attestation API (available when built with --features attestation)
+char* jacs_agent_create_attestation(JacsAgentHandle handle, const char* params_json);
+char* jacs_agent_verify_attestation(JacsAgentHandle handle, const char* document_key, int full);
+char* jacs_agent_lift_to_attestation(JacsAgentHandle handle, const char* signed_doc_json, const char* claims_json);
+char* jacs_agent_export_attestation_dsse(JacsAgentHandle handle, const char* attestation_json);
+
+// ============================================================================
+// SimpleAgent API — narrow contract via SimpleAgentWrapper
+// ============================================================================
+typedef void* SimpleAgentHandle;
+
+// Error handling
+char* jacs_simple_last_error(void);
+
+// Constructors
+SimpleAgentHandle jacs_simple_create(const char* name, const char* purpose, const char* key_algorithm, char** info_json_out);
+SimpleAgentHandle jacs_simple_load(const char* config_path, int strict);
+SimpleAgentHandle jacs_simple_ephemeral(const char* algorithm, char** info_json_out);
+SimpleAgentHandle jacs_simple_create_with_params(const char* params_json, char** info_json_out);
+void jacs_simple_free(SimpleAgentHandle handle);
+
+// Identity / Introspection
+char* jacs_simple_get_agent_id(SimpleAgentHandle handle);
+char* jacs_simple_key_id(SimpleAgentHandle handle);
+int   jacs_simple_is_strict(SimpleAgentHandle handle);
+char* jacs_simple_export_agent(SimpleAgentHandle handle);
+char* jacs_simple_get_public_key_pem(SimpleAgentHandle handle);
+char* jacs_simple_get_public_key_base64(SimpleAgentHandle handle);
+char* jacs_simple_diagnostics(SimpleAgentHandle handle);
+char* jacs_simple_config_path(SimpleAgentHandle handle);
+
+// W3C AI Agent Protocol interop
+char* jacs_simple_export_w3c_did(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_export_w3c_did_document(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_export_w3c_agent_description(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_generate_w3c_well_known(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_sign_w3c_request(SimpleAgentHandle handle, const char* params_json);
+char* jacs_simple_verify_w3c_request(SimpleAgentHandle handle, const char* proof_json, const char* did_document_json, const char* body, uint64_t max_age_seconds, const char* expected_method, const char* expected_url);
+
+// Verification
+char* jacs_simple_verify_self(SimpleAgentHandle handle);
+char* jacs_simple_verify_json(SimpleAgentHandle handle, const char* signed_document);
+char* jacs_simple_verify_by_id(SimpleAgentHandle handle, const char* document_id);
+
+char* jacs_simple_verify_with_key(SimpleAgentHandle handle, const char* signed_document, const char* public_key_base64);
+
+// Stateless human-approved public evidence verification; no agent handle.
+// Expected context and both role-specific public-key pins are caller-selected.
+// Returns the complete report JSON; free with jacs_free_string. A null result
+// exposes an error via jacs_simple_last_error on the same thread. Native builds
+// without human-approval retain this symbol and return an unsupported error.
+char* jacs_verify_human_approved_document(const char* bundle_json, const char* expected_json, const char* authority_json, const char* provenance_json);
+
+// Signing
+char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);
+char* jacs_simple_sign_raw_bytes(SimpleAgentHandle handle, const uint8_t* data, size_t data_len);
+char* jacs_simple_sign_file(SimpleAgentHandle handle, const char* file_path, int embed);
+
+// Request/response protocol helpers
+char* jacs_simple_build_legacy_auth_header(SimpleAgentHandle handle);
+char* jacs_simple_build_auth_header(SimpleAgentHandle handle, const char* method, const char* url, const uint8_t* body, size_t body_len, const char* audience);
+char* jacs_simple_canonicalize_json(SimpleAgentHandle handle, const char* json_string);
+char* jacs_simple_sign_response(SimpleAgentHandle handle, const char* payload_json);
+char* jacs_simple_encode_verify_payload(SimpleAgentHandle handle, const char* document);
+char* jacs_simple_decode_verify_payload(SimpleAgentHandle handle, const char* encoded);
+char* jacs_simple_extract_document_id(SimpleAgentHandle handle, const char* document);
+char* jacs_simple_prepare_signed_event_replay(SimpleAgentHandle handle, const char* event_json, const char* server_keys_json, uint64_t max_age_seconds);
+char* jacs_simple_unwrap_signed_event(SimpleAgentHandle handle, const char* event_json, const char* server_keys_json);
+
+// Agreement v2
+char* jacs_simple_create_agreement_v2(SimpleAgentHandle handle, const char* input_json);
+char* jacs_simple_apply_agreement_v2(SimpleAgentHandle handle, const char* document_json, const char* mutation_json);
+char* jacs_simple_sign_agreement_v2(SimpleAgentHandle handle, const char* document_json, const char* role);
+char* jacs_simple_verify_agreement_v2(SimpleAgentHandle handle, const char* document_json);
+char* jacs_simple_detect_agreement_v2_branch_conflict(SimpleAgentHandle handle, const char* base_document_json, const char* left_document_json, const char* right_document_json);
+char* jacs_simple_merge_agreement_v2_transcript_branches(SimpleAgentHandle handle, const char* base_document_json, const char* left_document_json, const char* right_document_json);
+char* jacs_simple_resolve_agreement_v2_branch_conflict(SimpleAgentHandle handle, const char* base_document_json, const char* previous_document_json, const char* side_branch_document_json, const char* mutation_json);
+
+// Compatibility key + ecosystem exports (P2 Tasks 002–004c)
+//
+// Identity exports (JWKS, key binding) auto-issue the default identity
+// binding; content exports (AP2 mandate, Agreement-v2 VC) require the
+// explicit `ap2-mandate` / `agreement-vc` binding scope. On failure they
+// return null with the message available via jacs_simple_last_error().
+char* jacs_simple_add_compat_key(SimpleAgentHandle handle);
+char* jacs_simple_issue_compat_binding(SimpleAgentHandle handle, const char* scopes_json, const char* expires_at);
+char* jacs_simple_export_compatibility_jwks(SimpleAgentHandle handle);
+char* jacs_simple_export_compatibility_key_binding(SimpleAgentHandle handle);
+char* jacs_simple_export_ap2_mandate(SimpleAgentHandle handle, const char* checkout_json);
+char* jacs_simple_export_a2a_agent_card(SimpleAgentHandle handle);
+char* jacs_simple_export_agreement_v2_as_vc(SimpleAgentHandle handle, const char* agreement_json);
+
+// Inline text + media signing (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
+//
+// Each export takes an optional `opts_json` parameter (may be null). On
+// success the JSON payload is the binding-core wrapper's success envelope.
+// On failure the JSON payload is `{"error":"...","error_kind":"..."}`;
+// the Go layer matches `error_kind == "MissingSignature"` to return the
+// `ErrMissingSignature` sentinel (PRD §C1).
+char* jacs_agent_sign_text(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+char* jacs_agent_verify_text(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+char* jacs_agent_sign_image(SimpleAgentHandle handle, const char* input_path, const char* output_path, const char* opts_json);
+char* jacs_agent_verify_image(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+char* jacs_agent_extract_media_signature(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+
+#endif

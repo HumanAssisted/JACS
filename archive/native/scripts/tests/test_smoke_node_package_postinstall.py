@@ -90,6 +90,8 @@ class NodePackagePostinstallSmokeTests(unittest.TestCase):
                     }
                 )
                 if command[0] == "npm":
+                    consumer_manifest = json.loads((cwd / "package.json").read_text())
+                    self.assertEqual(consumer_manifest["allowScripts"], {str(package.resolve()): True})
                     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
                     base = env["JACS_CLI_RELEASE_BASE_URL"]
                     asset_name = f"jacs-cli-{version}-linux-x64.tar.gz"

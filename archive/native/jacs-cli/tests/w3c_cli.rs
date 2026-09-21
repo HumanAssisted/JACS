@@ -14,7 +14,7 @@ const REQUEST_URL: &str = "https://api.example.com/tasks?priority=high";
 const REQUEST_BODY: &str = "{\"task\":\"review proposal\",\"ok\":true}";
 
 fn cmd() -> Command {
-    let mut c = Command::cargo_bin("jacs").expect("jacs binary should exist");
+    let mut c = Command::cargo_bin("jacs-compat").expect("jacs binary should exist");
     c.env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
     c
 }

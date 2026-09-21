@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // `playwright.config.ts` starts `vite preview --port 4173` first) and
 // wait until the smoke script reports either `SMOKE OK` or
 // `SMOKE FAILED`. Fail if not OK.
-test("chromium browser uses @jacs/wasm to sign and verify", async (
+test("chromium browser uses @hai.ai/jacs-wasm to sign and verify", async (
   { page },
   testInfo,
 ) => {

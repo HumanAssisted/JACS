@@ -1,8 +1,7 @@
 [package]
-# Archived compatibility code; publishing is intentionally disabled.
-publish = false
-name = "jacs-cli"
-version = "0.13.0"
+publish = true
+name = "jacs-cli-compat"
+version = "0.15.0"
 edition = "2024"
 rust-version = "1.97"
 description = "JACS CLI: command-line interface for JSON AI Communication Standard"
@@ -19,7 +18,7 @@ name = "jacs_cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "jacs"
+name = "jacs-compat"
 path = "src/main.rs"
 
 [features]
@@ -30,8 +29,8 @@ keychain = ["jacs/keychain"]
 agreements = ["jacs/agreements"]
 
 [dependencies]
-jacs = { version = "0.13.0", path = "../jacs" }
-jacs-mcp = { version = "0.13.0", path = "../jacs-mcp", features = ["mcp", "full-tools"], optional = true }
+jacs = { version = "0.15.0", path = "../jacs" }
+jacs-mcp = { package = "jacs-mcp-compat", version = "0.15.0", path = "../jacs-mcp", features = ["mcp", "full-tools"], optional = true }
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
 rpassword = "7.3.1"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
@@ -54,4 +53,4 @@ tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [package.metadata.cargo-install]
-bin = ["jacs"]
+bin = ["jacs-compat"]

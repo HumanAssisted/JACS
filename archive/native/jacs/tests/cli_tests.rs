@@ -24,7 +24,7 @@ const PASSWORD_FILE_ENV_VAR: &str = "JACS_PASSWORD_FILE";
 // }
 
 fn jacs_cli_binary() -> PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_jacs")
+    std::env::var_os("CARGO_BIN_EXE_jacs-compat")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/jacs"))
 }
@@ -39,7 +39,7 @@ fn test_temp_root() -> PathBuf {
 
 #[test]
 fn test_agent_lookup_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     cmd.arg("agent").arg("lookup").arg("--help");
     cmd.assert()
@@ -58,7 +58,7 @@ fn test_agent_lookup_help() -> Result<(), Box<dyn Error>> {
 fn test_agent_lookup_nonexistent_domain() -> Result<(), Box<dyn Error>> {
     // Test lookup against a domain that definitely won't have JACS configured
     // This tests that the CLI handles "not found" cases gracefully
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     cmd.arg("agent")
         .arg("lookup")
@@ -77,7 +77,7 @@ fn test_agent_lookup_nonexistent_domain() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_agent_lookup_with_dns() -> Result<(), Box<dyn Error>> {
     // Test lookup with DNS enabled (will fail to find record but should handle gracefully)
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     cmd.arg("agent").arg("lookup").arg("example.com");
 
@@ -93,7 +93,7 @@ fn test_agent_lookup_with_dns() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_agent_lookup_missing_domain() -> Result<(), Box<dyn Error>> {
     // Test that missing domain argument is handled
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     cmd.arg("agent").arg("lookup");
 
@@ -106,7 +106,7 @@ fn test_agent_lookup_missing_domain() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_cli_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     cmd.arg("--help");
     cmd.assert()
@@ -120,7 +120,7 @@ fn test_cli_help() -> Result<(), Box<dyn Error>> {
 fn test_config_read_default() -> Result<(), Box<dyn Error>> {
     // This test assumes default env vars are set or config is minimal
     // More robust tests might set specific env vars
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     cmd.arg("config").arg("read");
     cmd.assert()
@@ -133,7 +133,7 @@ fn test_config_read_default() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_cli_version_subcommand() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
 
     // The binary is jacs-cli, so it outputs "jacs-cli version: X.Y.Z"
     // and the jacs-cli crate description.
@@ -181,7 +181,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     // --- Run `config create` Interactively (Simulated) ---
     println!("Running: config create (simulated interaction)");
-    let mut cmd_config_create = Command::cargo_bin("jacs")?;
+    let mut cmd_config_create = Command::cargo_bin("jacs-compat")?;
     cmd_config_create.current_dir(&scratch_dir);
     cmd_config_create.arg("config").arg("create");
 
@@ -333,7 +333,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     // Define base command helper that sets env vars
     let base_cmd = || -> Command {
-        let mut cmd = Command::cargo_bin("jacs").unwrap();
+        let mut cmd = Command::cargo_bin("jacs-compat").unwrap();
         cmd.env(PASSWORD_ENV_VAR, dummy_password);
         cmd.env("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
         cmd.current_dir(&scratch_dir); // Use scratch dir as CWD
@@ -608,7 +608,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_verify_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("verify").arg("--help");
     cmd.assert()
         .success()
@@ -621,7 +621,7 @@ fn test_verify_help() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_verify_missing_file() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("verify").arg("nonexistent.json");
     cmd.assert()
         .failure()
@@ -638,7 +638,7 @@ fn test_verify_invalid_json() -> Result<(), Box<dyn Error>> {
     let bad_file = tmp_dir.join("bad.json");
     fs::write(&bad_file, "not json at all")?;
 
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("verify").arg(bad_file.to_string_lossy().as_ref());
     cmd.assert().failure();
 
@@ -655,7 +655,7 @@ fn test_verify_unsigned_json() -> Result<(), Box<dyn Error>> {
     let unsigned_file = tmp_dir.join("unsigned.json");
     fs::write(&unsigned_file, r#"{"hello": "world"}"#)?;
 
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("verify")
         .arg(unsigned_file.to_string_lossy().as_ref());
     cmd.assert().failure();
@@ -666,7 +666,7 @@ fn test_verify_unsigned_json() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_quickstart_help_shows_password_bootstrap_options() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("quickstart").arg("--help");
     cmd.assert()
         .success()
@@ -794,7 +794,7 @@ fn test_agent_verify_uses_configured_default_agent_without_agent_file() -> Resul
     fs::create_dir_all(&quickstart_dir)?;
     fs::create_dir_all(&probe_dir)?;
 
-    let mut quickstart = Command::cargo_bin("jacs")?;
+    let mut quickstart = Command::cargo_bin("jacs-compat")?;
     quickstart
         .current_dir(&quickstart_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
@@ -813,7 +813,7 @@ fn test_agent_verify_uses_configured_default_agent_without_agent_file() -> Resul
         "quickstart should create jacs.config.json"
     );
 
-    let mut verify = Command::cargo_bin("jacs")?;
+    let mut verify = Command::cargo_bin("jacs-compat")?;
     verify
         .current_dir(&probe_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
@@ -843,7 +843,7 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     fs::write(&input_file, r#"{"message": "test verification"}"#)?;
 
     // Sign it with quickstart
-    let sign_output = Command::cargo_bin("jacs")?
+    let sign_output = Command::cargo_bin("jacs-compat")?
         .current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
@@ -866,7 +866,7 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     fs::write(&signed_file, &signed_json)?;
 
     // Now verify with `jacs verify` — it picks up jacs.config.json from cwd
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
@@ -891,7 +891,7 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
     fs::write(&input_file, r#"{"data": "json output test"}"#)?;
 
     // Sign
-    let sign_output = Command::cargo_bin("jacs")?
+    let sign_output = Command::cargo_bin("jacs-compat")?
         .current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
@@ -909,7 +909,7 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
     fs::write(&signed_file, &signed_json)?;
 
     // Verify with --json flag
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
@@ -935,7 +935,7 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     fs::write(&input_file, r#"{"data": "tamper test"}"#)?;
 
     // Sign
-    let sign_output = Command::cargo_bin("jacs")?
+    let sign_output = Command::cargo_bin("jacs-compat")?
         .current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
@@ -955,7 +955,7 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     fs::write(&tampered_file, &tampered)?;
 
     // Verify should fail (exit code 1)
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
@@ -972,7 +972,7 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a").arg("--help");
     cmd.assert()
         .success()
@@ -1010,7 +1010,7 @@ fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
     let card_file = tmp_dir.join("agent-card.json");
     fs::write(&card_file, card_json)?;
 
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a")
         .arg("assess")
         .arg(card_file.to_string_lossy().as_ref())
@@ -1050,7 +1050,7 @@ fn test_a2a_assess_non_jacs_agent_rejected() -> Result<(), Box<dyn Error>> {
     let card_file = tmp_dir.join("plain-card.json");
     fs::write(&card_file, card_json)?;
 
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a")
         .arg("assess")
         .arg(card_file.to_string_lossy().as_ref())
@@ -1093,7 +1093,7 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
     let card_file = tmp_dir.join("json-card.json");
     fs::write(&card_file, card_json)?;
 
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a")
         .arg("assess")
         .arg(card_file.to_string_lossy().as_ref())
@@ -1120,7 +1120,7 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_discover_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a").arg("discover").arg("--help");
     cmd.assert()
         .success()
@@ -1132,7 +1132,7 @@ fn test_a2a_discover_help() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_serve_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a").arg("serve").arg("--help");
     cmd.assert()
         .success()
@@ -1145,7 +1145,7 @@ fn test_a2a_serve_help() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_a2a_discover_nonexistent_domain() -> Result<(), Box<dyn Error>> {
     // Discovery against a URL that won't have an Agent Card
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a").arg("discover").arg("https://example.com");
 
     // Should fail because there's no .well-known/agent-card.json at example.com
@@ -1155,7 +1155,7 @@ fn test_a2a_discover_nonexistent_domain() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_help_shows_all_subcommands() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a").arg("--help");
     cmd.assert()
         .success()
@@ -1169,7 +1169,7 @@ fn test_a2a_help_shows_all_subcommands() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_quickstart_help() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a").arg("quickstart").arg("--help");
     cmd.assert()
         .success()
@@ -1184,7 +1184,7 @@ fn test_a2a_quickstart_help() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("a2a")
         .arg("quickstart")
         .arg("--name")
@@ -1200,7 +1200,7 @@ fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_mcp_help_shows_profile_and_stdio() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("mcp").arg("--help");
     cmd.assert()
         .success()
@@ -1214,7 +1214,7 @@ fn test_mcp_help_shows_profile_and_stdio() -> Result<(), Box<dyn Error>> {
 /// These tests verify the deprecation message is shown.
 #[test]
 fn test_mcp_install_shows_builtin_message() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("mcp").arg("install");
     cmd.assert()
         .success()
@@ -1225,7 +1225,7 @@ fn test_mcp_install_shows_builtin_message() -> Result<(), Box<dyn Error>> {
 /// `jacs mcp run` is deprecated — it should print a deprecation message and exit cleanly.
 #[test]
 fn test_mcp_run_shows_deprecation_message() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("mcp").arg("run");
     cmd.assert()
         .success()
@@ -1236,7 +1236,7 @@ fn test_mcp_run_shows_deprecation_message() -> Result<(), Box<dyn Error>> {
 /// `jacs mcp run` rejects unknown flags (clap validation still applies).
 #[test]
 fn test_mcp_run_rejects_unknown_flags() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("mcp").arg("run").arg("--transport").arg("http");
     cmd.assert().failure();
     Ok(())
@@ -1245,7 +1245,7 @@ fn test_mcp_run_rejects_unknown_flags() -> Result<(), Box<dyn Error>> {
 /// `jacs mcp install` is deprecated — it should print a deprecation message and exit cleanly.
 #[test]
 fn test_mcp_install_shows_deprecation_message() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
+    let mut cmd = Command::cargo_bin("jacs-compat")?;
     cmd.arg("mcp").arg("install");
     cmd.assert()
         .success()

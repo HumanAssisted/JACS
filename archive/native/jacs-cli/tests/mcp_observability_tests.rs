@@ -19,7 +19,7 @@ use tempfile::TempDir;
 const TEST_PASSWORD: &str = "McpObsCliTest!2026";
 
 fn jacs_cmd() -> Command {
-    let mut c = Command::cargo_bin("jacs").expect("jacs binary should exist");
+    let mut c = Command::cargo_bin("jacs-compat").expect("jacs binary should exist");
     c.env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
     c
 }
@@ -50,7 +50,7 @@ fn bootstrap_agent(dir: &TempDir) {
 fn mcp_emits_startup_log_to_stderr_and_keeps_stdout_clean() {
     let dir = TempDir::new().expect("tempdir");
 
-    let assert = Command::cargo_bin("jacs")
+    let assert = Command::cargo_bin("jacs-compat")
         .expect("jacs binary should exist")
         .env("RUST_LOG", "info")
         .env_remove("JACS_CONFIG")

@@ -17,7 +17,7 @@ fn fixtures_raw_dir() -> PathBuf {
 }
 
 fn cmd() -> Command {
-    Command::cargo_bin("jacs").expect("jacs binary should exist")
+    Command::cargo_bin("jacs-compat").expect("jacs binary should exist")
 }
 
 #[test]

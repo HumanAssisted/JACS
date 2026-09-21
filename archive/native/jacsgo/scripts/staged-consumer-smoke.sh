@@ -14,6 +14,7 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/../.." && pwd -P)"
+public_module="$(cd "$repo_root/../.." && pwd -P)/jacsgo"
 fixture="$repo_root/binding-core/tests/fixtures/human_approved_document_v1.json"
 test -f "$fixture" || { echo "missing shared public-proof fixture: $fixture" >&2; exit 1; }
 export GOWORK=off
@@ -66,7 +67,7 @@ consumer="$work/consumer"
 deploy="$work/deploy"
 runtime_cwd="$work/runtime-cwd"
 mkdir -p "$module_copy" "$consumer" "$deploy" "$runtime_cwd"
-cp -R "$repo_root/jacsgo/." "$module_copy/"
+cp -R "$public_module/." "$module_copy/"
 if [[ -e "$module_copy/build" ]]; then
   mv "$module_copy/build" "$work/unused-copied-build"
 fi

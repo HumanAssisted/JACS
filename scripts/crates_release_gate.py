@@ -19,12 +19,14 @@ from typing import Any
 try:
     from http_policy import open_no_redirect
     from release_tag import validate_semver
+    from release_catalog import CRATES
 except ModuleNotFoundError:  # Imported through the scripts namespace in tests.
     from scripts.http_policy import open_no_redirect
     from scripts.release_tag import validate_semver
+    from scripts.release_catalog import CRATES
 
 
-ALLOWED_CRATES = ("jacs-core", "jacs-mcp", "jacs-cli")
+ALLOWED_CRATES = CRATES
 CRATES_API = "https://crates.io/api/v1/crates"
 METADATA_LIMIT = 1024 * 1024
 MAX_CRATE_BYTES = 512 * 1024 * 1024

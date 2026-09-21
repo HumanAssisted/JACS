@@ -1,4 +1,4 @@
-// Worker-smoke check for `@jacs/wasm/worker` (Task 019 acceptance
+// Worker-smoke check for `@hai.ai/jacs-wasm/worker` (Task 019 acceptance
 // criterion). Creates an ephemeral pq2025 agent inside a Web Worker,
 // signs a message, and verifies the result on the main thread. Output
 // is appended to `#output`; a successful run shows `valid: true`.
@@ -7,7 +7,7 @@ import {
   createEphemeralInWorker,
   terminateWorker,
   type WorkerAgentHandle,
-} from "@jacs/wasm/worker";
+} from "@hai.ai/jacs-wasm/worker";
 
 async function runSmoke(): Promise<void> {
   const out = document.getElementById("output") as HTMLPreElement;

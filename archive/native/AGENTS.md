@@ -1,6 +1,11 @@
-> **Archived native workspace guidance.** Paths below are relative to `archive/native`.
-> Publishing is disabled; historical release commands below must not be used.
-> Active portable-workspace instructions remain in the repository-root `AGENTS.md`.
+> **Native compatibility workspace guidance.** Paths below are relative to `archive/native`.
+> Builds and Rust/PyPI/npm/Go publication are supported by the root Makefile and
+> [current release guide](../../RELEASING.md). The release catalog coordinates
+> versions with portable core. Native MCP/CLI packages are `jacs-mcp-compat` and
+> `jacs-cli-compat`, with existing library import names preserved. Historical
+> commands and package paths below describe the pre-move layout; use the root
+> release guide for current commands. Keep this workspace outside the portable
+> dependency graph and preserve its original licenses and compatibility contracts.
 
 Welcome.
 

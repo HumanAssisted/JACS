@@ -54,7 +54,7 @@ try {
         (root / "package.json").write_text(
             json.dumps(
                 {
-                    "name": "@jacs/wasm",
+                    "name": "@hai.ai/jacs-wasm",
                     "version": version,
                     "exports": {
                         ".": {"import": "./index.js"},
@@ -81,18 +81,18 @@ try {
             (EXAMPLE_DIR / "../../pkg").resolve(),
         )
         self.assertEqual(
-            Path(result["aliases"]["@jacs/wasm"]),
+            Path(result["aliases"]["@hai.ai/jacs-wasm"]),
             (EXAMPLE_DIR / "../../pkg/index.js").resolve(),
         )
         self.assertEqual(
-            Path(result["aliases"]["@jacs/wasm/worker"]),
+            Path(result["aliases"]["@hai.ai/jacs-wasm/worker"]),
             (EXAMPLE_DIR / "../../pkg/worker/index.js").resolve(),
         )
 
     def test_registry_mode_resolves_exact_installed_package(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             package_root = (
-                Path(temp_dir) / "consumer" / "node_modules" / "@jacs" / "wasm"
+                Path(temp_dir) / "consumer" / "node_modules" / "@hai.ai" / "jacs-wasm"
             )
             self.make_registry_package(package_root)
 
@@ -108,17 +108,17 @@ try {
         self.assertEqual(result["mode"], "registry")
         self.assertEqual(Path(result["packageRoot"]), package_root.resolve())
         self.assertEqual(
-            Path(result["aliases"]["@jacs/wasm"]),
+            Path(result["aliases"]["@hai.ai/jacs-wasm"]),
             package_root.resolve() / "index.js",
         )
         self.assertEqual(
-            Path(result["aliases"]["@jacs/wasm/worker"]),
+            Path(result["aliases"]["@hai.ai/jacs-wasm/worker"]),
             package_root.resolve() / "worker" / "index.js",
         )
 
     def test_registry_mode_requires_expected_version(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            package_root = Path(temp_dir) / "node_modules" / "@jacs" / "wasm"
+            package_root = Path(temp_dir) / "node_modules" / "@hai.ai" / "jacs-wasm"
             self.make_registry_package(package_root)
             outcome = self.run_resolver({"JACS_WASM_PACKAGE_ROOT": str(package_root)})
 
@@ -133,7 +133,7 @@ try {
 
     def test_registry_mode_rejects_version_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            package_root = Path(temp_dir) / "node_modules" / "@jacs" / "wasm"
+            package_root = Path(temp_dir) / "node_modules" / "@hai.ai" / "jacs-wasm"
             self.make_registry_package(package_root, version="1.2.3")
             outcome = self.run_resolver(
                 {
@@ -145,6 +145,24 @@ try {
         self.assertFalse(outcome["ok"], outcome)
         self.assertIn("expected version 9.8.7", outcome["error"])
         self.assertIn("found 1.2.3", outcome["error"])
+
+    def test_registry_mode_rejects_old_package_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_root = Path(temp_dir) / "node_modules" / "@hai.ai" / "jacs-wasm"
+            self.make_registry_package(package_root)
+            manifest_path = package_root / "package.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["name"] = "@jacs/wasm"
+            manifest_path.write_text(json.dumps(manifest))
+            outcome = self.run_resolver(
+                {
+                    "JACS_WASM_PACKAGE_ROOT": str(package_root),
+                    "JACS_WASM_EXPECTED_VERSION": "9.8.7",
+                }
+            )
+
+        self.assertFalse(outcome["ok"], outcome)
+        self.assertIn("expected package name @hai.ai/jacs-wasm", outcome["error"])
 
     def test_registry_mode_rejects_workspace_or_arbitrary_package_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -158,7 +176,7 @@ try {
             )
 
         self.assertFalse(outcome["ok"], outcome)
-        self.assertIn("node_modules/@jacs/wasm", outcome["error"])
+        self.assertIn("node_modules/@hai.ai/jacs-wasm", outcome["error"])
 
     @unittest.skipIf(os.name == "nt", "symlink semantics differ on Windows")
     def test_registry_mode_rejects_symlink_that_can_mask_local_package(self) -> None:
@@ -166,7 +184,7 @@ try {
             temp = Path(temp_dir)
             target = temp / "local-pkg"
             self.make_registry_package(target)
-            package_root = temp / "node_modules" / "@jacs" / "wasm"
+            package_root = temp / "node_modules" / "@hai.ai" / "jacs-wasm"
             package_root.parent.mkdir(parents=True)
             package_root.symlink_to(target, target_is_directory=True)
 
@@ -184,7 +202,7 @@ try {
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            package_root = Path(temp_dir) / "node_modules" / "@jacs" / "wasm"
+            package_root = Path(temp_dir) / "node_modules" / "@hai.ai" / "jacs-wasm"
             self.make_registry_package(package_root)
             (package_root / "worker" / "jacs-worker.js").unlink()
 

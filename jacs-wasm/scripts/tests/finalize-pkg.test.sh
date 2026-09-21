@@ -2,7 +2,7 @@
 # Test fixture for `scripts/finalize-pkg.sh` (Task 020). Verifies:
 #
 # 1. The script reads the version from `jacs-wasm/Cargo.toml`.
-# 2. The merged `pkg/package.json` carries `name: "@jacs/wasm"`, the
+# 2. The merged `pkg/package.json` carries `name: "@hai.ai/jacs-wasm"`, the
 #    right `version`, the `exports` map (including `./worker`), and
 #    `files` listing the expected artifacts.
 # 3. The finalized npm package contains the full Apache-2.0 license text and
@@ -79,7 +79,7 @@ def expect(cond, msg):
     if not cond:
         errors.append(msg)
 
-expect(pkg.get("name") == "@jacs/wasm", f"name={pkg.get('name')!r}, expected @jacs/wasm")
+expect(pkg.get("name") == "@hai.ai/jacs-wasm", f"name={pkg.get('name')!r}, expected @hai.ai/jacs-wasm")
 expect(pkg.get("version") == cargo_version, f"version={pkg.get('version')!r}, expected {cargo_version!r}")
 expect(pkg.get("type") == "module", f"type={pkg.get('type')!r}, expected module")
 expect(pkg.get("sideEffects") is False, f"sideEffects={pkg.get('sideEffects')!r}, expected false")

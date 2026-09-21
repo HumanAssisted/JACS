@@ -20,9 +20,11 @@ from typing import NamedTuple
 try:
     from http_policy import open_no_redirect
     from release_tag import parse_release_ref, validate_semver
+    from release_catalog import CRATES, CRATE_MANIFESTS
 except ModuleNotFoundError:  # Imported through the scripts namespace in tests.
     from scripts.http_policy import open_no_redirect
     from scripts.release_tag import parse_release_ref, validate_semver
+    from scripts.release_catalog import CRATES, CRATE_MANIFESTS
 
 
 REPOSITORY = "HumanAssisted/JACS"
@@ -68,13 +70,19 @@ class ReleasePlan(NamedTuple):
 SURFACES = {
     "crate": SurfaceSpec("jacs-core/Cargo.toml", "crate/v", ("package", "version")),
     "cli": SurfaceSpec("jacs-cli/Cargo.toml", "cli/v", ("package", "version")),
+    "npm": SurfaceSpec("archive/native/jacsnpm/package.json", "npm/v", ("version",)),
+    "python": SurfaceSpec("archive/native/jacspy/pyproject.toml", "pypi/v", ("project", "version")),
+    "go": SurfaceSpec("archive/native/jacsgo/lib/Cargo.toml", "jacsgo/v", ("package", "version")),
     "wasm": SurfaceSpec("jacs-wasm/package.template.json", "wasm-v", ("version",)),
 }
-RELEASE_ORDER = ("crate", "cli", "wasm")
+RELEASE_ORDER = ("crate", "cli", "python", "npm", "go", "wasm")
 
-RUST_CRATES = ("jacs-core", "jacs-mcp", "jacs-cli")
-RUST_CRATE_MANIFESTS = {crate: f"{crate}/Cargo.toml" for crate in RUST_CRATES}
-GITHUB_RELEASES = {"cli": "HumanAssisted/JACS/.github/workflows/release-cli.yml"}
+RUST_CRATES = CRATES
+RUST_CRATE_MANIFESTS = CRATE_MANIFESTS
+GITHUB_RELEASES = {
+    "cli": "HumanAssisted/JACS/.github/workflows/release-cli.yml",
+    "go": "HumanAssisted/JACS/.github/workflows/release-jacsgo.yml",
+}
 
 
 CommandRunner = Callable[[list[str], int], subprocess.CompletedProcess[str]]
@@ -531,7 +539,7 @@ def retry_tag(
 
 def _release_message(surface: str, version: str) -> str | None:
     if surface == "wasm":
-        return f"Release @jacs/wasm {version}"
+        return f"Release @hai.ai/jacs-wasm {version}"
     return None
 
 
@@ -702,7 +710,7 @@ def probe_retry_surfaces(
     if rust_missing:
         missing.append("crate")
 
-    for surface, package in (("wasm", "@jacs/wasm"),):
+    for surface, package in (("npm", "@hai.ai/jacs"), ("wasm", "@hai.ai/jacs-wasm")):
         version = _surface_version(surface, root)
         encoded = urllib.parse.quote(package, safe="@")
         if not _probe_url(
@@ -713,7 +721,15 @@ def probe_retry_surfaces(
         ):
             missing.append(surface)
 
-    for surface in ("cli",):
+    python_version = _surface_version("python", root)
+    if not _probe_url(
+        f"https://pypi.org/pypi/jacs/{python_version}/json",
+        f"PyPI jacs {python_version}", open_url=open_url,
+        timeout_seconds=http_timeout_seconds,
+    ):
+        missing.append("python")
+
+    for surface in ("cli", "go"):
         tag = surface_tag(surface, root)
         encoded_tag = urllib.parse.quote(tag, safe="")
         exists = _probe_url(

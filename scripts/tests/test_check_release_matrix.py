@@ -25,23 +25,45 @@ class SourceVersionAlignmentTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.sources = {
-            **{f"{crate}/Cargo.toml": crate for crate in (
-                "jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli",
-            )},
-            "jacs-wasm/package.template.json": "@jacs/wasm (npm)",
+            **{relative: name for name, relative in release_matrix.CRATE_MANIFESTS.items()},
+            "jacs-wasm/package.template.json": "@hai.ai/jacs-wasm (npm)",
+            "archive/native/jacsnpm/package.json": "@hai.ai/jacs (npm)",
             "jacs-mcp/contract/jacs-mcp-contract.json": "jacs-mcp contract",
+            "archive/native/jacs-mcp/contract/jacs-mcp-contract.json": "jacs-mcp-compat contract",
+            "archive/native/jacspy/pyproject.toml": "jacs (Python)",
+            "jacs-mobile/distribution/android/library/build.gradle.kts": "jacs-mobile (Android)",
         }
         for relative in self.sources:
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             if relative.endswith("Cargo.toml"):
-                path.write_text('[package]\nversion = "1.2.3"\n')
+                path.write_text(f'[package]\nname = "{self.sources[relative]}"\nversion = "1.2.3"\n')
+            elif relative.endswith("pyproject.toml"):
+                path.write_text('[project]\nname = "jacs"\nversion = "1.2.3"\n')
+            elif relative.endswith("build.gradle.kts"):
+                path.write_text('group = "ai.hai"\nversion = "1.2.3"\n')
             elif "contract" in relative:
                 path.write_text('{"server": {"version": "1.2.3"}}\n')
+            elif relative == "archive/native/jacsnpm/package.json":
+                path.write_text('{"name": "@hai.ai/jacs", "version": "1.2.3"}\n')
             else:
                 path.write_text('{"version": "1.2.3"}\n')
-        matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
-        matrix["source_version"] = "1.2.3"
+        (self.root / "jacsgo").mkdir()
+        (self.root / "jacsgo/go.mod").write_text("module github.com/HumanAssisted/JACS/jacsgo\n")
+        self.npm_lock = self.root / "archive/native/jacsnpm/package-lock.json"
+        self.npm_lock.write_text(json.dumps({
+            "name": "@hai.ai/jacs", "version": "1.2.3", "lockfileVersion": 3,
+            "packages": {"": {"name": "@hai.ai/jacs", "version": "1.2.3"}},
+        }))
+        matrix = {
+            "source_version": "1.2.3",
+            "artifacts": {
+                surface: {"registry": "registry", "version": None,
+                          "status": "source-only", "platforms": [], "evidence": "source fixture"}
+                for surface in release_matrix.SURFACE_LABELS
+            },
+        }
+        matrix["artifacts"]["crate"]["versions"] = dict.fromkeys(release_matrix.CRATE_MANIFESTS)
         matrix_path = self.root / "shipped-artifacts.json"
         matrix_path.write_text(json.dumps(matrix))
         docs_path = self.root / "release-status.md"
@@ -78,7 +100,7 @@ class SourceVersionAlignmentTests(unittest.TestCase):
         before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
         status, stdout, stderr = self.check("--show-versions")
         self.assertEqual(status, 0, stderr)
-        for label in (*self.sources.values(), "release matrix"):
+        for label in (*self.sources.values(), "jacsgo (Go)", "release matrix"):
             self.assertIn(f"  {label:<24} 1.2.3", stdout)
         self.assertEqual(before, {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()})
 
@@ -94,15 +116,39 @@ class SourceVersionAlignmentTests(unittest.TestCase):
                 self.assertNotIn("OK:", stdout)
                 path.write_bytes(original)
 
-    def test_archived_versions_do_not_need_to_match(self) -> None:
-        path = self.root / "archive/native/jacsnpm/package.json"
+    def test_unpublished_example_versions_do_not_need_to_match(self) -> None:
+        path = self.root / "archive/native/jacs/examples/observability/Cargo.toml"
         path.parent.mkdir(parents=True)
-        original = '{"name": "@hai.ai/jacs", "version": "0.10.1", "private": true}\n'
+        original = '[package]\nname = "jacs-observability-demo"\nversion = "0.10.1"\n'
         path.write_text(original)
         status, stdout, stderr = self.check("--show-versions")
         self.assertEqual(status, 0, stderr)
-        self.assertNotIn("@hai.ai/jacs", stdout)
+        self.assertNotIn("jacs-observability-demo", stdout)
         self.assertEqual(path.read_text(), original)
+
+    def test_npm_lock_metadata_must_match_package(self) -> None:
+        original = json.loads(self.npm_lock.read_text())
+        for target in ("top", "root"):
+            for field, value in (("name", "@other/jacs"), ("version", "9.9.9")):
+                with self.subTest(target=target, field=field):
+                    broken = copy.deepcopy(original)
+                    metadata = broken if target == "top" else broken["packages"][""]
+                    metadata[field] = value
+                    self.npm_lock.write_text(json.dumps(broken))
+                    status, stdout, stderr = self.check()
+                    self.assertEqual(status, 1)
+                    self.assertIn("npm source metadata validation failed", stderr)
+                    self.assertNotIn("OK:", stdout)
+
+    def test_ambiguous_or_unsupported_android_versions_fail(self) -> None:
+        path = self.root / "jacs-mobile/distribution/android/library/build.gradle.kts"
+        for contents in ('', 'version = "1.2.3"\nversion = "9.9.9"\n', 'version = project.property("version")\n'):
+            with self.subTest(contents=contents):
+                path.write_text(contents)
+                status, stdout, stderr = self.check()
+                self.assertEqual(status, 1)
+                self.assertIn("Android Maven metadata: expected one literal version field", stderr)
+                self.assertNotIn("OK:", stdout)
 
 
 class ReleasePlatformEvidenceTests(unittest.TestCase):
@@ -154,13 +200,14 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "platforms": ["test target"],
                     "evidence": "runtime smoke passed",
                 }
-                for surface in ("crate", "cli", "wasm")
+                for surface in release_matrix.SURFACE_LABELS
             }
         }
         rendered = release_matrix.render_documentation_matrix(matrix)
         self.assertIn(release_matrix.DOC_MATRIX_START, rendered)
-        self.assertIn("Browser (`@jacs/wasm`)", rendered)
-        self.assertEqual(rendered.count("runtime smoke passed"), 3)
+        self.assertIn("Browser (`@hai.ai/jacs-wasm`)", rendered)
+        self.assertIn("Node.js (`@hai.ai/jacs`)", rendered)
+        self.assertEqual(rendered.count("runtime smoke passed"), 6)
 
     def test_deployment_header_matches_inventory_observation_date(self) -> None:
         matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
@@ -180,7 +227,7 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "platforms": ["test target"],
                     "evidence": "runtime smoke passed",
                 }
-                for surface in ("crate", "cli", "wasm")
+                for surface in release_matrix.SURFACE_LABELS
             }
         }
         broken = copy.deepcopy(matrix)
@@ -194,36 +241,40 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "active artifact scope"):
             release_matrix.render_documentation_matrix(matrix)
 
-    def test_registry_queries_all_three_crates_and_browser_package(self) -> None:
+    def test_registry_queries_complete_catalog_and_language_registries(self) -> None:
         urls = []
 
         def metadata(url, **_options):
             urls.append(url)
             if "crates.io" in url:
                 return {"crate": {"max_version": "0.13.0"}}
+            if "pypi.org" in url:
+                return {"info": {"version": "0.13.0"}}
+            if "proxy.golang.org" in url:
+                return {"Version": "v0.13.0"}
             return {"version": "0.13.0"}
 
         with mock.patch.object(release_matrix, "get_json", side_effect=metadata):
             self.assertEqual(
                 release_matrix.registry_versions(),
-                {"crate": "0.13.0", "cli": "0.13.0", "wasm": "0.13.0"},
+                dict.fromkeys(release_matrix.SURFACE_LABELS, "0.13.0"),
             )
         self.assertEqual(urls, [
-            "https://crates.io/api/v1/crates/jacs-core",
-            "https://crates.io/api/v1/crates/jacs-mcp",
-            "https://crates.io/api/v1/crates/jacs-cli",
-            "https://registry.npmjs.org/@jacs%2Fwasm/latest",
+            *[f"https://crates.io/api/v1/crates/{crate}" for crate in release_matrix.CRATE_MANIFESTS],
+            "https://registry.npmjs.org/@hai.ai%2Fjacs/latest",
+            "https://registry.npmjs.org/@hai.ai%2Fjacs-wasm/latest",
+            "https://pypi.org/pypi/jacs/json",
+            "https://proxy.golang.org/github.com/!human!assisted/!j!a!c!s/jacsgo/@latest",
         ])
 
-    def test_disagreeing_crate_versions_fail_closed(self) -> None:
-        responses = [
-            {"crate": {"max_version": "0.13.0"}},
-            {"crate": {"max_version": "0.12.0"}},
-            {"crate": {"max_version": "0.13.0"}},
-        ]
+    def test_pre_release_registry_observations_preserve_missing_and_different_crates(self) -> None:
+        responses = [{"crate": {"max_version": "0.13.0"}}, None,
+                     *[{"crate": {"max_version": "0.12.0"}} for _ in range(15)]]
         with mock.patch.object(release_matrix, "get_json", side_effect=responses):
-            with self.assertRaisesRegex(ValueError, "different recorded registry"):
-                release_matrix.registry_versions()
+            observed = release_matrix.registry_crate_versions()
+        self.assertEqual(observed["jacs-core"], "0.13.0")
+        self.assertIsNone(observed["jacs-media"])
+        self.assertEqual(observed["jacs-surrealdb"], "0.12.0")
 
     def test_cli_platforms_map_to_exact_release_assets(self) -> None:
         assets = release_matrix.expected_cli_assets(
@@ -256,7 +307,7 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "status": "unpublished",
                     "platforms": [],
                 }
-                for surface in ("crate", "cli", "wasm")
+                for surface in release_matrix.SURFACE_LABELS
             }
         }
         matrix["artifacts"]["wasm"] = {
@@ -293,7 +344,7 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
                     "status": "unpublished",
                     "platforms": [],
                 }
-                for surface in ("crate", "cli", "wasm")
+                for surface in release_matrix.SURFACE_LABELS
             }
         }
         matrix["artifacts"]["cli"] = {
@@ -333,6 +384,32 @@ class ReleasePlatformEvidenceTests(unittest.TestCase):
         self.assertIn(
             "CLI GitHub release asset missing: jacs-cli.spdx.json", failures
         )
+
+    def test_native_npm_publication_requires_integrity_and_provenance(self) -> None:
+        matrix = {"artifacts": {
+            surface: {"version": None, "status": "unpublished", "platforms": []}
+            for surface in release_matrix.SURFACE_LABELS
+        }}
+        matrix["artifacts"]["npm"] = {
+            "version": "0.15.0", "status": "published-current", "platforms": ["Node.js"],
+        }
+        registry = {"dist": {
+            "integrity": "sha512-example",
+            "attestations": {"provenance": {"predicateType": "example"}},
+        }}
+        with mock.patch.object(release_matrix, "get_json", return_value=registry) as query:
+            failures = []
+            release_matrix.validate_online_asset_evidence(matrix, failures)
+        self.assertEqual(failures, [])
+        query.assert_called_once_with("https://registry.npmjs.org/@hai.ai%2Fjacs/0.15.0")
+        for field, message in (("integrity", "integrity digest"), ("attestations", "provenance attestation")):
+            with self.subTest(field=field):
+                broken = copy.deepcopy(registry)
+                del broken["dist"][field]
+                with mock.patch.object(release_matrix, "get_json", return_value=broken), redirect_stderr(io.StringIO()):
+                    failures = []
+                    release_matrix.validate_online_asset_evidence(matrix, failures)
+                self.assertEqual(failures, [f"Node npm release 0.15.0 has no registry {message}"])
 
 
 if __name__ == "__main__":

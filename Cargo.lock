@@ -1225,7 +1225,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jacs-cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64",
  "clap",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-core"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-mcp"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64",
  "jacs-core",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-mobile"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64",
  "jacs-core",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-wasm"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64",
  "console_error_panic_hook",

@@ -24,12 +24,12 @@ def load_module():
 
 
 class RecordedRegistryProvenanceTests(unittest.TestCase):
-    def test_does_not_select_unpublished_wasm_or_archived_surfaces(self) -> None:
+    def test_does_not_select_unpublished_surfaces(self) -> None:
         module = load_module()
         matrix = {
             "artifacts": {
-                "python": {"version": "0.11.4", "status": "published"},
-                "node": {"version": "0.11.4", "status": "published-current"},
+                "python": {"version": None, "status": "source-only-restored"},
+                "npm": {"version": None, "status": "source-only-restored"},
                 "wasm": {"version": None, "status": "unpublished"},
             }
         }
@@ -44,7 +44,7 @@ class RecordedRegistryProvenanceTests(unittest.TestCase):
         matrix = {
             "artifacts": {
                 "python": {"version": "0.11.4", "status": "published"},
-                "node": {"version": "0.11.4", "status": "published"},
+                "npm": {"version": "0.15.0", "status": "published"},
                 "wasm": {"version": "0.11.4", "status": "published"},
             }
         }
@@ -53,12 +53,15 @@ class RecordedRegistryProvenanceTests(unittest.TestCase):
             path.write_text(json.dumps(matrix), encoding="utf-8")
             module.verify_recorded_releases(
                 path,
+                verify_pypi=lambda version: calls.append(("pypi:jacs", version)),
                 verify_npm=lambda package, version: calls.append((package, version)),
             )
         self.assertEqual(
             calls,
             [
-                ("@jacs/wasm", "0.11.4"),
+                ("pypi:jacs", "0.11.4"),
+                ("@hai.ai/jacs", "0.15.0"),
+                ("@hai.ai/jacs-wasm", "0.11.4"),
             ],
         )
 
@@ -69,23 +72,23 @@ class RecordedRegistryProvenanceTests(unittest.TestCase):
         def run(command: list[str], cwd: Path, timeout_seconds: int):
             calls.append(command)
             if command[1] == "install":
-                package_root = cwd / "node_modules" / "@jacs" / "wasm"
+                package_root = cwd / "node_modules" / "@hai.ai" / "jacs-wasm"
                 package_root.mkdir(parents=True)
                 (package_root / "package.json").write_text(
-                    '{"name":"@jacs/wasm","version":"0.11.4"}',
+                    '{"name":"@hai.ai/jacs-wasm","version":"0.11.4"}',
                     encoding="utf-8",
                 )
             return subprocess.CompletedProcess(command, 0, "", "")
 
         module.verify_npm_release(
-            "@jacs/wasm",
+            "@hai.ai/jacs-wasm",
             "0.11.4",
             run=run,
             timeout_seconds=17,
         )
         self.assertEqual(calls[0][0:2], ["npm", "install"])
         self.assertIn("--ignore-scripts", calls[0])
-        self.assertIn("@jacs/wasm@0.11.4", calls[0])
+        self.assertIn("@hai.ai/jacs-wasm@0.11.4", calls[0])
         self.assertEqual(calls[1], ["npm", "audit", "signatures"])
 
 

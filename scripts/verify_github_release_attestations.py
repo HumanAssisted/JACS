@@ -681,7 +681,7 @@ def recorded_release_specs(matrix: object) -> list[ReleaseSpec]:
         raise ValueError("shipped-artifact matrix must contain an artifacts object")
     artifacts = matrix["artifacts"]
     specs: list[ReleaseSpec] = []
-    for surface, prefix in (("cli", "cli/v"),):
+    for surface, prefix in (("cli", "cli/v"), ("go", "jacsgo/v")):
         artifact = artifacts.get(surface)
         if not isinstance(artifact, dict):
             raise ValueError(f"shipped-artifact matrix is missing {surface!r}")

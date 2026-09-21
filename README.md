@@ -1,6 +1,12 @@
-# JACS portable keys and signed JSON
+# JACS: MCP and portable signed JSON
 
 JACS creates, unlocks, signs with, verifies, rotates, and transfers encrypted agent keys across Rust, browsers, Android, and iOS. New browser, mobile, CLI, and MCP agents use `pq2025` (ML-DSA-87). Algorithm changes are explicit; no automatic classical fallback occurs.
+
+**MCP is the primary integration guide.** Start the stdio server from this
+checkout with `cargo run --locked -p jacs-cli -- mcp`, then follow the
+[MCP guide](jacs-mcp/README.md). It starts with verification only; local signing
+requires explicit configuration. The installed CLI exposes the same server as
+`jacs mcp`.
 
 The active workspace has five crates:
 
@@ -12,7 +18,7 @@ The active workspace has five crates:
 | `jacs-mcp` | Stdio create/sign/verify/rotate/reencrypt and encrypted import/export; verify-only by default |
 | `jacs-cli` | Thin `jacs` binary, including `jacs mcp` |
 
-The legacy native stack, database backends, email/A2A/DNS/trust/network/media integrations, and native Node/Python/Go bindings are preserved in [`archive/native`](archive/native/README.md). That separate workspace is not part of the active dependency graph and its crates cannot be published. The existing native HAI SDK can explicitly use it while migrating to the portable core. Existing licenses remain in force; moving source here does not relicense it.
+The native stack, database backends, email/A2A/DNS/trust/network/media integrations, and Node/Python/Go bindings are preserved in [`archive/native`](archive/native/README.md). Its Rust crates remain separate from the portable dependency graph. The root Makefile supports native binding builds, installed-package checks and CI publication of every catalogued Rust crate, Python, Go and both npm packages. The existing HAI SDK uses this compatibility workspace. Existing licenses remain in force.
 
 ## Build and use
 
@@ -27,6 +33,30 @@ cargo run --locked -p jacs-cli -- mcp
 Published packages may precede this source change. See [release status](docs/release-status.md); these commands build this checkout. The distribution command remains `cargo install jacs-cli`, with one executable named `jacs`.
 
 See the [CLI guide](jacs-cli/README.md), [MCP contract](jacs-mcp/README.md), [browser guide](jacs-wasm/README.md), and [mobile guide](jacs-mobile/README.md). Passwords are obtained from the terminal or a designated environment variable, never command arguments or MCP tool parameters. File custody uses private directories, locked atomic replacement, and encrypted material only; Windows custody refuses operations until an ACL-backed store is provided.
+
+## Native language packages
+
+Node, Python and Go remain available for direct library integration. From the
+repository root, with Rust, Node/npm, Python/maturin and Go installed:
+
+```sh
+make build-jacsnpm       # @hai.ai/jacs npm tarball
+make build-jacspy        # jacs Python wheel
+make build-jacsgo        # Go native library and checksum
+make test-bindings       # Build all three and test fresh installed consumers
+```
+
+Candidates are written to `target/native-bindings/artifacts`. Builds share an
+isolated native Cargo target and run sequentially. Set `JACS_NATIVE_TARGET_DIR`
+and `JACS_NATIVE_OUTPUT_DIR` to place outputs elsewhere. These commands preserve
+the native APIs, including the Node client and signing-input exports. They do
+not publish packages.
+
+All release packages follow the coordinated 0.15 version. `make versions` checks
+all 17 Rust crates, both npm packages, Python, Go, mobile metadata and contracts.
+The compatibility MCP and CLI crates publish as `jacs-mcp-compat` and
+`jacs-cli-compat`; the portable `jacs mcp` remains the primary documented entry.
+See [releasing](RELEASING.md) for registry setup and the release commands.
 
 ## Shared Rust cache for local worktrees
 

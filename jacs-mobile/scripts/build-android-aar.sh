@@ -32,18 +32,19 @@ done
 # All output is staged under ignored generated/. Dependencies may be fetched by
 # cargo/Gradle, but this script never installs SDKs, toolchains or system packages.
 export ANDROID_HOME="$android_sdk"
-export CARGO_TARGET_DIR="$repo_root/target"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
+generated="${JACS_MOBILE_GENERATED_DIR:-$repo_root/jacs-mobile/generated}"
 export CARGO_INCREMENTAL=0
 if [[ "$reuse_bindings" == true ]]; then
-    [[ -f jacs-mobile/generated/kotlin/ai/hai/jacs/jacs_mobile.kt ]] || \
+    [[ -f "$generated/kotlin/ai/hai/jacs/jacs_mobile.kt" ]] || \
         fail "Generate current Kotlin bindings before using --reuse-bindings."
 else
     bash jacs-mobile/scripts/generate-bindings.sh
 fi
-stage="$repo_root/jacs-mobile/generated/android-project"
+stage="$generated/android-project"
 mkdir -p "$stage/library/src/main/kotlin" "$stage/library/src/main/jniLibs"
 cp -R jacs-mobile/distribution/android/. "$stage/"
-cp -R jacs-mobile/generated/kotlin/. "$stage/library/src/main/kotlin/"
+cp -R "$generated/kotlin/." "$stage/library/src/main/kotlin/"
 mkdir -p "$stage/library/src/main/kotlin/ai/hai/jacs/platform"
 cp jacs-mobile/platforms/android/*.kt "$stage/library/src/main/kotlin/ai/hai/jacs/platform/"
 mkdir -p "$stage/library/src/androidTest/kotlin/ai/hai/jacs/platform"

@@ -2,10 +2,10 @@ use predicates::str::contains;
 use std::path::PathBuf;
 
 /// Resolve the `jacs` binary.  When run via `cargo test -p jacs` the
-/// `CARGO_BIN_EXE_jacs` env-var is **not** set (the binary lives in
+/// `CARGO_BIN_EXE_jacs-compat` env-var is **not** set (the binary lives in
 /// jacs-cli, not jacs).  Fall back to the workspace target directory.
 fn jacs_cli_binary() -> PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_jacs")
+    std::env::var_os("CARGO_BIN_EXE_jacs-compat")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/jacs"))
 }

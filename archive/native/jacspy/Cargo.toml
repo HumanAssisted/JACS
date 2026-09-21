@@ -1,12 +1,15 @@
 [package]
 name = "jacspy"
-version = "0.13.0"
-publish = false
+version = "0.15.0"
+publish = true
 edition = "2024"
 rust-version = "1.97"
 resolver = "3"
 license = "Apache-2.0"
-exclude = ["examples/**"]
+description = "JACS native Python bindings via PyO3"
+repository = "https://github.com/HumanAssisted/JACS"
+
+include = ["/src/**", "/build.rs", "/Cargo.toml", "/README.md", "/LICENSE", "/LICENSE-APACHE", "/THIRD-PARTY-NOTICES", "/pyproject.toml", "/python/**"]
 
 [lib]
 name = "jacspy"
@@ -27,11 +30,11 @@ lazy_static = "1.5.0"
 # 0.29 floor: 0.24 had RUSTSEC-2026-0176 (PyList/PyTuple iterator OOB read)
 # and RUSTSEC-2026-0177 (missing Sync bound on PyCFunction::new_closure)
 pyo3 = { version = "0.29", features = ["abi3-py310"] }
-jacs = { path = "../jacs" }
-jacs-binding-core = { path = "../binding-core" }
+jacs = { version = "0.15.0", path = "../jacs" }
+jacs-binding-core = { version = "0.15.0", path = "../binding-core" }
 # Pulled in for `path_policy::resolve` only — PRD §4.2.6 single-source-of-truth
 # delegate (Issue 022). default-features = false skips rmcp / tokio / contract.
-jacs-mcp = { path = "../jacs-mcp", default-features = false }
+jacs-mcp = { version = "0.15.0", package = "jacs-mcp-compat", path = "../jacs-mcp", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 serde_json = "1.0.140"
 log = "0.4.27"

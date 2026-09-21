@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Offline, validated release-version updates for the five portable packages.
+"""Offline, validated release-version updates for every published JACS package.
 
 All edits are prepared and parsed before any file is staged. Replacements are
 atomic per file; this is not a transaction across a process/power interruption.
-Cargo.lock third-party versions and checksums are preserved exactly. Archived
-package versions stay fixed; only their two active-core dependency edges and
-matching local core lock entries follow a portable release.
+Cargo.lock third-party versions and checksums are preserved exactly. Portable
+and native packages share one release version without sharing a workspace.
 """
 
 import argparse
@@ -15,14 +14,18 @@ import os
 from pathlib import Path
 import re
 import stat
+import sys
 import tempfile
 import tomllib
 
+# A plan must not create even incidental bytecode-cache files.
+sys.dont_write_bytecode = True
+try:
+    from release_catalog import CRATE_MANIFESTS
+except ModuleNotFoundError:
+    from scripts.release_catalog import CRATE_MANIFESTS
+
 CRATES = ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli")
-ARCHIVE_CORE_EDGES = {
-    "archive/native/jacs": "jacs",
-    "archive/native/binding-core": "jacs-binding-core",
-}
 ARCHIVE_LOCKS = (
     "archive/native/Cargo.lock",
     "archive/native/jacs/examples/observability/Cargo.lock",
@@ -60,37 +63,38 @@ def dependencies(value):
         return
     for key, child in value.items():
         if key in ("dependencies", "dev-dependencies", "build-dependencies") and isinstance(child, dict):
-            yield child
+            yield key, child
         elif isinstance(child, dict):
             yield from dependencies(child)
 
 
-def manifest_edit(root, crate, text, current, new, *, package_name=None, bump_package=True, targets=CRATES):
+def manifest_edit(root, crate, text, current, new, *, package_name=None):
     parsed = tomllib.loads(text)
     require(isinstance(parsed.get("package"), dict), f"{crate}: package table missing")
     require(parsed["package"].get("name") == (package_name or crate), f"{crate}: package name mismatch")
     expected = copy.deepcopy(parsed)
-    if bump_package:
-        require(parsed["package"].get("version") == current, f"{crate}: package version mismatch")
-        expected["package"]["version"] = new
-        package = re.search(r"(?ms)^\[package\][^\n]*\n.*?(?=^\[|\Z)", text)
-        require(package is not None, f"{crate}: missing package table")
-        updated = replace_once(r'^(version\s*=\s*")[^"]+("[^\n]*)$', rf'\g<1>{new}\2', package[0], crate)
-        text = text[:package.start()] + updated + text[package.end():]
+    require(parsed["package"].get("version") == current, f"{crate}: package version mismatch")
+    expected["package"]["version"] = new
+    package = re.search(r"(?ms)^\[package\][^\n]*\n.*?(?=^\[|\Z)", text)
+    require(package is not None, f"{crate}: missing package table")
+    updated = replace_once(r'^(version\s*=\s*")[^"]+("[^\n]*)$', rf'\g<1>{new}\2', package[0], crate)
+    text = text[:package.start()] + updated + text[package.end():]
     aliases = {}
-    for table in dependencies(expected):
+    for kind, table in dependencies(expected):
         for alias, spec in table.items():
             target = spec.get("package", alias) if isinstance(spec, dict) else alias
-            if target not in targets:
+            if target not in CRATE_MANIFESTS:
                 continue
             require(isinstance(spec, dict) and isinstance(spec.get("path"), str), f"{crate}: {alias} must be a local path dependency")
-            require((root / crate / spec["path"]).resolve() == (root / target).resolve(), f"{crate}: {alias} path mismatch")
+            destination = (root / CRATE_MANIFESTS[target]).parent
+            require((root / crate / spec["path"]).resolve() == destination.resolve(), f"{crate}: {alias} path mismatch")
             old = spec.get("version")
+            if kind == "dev-dependencies" and old is None:
+                # Cargo strips path-only dev dependencies from published crates.
+                continue
             require(old in (current, "=" + current), f"{crate}: {alias} dependency version mismatch")
             spec["version"] = ("=" if old.startswith("=") else "") + new
             aliases.setdefault(alias, []).append((old, spec["version"]))
-    if not bump_package:
-        require(sum(map(len, aliases.values())) == 1, f"{crate}: expected exactly one active-core dependency edge")
     for alias, versions in aliases.items():
         # Active manifests use inline dependency tables. Unknown future forms
         # fail before writing; never perform a broad version-string replacement.
@@ -157,6 +161,66 @@ def json_edit(text, current, new, server=False, field="version"):
     return result
 
 
+def npm_lock_edit(text, current, new):
+    parsed = parse_json(text)
+    require(isinstance(parsed, dict) and parsed.get("lockfileVersion") in (2, 3),
+            "npm package-lock: unsupported format")
+    packages = parsed.get("packages")
+    require(isinstance(packages, dict), "npm package-lock: package entries missing")
+    package = packages.get("")
+    require(isinstance(package, dict), "npm package-lock: root package missing")
+    for metadata in (parsed, package):
+        require(metadata.get("name") == "@hai.ai/jacs", "npm package-lock: package name mismatch")
+        require(metadata.get("version") == current, "npm package-lock: version mismatch")
+    expected = copy.deepcopy(parsed)
+    expected["version"] = new
+    expected["packages"][""]["version"] = new
+    return json.dumps(expected, indent=2, ensure_ascii=False) + "\n"
+
+
+def android_version_edit(text, current, new):
+    pattern = r'^(version[ \t]*=[ \t]*")([^"\r\n]+)("[ \t]*)$'
+    versions = re.findall(pattern, text, flags=re.MULTILINE)
+    require(len(versions) == 1, "Android Maven metadata: expected one literal version field")
+    require(versions[0][1] == current, "Android Maven metadata: version mismatch")
+    return replace_once(pattern, rf'\g<1>{new}\3', text, "Android Maven metadata")
+
+
+def python_project_edit(text, current, new):
+    parsed = tomllib.loads(text)
+    project = parsed.get("project", {})
+    require(project.get("name") == "jacs" and project.get("version") == current,
+            "Python project identity/version mismatch")
+    expected = copy.deepcopy(parsed)
+    expected["project"]["version"] = new
+    section = re.search(r"(?ms)^\[project\][^\n]*\n.*?(?=^\[|\Z)", text)
+    require(section is not None, "Python project table missing")
+    updated = replace_once(r'^(version\s*=\s*")[^"]+("[^\n]*)$', rf'\g<1>{new}\2', section[0], "Python project")
+    result = text[:section.start()] + updated + text[section.end():]
+    require(tomllib.loads(result) == expected, "Python candidate changed unrelated metadata")
+    return result
+
+
+def python_lock_edit(text, current, new):
+    parsed = tomllib.loads(text)
+    expected = copy.deepcopy(parsed)
+    own = [package for package in expected.get("package", [])
+           if package.get("name") == "jacs" and package.get("source") == {"editable": "."}]
+    require(len(own) == 1 and own[0].get("version") == current,
+            "Python lock: expected one local jacs entry at the release version")
+    own[0]["version"] = new
+    chunks = re.split(r"(?m)(?=^\[\[package\]\]\s*$)", text)
+    for index, chunk in enumerate(chunks):
+        if not chunk.startswith("[[package]]"):
+            continue
+        package = tomllib.loads(chunk)["package"][0]
+        if package.get("name") == "jacs" and package.get("source") == {"editable": "."}:
+            chunks[index] = replace_once(r'^(version\s*=\s*")[^"]+("[^\n]*)$', rf'\g<1>{new}\2', chunk, "Python lock")
+    result = "".join(chunks)
+    require(tomllib.loads(result) == expected, "Python lock candidate changed unrelated metadata")
+    return result
+
+
 def prepare(root, bump):
     originals = {}
     edits = {}
@@ -178,31 +242,38 @@ def prepare(root, bump):
     parts[index] += 1
     parts[index + 1:] = [0] * (2 - index)
     new = ".".join(map(str, parts))
-    for crate in CRATES:
-        relative = f"{crate}/Cargo.toml"
-        text = core if crate == "jacs-core" else read(relative)
-        edits[root / relative] = manifest_edit(root, crate, text, current, new)
-    for relative, server in [("jacs-wasm/package.template.json", False), ("jacs-mcp/contract/jacs-mcp-contract.json", True)]:
+    for name, relative in CRATE_MANIFESTS.items():
+        text = core if name == "jacs-core" else read(relative)
+        edits[root / relative] = manifest_edit(root, str(Path(relative).parent), text, current, new, package_name=name)
+    for relative, server in [("jacs-wasm/package.template.json", False), ("jacs-mcp/contract/jacs-mcp-contract.json", True), ("archive/native/jacs-mcp/contract/jacs-mcp-contract.json", True)]:
         edits[root / relative] = json_edit(read(relative), current, new, server)
+    relative = "archive/native/jacsnpm/package.json"
+    npm_package = read(relative)
+    npm_metadata = parse_json(npm_package)
+    require(isinstance(npm_metadata, dict) and npm_metadata.get("name") == "@hai.ai/jacs", "npm package name mismatch")
+    edits[root / relative] = json_edit(npm_package, current, new)
+    relative = "archive/native/jacsnpm/package-lock.json"
+    edits[root / relative] = npm_lock_edit(read(relative), current, new)
+    relative = "archive/native/jacspy/pyproject.toml"
+    edits[root / relative] = python_project_edit(read(relative), current, new)
+    relative = "archive/native/jacspy/uv.lock"
+    edits[root / relative] = python_lock_edit(read(relative), current, new)
+    relative = "jacs-mobile/distribution/android/library/build.gradle.kts"
+    edits[root / relative] = android_version_edit(read(relative), current, new)
     # Align the source candidate without changing observed registry versions,
     # publication status, checksums, or provenance from previous releases.
     relative = "release/shipped-artifacts.json"
     edits[root / relative] = json_edit(read(relative), current, new, field="source_version")
     edits[root / "Cargo.lock"] = lock_edit(read("Cargo.lock"), current, new)
-    # These preserved compatibility packages intentionally depend on the active
-    # core. Their own versions and all other archived dependencies remain fixed.
-    for directory, package_name in ARCHIVE_CORE_EDGES.items():
-        relative = f"{directory}/Cargo.toml"
-        edits[root / relative] = manifest_edit(
-            root, directory, read(relative), current, new,
-            package_name=package_name, bump_package=False, targets=("jacs-core",),
-        )
     for relative in ARCHIVE_LOCKS:
         path = root / relative
         if relative != ARCHIVE_LOCKS[0] and not path.exists() and not path.is_symlink():
             continue
         original = read(relative)
-        updated = lock_edit(original, current, new, crates=("jacs-core",), allow_missing=relative != ARCHIVE_LOCKS[0])
+        primary = relative == ARCHIVE_LOCKS[0]
+        crates = tuple(name for name, manifest in CRATE_MANIFESTS.items()
+                       if name == "jacs-core" or (manifest.startswith("archive/native/") and name != "jacs-surrealdb")) if primary else CRATE_MANIFESTS
+        updated = lock_edit(original, current, new, crates=crates, allow_missing=not primary)
         if updated != original:
             edits[path] = updated
     changelog = read("CHANGELOG.md")
@@ -243,7 +314,7 @@ def main():
             write_edits(originals, edits)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"Version bump rejected: {error}\n")
-    print(f"{'Validated' if args.check else 'Updated'} portable release version: {current} -> {new} ({len(edits)} files)")
+    print(f"{'Validated' if args.check else 'Updated'} coordinated release version: {current} -> {new} ({len(edits)} files)")
     if not args.check:
         print("Review the diff, update release notes, regenerate dependency notices, then run make check. Nothing was published.")
 

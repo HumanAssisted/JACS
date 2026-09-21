@@ -14,6 +14,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from scripts.release_catalog import CRATE_MANIFESTS
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "release_retry.py"
@@ -46,17 +48,21 @@ def make_target_block(text: str, name: str) -> str:
 
 
 def write_manifests(root: Path, version: str = "0.11.4") -> None:
-    cargo_paths = ("jacs-core", "jacs-mcp", "jacs-cli")
-    for relative in cargo_paths:
-        directory = root / relative
+    for name, relative in CRATE_MANIFESTS.items():
+        directory = (root / relative).parent
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "Cargo.toml").write_text(
-            f'[package]\nname = "fixture"\nversion = "{version}"\n',
+            f'[package]\nname = "{name}"\nversion = "{version}"\n',
             encoding="utf-8",
         )
+    (root / "archive/native/jacspy/pyproject.toml").write_text(f'[project]\nname = "jacs"\nversion = "{version}"\n')
+    (root / "archive/native/jacsnpm").mkdir(parents=True, exist_ok=True)
+    (root / "archive/native/jacsnpm/package.json").write_text(
+        json.dumps({"name": "@hai.ai/jacs", "version": version}) + "\n"
+    )
     (root / "jacs-wasm").mkdir(parents=True, exist_ok=True)
     (root / "jacs-wasm" / "package.template.json").write_text(
-        f'{{"name":"@jacs/wasm","version":"{version}"}}\n',
+        f'{{"name":"@hai.ai/jacs-wasm","version":"{version}"}}\n',
         encoding="utf-8",
     )
 
@@ -166,7 +172,7 @@ class MakeReleaseTests(unittest.TestCase):
         self.assertNotIn("git push", makefile)
 
     def test_make_plans_and_retries_route_only_to_active_surfaces(self) -> None:
-        for suffix, surface in (("jacs", "crate"), ("cli", "cli"), ("jacs-wasm", "wasm"), ("everything", None)):
+        for suffix, surface in (("jacs", "crate"), ("cli", "cli"), ("jacsnpm", "npm"), ("jacspy", "python"), ("jacsgo", "go"), ("jacs-wasm", "wasm"), ("everything", None)):
             for operation in ("release", "retry"):
                 command = [operation, "--surface", surface] if surface else ["release-all" if operation == "release" else "retry-everything"]
                 with self.subTest(target=f"plan-{operation}-{suffix}"):
@@ -179,7 +185,7 @@ class MakeReleaseTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stderr)
                         self.assertEqual(calls, [["scripts/check-release-matrix.py"], ["scripts/release_retry.py", *command, "--execute"]])
 
-        for target in ("release-jacsnpm", "release-jacspy", "release-jacsgo", "publish-jacs-wasm"):
+        for target in ("publish-jacspy", "publish-jacsgo", "publish-jacs-wasm"):
             with self.subTest(archived_target=target):
                 result, calls = self.run_make(target)
                 self.assertNotEqual(result.returncode, 0)
@@ -187,7 +193,7 @@ class MakeReleaseTests(unittest.TestCase):
 
     def test_make_release_execution_stops_when_preflight_fails(self) -> None:
         clean = ["scripts/release_retry.py", "check-worktree"]
-        for suffix, surface in (("jacs", "crate"), ("cli", "cli"), ("jacs-wasm", "wasm"), ("everything", None)):
+        for suffix, surface in (("jacs", "crate"), ("cli", "cli"), ("jacsnpm", "npm"), ("jacspy", "python"), ("jacsgo", "go"), ("jacs-wasm", "wasm"), ("everything", None)):
             command = ["release", "--surface", surface] if surface else ["release-all"]
             for failure in ((), ("scripts/check-release-matrix.py",), tuple(clean)):
                 with self.subTest(target=f"release-{suffix}", failure=failure):
@@ -212,8 +218,8 @@ class MakeReleaseTests(unittest.TestCase):
 
     def test_active_release_order_and_archived_tags_fail_closed(self) -> None:
         module = load_module()
-        self.assertEqual(module.RELEASE_ORDER, ("crate", "cli", "wasm"))
-        for tag in ("npm/v0.13.0", "pypi/v0.13.0", "jacsgo/v0.13.0", "crate/jacs-redb/v0.13.0"):
+        self.assertEqual(module.RELEASE_ORDER, ("crate", "cli", "python", "npm", "go", "wasm"))
+        for tag in ("pypi/v01.13.0", "jacsgo/v0.13", "crate/jacs-redb/v0.13.0"):
             with self.subTest(tag=tag):
                 with self.assertRaises(ValueError):
                     module.validate_tag(tag)
@@ -407,7 +413,7 @@ class TagRetryTests(unittest.TestCase):
         annotated = FakeGit()
         outcome = module.release_tag(
             "wasm-v0.11.4",
-            annotated_message="Release @jacs/wasm 0.11.4",
+            annotated_message="Release @hai.ai/jacs-wasm 0.11.4",
             run=annotated,
         )
         self.assertEqual(outcome, "created-and-pushed")
@@ -418,7 +424,7 @@ class TagRetryTests(unittest.TestCase):
                 "-a",
                 "wasm-v0.11.4",
                 "-m",
-                "Release @jacs/wasm 0.11.4",
+                "Release @hai.ai/jacs-wasm 0.11.4",
                 TWO,
             ),
             annotated.commands,
@@ -512,7 +518,7 @@ class RetryRegistryProbeTests(unittest.TestCase):
 
         self.assertEqual(urls, [])
 
-    def test_probes_all_three_rust_crates_at_the_exact_version(self) -> None:
+    def test_probes_all_catalogued_rust_crates_at_the_exact_version(self) -> None:
         module = load_module()
         urls: list[str] = []
         verifier_commands: list[list[str]] = []
@@ -536,14 +542,14 @@ class RetryRegistryProbeTests(unittest.TestCase):
 
         self.assertEqual(missing, [])
         crate_urls = [url for url in urls if "crates.io/api/v1/crates" in url]
-        self.assertEqual(len(crate_urls), 3)
-        for crate in (
-            "jacs-core",
-            "jacs-mcp",
-            "jacs-cli",
-        ):
+        self.assertEqual(len(crate_urls), len(CRATE_MANIFESTS))
+        for crate in CRATE_MANIFESTS:
             self.assertIn(f"https://crates.io/api/v1/crates/{crate}/0.11.4", crate_urls)
-        self.assertEqual(len(verifier_commands), 1)
+        self.assertIn("https://registry.npmjs.org/@hai.ai%2Fjacs/0.11.4", urls)
+        self.assertIn("https://pypi.org/pypi/jacs/0.11.4/json", urls)
+        self.assertIn("https://registry.npmjs.org/@hai.ai%2Fjacs-wasm/0.11.4", urls)
+        self.assertEqual(len(verifier_commands), 2)
+        self.assertTrue(any("jacsgo/v0.11.4" in command for command in verifier_commands))
         self.assertTrue(any("cli/v0.11.4" in command for command in verifier_commands))
 
     def test_only_authoritative_404_is_retryable(self) -> None:

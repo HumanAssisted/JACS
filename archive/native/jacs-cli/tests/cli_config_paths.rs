@@ -19,7 +19,7 @@ fn temp_root() -> TempDir {
 }
 
 fn cmd() -> Command {
-    let mut command = Command::cargo_bin("jacs").expect("jacs binary should exist");
+    let mut command = Command::cargo_bin("jacs-compat").expect("jacs binary should exist");
     command.env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
     command.env_remove("JACS_ALLOW_UNSIGNED_AGENT_CONFIG");
     command

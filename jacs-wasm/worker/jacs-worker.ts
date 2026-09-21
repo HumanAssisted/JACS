@@ -1,4 +1,4 @@
-// Worker-side bootstrap for `@jacs/wasm/worker`. This file is loaded as
+// Worker-side bootstrap for `@hai.ai/jacs-wasm/worker`. This file is loaded as
 // the entry point of a `new Worker(... { type: "module" })`; it imports
 // the wasm-bindgen output, calls the default `init()` to instantiate
 // the module, and then routes every inbound `postMessage` through

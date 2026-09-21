@@ -1,8 +1,7 @@
 [package]
-# Archived compatibility code; publishing is intentionally disabled.
-publish = false
-name = "jacs-mcp"
-version = "0.13.0"
+publish = true
+name = "jacs-mcp-compat"
+version = "0.15.0"
 edition = "2024"
 rust-version = "1.97"
 description = "MCP server for JACS: data provenance and cryptographic signing"
@@ -13,6 +12,9 @@ repository = "https://github.com/HumanAssisted/JACS"
 authors = ["JACS Contributors"]
 keywords = ["mcp", "jacs", "ai", "agents", "signing"]
 categories = ["cryptography", "development-tools"]
+
+[lib]
+name = "jacs_mcp"
 
 [features]
 default = ["mcp", "attestation", "core-tools"]
@@ -43,8 +45,8 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 # keep defaults off so SDK additions cannot silently expand the transport surface.
 rmcp = { version = "3.3.0", default-features = false, features = ["server", "transport-io", "macros"], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"], optional = true }
-jacs = { version = "0.13.0", path = "../jacs", default-features = true }
-jacs-binding-core = { version = "0.13.0", path = "../binding-core", features = ["a2a"] }
+jacs = { version = "0.15.0", path = "../jacs", default-features = true }
+jacs-binding-core = { version = "0.15.0", path = "../binding-core", features = ["a2a"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1.0"

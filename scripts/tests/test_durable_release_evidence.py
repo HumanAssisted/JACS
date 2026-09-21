@@ -26,6 +26,12 @@ class DurableReleaseEvidenceTests(unittest.TestCase):
             "jacs-rust-${{ needs.verify-version.outputs.version }}-sha256sums.txt",
             "publish",
         ),
+        "release-pypi.yml": (
+            "jacspy.spdx.json", "jacspy-${{ needs.verify-version.outputs.version }}-sha256sums.txt", "post-publish-smoke",
+        ),
+        "release-npm.yml": (
+            "jacsnpm.spdx.json", ".tgz.sha256", "post-publish-smoke",
+        ),
         "release-wasm.yml": (
             "jacs-wasm.spdx.json", ".tgz.sha256", "post-publish-smoke",
         ),
@@ -64,7 +70,7 @@ class DurableReleaseEvidenceTests(unittest.TestCase):
         self.assertIn("sha256sum", crate)
 
     def test_npm_evidence_consumers_use_upload_artifacts_preserved_path(self) -> None:
-        for workflow_name in ("release-wasm.yml",):
+        for workflow_name in ("release-wasm.yml", "release-npm.yml"):
             with self.subTest(workflow=workflow_name):
                 workflow = (
                     ROOT / ".github" / "workflows" / workflow_name
