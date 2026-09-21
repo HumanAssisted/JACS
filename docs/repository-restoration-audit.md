@@ -15,6 +15,11 @@ Rust, Go, TypeScript, TSX and Python counts and writes `LINES_OF_CODE.md`, as
 before. The report covers the whole checkout, including the native workspace;
 it is not a count of only the five portable crates or of unique shared source.
 
+The five public Python A2A fixture copies are also restored to
+`archive/native/jacspy/tests/fixtures/a2a_contract/`. Each matches its original
+pre-cleanup Python fixture and the retained canonical Rust fixture byte-for-byte.
+This repairs the paths used by the existing Python contract tests.
+
 ## What happened to the files
 
 At the release candidate, 1,775 pre-cleanup paths were absent from their original
@@ -46,7 +51,7 @@ developer command, automation workflow or public interface.
 | Documentation site | `.github/workflows/static.yml` survives only in the archive. It used to build the mdBook and deploy GitHub Pages. The documentation source remains at `archive/native/jacs/docs/jacsbook`; the root deployment workflow and `build-jacsbook` / `build-jacsbook-pdf` targets are missing. This does not establish whether an older deployed site is still available. |
 | Browser developer commands | `make build-wasm` and `make test-wasm` are missing. Browser build/test/release CI exists. `make test-jacs-wasm` runs the Rust `native_sanity` test and is not a replacement for the old headless-browser command. |
 | Native test commands | Old fast, PQ, storage, cross-language, feature, observability and secure-fetch targets are missing from the root Makefile. Their native source/tests mostly remain archived. Current `test-bindings` and language-specific targets verify installed candidates; `test-all` only tests the portable Cargo workspace. These are not the entire former native test matrix. |
-| Python A2A fixture copies | Five fixture copies are absent from `archive/native/jacspy/tests/fixtures/a2a_contract/`, while `archive/native/jacspy/tests/test_a2a_contract.py` still opens that directory. Identical JSON survives under native Rust and Node fixtures. This is a concrete missing test input, not deleted cryptographic functionality. The focused installed-package smoke checks do not establish that this full test module passes. |
+| Python A2A fixture copies | Five public JSON copies were absent from `archive/native/jacspy/tests/fixtures/a2a_contract/` at the release candidate, while `test_a2a_contract.py` still opened that directory. They are restored in this follow-up from identical canonical Rust fixtures. |
 | Developer utilities | Root Make shortcuts for schema sync, cross-language fixture generation, changelog sealing, verifier smoke checks, Git-hook installation and disk maintenance are missing. Several underlying scripts remain, including `scripts/seal-changelog.sh`; the old Make recipes remain in `archive/native/Makefile` and use the former layout. |
 | Public MCP/CLI surface | The portable MCP contract lists 7 tools; the native compatibility contract lists 42. Agreement, A2A, trust-store, search, media, attestation and W3C tools are retained in compatibility source, but are not part of the current public `jacs mcp` contract. The default portable MCP profile is verify-only. The broader compatibility CLI is named `jacs-compat`. Publishing its source does not make those tools available through the portable CLI. |
 | Root guides and examples | `A2A_QUICKSTART.md`, `USECASES.md`, `SCHEMA_CONSOLIDATION_TODO.md`, `docker-compose.test.yml` and the former root examples survive under `archive/native`. Their original root entry points are missing. |
@@ -80,6 +85,26 @@ and the [native compatibility contract](../archive/native/jacs-mcp/contract/jacs
 The latter's runtime exposure still depends on compiled features, the selected
 MCP profile and its authorization rules; the inventory is not a promise that
 every tool is exposed in every profile.
+
+## Native client libraries retain their broader APIs
+
+The portable MCP tool list is not the API inventory for the native libraries.
+The Node and Python clients, their MCP adapters and Rust bindings, the Go
+document, agreement, media and W3C wrappers, and both binding-core wrappers
+retain their pre-cleanup source unchanged. The native media implementation also
+remains unchanged. Text and image signing, image signature extraction, trust,
+A2A and agreements therefore still have native client entry points; attestation
+is enabled in the Node, Python and Go release builds. Individual language
+wrappers have their own exposure and feature rules, so this does not claim that
+all 42 MCP tools are methods in every client.
+
+Native Rust email signing and PNG logo steganography remain in
+[`jacs/src/email`](../archive/native/jacs/src/email/). The native compatibility
+MCP implementation remains in
+[`jacs-mcp`](../archive/native/jacs-mcp/); applications that embed it do not
+automatically switch to the seven-tool portable server. Browser WASM has a
+separate portable API and does not provide all native filesystem or transport
+features.
 
 ## Restored or consolidated already
 
