@@ -2,7 +2,7 @@
   "schema_version": 1,
   "version": "0.15.0",
   "source_commit": "10c16ba07d56b872e9c6c6ddd83a45af7bd8f94a",
-  "observed_at": "2026-09-21T18:09:29.325415+00:00",
+  "observed_at": "2026-09-21T18:27:00.277580+00:00",
   "publication_complete": false,
   "cli": {
     "status": "published-verified",
@@ -91,7 +91,6 @@
     ]
   },
   "remaining": {
-    "crate": "https://github.com/HumanAssisted/JACS/actions/runs/35629567280",
     "wasm": "https://github.com/HumanAssisted/JACS/actions/runs/35629665375"
   },
   "limits": [
@@ -212,67 +211,160 @@
     ]
   },
   "rust": {
-    "status": "partially-published",
+    "status": "published-verified",
     "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/35629567280",
+    "workflow_completion": "success",
     "attempt": 3,
+    "source_ref": "refs/tags/crate/v0.15.0",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/crate/v0.15.0",
     "published": {
       "jacs-core": {
         "version": "0.15.0",
         "checksum": "212797be6c9943230b136bc332b6f69fd6c868bd604d547f111a9f82981dcdca",
-        "created_at": "2026-09-21T17:42:15.716293Z"
+        "created_at": "2026-09-21T17:42:15.716293Z",
+        "size": 228421,
+        "registry_archive_verified": true
       },
       "jacs-media": {
         "version": "0.15.0",
         "checksum": "3ae1c6bb9bf4accf657840da2a8d630fbede5e7da1ac24bf0de3a3c661d05888",
-        "created_at": "2026-09-21T17:42:18.963820Z"
+        "created_at": "2026-09-21T17:42:18.963820Z",
+        "size": 74492,
+        "registry_archive_verified": true
       },
       "jacs": {
         "version": "0.15.0",
         "checksum": "449698feb88b2cfcae580cd4e008bb16c6167d90e4316db987f1e3658870b081",
-        "created_at": "2026-09-21T17:42:51.706139Z"
+        "created_at": "2026-09-21T17:42:51.706139Z",
+        "size": 788488,
+        "registry_archive_verified": true
       },
       "jacs-binding-core": {
         "version": "0.15.0",
         "checksum": "3c7041e9e507ae0052d4bbb5f58eaf0a7811da9d13c9052c2aad30e60e918fee",
-        "created_at": "2026-09-21T17:43:15.308607Z"
+        "created_at": "2026-09-21T17:43:15.308607Z",
+        "size": 190501,
+        "registry_archive_verified": true
       },
       "jacs-mcp": {
         "version": "0.15.0",
         "checksum": "9536c9eda82f88cf6d39edf75af9b3a62ba202b0274ab426549ce9f54cedc8b0",
-        "created_at": "2026-09-21T17:43:28.428637Z"
+        "created_at": "2026-09-21T17:43:28.428637Z",
+        "size": 53483,
+        "registry_archive_verified": true
       },
       "jacs-cli": {
         "version": "0.15.0",
         "checksum": "bf897fddf0be518e97a50630abbeb1741e2b4ea2738f5ea75ac2197921c9d763",
-        "created_at": "2026-09-21T17:43:35.153748Z"
+        "created_at": "2026-09-21T17:43:35.153748Z",
+        "size": 63002,
+        "registry_archive_verified": true
       },
       "jacs-mcp-compat": {
         "version": "0.15.0",
         "checksum": "085a862b2442244b554d8d60406531d7bb96c7f84004c72053902b3179f2a499",
-        "created_at": "2026-09-21T17:44:07.784114Z"
+        "created_at": "2026-09-21T17:44:07.784114Z",
+        "size": 198213,
+        "registry_archive_verified": true
       },
       "jacs-cli-compat": {
         "version": "0.15.0",
         "checksum": "b92240ecfe3a6f936a2f05364a848bd6e05aee432b8355b99764ddeafd8473f2",
-        "created_at": "2026-09-21T17:44:39.680853Z"
+        "created_at": "2026-09-21T17:44:39.680853Z",
+        "size": 156375,
+        "registry_archive_verified": true
       },
       "jacs-wasm": {
         "version": "0.15.0",
         "checksum": "d65468946cb47373cf933bf5b974d9b09301cfda84ffe867a4790ee7073ce99f",
-        "created_at": "2026-09-21T17:44:52.008431Z"
+        "created_at": "2026-09-21T17:44:52.008431Z",
+        "size": 128948,
+        "registry_archive_verified": true
       },
       "jacs-mobile": {
         "version": "0.15.0",
         "checksum": "14edb34796eeabc2e701089b92cc947ca9ed6ea0ba41925bde2ff64c233aa1ac",
-        "created_at": "2026-09-21T17:45:04.968189Z"
+        "created_at": "2026-09-21T17:45:04.968189Z",
+        "size": 118200,
+        "registry_archive_verified": true
       },
       "jacsnpm": {
         "version": "0.15.0",
         "checksum": "e1d055d1bb2ea5f34221e74f31cdab0010b121d533e540e0483508b63ec294df",
-        "created_at": "2026-09-21T17:45:33.687138Z"
+        "created_at": "2026-09-21T17:45:33.687138Z",
+        "size": 118116,
+        "registry_archive_verified": true
+      },
+      "jacspy": {
+        "version": "0.15.0",
+        "checksum": "c55dcbcd034db9692b496580576037c7b9abf3c04c0d5be32fbd2704167729cc",
+        "created_at": "2026-09-21T18:15:56.039750Z",
+        "size": 251636,
+        "registry_archive_verified": true
+      },
+      "jacsgo": {
+        "version": "0.15.0",
+        "checksum": "25bca9f22a5c3d1c698dae0a7ecdecaf442a5ad1f8956db7c553f7f67a71b977",
+        "created_at": "2026-09-21T18:16:14.089361Z",
+        "size": 101265,
+        "registry_archive_verified": true
+      },
+      "jacs-duckdb": {
+        "version": "0.15.0",
+        "checksum": "7f3af6823766db150034443e630a3e1c43e2878c883d2ef07891fd28dad4c515",
+        "created_at": "2026-09-21T18:16:34.254460Z",
+        "size": 94638,
+        "registry_archive_verified": true
+      },
+      "jacs-postgresql": {
+        "version": "0.15.0",
+        "checksum": "c95f3d0230288ce6a2ae4720e2c928cb54412d1f044a5397c9f929dcb7217baf",
+        "created_at": "2026-09-21T18:16:57.205186Z",
+        "size": 98448,
+        "registry_archive_verified": true
+      },
+      "jacs-redb": {
+        "version": "0.15.0",
+        "checksum": "ed111e0ed9ea59cb9cdebde8ce34c37b43992c1ed3ec0717eecac4bc64bfe6d8",
+        "created_at": "2026-09-21T18:17:11.223247Z",
+        "size": 89198,
+        "registry_archive_verified": true
+      },
+      "jacs-surrealdb": {
+        "version": "0.15.0",
+        "checksum": "7c5a98e5fa77573144da6cfa2e2626d4e0d30236f18d3e750031d8b72665305e",
+        "created_at": "2026-09-21T18:17:32.600132Z",
+        "size": 104815,
+        "registry_archive_verified": true
       }
     },
-    "verification": "All 17 candidates passed compile and SBOM gates. Attempt 2 checked each uploaded checksum; attempt 3 must revalidate these exact registry bytes before continuing. Durable evidence remains pending."
+    "evidence_assets": [
+      {
+        "name": "jacs-rust-0.15.0-sha256sums.txt",
+        "size": 1534,
+        "digest": "sha256:ad188c0c16a1ccd02d6fa198d028007aeede5139e4ebae06edf0b664b2b8a917",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/crate/v0.15.0/jacs-rust-0.15.0-sha256sums.txt"
+      },
+      {
+        "name": "jacs-rust-packages.spdx.json",
+        "size": 15141274,
+        "digest": "sha256:e9643a012ff8e11c727d54f5a058d53a081349a7db95dcdd852029ab406235f0",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/crate/v0.15.0/jacs-rust-packages.spdx.json"
+      },
+      {
+        "name": "pre-publish-rust-candidates.spdx.json",
+        "size": 15178094,
+        "digest": "sha256:475c63b4902e29be11e98ba91d7cbd00ea89129568ec9276af7946070877ddde",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/crate/v0.15.0/pre-publish-rust-candidates.spdx.json"
+      }
+    ],
+    "verification": [
+      "All 17 exact candidate archives pass compile, dependency, audit and SBOM gates before publication.",
+      "All 17 downloaded registry archives and registry metadata digests match the public attested checksum manifest; none is yanked.",
+      "The exact three public evidence assets pass hosted GitHub attestations bound to release-crate.yml, refs/tags/crate/v0.15.0 and the approved source digest.",
+      "The publish retry revalidates existing registry bytes before skipping already uploaded crates; no published version or release tag is replaced.",
+      "CI passes a clean registry consumer; 13 SDK PQ envelope, A2A and media tests also pass against crates.io packages without local JACS overrides."
+    ]
   },
   "npm": {
     "status": "published-verified",

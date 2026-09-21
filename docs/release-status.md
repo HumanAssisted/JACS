@@ -3,9 +3,9 @@
 The release inventory was observed
 2026-09-21 against source version 0.15.0.
 
-Publication of source version **0.15.0 is in progress**. CLI binaries, native
-npm, Python and Go are published and verified. Rust publication and WASM
-bootstrap remain incomplete. The [verification record](../release/0.15.0-verification.json)
+Publication of source version **0.15.0 is in progress**. All 17 Rust crates, CLI binaries,
+native npm, Python and Go are published and verified. WASM bootstrap
+remains incomplete. The [verification record](../release/0.15.0-verification.json)
 records exact public artifacts, checksums, provenance and installed-consumer
 checks. MCP remains the primary documented integration; native compatibility
 packages remain in their separate Cargo workspace.
@@ -19,7 +19,7 @@ tests using the actual crates.io packages without local JACS overrides.
 <!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->
 | Surface | Shipped version/status | Prebuilt targets | CI/runtime evidence and limits |
 |---|---|---|---|
-| Rust (17 portable and native crates) | crates.io `0.15.0`; partially published | portable Rust and isolated native compatibility crates; storage backends | 11 of 17 crates are published at 0.15.0. Remaining uploads and durable Rust evidence are still in progress after a new-crate registry throttle. Published archives must match the reviewed candidate checksums. |
+| Rust (17 portable and native crates) | crates.io `0.15.0`; published verified | portable Rust and isolated native compatibility crates; storage backends | All 17 registry archives match the source-bound attested candidate checksums. The checksum manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI; 13 SDK envelope/media tests also pass against the actual registry packages. |
 | CLI (`jacs-cli`) | crates.io and GitHub Releases `0.15.0`; published verified | macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc; Windows x86_64 | All five CLI archives, checksum files and SPDX inventory pass exact public-asset and hosted GitHub attestation verification. The published macOS arm64 binary passes PQ signing/verification, custody, rotation and verify-only MCP tests. |
 | Node.js (`@hai.ai/jacs`) | npm `0.15.0`; published verified | macOS arm64/x86_64; Linux arm64/x86_64 glibc and musl | The exact registry tarball matches its source-bound attested SHA-256 candidate checksum. Registry signatures/provenance, CJS/ESM PQ signing, tamper rejection, public exports, signing-input helpers and installed CLI checks pass; the durable SBOM is attested. |
 | Python (`jacs`) | PyPI `0.15.0`; published verified | macOS arm64/x86_64; Linux arm64/x86_64 glibc; Linux x86_64 musl; source distribution | Five wheels and the source distribution match the source-bound attested candidate checksums and all six pass PEP 740 verification. Published-wheel checks pass on Python 3.10–3.14 after index propagation; fresh macOS PQ signing, tamper rejection and human-approval proof checks pass. |

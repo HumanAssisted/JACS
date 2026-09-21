@@ -9,11 +9,11 @@
       "package": "jacs-core, jacs-media, jacs, jacs-binding-core, jacs-mcp, jacs-cli, jacs-mcp-compat, jacs-cli-compat, jacs-wasm, jacs-mobile, jacsnpm, jacspy, jacsgo, jacs-duckdb, jacs-postgresql, jacs-redb, jacs-surrealdb",
       "registry": "crates.io",
       "version": "0.15.0",
-      "status": "partially-published",
+      "status": "published-verified",
       "platforms": [
         "portable Rust and isolated native compatibility crates; storage backends"
       ],
-      "evidence": "11 of 17 crates are published at 0.15.0. Remaining uploads and durable Rust evidence are still in progress after a new-crate registry throttle. Published archives must match the reviewed candidate checksums.",
+      "evidence": "All 17 registry archives match the source-bound attested candidate checksums. The checksum manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI; 13 SDK envelope/media tests also pass against the actual registry packages.",
       "versions": {
         "jacs-core": "0.15.0",
         "jacs-media": "0.15.0",
@@ -26,12 +26,12 @@
         "jacs-wasm": "0.15.0",
         "jacs-mobile": "0.15.0",
         "jacsnpm": "0.15.0",
-        "jacspy": null,
-        "jacsgo": null,
-        "jacs-duckdb": "0.1.20",
-        "jacs-postgresql": "0.1.20",
-        "jacs-redb": "0.1.20",
-        "jacs-surrealdb": "0.1.21"
+        "jacspy": "0.15.0",
+        "jacsgo": "0.15.0",
+        "jacs-duckdb": "0.15.0",
+        "jacs-postgresql": "0.15.0",
+        "jacs-redb": "0.15.0",
+        "jacs-surrealdb": "0.15.0"
       }
     },
     "cli": {
