@@ -12,7 +12,7 @@ authors.workspace = true
 readme = "README.md"
 
 [dependencies]
-png = "0.17"
+png = "0.18"
 img-parts = "0.3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.22"
