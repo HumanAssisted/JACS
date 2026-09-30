@@ -30,7 +30,8 @@
 ### 2026-09-29 — Verify canonical links in inline email
 
 - Add explicit V2 canonical inline email presentation: whole-line HTTPS URLs
-  render as links with their exact visible destination and fragment. Bind V2
+  render as links with their exact visible destination and fragment; canonical
+  `dir="auto"` displays Arabic and Hebrew from the signed text. Bind V2
   in the signed payload and reconstruct anchors from signed plaintext during
   strict verification; preserve historical V1 payload bytes and rendering.
 - Reject altered destinations, labels, fragments, extra DOM and template

@@ -99,7 +99,7 @@ pub use transport::{
     extract_topmost_inline_jacs_envelope_from_html, html_bodies_equivalent,
     inline_email_template_version, normalize_html_for_equivalence,
     remove_inline_signature_artifacts, render_inline_email_message_body,
-    strip_inline_signature_artifacts_from_html,
+    render_inline_email_message_main, strip_inline_signature_artifacts_from_html,
 };
 
 /// Trait for types that can sign and verify JACS documents.

@@ -77,6 +77,21 @@ pub fn render_inline_email_message_body(
         .join("<br>")
 }
 
+/// Render the canonical message container. V2 lets the email client choose
+/// direction from the first strong character of the exact signed text; V1
+/// retains its historical container bytes. URLs remain unchanged.
+pub fn render_inline_email_message_main(
+    plain_text: &str,
+    version: InlineEmailTemplateVersion,
+) -> String {
+    let body = render_inline_email_message_body(plain_text, version);
+    let direction = match version {
+        InlineEmailTemplateVersion::V1 => "",
+        InlineEmailTemplateVersion::V2 => r#" dir="auto""#,
+    };
+    format!(r#"<main data-hai-message-body="v1"{direction}>{body}</main>"#)
+}
+
 /// Read exactly one supported template marker on the HTML element. Duplicate
 /// attributes/markers and malformed tokenizer input fail closed.
 pub fn inline_email_template_version(html: &str) -> Option<InlineEmailTemplateVersion> {

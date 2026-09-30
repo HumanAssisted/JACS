@@ -19,7 +19,7 @@ use super::transport::{
     InlineEmailTemplateVersion, SignedEmailTransport, detect_signed_email_transport,
     extract_inline_logo_part, extract_jacs_header_from_logo_png,
     extract_topmost_inline_jacs_envelope, html_bodies_equivalent, inline_email_template_version,
-    inline_user_link_count, render_inline_email_message_body,
+    inline_user_link_count, render_inline_email_message_main,
     strip_inline_signature_artifacts_from_html,
 };
 use super::types::{
@@ -408,12 +408,10 @@ fn render_expected_html_inline_body_without_artifacts(
     plain_text: &str,
     version: InlineEmailTemplateVersion,
 ) -> String {
-    let body = render_inline_email_message_body(plain_text, version);
+    let body = render_inline_email_message_main(plain_text, version);
     let version = version.as_str();
 
-    format!(
-        r#"<html data-hai-template-version="{version}"><body><main data-hai-message-body="v1">{body}</main></body></html>"#
-    )
+    format!(r#"<html data-hai-template-version="{version}"><body>{body}</body></html>"#)
 }
 
 /// Verify a JACS-signed email whose signature attachment is in YAML format.
@@ -1612,29 +1610,37 @@ mod tests {
     const INLINE_V2_URL: &str =
         "https://example.com/conversation?view=private&lang=en#invitation-token";
 
-    fn inline_v2_fixture(envelope: &str, logo_header: Option<&str>) -> Vec<u8> {
+    fn inline_v2_fixture(
+        envelope: &str,
+        logo_header: Option<&str>,
+        message_prefix: &str,
+    ) -> Vec<u8> {
         let raw =
             String::from_utf8(html_inline_email_with_envelope(envelope, logo_header)).unwrap();
-        let text = format!("Start here:\n{INLINE_V2_URL}");
-        let body = render_inline_email_message_body(&text, InlineEmailTemplateVersion::V2);
+        let text = format!("{message_prefix}\n{INLINE_V2_URL}");
+        let body = render_inline_email_message_main(&text, InlineEmailTemplateVersion::V2);
         raw.replace(
             r#"data-hai-template-version="v1""#,
             r#"data-hai-template-version="v2""#,
         )
         .replace(
             "Hello from a signed HAI agent.\r\n",
-            &format!("Start here:\r\n{INLINE_V2_URL}\r\n"),
+            &format!("{message_prefix}\r\n{INLINE_V2_URL}\r\n"),
         )
         .replace(
-            "Hello from a signed HAI agent.</main>",
-            &format!("{body}</main>"),
+            r#"<main data-hai-message-body="v1">Hello from a signed HAI agent.</main>"#,
+            &body,
         )
         .into_bytes()
     }
 
-    fn signed_inline_v2_fixture(agent: &SimpleAgent) -> Vec<u8> {
-        let payload =
-            build_html_inline_email_signature_payload(&inline_v2_fixture("{}", None)).unwrap();
+    fn signed_inline_v2_fixture(agent: &SimpleAgent, message_prefix: &str) -> Vec<u8> {
+        let payload = build_html_inline_email_signature_payload(&inline_v2_fixture(
+            "{}",
+            None,
+            message_prefix,
+        ))
+        .unwrap();
         assert_eq!(payload.inline_template_version.as_deref(), Some("v2"));
         let signed = agent
             .sign_message(&serde_json::to_value(payload).unwrap())
@@ -1648,7 +1654,7 @@ mod tests {
             "jacsEnvelope": serde_json::from_str::<serde_json::Value>(&signed.raw).unwrap(),
         })
         .to_string();
-        inline_v2_fixture(&envelope, Some(&header))
+        inline_v2_fixture(&envelope, Some(&header), message_prefix)
     }
 
     #[test]
@@ -1657,7 +1663,7 @@ mod tests {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("inline-v2-links");
         let key = get_pubkey(&agent);
-        let raw = signed_inline_v2_fixture(&agent);
+        let raw = signed_inline_v2_fixture(&agent, "Start here:");
         let verified = verify_signed_email(&raw, &agent, &key, VerificationMode::Strict).unwrap();
         assert_eq!(
             verified.status,
@@ -1733,6 +1739,9 @@ mod tests {
                 "extra DOM",
                 original.replace("</main>", "<br>Extra text</main>"),
             ),
+            ("wrong direction", original.replace(r#"dir="auto""#, r#"dir="rtl""#)),
+            ("missing direction", original.replace(r#" dir="auto""#, "")),
+            ("duplicate direction", original.replace(r#"dir="auto""#, r#"dir="auto" dir="ltr""#)),
             ("extra footer anchor", original.replace("</footer>", r#"<a href="https://attacker.example/">Start</a></footer>"#)),
             ("extra logo anchor", original.replace(r#"<img src="cid:hai-jacs-logo@hai.ai""#,
                 r#"<a data-hai-logo-verify-link="v1" href="https://example.com/verify"><a href="https://attacker.example/">Start</a><img src="cid:hai-jacs-logo@hai.ai""#)
@@ -1776,6 +1785,35 @@ mod tests {
                     .is_err()
             );
         }
+        let rtl_raw = signed_inline_v2_fixture(&agent, "ابدأ هنا:");
+        let rtl_result =
+            verify_signed_email(&rtl_raw, &agent, &key, VerificationMode::Strict).unwrap();
+        assert_eq!(
+            rtl_result.status,
+            crate::email::EmailVerificationStatus::Verified
+        );
+        let rtl_html = String::from_utf8(rtl_raw).unwrap();
+        assert!(rtl_html.contains(r#"<main data-hai-message-body="v1" dir="auto">ابدأ هنا:"#));
+        assert!(
+            rtl_html.contains(&anchor),
+            "RTL must preserve the exact URL and token"
+        );
+        let rtl_tampered = rtl_html.replace(r#"dir="auto""#, r#"dir="ltr""#);
+        let rtl_result = verify_signed_email(
+            rtl_tampered.as_bytes(),
+            &agent,
+            &key,
+            VerificationMode::Strict,
+        )
+        .unwrap();
+        assert_eq!(
+            rtl_result.status,
+            crate::email::EmailVerificationStatus::Failed
+        );
+        assert_eq!(
+            rtl_result.reasons,
+            vec![EmailVerificationReason::HtmlEquivalenceFailed]
+        );
         let text_mutated = original.replace(
             &format!("{INLINE_V2_URL}\r\n"),
             "https://attacker.example/\r\n",

@@ -218,7 +218,11 @@ payload. V2 uses `render_inline_email_message_body` with
 anchor whose visible URL and destination are the exact original text, including
 query and fragment. Credentials, controls, whitespace and markup delimiters
 remain ordinary escaped text. The helper is generic and does not recognize
-application routes or invitation tokens.
+application routes or invitation tokens. `render_inline_email_message_main`
+adds the canonical container: V2 uses `dir="auto"`, deriving displayed direction
+from the first strong character of signed text so Arabic and Hebrew render
+naturally; V1 retains its historical container. Direction attributes are part
+of the reconstructed presentation and cannot be changed independently.
 
 V2 binds `inline_template_version: "v2"` inside the signed email payload.
 The strict verifier reconstructs the complete presentation from signed
