@@ -27,6 +27,18 @@
 
 ## Unreleased
 
+### 2026-09-29 — Verify canonical links in inline email
+
+- Add explicit V2 canonical inline email presentation: whole-line HTTPS URLs
+  render as links with their exact visible destination and fragment. Bind V2
+  in the signed payload and reconstruct anchors from signed plaintext during
+  strict verification; preserve historical V1 payload bytes and rendering.
+- Reject altered destinations, labels, fragments, extra DOM and template
+  downgrades, including extra message links hidden inside verification
+  artifacts. V1-only consumers require an upgrade before receiving V2.
+  All 135 email tests and `make check` (292 script tests) pass; source is
+  unreleased.
+
 ### 2026-09-20 — Restore Make release commands
 
 - Restore patch, minor and major version bumps with read-only previews, plus

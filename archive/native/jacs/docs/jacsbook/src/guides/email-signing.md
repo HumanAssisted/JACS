@@ -211,6 +211,33 @@ The verifier detects `SignedEmailTransport::AttachmentJacs` or
 `SignedEmailTransport::HtmlInline` and returns `SignedEmailVerificationResult`
 with `Verified`, `PartiallyVerified`, or `Failed`.
 
+Canonical presentation has two explicit versions. Historical V1 escapes
+plaintext without links and omits `inline_template_version` from the signed
+payload. V2 uses `render_inline_email_message_body` with
+`InlineEmailTemplateVersion::V2`: a complete, unpadded HTTPS URL line becomes an
+anchor whose visible URL and destination are the exact original text, including
+query and fragment. Credentials, controls, whitespace and markup delimiters
+remain ordinary escaped text. The helper is generic and does not recognize
+application routes or invitation tokens.
+
+V2 binds `inline_template_version: "v2"` inside the signed email payload.
+The strict verifier reconstructs the complete presentation from signed
+plaintext, requires exactly one supported HTML template marker matching the
+signed version, and compares the DOM including anchor destinations. Altered
+hrefs, labels, fragments, extra markup and unsigned version changes fail
+presentation verification; edits to the signed version fail cryptographic
+verification. V2 also rejects extra unmarked message anchors hidden inside
+stripped verification artifacts. Reserved verification/logo links retain their
+existing transport-artifact contract and are not signed message destinations. Signature/footer/logo artifact markers retain their V1 meaning
+and are never used to exempt user links from verification.
+
+Readers implementing only V1 reject V2 presentation. Upgrade producers and
+verifying delivery services together before emitting V2; SDKs may continue to
+produce V1. V1 historical serialized payloads and verification remain supported.
+The optional Rust payload field is an additive serialized contract; downstream
+Rust struct literals must supply `inline_template_version: None` when using V1
+or attachment mode. These source changes do not constitute a published release.
+
 HTML-inline helpers include:
 
 - `build_html_inline_email_signature_payload` for the inline signed pre-image.
