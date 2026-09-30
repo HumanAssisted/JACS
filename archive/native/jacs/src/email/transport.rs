@@ -24,6 +24,166 @@ pub const HAI_LOGO_CONTENT_TYPE: &str = "image/png";
 pub const HAI_LOGO_FILENAME: &str = "hai-jacs-logo.png";
 pub const HAI_HIDDEN_ENVELOPE_MAX_BYTES: usize = 8 * 1024;
 
+/// Canonical HTML-inline presentation versions. V1 remains the historical
+/// escaped-text rendering; V2 adds links derived only from signed plaintext.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InlineEmailTemplateVersion {
+    V1,
+    V2,
+}
+
+impl InlineEmailTemplateVersion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::V1 => "v1",
+            Self::V2 => "v2",
+        }
+    }
+}
+
+/// Render user content for the canonical inline template. V2 links only an
+/// entire, unpadded HTTPS URL line. The original URL is both the visible label
+/// and destination, including its query and fragment. Credentials, whitespace,
+/// controls and markup delimiters are never interpreted as active links.
+pub fn render_inline_email_message_body(
+    plain_text: &str,
+    version: InlineEmailTemplateVersion,
+) -> String {
+    let normalized = plain_text.replace("\r\n", "\n").replace('\r', "\n");
+    normalized
+        .split('\n')
+        .map(|line| {
+            let safe_url = version == InlineEmailTemplateVersion::V2
+                && line.starts_with("https://")
+                && !line.chars().any(|ch| {
+                    ch.is_whitespace()
+                        || ch.is_control()
+                        || matches!(ch, '<' | '>' | '"' | '\'' | '\\')
+                })
+                && url::Url::parse(line).is_ok_and(|url| {
+                    url.scheme() == "https"
+                        && url.host_str().is_some()
+                        && url.username().is_empty()
+                        && url.password().is_none()
+                });
+            let text = escape_html_text(line);
+            if safe_url {
+                format!(r#"<a href="{}">{text}</a>"#, escape_html_attr(line))
+            } else {
+                text
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("<br>")
+}
+
+/// Render the canonical message container. V2 lets the email client choose
+/// direction from the first strong character of the exact signed text; V1
+/// retains its historical container bytes. URLs remain unchanged.
+pub fn render_inline_email_message_main(
+    plain_text: &str,
+    version: InlineEmailTemplateVersion,
+) -> String {
+    let body = render_inline_email_message_body(plain_text, version);
+    let direction = match version {
+        InlineEmailTemplateVersion::V1 => "",
+        InlineEmailTemplateVersion::V2 => r#" dir="auto""#,
+    };
+    format!(r#"<main data-hai-message-body="v1"{direction}>{body}</main>"#)
+}
+
+/// Read exactly one supported template marker on the HTML element. Duplicate
+/// attributes/markers and malformed tokenizer input fail closed.
+pub fn inline_email_template_version(html: &str) -> Option<InlineEmailTemplateVersion> {
+    let input = BufferQueue::default();
+    input.push_back(StrTendril::from(html));
+    let tokenizer = Tokenizer::new(TemplateVersionSink::default(), Default::default());
+    let _ = tokenizer.feed(&input);
+    tokenizer.end();
+    let sink = tokenizer.sink;
+    if sink.invalid.get() || sink.count.get() != 1 {
+        None
+    } else {
+        let version = *sink.version.borrow();
+        version
+    }
+}
+
+#[derive(Default)]
+struct TemplateVersionSink {
+    count: Cell<usize>,
+    invalid: Cell<bool>,
+    version: RefCell<Option<InlineEmailTemplateVersion>>,
+}
+
+impl TokenSink for TemplateVersionSink {
+    type Handle = ();
+    fn process_token(&self, token: Token, _line: u64) -> TokenSinkResult<()> {
+        match token {
+            Token::ParseError(_) => self.invalid.set(true),
+            Token::TagToken(tag) if tag.kind == TagKind::StartTag => {
+                for attr in &tag.attrs {
+                    if attr.name.local.as_ref() == "data-hai-template-version" {
+                        self.count.set(self.count.get() + 1);
+                        if tag.name.as_ref() != "html" {
+                            self.invalid.set(true);
+                        }
+                        *self.version.borrow_mut() = match attr.value.as_ref() {
+                            "v1" => Some(InlineEmailTemplateVersion::V1),
+                            "v2" => Some(InlineEmailTemplateVersion::V2),
+                            _ => {
+                                self.invalid.set(true);
+                                None
+                            }
+                        };
+                    }
+                }
+                if tag.name.as_ref() == "script" {
+                    return TokenSinkResult::RawData(RawKind::ScriptData);
+                }
+            }
+            _ => {}
+        }
+        TokenSinkResult::Continue
+    }
+}
+
+// Count every non-artifact anchor, including anchors nested inside artifacts.
+// Stripping must never hide additional clickable user destinations in V2.
+pub(crate) fn inline_user_link_count(html: &str) -> usize {
+    let input = BufferQueue::default();
+    input.push_back(StrTendril::from(html));
+    let tokenizer = Tokenizer::new(UserLinkCountSink::default(), Default::default());
+    let _ = tokenizer.feed(&input);
+    tokenizer.end();
+    tokenizer.sink.count.get()
+}
+
+#[derive(Default)]
+struct UserLinkCountSink {
+    count: Cell<usize>,
+}
+
+impl TokenSink for UserLinkCountSink {
+    type Handle = ();
+    fn process_token(&self, token: Token, _line: u64) -> TokenSinkResult<()> {
+        if let Token::TagToken(tag) = token {
+            if tag.kind == TagKind::StartTag {
+                if tag.name.as_ref() == "a"
+                    && !has_attr_value(&tag.attrs, HAI_VERIFY_LINK_MARKER, "v1")
+                    && !has_attr_value(&tag.attrs, HAI_LOGO_VERIFY_LINK_MARKER, "v1")
+                {
+                    self.count.set(self.count.get() + 1);
+                }
+                if tag.name.as_ref() == "script" {
+                    return TokenSinkResult::RawData(RawKind::ScriptData);
+                }
+            }
+        }
+        TokenSinkResult::Continue
+    }
+}
+
 /// Escape plain text for insertion into HAI-owned HTML email text nodes.
 pub fn escape_html_text(value: &str) -> String {
     value
@@ -480,6 +640,46 @@ fn normalize_content_id(content_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_inline_v2_links_only_complete_safe_https_lines() {
+        let url = "https://example.com/path?a=1&b=2#exact-token";
+        assert_eq!(
+            render_inline_email_message_body(url, InlineEmailTemplateVersion::V2),
+            r#"<a href="https://example.com/path?a=1&amp;b=2#exact-token">https://example.com/path?a=1&amp;b=2#exact-token</a>"#
+        );
+        assert_eq!(
+            render_inline_email_message_body(url, InlineEmailTemplateVersion::V1),
+            escape_html_text(url)
+        );
+        for text in [
+            "javascript:alert(1)",
+            "http://example.com",
+            "https://",
+            "https://user:pass@example.com",
+            "https://user@example.com",
+            " https://example.com",
+            "https://example.com ",
+            "Open https://example.com",
+            "https://example.com/\" onclick=\"alert(1)",
+            "https://example.com/<script>",
+            "https://example.com/\\evil",
+            "https://example.com/\tpath",
+        ] {
+            assert_eq!(
+                render_inline_email_message_body(text, InlineEmailTemplateVersion::V2),
+                escape_html_text(text),
+                "{text}"
+            );
+        }
+        assert_eq!(
+            render_inline_email_message_body(
+                "first\r\nsecond\rthird",
+                InlineEmailTemplateVersion::V2
+            ),
+            "first<br>second<br>third"
+        );
+    }
 
     #[test]
     fn escapes_html_text_nodes_without_treating_text_as_html() {

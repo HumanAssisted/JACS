@@ -55,6 +55,10 @@ pub struct EmailSignatureHeaders {
 /// The payload section of the JACS email signature document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailSignaturePayload {
+    /// Signed presentation contract for inline V2. Absent means historical V1.
+    /// Omitted on V1/attachment payloads to preserve their serialized bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_template_version: Option<String>,
     pub headers: EmailSignatureHeaders,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_plain: Option<BodyPartEntry>,
@@ -243,6 +247,7 @@ mod tests {
     #[test]
     fn email_signature_payload_roundtrips_through_serde() {
         let payload = EmailSignaturePayload {
+            inline_template_version: None,
             headers: EmailSignatureHeaders {
                 from: SignedHeaderEntry {
                     value: "sender@example.com".to_string(),
@@ -290,6 +295,7 @@ mod tests {
             version: "1.0".to_string(),
             document_type: "email_signature".to_string(),
             payload: EmailSignaturePayload {
+                inline_template_version: None,
                 headers: EmailSignatureHeaders {
                     from: SignedHeaderEntry {
                         value: "a@b.com".to_string(),

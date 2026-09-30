@@ -16,9 +16,10 @@ use super::canonicalize::{
 use super::error::{EmailError, check_email_size};
 use super::result::{EmailVerificationReason, SignedEmailVerificationResult, VerificationMode};
 use super::transport::{
-    SignedEmailTransport, detect_signed_email_transport, escape_html_text,
+    InlineEmailTemplateVersion, SignedEmailTransport, detect_signed_email_transport,
     extract_inline_logo_part, extract_jacs_header_from_logo_png,
-    extract_topmost_inline_jacs_envelope, html_bodies_equivalent,
+    extract_topmost_inline_jacs_envelope, html_bodies_equivalent, inline_email_template_version,
+    inline_user_link_count, render_inline_email_message_main,
     strip_inline_signature_artifacts_from_html,
 };
 use super::types::{
@@ -321,7 +322,7 @@ pub fn verify_signed_email(
                 ));
             }
 
-            if !html_inline_presentation_equivalent(&parts) {
+            if !html_inline_presentation_equivalent(&doc, &parts) {
                 return Ok(SignedEmailVerificationResult::non_crypto_transport_failure(
                     _mode,
                     SignedEmailTransport::HtmlInline,
@@ -353,20 +354,41 @@ fn expected_logo_header_from_inline_envelope(envelope: &str) -> Option<String> {
         .or_else(|| Some(trimmed.to_string()))
 }
 
-fn html_inline_presentation_equivalent(parts: &ParsedEmailParts) -> bool {
-    let Some(text_part) = parts.body_plain.as_ref() else {
-        return false;
+fn html_inline_presentation_equivalent(
+    doc: &JacsEmailSignatureDocument,
+    parts: &ParsedEmailParts,
+) -> bool {
+    let signed_version = match doc.payload.inline_template_version.as_deref() {
+        None => InlineEmailTemplateVersion::V1,
+        Some("v2") => InlineEmailTemplateVersion::V2,
+        _ => return false,
     };
-    let Some(html_part) = parts.body_html.as_ref() else {
-        return false;
-    };
+    inline_email_presentation_matches(parts, signed_version)
+}
 
+/// Check canonical presentation against plaintext, including destinations.
+/// This is a noncryptographic shape check for ingress safety. Call
+/// `verify_signed_email` to authenticate the plaintext and version binding.
+pub fn inline_email_presentation_matches(
+    parts: &ParsedEmailParts,
+    version: InlineEmailTemplateVersion,
+) -> bool {
+    let (Some(text_part), Some(html_part)) = (&parts.body_plain, &parts.body_html) else {
+        return false;
+    };
+    let received_html = String::from_utf8_lossy(&html_part.content);
+    if inline_email_template_version(&received_html) != Some(version) {
+        return false;
+    }
     let text_body = String::from_utf8_lossy(&text_part.content);
     let user_text = user_text_from_inline_text_body(&text_body);
-    let expected_html = render_expected_html_inline_body_without_artifacts(&user_text);
-    let received_html = String::from_utf8_lossy(&html_part.content);
+    let expected_html = render_expected_html_inline_body_without_artifacts(&user_text, version);
     let received_without_artifacts = strip_inline_signature_artifacts_from_html(&received_html);
-
+    if version == InlineEmailTemplateVersion::V2
+        && inline_user_link_count(&received_html) != inline_user_link_count(&expected_html)
+    {
+        return false;
+    }
     html_bodies_equivalent(expected_html.trim(), received_without_artifacts.trim())
 }
 
@@ -382,13 +404,14 @@ fn user_text_from_inline_text_body(text_body: &str) -> String {
     trimmed.to_string()
 }
 
-fn render_expected_html_inline_body_without_artifacts(plain_text: &str) -> String {
-    let normalized = plain_text.replace("\r\n", "\n").replace('\r', "\n");
-    let body = escape_html_text(&normalized).replace('\n', "<br>");
+fn render_expected_html_inline_body_without_artifacts(
+    plain_text: &str,
+    version: InlineEmailTemplateVersion,
+) -> String {
+    let body = render_inline_email_message_main(plain_text, version);
+    let version = version.as_str();
 
-    format!(
-        r#"<html data-hai-template-version="v1"><body><main data-hai-message-body="v1">{body}</main></body></html>"#
-    )
+    format!(r#"<html data-hai-template-version="{version}"><body>{body}</body></html>"#)
 }
 
 /// Verify a JACS-signed email whose signature attachment is in YAML format.
@@ -1582,6 +1605,230 @@ mod tests {
         .to_string();
 
         html_inline_email_with_envelope(&envelope, Some(&compact_header))
+    }
+
+    const INLINE_V2_URL: &str =
+        "https://example.com/conversation?view=private&lang=en#invitation-token";
+
+    fn inline_v2_fixture(
+        envelope: &str,
+        logo_header: Option<&str>,
+        message_prefix: &str,
+    ) -> Vec<u8> {
+        let raw =
+            String::from_utf8(html_inline_email_with_envelope(envelope, logo_header)).unwrap();
+        let text = format!("{message_prefix}\n{INLINE_V2_URL}");
+        let body = render_inline_email_message_main(&text, InlineEmailTemplateVersion::V2);
+        raw.replace(
+            r#"data-hai-template-version="v1""#,
+            r#"data-hai-template-version="v2""#,
+        )
+        .replace(
+            "Hello from a signed HAI agent.\r\n",
+            &format!("{message_prefix}\r\n{INLINE_V2_URL}\r\n"),
+        )
+        .replace(
+            r#"<main data-hai-message-body="v1">Hello from a signed HAI agent.</main>"#,
+            &body,
+        )
+        .into_bytes()
+    }
+
+    fn signed_inline_v2_fixture(agent: &SimpleAgent, message_prefix: &str) -> Vec<u8> {
+        let payload = build_html_inline_email_signature_payload(&inline_v2_fixture(
+            "{}",
+            None,
+            message_prefix,
+        ))
+        .unwrap();
+        assert_eq!(payload.inline_template_version.as_deref(), Some("v2"));
+        let signed = agent
+            .sign_message(&serde_json::to_value(payload).unwrap())
+            .unwrap();
+        let header = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(signed.raw.as_bytes()))
+        );
+        let envelope = serde_json::json!({
+            "compactHeader": header,
+            "jacsEnvelope": serde_json::from_str::<serde_json::Value>(&signed.raw).unwrap(),
+        })
+        .to_string();
+        inline_v2_fixture(&envelope, Some(&header), message_prefix)
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn inline_v2_signed_links_verify_and_reject_presentation_mutations() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("inline-v2-links");
+        let key = get_pubkey(&agent);
+        let raw = signed_inline_v2_fixture(&agent, "Start here:");
+        let verified = verify_signed_email(&raw, &agent, &key, VerificationMode::Strict).unwrap();
+        assert_eq!(
+            verified.status,
+            crate::email::EmailVerificationStatus::Verified
+        );
+        let original = String::from_utf8(raw).unwrap();
+        let escaped = super::super::transport::escape_html_attr(INLINE_V2_URL);
+        let anchor = format!(r#"<a href="{escaped}">{escaped}</a>"#);
+        assert!(original.contains(&anchor));
+        for (name, mutated) in [
+            (
+                "href",
+                original.replace(
+                    &format!(r#"href="{escaped}""#),
+                    r#"href="https://attacker.example/""#,
+                ),
+            ),
+            (
+                "fragment",
+                original.replace(
+                    &format!(r#"href="{escaped}""#),
+                    &format!(
+                        r#"href="{}""#,
+                        escaped.replace("invitation-token", "other-token")
+                    ),
+                ),
+            ),
+            (
+                "label",
+                original.replace(&format!(">{escaped}</a>"), ">Different destination</a>"),
+            ),
+            (
+                "duplicate anchor",
+                original.replace(&anchor, &format!("{anchor}{anchor}")),
+            ),
+            (
+                "script scheme",
+                original.replace(
+                    &format!(r#"href="{escaped}""#),
+                    r#"href="javascript:alert(1)""#,
+                ),
+            ),
+            (
+                "unknown version",
+                original.replace(
+                    r#"data-hai-template-version="v2""#,
+                    r#"data-hai-template-version="v3""#,
+                ),
+            ),
+            (
+                "downgrade",
+                original.replace(
+                    r#"data-hai-template-version="v2""#,
+                    r#"data-hai-template-version="v1""#,
+                ),
+            ),
+            (
+                "missing version",
+                original.replace(r#" data-hai-template-version="v2""#, ""),
+            ),
+            (
+                "duplicate version",
+                original.replace(
+                    r#"data-hai-template-version="v2""#,
+                    r#"data-hai-template-version="v2" data-hai-template-version="v1""#,
+                ),
+            ),
+            (
+                "extra marker",
+                original.replace("<body>", r#"<body data-hai-template-version="v2">"#),
+            ),
+            (
+                "extra DOM",
+                original.replace("</main>", "<br>Extra text</main>"),
+            ),
+            ("wrong direction", original.replace(r#"dir="auto""#, r#"dir="rtl""#)),
+            ("missing direction", original.replace(r#" dir="auto""#, "")),
+            ("duplicate direction", original.replace(r#"dir="auto""#, r#"dir="auto" dir="ltr""#)),
+            ("extra footer anchor", original.replace("</footer>", r#"<a href="https://attacker.example/">Start</a></footer>"#)),
+            ("extra logo anchor", original.replace(r#"<img src="cid:hai-jacs-logo@hai.ai""#,
+                r#"<a data-hai-logo-verify-link="v1" href="https://example.com/verify"><a href="https://attacker.example/">Start</a><img src="cid:hai-jacs-logo@hai.ai""#)
+                .replace(r#"alt="HAI verification">"#, r#"alt="HAI verification"></a>"#)),
+            ("relocated anchor", original.replace(&anchor, &escaped)
+                .replace("</footer>", &format!("{anchor}</footer>"))),
+        ] {
+            assert_ne!(mutated, original, "mutation must change fixture: {name}");
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            assert_eq!(
+                result.status,
+                crate::email::EmailVerificationStatus::Failed,
+                "{name}"
+            );
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::HtmlEquivalenceFailed],
+                "{name}"
+            );
+        }
+        // The presentation choice is cryptographically bound, even for text
+        // without URLs; changing/removing the signed field cannot downgrade it.
+        let envelope = extract_topmost_inline_jacs_envelope(original.as_bytes()).unwrap();
+        for replacement in [None, Some("v1"), Some("v3")] {
+            let mut value: serde_json::Value = serde_json::from_str(&envelope).unwrap();
+            let content = value["jacsEnvelope"]["content"].as_object_mut().unwrap();
+            match replacement {
+                None => {
+                    content.remove("inline_template_version");
+                }
+                Some(version) => {
+                    content.insert("inline_template_version".into(), version.into());
+                }
+            }
+            let mutated = original.replace(&envelope, &serde_json::to_string(&value).unwrap());
+            assert_ne!(mutated, original);
+            assert!(
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .is_err()
+            );
+        }
+        let rtl_raw = signed_inline_v2_fixture(&agent, "ابدأ هنا:");
+        let rtl_result =
+            verify_signed_email(&rtl_raw, &agent, &key, VerificationMode::Strict).unwrap();
+        assert_eq!(
+            rtl_result.status,
+            crate::email::EmailVerificationStatus::Verified
+        );
+        let rtl_html = String::from_utf8(rtl_raw).unwrap();
+        assert!(rtl_html.contains(r#"<main data-hai-message-body="v1" dir="auto">ابدأ هنا:"#));
+        assert!(
+            rtl_html.contains(&anchor),
+            "RTL must preserve the exact URL and token"
+        );
+        let rtl_tampered = rtl_html.replace(r#"dir="auto""#, r#"dir="ltr""#);
+        let rtl_result = verify_signed_email(
+            rtl_tampered.as_bytes(),
+            &agent,
+            &key,
+            VerificationMode::Strict,
+        )
+        .unwrap();
+        assert_eq!(
+            rtl_result.status,
+            crate::email::EmailVerificationStatus::Failed
+        );
+        assert_eq!(
+            rtl_result.reasons,
+            vec![EmailVerificationReason::HtmlEquivalenceFailed]
+        );
+        let text_mutated = original.replace(
+            &format!("{INLINE_V2_URL}\r\n"),
+            "https://attacker.example/\r\n",
+        );
+        let result = verify_signed_email(
+            text_mutated.as_bytes(),
+            &agent,
+            &key,
+            VerificationMode::Strict,
+        )
+        .unwrap();
+        assert_eq!(
+            result.reasons,
+            vec![EmailVerificationReason::CanonicalPreimageHashMismatch]
+        );
     }
 
     fn signed_html_inline_email_with_user_attachment(agent: &SimpleAgent) -> Vec<u8> {

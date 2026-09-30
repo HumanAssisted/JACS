@@ -121,7 +121,22 @@ pub fn build_html_inline_email_signature_payload(
 ) -> Result<EmailSignaturePayload, EmailError> {
     check_email_size(raw_email)?;
     let parts = extract_email_parts(raw_email)?;
-    build_email_signature_payload(&parts, None, false, false, true)
+    // Callers may prepare the signed preimage before generating HTML. Keep
+    // that historical plaintext-only helper usage as V1 (no signed field).
+    let version = match parts.body_html.as_ref() {
+        None => super::transport::InlineEmailTemplateVersion::V1,
+        Some(html) => {
+            super::transport::inline_email_template_version(&String::from_utf8_lossy(&html.content))
+                .ok_or_else(|| {
+                    EmailError::InvalidEmailFormat("invalid inline template version".into())
+                })?
+        }
+    };
+    let mut payload = build_email_signature_payload(&parts, None, false, false, true)?;
+    if version == super::transport::InlineEmailTemplateVersion::V2 {
+        payload.inline_template_version = Some("v2".into());
+    }
+    Ok(payload)
 }
 
 fn build_email_signature_payload(
@@ -142,6 +157,7 @@ fn build_email_signature_payload(
         build_attachment_entries(parts, include_jacs_attachments, exclude_inline_logo);
 
     Ok(EmailSignaturePayload {
+        inline_template_version: None,
         headers,
         body_plain,
         body_html,
