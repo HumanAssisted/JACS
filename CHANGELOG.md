@@ -27,6 +27,31 @@
 
 ## Unreleased
 
+### 2026-10-06 — Refresh development dependency security floors
+
+- Raise the development/CI transitive floors to PyJWT 2.15.0, LangGraph SDK
+  0.4.4 and urllib3 2.8.0; lock PyJWT 2.15.1 and the other patched versions.
+  Apply the same PyJWT floor to the standalone Python MCP example. The base
+  wheel keeps its dependency-free runtime contract.
+- Patch the native Node and example locks, requiring MCP SDK 1.31+ and safe
+  transitive versions. Update the browser example's source-map-js to 1.2.2.
+- Python and Node audits report no known vulnerabilities; TypeScript, 51
+  native-free Node tests and 299 script tests pass, with four native-dependent
+  cases pending locally. No advisory exemptions or Rust runtime changes.
+
+### 2026-09-29 — Verify canonical links in inline email
+
+- Add explicit V2 canonical inline email presentation: whole-line HTTPS URLs
+  render as links with their exact visible destination and fragment; canonical
+  `dir="auto"` displays Arabic and Hebrew from the signed text. Bind V2
+  in the signed payload and reconstruct anchors from signed plaintext during
+  strict verification; preserve historical V1 payload bytes and rendering.
+- Reject altered destinations, labels, fragments, extra DOM and template
+  downgrades, including extra message links hidden inside verification
+  artifacts. V1-only consumers require an upgrade before receiving V2.
+  All 135 email tests and `make check` (292 script tests) pass; source is
+  unreleased.
+
 ### 2026-09-21 — Make publication retries reliable
 
 - Cache only Cargo downloads and tools in the Rust publish job, using a fresh

@@ -65,8 +65,12 @@ never silently replace that key and pretend the old ciphertext was recovered.
 
 The wrapping key is AES-256/GCM, non-exportable, with strong-biometric-only
 per-use authentication and biometric-enrollment invalidation. Policy validation
-uses Android's documented `KeyInfo` duration `-1` for per-use keys; creation
-expresses this as timeout `0`. AAD is sent only after authorization. The wrapper
+accepts exactly `-1` (the documented `KeyInfo` value) or `0` for per-use
+authentication. [Android 15's Keystore2 implementation](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/keystore/java/android/security/keystore2/AndroidKeyStoreSecretKeyFactorySpi.java)
+returns `0` when the authentication timeout tag is absent; creation also
+expresses per-use authentication as timeout `0`. Positive time windows and other
+negative values remain rejected, with all other policy checks unchanged.
+AAD is sent only after authorization. The wrapper
 does not claim StrongBox or hardware-backed PQ signing: the portable PQ key is
 unlocked in Rust memory. JVM/FFI strings cannot be reliably zeroed, so wrapping
 password copies stay scoped to import/export; mutable password buffers are wiped.
@@ -75,7 +79,8 @@ password copies stay scoped to import/export; mutable password buffers are wiped
 
 The existing `check-android-source.py` compiles all vault/adaptor source against
 Android API classes and runs independent DER checks plus 255 state cases,
-including 250 cancellation/completion races. The package script also compiles
+including 250 cancellation/completion races, and nine authentication-duration
+policy cases. The package script also compiles
 an instrumentation APK from `tests/android-instrumented`, using test-only
 AndroidX runner dependencies. On an already provisioned API 30+ emulator/device:
 
@@ -83,7 +88,8 @@ AndroidX runner dependencies. On an already provisioned API 30+ emulator/device:
 gradle --project-dir jacs-mobile/generated/android-project :library:connectedDebugAndroidTest
 ```
 
-These device tests exercise real AndroidKeyStore rejection of weak aliases,
+These device tests exercise fresh wrapping-key policy acceptance when strong
+biometrics are enrolled (otherwise that check skips), real AndroidKeyStore rejection of weak aliases,
 missing-key failure, real Rust PQ material and Android atomic-record persistence.
 They do not forge biometric authorization or claim to verify a real sensor.
 For sensor acceptance on a device with enrolled strong biometrics: create,

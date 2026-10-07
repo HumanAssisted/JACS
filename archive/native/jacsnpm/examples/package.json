@@ -21,14 +21,15 @@
     "overrides": {
         "ajv": "^8.18.0",
         "express-rate-limit": "^8.2.2",
-        "fast-uri": "^3.1.6",
+        "fast-uri": "^3.1.8",
         "hono": "^4.12.34",
-        "ip-address": "^10.3.1",
+        "ip-address": "^10.7.1",
         "path-to-regexp": "^8.4.0",
+        "proxy-addr": "^2.0.8",
         "qs": "^6.16.0"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.26.0",
+        "@modelcontextprotocol/sdk": "^1.31.0",
         "express": "^5.0",
         "jacsnpm": "file:..",
         "koa": "^3.1.2"
