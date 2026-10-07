@@ -31,6 +31,11 @@ help:
 	@echo 'make rust-cache-setup    Configure kache once per user/Cargo home'
 	@echo 'make rust-cache-status   Show shared cache usage and hits'
 	@echo 'make rust-cache-smoke    Check reuse, invalidation and bypass offline'
+	@echo 'make build-wasm | test-wasm | build-jacsbook | build-jacsbook-pdf'
+	@echo 'make build-jacs-compat | mcp-compat | test-jacs-mcp-compat'
+	@echo 'make test-jacs-fast | test-jacs-pq | test-jacs-storage | verify-shipped-release'
+	@echo 'make homebrew-formula VERSION=X.Y.Z SOURCE_COMMIT=<reviewed SHA>'
+	@echo 'See docs/developer-commands.md for native suites and maintenance commands'
 
 rust-cache-preview:
 	@python3 scripts/rust-cache.py
@@ -206,3 +211,5 @@ retry-jacsgo: check-versions
 
 retry-everything: check-versions
 	python3 scripts/release_retry.py retry-everything --execute
+
+include $(dir $(lastword $(MAKEFILE_LIST)))make/developer.mk

@@ -2,12 +2,13 @@
 
 Cryptographic identity, signing, and verification for AI agents from Python.
 
-> **Registry status (observed 2026-07-11):** PyPI serves `jacs==0.11.3`; this
-> branch is source `0.13.0`. Pin the package when exact cross-language contracts
-> matter.
+> **Published 0.15.0:** `jacs` remains a supported native Python library.
+> Wheel platforms, installed-package checks and provenance are recorded in the
+> [release inventory](../../../docs/release-status.md). Its separate native
+> workspace remains buildable through the root Makefile and CI.
 
 ```bash
-pip install jacs
+python -m pip install jacs==0.15.0
 ```
 
 Prebuilt native bindings are distributed via maturin. A normal install does not require compiling Rust.
