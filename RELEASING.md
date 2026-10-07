@@ -1,9 +1,10 @@
 # Releasing JACS
 
-The coordinated candidate is **0.15.0**. It has not been published. MCP is the
-primary documented integration; Rust, Node, Python, Go and browser packages all
-remain supported release surfaces. Existing registry versions are recorded in
-[release status](docs/release-status.md), separately from source versions.
+The coordinated source version is **0.15.0**. MCP is the primary documented
+integration; Rust, Node, Python, Go and browser packages all remain supported
+release surfaces. Consult [release status](docs/release-status.md) and the
+[0.15.0 verification record](release/0.15.0-verification.json) for observed
+publication and installation evidence, separately from source versions.
 
 ## Version and build commands
 

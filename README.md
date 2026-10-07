@@ -18,7 +18,18 @@ The active workspace has five crates:
 | `jacs-mcp` | Stdio create/sign/verify/rotate/reencrypt and encrypted import/export; verify-only by default |
 | `jacs-cli` | Thin `jacs` binary, including `jacs mcp` |
 
-The native stack, database backends, email/A2A/DNS/trust/network/media integrations, and Node/Python/Go bindings are preserved in [`archive/native`](archive/native/README.md). Its Rust crates remain separate from the portable dependency graph. The root Makefile supports native binding builds, installed-package checks and CI publication of every catalogued Rust crate, Python, Go and both npm packages. The existing HAI SDK uses this compatibility workspace. Existing licenses remain in force.
+**Rust, Node.js, Python and Go libraries remain supported and published.** Native
+email, media, A2A, agreements, trust and storage integrations live in the separate
+[`archive/native`](archive/native/README.md) workspace. That directory name
+describes the repository layout; it does not retire those packages. Their
+dependencies stay outside the five portable crates, and their builds, installed
+consumer tests and releases run through the root Makefile and CI. Existing
+licenses remain in force.
+
+Start with [MCP use cases](USECASES.md), or choose a
+[direct library integration](docs/libraries.md). The [A2A quickstart](A2A_QUICKSTART.md)
+and [example index](examples/README.md) make the broader native APIs accessible
+from the root again.
 
 ## Build and use
 
@@ -57,6 +68,11 @@ all 17 Rust crates, both npm packages, Python, Go, mobile metadata and contracts
 The compatibility MCP and CLI crates publish as `jacs-mcp-compat` and
 `jacs-cli-compat`; the portable `jacs mcp` remains the primary documented entry.
 See [releasing](RELEASING.md) for registry setup and the release commands.
+
+For the extended agreement and media server, see [extended CLI and MCP profiles](docs/native-mcp.md).
+The [developer command reference](docs/developer-commands.md) covers restored
+browser, documentation, native test and Homebrew entry points. `make build-jacsbook`
+builds the MCP use-case guide, direct-library navigation and native API reference.
 
 ## Shared Rust cache for local worktrees
 

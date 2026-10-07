@@ -1,6 +1,6 @@
 ## 0.15.0
 
-(unreleased)
+(Released 2026-09-21; see the [verified artifacts](release/0.15.0-verification.json).)
 
 - **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
   primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
@@ -16,7 +16,7 @@
   the primary documented integration. All catalogued Rust crates and language
   packages advance together to 0.15; extended MCP/CLI compatibility crates
   publish as `jacs-mcp-compat` and `jacs-cli-compat`.
-- Name the unpublished WASM npm package `@hai.ai/jacs-wasm` under the
+- Name the WASM npm package `@hai.ai/jacs-wasm` under the
   existing `@hai.ai` organization; align release checks and browser consumers.
 - Coordinated CI publication covers all 17 Rust crates (including WASM,
   mobile, bindings and storage), CLI binaries, Python wheels/source, Go native
@@ -27,15 +27,16 @@
 
 ## Unreleased
 
-### 2026-10-06 — Refresh optional Python dependency security floors
+### 2026-10-06 — Refresh development dependency security floors
 
 - Raise the development/CI transitive floors to PyJWT 2.15.0, LangGraph SDK
   0.4.4 and urllib3 2.8.0; lock PyJWT 2.15.1 and the other patched versions.
   Apply the same PyJWT floor to the standalone Python MCP example. The base
   wheel keeps its dependency-free runtime contract.
-- Core, every optional extra and standalone Python example audits report no
-  known vulnerabilities; `make check` passes all 292 script tests. No advisory
-  exemptions are added. Rust, Kotlin and portable artifact inputs are unchanged.
+- Update the browser example's source-map-js lock to patched 1.2.2.
+- Core, every optional extra, standalone Python examples and the browser lock
+  report no known vulnerabilities; `make check` passes all 299 script tests.
+  No advisory exemptions are added. Rust and Kotlin runtime code is unchanged.
 
 ### 2026-09-29 — Verify canonical links in inline email
 
@@ -49,6 +50,17 @@
   artifacts. V1-only consumers require an upgrade before receiving V2.
   All 135 email tests and `make check` (292 script tests) pass; source is
   unreleased.
+
+### 2026-09-21 — Make publication retries reliable
+
+- Cache only Cargo downloads and tools in the Rust publish job, using a fresh
+  cache key so a retry cannot restore an old `target/crate-release` directory.
+  Preparation still refuses existing output; exact-package verification and
+  registry checks remain required. This workflow correction follows the 0.15.0
+  release commit.
+- Retry the exact PyPI wheel installation while registry indexes propagate,
+  then run the existing smoke checks. A version-listing response alone no longer
+  ends the readiness wait.
 
 ### 2026-09-20 — Restore Make release commands
 
