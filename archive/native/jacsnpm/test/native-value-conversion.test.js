@@ -17,7 +17,9 @@ describe('Native JavaScript value conversion', function () {
     };
     const signed = agent.signRequest(payload);
     expect(agent.verifyResponse(signed).payload).to.deep.equal(payload);
-    const withAgent = agent.verifyResponseWithAgentId(signed);
+    // A signed request carries a one-use nonce; each verification needs its own request.
+    expect(() => agent.verifyResponse(signed)).to.throw(/Replay attack detected/);
+    const withAgent = agent.verifyResponseWithAgentId(agent.signRequest(payload));
     expect(withAgent.payload).to.deep.equal(payload);
     expect(withAgent.agent_id).to.be.a('string').and.not.empty;
   });
