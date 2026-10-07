@@ -47,7 +47,7 @@ static AP2_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
 fn validate_mandate_input(checkout: &Value) -> Result<(), JacsError> {
     let errors: Vec<String> = AP2_VALIDATOR
         .iter_errors(checkout)
-        .map(|e| format!("{} (at {})", e, e.instance_path))
+        .map(|e| format!("{} (at {})", e, e.instance_path()))
         .collect();
     if !errors.is_empty() {
         return Err(JacsError::ValidationError(format!(

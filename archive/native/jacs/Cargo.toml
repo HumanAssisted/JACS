@@ -51,22 +51,22 @@ build = "build.rs"
 [dependencies]
 base64 = "0.22.1"
 chrono = "0.4.40"
-jsonschema = { version = "0.29", features = ["resolve-http", "resolve-file"] }
+jsonschema = { version = "0.58", features = ["resolve-http", "resolve-file"] }
 log = "0.4.27"
 pem = "3.0.5"
 rand = "0.10.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-signature = "2.2.0"
+signature = "3.0.0"
 moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
-sha2 = "0.10.8"
+sha2 = "0.11.0"
 phf = { version = "0.13.1", features = ["macros"] }
 strum = "0.27.1"
 strum_macros = "0.28.0"
 secrecy = "0.10.3"
-aes-gcm = "0.10.3"
-argon2 = "0.5.3"
+aes-gcm = "0.11.1"
+argon2 = "0.6.0"
 regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
@@ -79,19 +79,19 @@ lazy_static = "1.5"
 mail-parser = "0.11"
 unicode-normalization = "0.1"
 thiserror = "2"
-dirs = "5.0"
+dirs = "7.0"
 env_logger = "0.11.8"
 futures-util = "0.3.31"
-referencing = "0.33.0"
+referencing = "0.58"
 futures-executor = "0.3.31"
 # 0.1.7 floor: 0.1.6 pulled in unmaintained proc-macro-error2 (RUSTSEC-2026-0173)
 getset = "0.1.7"
 hex = "0.4"
-html5ever = "0.35"
-hickory-resolver = { version = "0.26.1", features = ["dnssec-ring"] }
-hkdf = "0.12"
+html5ever = "0.39"
+hickory-resolver = { version = "0.26.3", features = ["dnssec-ring"] }
+hkdf = "0.13"
 zeroize = "1.8"
-pbkdf2 = { version = "0.12", features = ["simple"] }
+pbkdf2 = "0.13"
 serde_yaml_ng = "0.10"
 jacs-media = { version = "0.15.0", path = "../jacs-media" }
 jacs-core = { version = "0.15.0", path = "../../../jacs-core" }

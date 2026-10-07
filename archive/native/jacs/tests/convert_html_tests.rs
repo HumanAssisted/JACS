@@ -6,7 +6,21 @@
 mod utils;
 
 use jacs::convert::{html_to_jacs, jacs_to_html};
+use jacs::simple::SimpleAgent;
 use utils::collect_json_files;
+
+/// Produce a genuine signed document without relying on ignored local data.
+fn fresh_signed_document() -> (SimpleAgent, String) {
+    let (agent, _) = SimpleAgent::ephemeral_legacy_ed25519_for_fixtures()
+        .expect("create disposable signing agent");
+    let signed = agent
+        .sign_message(&serde_json::json!({
+            "title": "HTML parser compatibility",
+            "content": "Unicode Ω <tags> & exact signed bytes"
+        }))
+        .expect("sign HTML fixture");
+    (agent, signed.raw)
+}
 
 /// Assert that a JSON string round-trips through HTML and is extracted identically.
 fn assert_html_round_trip(json_str: &str, filename: &str) {
@@ -29,11 +43,17 @@ fn assert_html_round_trip(json_str: &str, filename: &str) {
 fn html_round_trip_all_signed_documents() {
     let dir = utils::fixtures_documents_dir();
     let files = collect_json_files(&dir);
+    let (agent, fresh) = fresh_signed_document();
+    assert_html_round_trip(&fresh, "fresh signed document");
+    let extracted = html_to_jacs(&jacs_to_html(&fresh).unwrap()).unwrap();
     assert!(
-        !files.is_empty(),
-        "Expected at least one JSON file in fixtures/documents/"
+        agent
+            .verify(&extracted)
+            .expect("verify extracted document")
+            .valid
     );
 
+    // Retain coverage of any saved documents in addition to the fresh fixture.
     let mut passed = 0;
     for path in &files {
         let json_str = std::fs::read_to_string(path)
@@ -100,59 +120,21 @@ fn html_round_trip_agent_fixtures() {
 
 #[test]
 fn html_metadata_extraction_from_signed_doc() {
-    let dir = utils::fixtures_documents_dir();
-    let files = collect_json_files(&dir);
-
-    // Find a signed doc that has JACS metadata
-    for path in &files {
-        let json_str = std::fs::read_to_string(path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-
-        // Only test docs that have jacsId
-        if let Some(jacs_id) = value.get("jacsId").and_then(|v| v.as_str()) {
-            let html = jacs_to_html(&json_str).unwrap();
-
-            // Verify metadata is visible in the HTML (not just in the script tag)
-            // Find the content before the script tag
-            let script_pos = html.find(r#"<script type="application/json""#).unwrap();
-            let visible_html = &html[..script_pos];
-
-            assert!(
-                visible_html.contains(jacs_id),
-                "jacsId '{}' should be visible in HTML body for {}",
-                jacs_id,
-                path.file_name().unwrap().to_string_lossy()
-            );
-
-            // Check for agent ID if signature exists
-            if let Some(sigs) = value.get("jacsSignature").and_then(|v| v.as_array())
-                && let Some(first_sig) = sigs.first()
-                && let Some(agent_id) = first_sig.get("agentID").and_then(|v| v.as_str())
-            {
-                assert!(
-                    visible_html.contains(agent_id),
-                    "Agent ID '{}' should be visible in HTML for {}",
-                    agent_id,
-                    path.file_name().unwrap().to_string_lossy()
-                );
-            }
-
-            // Check for timestamp if present
-            if let Some(date) = value.get("jacsVersionDate").and_then(|v| v.as_str()) {
-                assert!(
-                    visible_html.contains(date),
-                    "Timestamp '{}' should be visible in HTML for {}",
-                    date,
-                    path.file_name().unwrap().to_string_lossy()
-                );
-            }
-
-            eprintln!(
-                "html_metadata_extraction verified for {}",
-                path.file_name().unwrap().to_string_lossy()
-            );
-            return; // One verified doc is sufficient
-        }
-    }
-    panic!("No signed document with jacsId found in fixtures/documents/");
+    let (_agent, json_str) = fresh_signed_document();
+    let value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    let jacs_id = value["jacsId"].as_str().expect("signed document ID");
+    let date = value["jacsVersionDate"]
+        .as_str()
+        .expect("signed document timestamp");
+    let html = jacs_to_html(&json_str).unwrap();
+    let script_pos = html.find(r#"<script type="application/json""#).unwrap();
+    let visible_html = &html[..script_pos];
+    assert!(
+        visible_html.contains(jacs_id),
+        "document ID must be visible outside the JSON script"
+    );
+    assert!(
+        visible_html.contains(date),
+        "document timestamp must be visible outside the JSON script"
+    );
 }

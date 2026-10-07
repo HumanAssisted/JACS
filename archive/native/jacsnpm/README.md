@@ -77,6 +77,10 @@ All operations are async by default. Sync variants are available with a `Sync` s
 
 ## Public human-approved document verification
 
+Building from source uses NAPI-RS CLI 3 and requires Node.js `^20.17.0`,
+`^22.13.0` or `>=23.5.0`; the installed addon continues to support Node.js
+20 or newer through Node-API 4. The source version remains a release candidate.
+
 `npm run build` and the native release profile enable `human-approval-vendored`:
 the existing WebAuthn verifier with OpenSSL compiled into the native module,
 without a separate OpenSSL installation. This configures new builds; it does

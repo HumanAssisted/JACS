@@ -27,6 +27,18 @@
 
 ## Unreleased
 
+### 2026-10-07 — Integrate compatible Rust dependency upgrades
+
+- Update portable schemas and UniFFI, native parsers, DNS, cryptography and
+  Node bindings together; preserve public JavaScript exports and Node 20+
+  support. Retained encrypted fixtures, an independent HKDF vector and bounded
+  loopback DNS tests protect compatibility and strict verification.
+- Pin the optional SurrealDB backend to 3.2.4. Its 3.3 upgrade remains blocked
+  by vulnerable quick-xml dependencies; no advisory exceptions were added.
+- Portable tests and strict Clippy pass; 177 focused native tests pass, including
+  genuine signed HTML round trips from a clean checkout. Exact binding,
+  consumer and fresh mobile/browser artifact checks remain release gates.
+
 ### 2026-10-06 — Refresh development dependency security floors
 
 - Raise the development/CI transitive floors to PyJWT 2.15.0, LangGraph SDK

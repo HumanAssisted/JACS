@@ -64,7 +64,7 @@ pub fn seal(
     rand::rng().fill(&mut nonce_bytes);
     let ciphertext = cipher
         .encrypt(
-            Nonce::from_slice(&nonce_bytes),
+            &Nonce::from(nonce_bytes),
             aes_gcm::aead::Payload {
                 msg: plaintext,
                 aad,
@@ -128,7 +128,7 @@ pub fn open(
     })?;
     let plaintext = cipher
         .decrypt(
-            Nonce::from_slice(nonce),
+            &Nonce::from(*nonce),
             aes_gcm::aead::Payload { msg: aead_ct, aad },
         )
         .map_err(|e| {

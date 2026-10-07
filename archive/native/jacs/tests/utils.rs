@@ -367,7 +367,7 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
                 let canonical = serde_json_canonicalizer::to_string(&to_hash)?;
                 let mut hasher = Sha256::new();
                 hasher.update(canonical.as_bytes());
-                value["jacsSha256"] = json!(format!("{:x}", hasher.finalize()));
+                value["jacsSha256"] = json!(hex::encode(hasher.finalize()));
             }
 
             let serialized = serde_json::to_string(&value)?;

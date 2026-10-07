@@ -815,6 +815,121 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
+    #[derive(Clone, Copy)]
+    enum StubReply {
+        Unsigned { forged_ad: bool },
+        WrongQuestion,
+        Malformed,
+    }
+
+    /// Only the local UDP socket is configured; never query public DNS.
+    fn lookup_against_udp_stub(reply: StubReply, require_secure: bool) -> Result<String, String> {
+        use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};
+        use hickory_resolver::proto::op::{Message, OpCode, Query};
+        use hickory_resolver::proto::rr::{Name, RData, Record, RecordType, rdata::TXT};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::time::Duration;
+
+        let owner = "_v1.agent.jacs.example.test.";
+        let text = build_agent_dns_txt("stub-agent", "stub-digest", DigestEncoding::Hex);
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .unwrap();
+        let address = socket.local_addr().unwrap();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let requests = Arc::new(AtomicUsize::new(0));
+        let stop = stopped.clone();
+        let observed = requests.clone();
+        let expected = text.clone();
+        let server = std::thread::spawn(move || {
+            let mut packet = [0u8; 2048];
+            while !stop.load(Ordering::Relaxed) {
+                let Ok((length, peer)) = socket.recv_from(&mut packet) else {
+                    continue;
+                };
+                observed.fetch_add(1, Ordering::Relaxed);
+                let query = Message::from_vec(&packet[..length]).unwrap();
+                if matches!(reply, StubReply::Malformed) {
+                    socket.send_to(&[0, 1, 2], peer).unwrap();
+                    continue;
+                }
+                let mut response = Message::response(query.metadata.id, OpCode::Query);
+                response.metadata.recursion_available = true;
+                response.metadata.recursion_desired = query.metadata.recursion_desired;
+                response.metadata.authentic_data =
+                    matches!(reply, StubReply::Unsigned { forged_ad: true });
+                if matches!(reply, StubReply::WrongQuestion) {
+                    response.add_query(Query::query(
+                        Name::from_ascii("different.test.").unwrap(),
+                        RecordType::TXT,
+                    ));
+                } else {
+                    response.add_queries(query.queries.clone());
+                }
+                // One logical TXT record with two wire chunks must concatenate.
+                response.add_answer(Record::from_rdata(
+                    Name::from_ascii(owner).unwrap(),
+                    60,
+                    RData::TXT(TXT::new(vec![
+                        expected[..7].to_string(),
+                        expected[7..].to_string(),
+                    ])),
+                ));
+                socket.send_to(&response.to_vec().unwrap(), peer).unwrap();
+            }
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = runtime.block_on(async {
+            let mut nameserver = NameServerConfig::udp(address.ip());
+            nameserver.connections[0].port = address.port();
+            let config = ResolverConfig::from_parts(None, vec![], vec![nameserver]);
+            let mut options = ResolverOpts::default();
+            options.timeout = Duration::from_millis(150);
+            options.attempts = 1;
+            options.try_tcp_on_error = false;
+            options.case_randomization = false;
+            let resolver = resolver_from_config(config, options, require_secure, owner).unwrap();
+            match tokio::time::timeout(Duration::from_secs(2), resolver.txt_lookup(owner)).await {
+                Ok(Ok(answer)) => txt_from_answers(answer.answers(), owner, require_secure)
+                    .map_err(|e| e.to_string()),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(_) => Err("bounded loopback lookup timed out".to_string()),
+            }
+        });
+        stopped.store(true, Ordering::Relaxed);
+        server.join().unwrap();
+        assert!(
+            requests.load(Ordering::Relaxed) > 0,
+            "must exercise actual UDP resolution"
+        );
+        result
+    }
+
+    #[test]
+    fn actual_udp_lookup_rejects_unsigned_txt_even_with_forged_ad_bit() {
+        let expected = build_agent_dns_txt("stub-agent", "stub-digest", DigestEncoding::Hex);
+        for forged_ad in [false, true] {
+            let reply = StubReply::Unsigned { forged_ad };
+            assert_eq!(lookup_against_udp_stub(reply, false).unwrap(), expected);
+            assert!(
+                lookup_against_udp_stub(reply, true).is_err(),
+                "AD is not a DNSSEC proof"
+            );
+        }
+    }
+
+    #[test]
+    fn actual_udp_lookup_rejects_wrong_question_and_malformed_response() {
+        for reply in [StubReply::WrongQuestion, StubReply::Malformed] {
+            assert!(lookup_against_udp_stub(reply, false).is_err());
+        }
+    }
+
     #[test]
     fn resolver_requires_configured_name_servers_without_network_io() {
         use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};

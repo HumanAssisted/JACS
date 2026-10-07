@@ -2287,7 +2287,7 @@ fn rejects_malformed_datetime_or_id_native() {
 fn v2_schema_copies_stay_in_sync() {
     assert_eq!(
         include_str!("../schemas/agreement/v2/agreement.schema.json"),
-        include_str!("../../jacs-core/schemas/agreement/v2/agreement.schema.json"),
+        include_str!("../../../../jacs-core/schemas/agreement/v2/agreement.schema.json"),
         "agreement v2 schema copies in jacs and jacs-core must stay byte-identical"
     );
 }

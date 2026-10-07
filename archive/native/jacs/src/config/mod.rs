@@ -1344,7 +1344,7 @@ fn get_field_help(field_name: &str) -> Option<&'static str> {
 
 /// Format a schema validation error with actionable context
 fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value) -> String {
-    let path = error.instance_path.to_string();
+    let path = error.instance_path().to_string();
     let field_name = if path.is_empty() || path == "/" {
         "root".to_string()
     } else {
