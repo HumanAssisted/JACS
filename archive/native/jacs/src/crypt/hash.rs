@@ -25,7 +25,7 @@ pub fn hash_bytes(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let result = hasher.finalize();
-    format!("{:x}", result)
+    hex::encode(result)
 }
 
 /// Computes SHA-256 hash of a string (UTF-8 bytes), returns lowercase hex string.
@@ -49,7 +49,14 @@ pub fn hash_public_key(public_key_bytes: impl AsRef<[u8]>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::hash_public_key;
+    use super::{hash_bytes, hash_bytes_raw, hash_public_key};
+
+    #[test]
+    fn sha256_preserves_known_digest_and_hex_representation() {
+        let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert_eq!(hash_bytes(b"abc"), expected);
+        assert_eq!(hex::encode(hash_bytes_raw(b"abc")), expected);
+    }
 
     #[test]
     fn hash_public_key_normalizes_line_endings_and_trailing_whitespace() {

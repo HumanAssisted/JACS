@@ -2,8 +2,8 @@ use crate::error::JacsError;
 use crate::schema::utils::CONFIG_SCHEMA_STRING;
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
+use jsonschema::Uri;
 use jsonschema::{Draft, Retrieve, Validator};
-use referencing::Uri;
 use tracing::{debug, error, warn};
 
 use regex::Regex;
@@ -69,7 +69,7 @@ pub fn format_schema_validation_error(
     schema_name: &str,
     instance: &Value,
 ) -> String {
-    let path = error.instance_path.to_string();
+    let path = error.instance_path().to_string();
     let field_path = if path.is_empty() || path == "/" {
         "root".to_string()
     } else {
@@ -281,16 +281,15 @@ impl Schema {
             JacsError::SchemaError(format!("Invalid schema URL '{}': {}", schema_url, e))
         })?;
         let schema_value_result =
-            schema_resolver
-                .retrieve(&Uri::try_from(url.as_str().to_string()).map_err(|e| {
-                    JacsError::SchemaError(format!("Invalid URI '{}': {}", url, e))
-                })?);
+            schema_resolver.retrieve(&Uri::try_from(url.as_str().to_string()).map_err(
+                |(e, _)| JacsError::SchemaError(format!("Invalid URI '{}': {}", url, e)),
+            )?);
         let schema_value: Arc<Value> = match schema_value_result {
             Err(_) => {
                 let default_url = Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")
                     .map_err(|e| JacsError::SchemaError(format!("Invalid default URL: {}", e)))?;
                 let result = match schema_resolver.retrieve(
-                    &Uri::try_from(default_url.as_str().to_string()).map_err(|e| {
+                    &Uri::try_from(default_url.as_str().to_string()).map_err(|(e, _)| {
                         JacsError::SchemaError(format!("Invalid default URI: {}", e))
                     })?,
                 ) {

@@ -207,7 +207,7 @@ jobs:
             sh -euxc '
               apk add --no-cache openssl-dev perl musl-dev
               rustup toolchain install 1.97.0 --profile minimal --target ${{ matrix.target }}
-              npx napi build --platform --release --features human-approval-vendored --target ${{ matrix.target }} --cargo-flags=--locked
+              npx napi build --platform --release --features human-approval-vendored --target ${{ matrix.target }} -- --locked
             '
 
       - name: Build native module
@@ -218,9 +218,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.use_zig }}" = "true" ]; then
-            npx napi build --platform --release --features human-approval-vendored --target "${{ matrix.target }}" --zig --cargo-flags=--locked
+            npx napi build --platform --release --features human-approval-vendored --target "${{ matrix.target }}" --cross-compile -- --locked
           else
-            npx napi build --platform --release --features human-approval-vendored --target "${{ matrix.target }}" --cargo-flags=--locked
+            npx napi build --platform --release --features human-approval-vendored --target "${{ matrix.target }}" -- --locked
           fi
 
       - name: Reject external OpenSSL linkage in native artifacts

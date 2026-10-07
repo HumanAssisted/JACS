@@ -47,7 +47,7 @@ Source graph: locked all-feature active portable workspace; archived native inte
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 320
+Third-party packages: 318
 License expressions: 20
 Distinct Cargo license files: 0
 
@@ -55,7 +55,7 @@ Distinct Cargo license files: 0
 License expression: (Apache-2.0 OR MIT) AND BSD-3-Clause
 Used by 1 package(s):
 
-  - encoding_rs 0.8.41 (https://github.com/hsivonen/encoding_rs)
+  - encoding_rs 0.8.42 (https://github.com/hsivonen/encoding_rs)
 
 -------------------------------------------------------------------------------
 License expression: (MIT OR Apache-2.0) AND Unicode-3.0
@@ -67,7 +67,7 @@ Used by 1 package(s):
 License expression: Apache-2.0
 Used by 4 package(s):
 
-  - rmcp 3.3.0 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rmcp 3.4.1 (https://github.com/modelcontextprotocol/rust-sdk/)
   - rpassword 7.5.4 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
   - unicode-general-category 1.1.0 (https://github.com/yeslogic/unicode-general-category)
@@ -169,9 +169,9 @@ Used by 55 package(s):
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
   - goblin 0.8.2 (https://github.com/m4b/goblin)
-  - jsonschema 0.56.0 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.56.0 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.56.0 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.58.0 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.58.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.58.2 (https://github.com/Stranger6667/jsonschema)
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
   - matchers 0.2.0 (https://github.com/hawkw/matchers)
   - micromap 0.3.0 (https://github.com/yegor256/micromap)
@@ -185,7 +185,7 @@ Used by 55 package(s):
   - phf_macros 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.14.0 (https://github.com/rust-phf/rust-phf)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
-  - referencing 0.56.0 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.58.2 (https://github.com/Stranger6667/jsonschema)
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
   - scroll 0.12.0 (https://github.com/m4b/scroll)
@@ -219,7 +219,7 @@ Used by 55 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 159 package(s):
+Used by 157 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -304,8 +304,6 @@ Used by 159 package(s):
   - libc 0.2.189 (https://github.com/rust-lang/libc)
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
   - log 0.4.34 (https://github.com/rust-lang/log)
-  - multiversion 0.9.0 (https://github.com/calebzulawski/multiversion)
-  - multiversion-macros 0.9.0 (https://github.com/calebzulawski/multiversion)
   - num 0.4.3 (https://github.com/rust-num/num)
   - num-bigint 0.4.8 (https://github.com/rust-num/num-bigint)
   - num-complex 0.4.6 (https://github.com/rust-num/num-complex)
@@ -323,7 +321,7 @@ Used by 159 package(s):
   - percent-encoding 2.3.2 (https://github.com/servo/rust-url/)
   - proc-macro2 1.0.107 (https://github.com/dtolnay/proc-macro2)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
-  - rand 0.10.2 (https://github.com/rust-random/rand)
+  - rand 0.10.3 (https://github.com/rust-random/rand)
   - rand_core 0.10.1 (https://github.com/rust-random/rand_core)
   - rand_core 0.6.4 (https://github.com/rust-random/rand)
   - ref-cast 1.0.27 (https://github.com/dtolnay/ref-cast)
@@ -353,8 +351,8 @@ Used by 159 package(s):
   - syn 2.0.119 (https://github.com/dtolnay/syn)
   - syn 3.0.5 (https://github.com/dtolnay/syn)
   - tempfile 3.27.0 (https://github.com/Stebalien/tempfile)
-  - thiserror 2.0.20 (https://github.com/dtolnay/thiserror)
-  - thiserror-impl 2.0.20 (https://github.com/dtolnay/thiserror)
+  - thiserror 2.0.21 (https://github.com/dtolnay/thiserror)
+  - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
   - thread_local 1.1.10 (https://github.com/Amanieu/thread_local-rs)
   - toml 0.9.12+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_datetime 0.7.5+spec-1.1.0 (https://github.com/toml-rs/toml)
@@ -418,14 +416,14 @@ Used by 9 package(s):
 License expression: MPL-2.0
 Used by 8 package(s):
 
-  - uniffi 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_bindgen 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_core 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_internal_macros 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_macros 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_meta 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_pipeline 0.32.1 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_udl 0.32.1 (https://github.com/mozilla/uniffi-rs)
+  - uniffi 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_bindgen 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_core 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_internal_macros 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_macros 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_meta 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_pipeline 0.32.2 (https://github.com/mozilla/uniffi-rs)
+  - uniffi_udl 0.32.2 (https://github.com/mozilla/uniffi-rs)
 
 -------------------------------------------------------------------------------
 License expression: Unicode-3.0

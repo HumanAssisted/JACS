@@ -1,18 +1,18 @@
 use base64::{Engine as _, engine::general_purpose};
 use napi::bindgen_prelude::*;
-use napi::{JsBuffer, JsObject, JsString, JsUnknown};
+use napi::{JsString, JsValue, Unknown};
 use serde_json::{Map as JsonMap, Value};
 
 /// Converts a JavaScript value into a serde_json::Value.
 #[allow(clippy::only_used_in_recursion)]
-pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
+pub fn js_value_to_value(env: &Env, value: Unknown<'_>) -> Result<Value> {
     let value_type = value.get_type()?;
     if value_type == napi::ValueType::Null || value_type == napi::ValueType::Undefined {
         return Ok(Value::Null);
     }
 
     if value_type == napi::ValueType::Boolean {
-        let bool_val = value.coerce_to_bool()?.get_value()?;
+        let bool_val = value.coerce_to_bool()?;
         return Ok(Value::Bool(bool_val));
     }
 
@@ -30,8 +30,8 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
     }
 
     if value.is_buffer().unwrap_or(false) {
-        let buffer: JsBuffer = unsafe { value.cast() };
-        let bytes_data = buffer.into_value()?;
+        let buffer: Buffer = unsafe { value.cast()? };
+        let bytes_data = buffer.as_ref();
         let base64_str = general_purpose::STANDARD.encode(&bytes_data);
 
         // Create a JSON object with type information and data
@@ -42,27 +42,27 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
     }
 
     if value.is_array().unwrap_or(false) {
-        let obj: JsObject = unsafe { value.cast() };
+        let obj: Object<'_> = unsafe { value.cast()? };
         let length = obj.get_array_length()?;
         let mut vec = Vec::with_capacity(length as usize);
 
         for i in 0..length {
-            let item = obj.get_element::<JsUnknown>(i)?;
+            let item = obj.get_element::<Unknown<'_>>(i)?;
             vec.push(js_value_to_value(env, item)?);
         }
         return Ok(Value::Array(vec));
     }
 
     if value_type == napi::ValueType::Object {
-        let obj: JsObject = unsafe { value.cast() };
+        let obj: Object<'_> = unsafe { value.cast()? };
         let properties = obj.get_property_names()?;
         let length = properties.get_array_length()?;
         let mut map = JsonMap::new();
 
         for i in 0..length {
-            let key = properties.get_element::<JsString>(i)?;
+            let key = properties.get_element::<JsString<'_>>(i)?;
             let key_str = key.into_utf8()?.into_owned()?;
-            let value_obj = obj.get_named_property::<JsUnknown>(&key_str)?;
+            let value_obj = obj.get_named_property::<Unknown<'_>>(&key_str)?;
             map.insert(key_str, js_value_to_value(env, value_obj)?);
         }
         return Ok(Value::Object(map));
@@ -75,35 +75,33 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
 }
 
 /// Converts a serde_json::Value to a JavaScript value.
-pub fn value_to_js_value(env: Env, value: &Value) -> Result<JsUnknown> {
+pub fn value_to_js_value<'env>(env: &'env Env, value: &Value) -> Result<Unknown<'env>> {
     match value {
-        Value::Null => Ok(env.get_null()?.into_unknown()),
-        Value::Bool(b) => Ok(env.get_boolean(*b)?.into_unknown()),
+        Value::Null => Ok(Null.into_unknown(env)?),
+        Value::Bool(b) => Ok((*b).into_unknown(env)?),
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(env.create_int64(i)?.into_unknown())
+                Ok(env.create_int64(i)?.to_unknown())
             } else if let Some(u) = n.as_u64() {
                 if u <= i64::MAX as u64 {
-                    Ok(env.create_int64(u as i64)?.into_unknown())
+                    Ok(env.create_int64(u as i64)?.to_unknown())
                 } else {
-                    Ok(env.create_double(u as f64)?.into_unknown())
+                    Ok(env.create_double(u as f64)?.to_unknown())
                 }
             } else if let Some(f) = n.as_f64() {
-                Ok(env.create_double(f)?.into_unknown())
+                Ok(env.create_double(f)?.to_unknown())
             } else {
                 Err(Error::new(Status::InvalidArg, "Invalid JSON number"))
             }
         }
-        Value::String(s) => Ok(env.create_string(s)?.into_unknown()),
+        Value::String(s) => Ok(env.create_string(s)?.to_unknown()),
         Value::Array(a) => {
             let mut array = env.create_array(a.len() as u32)?;
             for (i, item) in a.iter().enumerate() {
                 let js_item = value_to_js_value(env, item)?;
                 array.set(i as u32, js_item)?;
             }
-            Ok(unsafe {
-                std::mem::transmute::<napi::bindgen_prelude::Array, napi::JsUnknown>(array)
-            })
+            Ok(array.to_unknown())
         }
         Value::Object(o) => {
             // Check if this is a specially encoded type
@@ -119,27 +117,26 @@ pub fn value_to_js_value(env: Env, value: &Value) -> Result<JsUnknown> {
                                 format!("Failed to decode base64 string: {}", e),
                             )
                         })?;
-                        let buffer = env.create_buffer_with_data(bytes)?;
-                        Ok(buffer.into_unknown())
+                        Buffer::from(bytes).into_unknown(env)
                     }
                     _ => {
                         // If it's not a recognized special type, treat as normal object
-                        let mut obj = env.create_object()?;
+                        let mut obj = Object::new(env)?;
                         for (key, val) in o {
                             let js_val = value_to_js_value(env, val)?;
                             obj.set_named_property(key, js_val)?;
                         }
-                        Ok(obj.into_unknown())
+                        Ok(obj.to_unknown())
                     }
                 }
             } else {
                 // Regular object
-                let mut obj = env.create_object()?;
+                let mut obj = Object::new(env)?;
                 for (key, val) in o {
                     let js_val = value_to_js_value(env, val)?;
                     obj.set_named_property(key, js_val)?;
                 }
-                Ok(obj.into_unknown())
+                Ok(obj.to_unknown())
             }
         }
     }

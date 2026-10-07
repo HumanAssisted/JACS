@@ -11,6 +11,12 @@
 > is `jacs-compat`. Historical commands below describe the pre-move layout.
 > SurrealDB and the observability example retain separate lockfiles. The example
 > remains unpublished; storage crates are in the coordinated release catalog.
+> The optional SurrealDB backend is pinned to 3.2.4. Upgrade PR #236 remains
+> blocked: SurrealDB 3.3.0 requires object_store 0.13.2 and its quick-xml 0.39
+> dependency has [RUSTSEC-2026-0194](https://rustsec.org/advisories/RUSTSEC-2026-0194.html)
+> and [RUSTSEC-2026-0195](https://rustsec.org/advisories/RUSTSEC-2026-0195.html).
+> A compatible published upstream fix is required before removing this pin;
+> repository-local Cargo patches do not protect published downstream consumers.
 
 # JACS
 

@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult, SimpleAgentWrapper};
 use napi::bindgen_prelude::*;
-use napi::{JsObject, JsUnknown};
+use napi::{JsValue, ScopedTask, Unknown};
 use napi_derive::napi;
 use serde_json::Value;
 
@@ -155,17 +155,17 @@ pub struct SimpleAgentJsonTask {
     func: Option<SimpleAgentFn<Value>>,
 }
 
-impl Task for SimpleAgentJsonTask {
+impl<'env> ScopedTask<'env> for SimpleAgentJsonTask {
     type Output = Value;
-    type JsValue = JsUnknown;
+    type JsValue = Unknown<'env>;
 
     fn compute(&mut self) -> Result<Self::Output> {
         let f = self.func.take().expect("task already executed");
         f(&self.agent).map_err(to_napi_err)
     }
 
-    fn resolve(&mut self, env: Env, output: Value) -> Result<JsUnknown> {
-        value_to_js_value(env, &output)
+    fn resolve(&mut self, env: &'env Env, output: Value) -> Result<Unknown<'env>> {
+        value_to_js_value(&env, &output)
     }
 }
 
@@ -519,18 +519,22 @@ impl JacsAgent {
     /// Sign a request payload (wraps in a JACS document).
     /// Sync-only: uses V8 thread-local JsObject.
     #[napi(ts_args_type = "params: any")]
-    pub fn sign_request(&self, env: Env, params_obj: JsObject) -> Result<String> {
-        let payload_value = js_value_to_value(env, params_obj.into_unknown())?;
+    pub fn sign_request(&self, env: Env, params_obj: Object<'_>) -> Result<String> {
+        let payload_value = js_value_to_value(&env, params_obj.to_unknown())?;
         self.inner.sign_request(payload_value).to_napi()
     }
 
     /// Verify a response payload.
     /// Sync-only: returns V8 thread-local JsObject.
     #[napi]
-    pub fn verify_response(&self, env: Env, document_string: String) -> Result<JsObject> {
+    pub fn verify_response<'env>(
+        &self,
+        env: &'env Env,
+        document_string: String,
+    ) -> Result<Object<'env>> {
         let payload_serde_value: Value = self.inner.verify_response(document_string).to_napi()?;
-        let js_value = value_to_js_value(env, &payload_serde_value)?;
-        let mut result_obj = env.create_object()?;
+        let js_value = value_to_js_value(&env, &payload_serde_value)?;
+        let mut result_obj = Object::new(&env)?;
         result_obj.set_named_property("payload", js_value)?;
         Ok(result_obj)
     }
@@ -538,18 +542,18 @@ impl JacsAgent {
     /// Verify a response payload and return the agent ID.
     /// Sync-only: returns V8 thread-local JsObject.
     #[napi]
-    pub fn verify_response_with_agent_id(
+    pub fn verify_response_with_agent_id<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         document_string: String,
-    ) -> Result<JsObject> {
+    ) -> Result<Object<'env>> {
         let (payload_serde_value, agent_id) = self
             .inner
             .verify_response_with_agent_id(document_string)
             .to_napi()?;
-        let js_payload = value_to_js_value(env, &payload_serde_value)?;
+        let js_payload = value_to_js_value(&env, &payload_serde_value)?;
         let js_agent_id = env.create_string(&agent_id)?;
-        let mut result_obj = env.create_object()?;
+        let mut result_obj = Object::new(&env)?;
         result_obj.set_named_property("agent_id", js_agent_id)?;
         result_obj.set_named_property("payload", js_payload)?;
         Ok(result_obj)
@@ -1979,14 +1983,18 @@ impl JacsSimpleAgent {
     /// Sync variant of verifyAgreementV2.
     #[cfg(feature = "agreements")]
     #[napi(js_name = "verifyAgreementV2Sync")]
-    pub fn verify_agreement_v2_sync(&self, env: Env, document_json: String) -> Result<JsUnknown> {
+    pub fn verify_agreement_v2_sync<'env>(
+        &self,
+        env: &'env Env,
+        document_json: String,
+    ) -> Result<Unknown<'env>> {
         let json = self
             .inner
             .verify_agreement_v2_json(&document_json)
             .to_napi()?;
         let value =
             parse_json_value(&json, "agreement v2 verification report").map_err(to_napi_err)?;
-        value_to_js_value(env, &value)
+        value_to_js_value(&env, &value)
     }
 
     /// Detect whether two successor versions are transcript-only mergeable.
@@ -2018,13 +2026,13 @@ impl JacsSimpleAgent {
     /// Sync variant of detectAgreementV2BranchConflict.
     #[cfg(feature = "agreements")]
     #[napi(js_name = "detectAgreementV2BranchConflictSync")]
-    pub fn detect_agreement_v2_branch_conflict_sync(
+    pub fn detect_agreement_v2_branch_conflict_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         base_document_json: String,
         left_document_json: String,
         right_document_json: String,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         let json = self
             .inner
             .detect_agreement_v2_branch_conflict_json(
@@ -2034,7 +2042,7 @@ impl JacsSimpleAgent {
             )
             .to_napi()?;
         let value = parse_json_value(&json, "agreement v2 branch analysis").map_err(to_napi_err)?;
-        value_to_js_value(env, &value)
+        value_to_js_value(&env, &value)
     }
 
     /// Auto-merge two transcript-only branches.
@@ -2289,29 +2297,29 @@ impl JacsSimpleAgent {
 
     /// Sync variant of [`signTextFile`]. Returns parsed JSON via `serde_json::Value`.
     #[napi(js_name = "signTextFileSync")]
-    pub fn sign_text_file_sync(
+    pub fn sign_text_file_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         file_path: String,
         no_backup: Option<bool>,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         let opts = build_sign_text_opts(no_backup.unwrap_or(false));
         let json = self
             .inner
             .sign_text_file_json(&file_path, &opts)
             .to_napi()?;
         let value = parse_json_value(&json, "sign_text_file outcome").map_err(to_napi_err)?;
-        value_to_js_value(env, &value)
+        value_to_js_value(&env, &value)
     }
 
     /// Sync variant of the [`signText`] alias.
     #[napi(js_name = "signTextSync")]
-    pub fn sign_text_sync(
+    pub fn sign_text_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         file_path: String,
         no_backup: Option<bool>,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         self.sign_text_file_sync(env, file_path, no_backup)
     }
 
@@ -2350,29 +2358,29 @@ impl JacsSimpleAgent {
 
     /// Sync variant of [`verifyTextFile`].
     #[napi(js_name = "verifyTextFileSync")]
-    pub fn verify_text_file_sync(
+    pub fn verify_text_file_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         file_path: String,
         opts: Option<VerifyTextOptsNapi>,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         let opts_json = build_verify_text_opts_json(opts);
         let json = self
             .inner
             .verify_text_file_json(&file_path, &opts_json)
             .to_napi()?;
         let value = parse_json_value(&json, "verify_text_file result").map_err(to_napi_err)?;
-        value_to_js_value(env, &value)
+        value_to_js_value(&env, &value)
     }
 
     /// Sync variant of the [`verifyText`] alias.
     #[napi(js_name = "verifyTextSync")]
-    pub fn verify_text_sync(
+    pub fn verify_text_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         file_path: String,
         opts: Option<VerifyTextOptsNapi>,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         self.verify_text_file_sync(env, file_path, opts)
     }
 
@@ -2398,20 +2406,20 @@ impl JacsSimpleAgent {
 
     /// Sync variant of [`signImage`].
     #[napi(js_name = "signImageSync")]
-    pub fn sign_image_sync(
+    pub fn sign_image_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         input_path: String,
         output_path: String,
         opts: Option<SignImageOptsNapi>,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         let opts_json = build_sign_image_opts_json(opts);
         let json = self
             .inner
             .sign_image_json(&input_path, &output_path, &opts_json)
             .to_napi()?;
         let value = parse_json_value(&json, "sign_image outcome").map_err(to_napi_err)?;
-        value_to_js_value(env, &value)
+        value_to_js_value(&env, &value)
     }
 
     /// Verify an embedded JACS signature in a PNG / JPEG / WebP image.
@@ -2436,19 +2444,19 @@ impl JacsSimpleAgent {
 
     /// Sync variant of [`verifyImage`].
     #[napi(js_name = "verifyImageSync")]
-    pub fn verify_image_sync(
+    pub fn verify_image_sync<'env>(
         &self,
-        env: Env,
+        env: &'env Env,
         file_path: String,
         opts: Option<VerifyImageOptsNapi>,
-    ) -> Result<JsUnknown> {
+    ) -> Result<Unknown<'env>> {
         let opts_json = build_verify_image_opts_json(opts);
         let json = self
             .inner
             .verify_image_json(&file_path, &opts_json)
             .to_napi()?;
         let value = parse_json_value(&json, "verify_image result").map_err(to_napi_err)?;
-        value_to_js_value(env, &value)
+        value_to_js_value(&env, &value)
     }
 
     /// Extract the JACS signature payload embedded in a signed image.
@@ -3083,20 +3091,23 @@ pub fn legacy_check_agreement(
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi(ts_args_type = "params: any", js_name = "legacySignRequest")]
-pub fn legacy_sign_request(env: Env, params_obj: JsObject) -> Result<String> {
+pub fn legacy_sign_request(env: Env, params_obj: Object<'_>) -> Result<String> {
     let agent = LEGACY_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
             format!("Failed to acquire JACS_AGENT lock: {}", e),
         )
     })?;
-    let payload_value = js_value_to_value(env, params_obj.into_unknown())?;
+    let payload_value = js_value_to_value(&env, params_obj.to_unknown())?;
     agent.sign_request(payload_value).to_napi()
 }
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi(js_name = "legacyVerifyResponse")]
-pub fn legacy_verify_response(env: Env, document_string: String) -> Result<JsObject> {
+pub fn legacy_verify_response<'env>(
+    env: &'env Env,
+    document_string: String,
+) -> Result<Object<'env>> {
     let agent = LEGACY_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -3105,15 +3116,18 @@ pub fn legacy_verify_response(env: Env, document_string: String) -> Result<JsObj
     })?;
 
     let payload_serde_value: Value = agent.verify_response(document_string).to_napi()?;
-    let js_value = value_to_js_value(env, &payload_serde_value)?;
-    let mut result_obj = env.create_object()?;
+    let js_value = value_to_js_value(&env, &payload_serde_value)?;
+    let mut result_obj = Object::new(&env)?;
     result_obj.set_named_property("payload", js_value)?;
     Ok(result_obj)
 }
 
 /// @deprecated Use `new JacsAgent()` and instance methods instead.
 #[napi(js_name = "legacyVerifyResponseWithAgentId")]
-pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -> Result<JsObject> {
+pub fn legacy_verify_response_with_agent_id<'env>(
+    env: &'env Env,
+    document_string: String,
+) -> Result<Object<'env>> {
     let agent = LEGACY_AGENT.lock().map_err(|e| {
         Error::new(
             Status::GenericFailure,
@@ -3124,9 +3138,9 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
     let (payload_serde_value, agent_id) = agent
         .verify_response_with_agent_id(document_string)
         .to_napi()?;
-    let js_payload = value_to_js_value(env, &payload_serde_value)?;
+    let js_payload = value_to_js_value(&env, &payload_serde_value)?;
     let js_agent_id = env.create_string(&agent_id)?;
-    let mut result_obj = env.create_object()?;
+    let mut result_obj = Object::new(&env)?;
     result_obj.set_named_property("agent_id", js_agent_id)?;
     result_obj.set_named_property("payload", js_payload)?;
     Ok(result_obj)

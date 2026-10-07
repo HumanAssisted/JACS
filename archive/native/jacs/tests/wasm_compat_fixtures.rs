@@ -180,6 +180,98 @@ fn pbkdf2_legacy_envelope_fixture_decrypts() {
     assert_fixture_public_key(decrypted.as_slice());
 }
 
+/// The newly updated native RustCrypto crates must read the retained envelope,
+/// independently of the portable core's envelope reader.
+#[test]
+fn updated_argon2_aes_read_retained_v2_envelope() {
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+    use argon2::{Algorithm, Argon2, Params, Version};
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    let envelope = read_fixture_json("argon2id.encrypted.json");
+    let decode = |field: &str| {
+        URL_SAFE_NO_PAD
+            .decode(envelope[field].as_str().unwrap())
+            .unwrap()
+    };
+    let salt = decode("salt");
+    let nonce: [u8; 12] = decode("nonce").try_into().unwrap();
+    let ciphertext = decode("ciphertext");
+    let kdf = &envelope["kdf"];
+    let params = Params::new(
+        kdf["m_cost_kib"].as_u64().unwrap() as u32,
+        kdf["t_cost"].as_u64().unwrap() as u32,
+        kdf["p_cost"].as_u64().unwrap() as u32,
+        Some(32),
+    )
+    .unwrap();
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = zeroize::Zeroizing::new([0u8; 32]);
+    argon2
+        .hash_password_into(FIXTURE_PASSWORD.as_bytes(), &salt, &mut *key)
+        .unwrap();
+    let cipher = Aes256Gcm::new_from_slice(&*key).unwrap();
+    let plaintext = zeroize::Zeroizing::new(
+        cipher
+            .decrypt(&Nonce::from(nonce), ciphertext.as_slice())
+            .unwrap(),
+    );
+    assert_fixture_public_key(&plaintext);
+    let portable = decrypt_private_key_secure_with_password(
+        &read_fixture("argon2id.encrypted.json"),
+        FIXTURE_PASSWORD,
+    )
+    .unwrap();
+    assert_eq!(plaintext.as_slice(), portable.as_slice());
+    let mut damaged = ciphertext;
+    damaged[0] ^= 1;
+    assert!(
+        cipher
+            .decrypt(&Nonce::from(nonce), damaged.as_slice())
+            .is_err()
+    );
+}
+
+#[test]
+fn updated_pbkdf2_sha2_aes_read_retained_legacy_envelope() {
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+    use pbkdf2::pbkdf2_hmac;
+    use sha2::Sha256;
+
+    let envelope = read_fixture("pbkdf2.encrypted.bin");
+    let mut key = zeroize::Zeroizing::new([0u8; 32]);
+    pbkdf2_hmac::<Sha256>(
+        FIXTURE_PASSWORD.as_bytes(),
+        &envelope[..16],
+        100_000,
+        &mut *key,
+    );
+    let nonce: [u8; 12] = envelope[16..28].try_into().unwrap();
+    let cipher = Aes256Gcm::new_from_slice(&*key).unwrap();
+    let plaintext = zeroize::Zeroizing::new(
+        cipher
+            .decrypt(&Nonce::from(nonce), &envelope[28..])
+            .unwrap(),
+    );
+    assert_fixture_public_key(&plaintext);
+    let portable = decrypt_private_key_secure_with_password(&envelope, FIXTURE_PASSWORD).unwrap();
+    assert_eq!(plaintext.as_slice(), portable.as_slice());
+}
+
+/// RFC 5869 test case 1 locks HKDF-SHA256 bytes across the digest upgrade.
+#[test]
+fn updated_hkdf_sha256_matches_rfc5869_vector() {
+    let salt = hex::decode("000102030405060708090a0b0c").unwrap();
+    let info = hex::decode("f0f1f2f3f4f5f6f7f8f9").unwrap();
+    let hkdf = hkdf::Hkdf::<sha2::Sha256>::new(Some(&salt), &[0x0b; 22]);
+    let mut output = [0u8; 42];
+    hkdf.expand(&info, &mut output).unwrap();
+    assert_eq!(
+        hex::encode(output),
+        "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+    );
+}
+
 #[test]
 fn canonical_payload_goldens_match() {
     let inputs: Value = read_fixture_json("canonical_inputs.json");
@@ -277,9 +369,9 @@ fn regenerate_wasm_compat_fixtures() {
 
 mod regen {
     use super::*;
-    use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce, aead::Aead};
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
     use pbkdf2::pbkdf2_hmac;
-    use rand::{RngCore, SeedableRng, rngs::StdRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use sha2::Sha256;
 
     const FIXTURE_PBKDF2_ITERATIONS: u32 = 100_000;
@@ -398,10 +490,9 @@ mod regen {
             FIXTURE_PBKDF2_ITERATIONS,
             &mut key,
         );
-        let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-        let cipher = Aes256Gcm::new(cipher_key);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        let ciphertext = cipher.encrypt(nonce, pkcs8).expect("aes encrypt");
+        let cipher = Aes256Gcm::new_from_slice(&key).expect("aes key");
+        let nonce = Nonce::from(nonce_bytes);
+        let ciphertext = cipher.encrypt(&nonce, pkcs8).expect("aes encrypt");
 
         let mut envelope = Vec::with_capacity(salt.len() + nonce_bytes.len() + ciphertext.len());
         envelope.extend_from_slice(&salt);
