@@ -28,7 +28,7 @@ log = "0.4.27"
 serde = { version = "1.0", features = ["derive"] }
 base64 = "0.22.1"
 napi = { version = "2.16.17", features = ["async"] }
-napi-derive = "2.16.13"
+napi-derive = "3.6.7"
 
 [features]
 default = ["a2a", "attestation", "agreements"]
