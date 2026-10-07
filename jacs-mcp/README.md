@@ -9,7 +9,7 @@ jacs mcp
 
 `jacs-cli` installs the `jacs` executable; the `jacs-mcp` crate provides its
 server library. The install command selects the latest published version.
-The 0.15.0 source candidate is still awaiting publication; see
+Version 0.15.0 is published and verified; see
 [release status](../docs/release-status.md). To run this checkout's server, use
 `cargo run --locked -p jacs-cli -- mcp` from the repository root.
 
