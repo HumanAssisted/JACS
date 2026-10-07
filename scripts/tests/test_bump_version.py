@@ -24,6 +24,7 @@ class BumpVersionTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         shutil.copy2(ROOT / "Makefile", self.root / "Makefile")
+        shutil.copytree(ROOT / "make", self.root / "make")
         (self.root / "scripts").mkdir()
         for name in ("bump-version.sh", "bump_version.py", "release_catalog.py", "seal-changelog.sh"):
             shutil.copy2(ROOT / "scripts" / name, self.root / "scripts" / name)

@@ -58,4 +58,10 @@ controls structured stderr logging without contaminating signed JSON or MCP fram
 use the destination password supplied at startup through
 `JACS_NEW_PRIVATE_KEY_PASSWORD`; it is unavailable to tools. The server can only
 modify its explicitly configured vault. It has no HTTP transport or remote key
-lookup. The broader historical native CLI is preserved in `archive/native`.
+lookup.
+
+The extended Rust CLI is a separate package: `cargo install jacs-cli-compat`
+provides the `jacs-compat` executable for agreements, A2A, text/media,
+attestations and trust-related commands. Both CLIs are Rust programs; the
+split keeps integration dependencies outside the portable workspace. See the
+[CLI and MCP profile guide](../docs/native-mcp.md) for their actual scope.

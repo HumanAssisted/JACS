@@ -514,18 +514,19 @@ jobs:
           VENV: /tmp/jacs-python-release-smoke-${{ matrix.python-version }}
         run: |
           set -euo pipefail
+          python -m venv "$VENV"
           for attempt in $(seq 1 30); do
-            if python -m pip index versions jacs 2>/dev/null | grep -q "Available versions:.*${VERSION}"; then
+            # A version listing can arrive before its wheel is downloadable.
+            # Gate on the exact consumer installation, bypassing stale indexes.
+            if "$VENV/bin/pip" install --no-cache-dir --only-binary=:all: "jacs==$VERSION"; then
               break
             fi
             if [ "$attempt" = 30 ]; then
-              echo "::error::jacs==$VERSION did not become available on PyPI"
+              echo "::error::the exact jacs==$VERSION wheel did not become installable from PyPI"
               exit 1
             fi
             sleep 10
           done
-          python -m venv "$VENV"
-          "$VENV/bin/pip" install --only-binary=:all: "jacs==$VERSION"
           "$VENV/bin/python" -I scripts/native_bindings_python_smoke.py "$VERSION"
 
       - name: Verify public human approval using the installed release
