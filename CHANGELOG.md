@@ -27,15 +27,16 @@
 
 ## Unreleased
 
-### 2026-10-06 — Refresh optional Python dependency security floors
+### 2026-10-06 — Refresh development dependency security floors
 
 - Raise the development/CI transitive floors to PyJWT 2.15.0, LangGraph SDK
   0.4.4 and urllib3 2.8.0; lock PyJWT 2.15.1 and the other patched versions.
   Apply the same PyJWT floor to the standalone Python MCP example. The base
   wheel keeps its dependency-free runtime contract.
-- Core, every optional extra and standalone Python example audits report no
-  known vulnerabilities; `make check` passes all 292 script tests. No advisory
-  exemptions are added. Rust, Kotlin and portable artifact inputs are unchanged.
+- Update the browser example's source-map-js lock to patched 1.2.2.
+- Core, every optional extra, standalone Python examples and the browser lock
+  report no known vulnerabilities; `make check` passes all 299 script tests.
+  No advisory exemptions are added. Rust and Kotlin runtime code is unchanged.
 
 ### 2026-09-29 — Verify canonical links in inline email
 
