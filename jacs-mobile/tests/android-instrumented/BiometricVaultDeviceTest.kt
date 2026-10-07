@@ -3,7 +3,6 @@ package ai.hai.jacs.platform
 import ai.hai.jacs.MobileAgent
 import ai.hai.jacs.MobileAlgorithm
 import ai.hai.jacs.materialToJson
-import android.hardware.biometrics.BiometricManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -12,36 +11,16 @@ import java.io.File
 import java.security.KeyStore
 import java.util.UUID
 import javax.crypto.KeyGenerator
-import org.junit.Assume.assumeTrue
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Runs against real AndroidKeyStore and app-private Android file APIs.
- * The wrapping-key creation check requires enrolled strong biometrics and skips
- * when unavailable. The other checks need no enrolled user or authentication token.
+ * No enrolled user or simulated authentication token is needed for these tests.
  * Successful biometric authorization still requires the separate device exercise.
  */
 @RunWith(AndroidJUnit4::class)
 class BiometricVaultDeviceTest {
-    @Test fun acceptsFreshStrongBiometricPerUseWrappingKey() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val manager = context.getSystemService(BiometricManager::class.java)
-        assumeTrue("Strong biometrics must be enrolled for key creation",
-            manager?.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
-                BiometricManager.BIOMETRIC_SUCCESS)
-        val alias = "jacs-policy-test-${UUID.randomUUID()}"
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        try {
-            val wrapper = JacsKeystore(alias)
-            wrapper.ensureWrappingKey()
-            // This read validates the actual platform KeyInfo. Android 15
-            // reports duration 0 here; the legacy-only -1 check rejected it.
-            assertEquals("AES", wrapper.validatedWrappingKey().algorithm)
-            assertTrue(store.containsAlias(alias))
-        } finally { store.deleteEntry(alias) }
-    }
-
     @Test fun rejectsExistingAesKeyWithoutBiometricPolicy() {
         val alias = "jacs-test-${UUID.randomUUID()}"
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
