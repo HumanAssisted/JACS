@@ -22,6 +22,11 @@ import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 
+// KeyInfo documents -1 for per-use authentication. Android 15's Keystore2
+// SecretKeyFactory also reports 0 when KM_TAG_AUTH_TIMEOUT is absent.
+// Neither representation permits a positive authentication time window.
+internal fun isPerUseAuthenticationDuration(seconds: Int): Boolean = seconds == -1 || seconds == 0
+
 /** Default custody path for transferable ML-DSA-87 (pq2025) identities.
  * Biometrics gate the AES wrapping key; ML-DSA signing stays in portable Rust.
  * Android API 30+. All AES operations require a BiometricPrompt CryptoObject.
@@ -45,15 +50,13 @@ class JacsKeystore(private val alias: String) {
                 ?: throw JacsVaultException(JacsVaultException.Code.KEY_INVALIDATED)
             val info = SecretKeyFactory.getInstance("AES", "AndroidKeyStore")
                 .getKeySpec(key, KeyInfo::class.java) as KeyInfo
-            // Android reports -1 for authentication on every key use, even
-            // though KeyGenParameterSpec expresses that duration as zero.
             if (key.algorithm != KeyProperties.KEY_ALGORITHM_AES || info.keySize != 256 ||
                 info.purposes != (KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT) ||
                 info.blockModes.toSet() != setOf(KeyProperties.BLOCK_MODE_GCM) ||
                 info.encryptionPaddings.toSet() != setOf(KeyProperties.ENCRYPTION_PADDING_NONE) ||
                 !info.isUserAuthenticationRequired ||
                 info.userAuthenticationType != KeyProperties.AUTH_BIOMETRIC_STRONG ||
-                info.userAuthenticationValidityDurationSeconds != -1 ||
+                !isPerUseAuthenticationDuration(info.userAuthenticationValidityDurationSeconds) ||
                 !info.isInvalidatedByBiometricEnrollment || info.isUserAuthenticationValidWhileOnBody) {
                 throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
             }
