@@ -33,10 +33,11 @@
   0.4.4 and urllib3 2.8.0; lock PyJWT 2.15.1 and the other patched versions.
   Apply the same PyJWT floor to the standalone Python MCP example. The base
   wheel keeps its dependency-free runtime contract.
-- Update the browser example's source-map-js lock to patched 1.2.2.
-- Core, every optional extra, standalone Python examples and the browser lock
-  report no known vulnerabilities; `make check` passes all 299 script tests.
-  No advisory exemptions are added. Rust and Kotlin runtime code is unchanged.
+- Patch the native Node and example locks, requiring MCP SDK 1.31+ and safe
+  transitive versions. Update the browser example's source-map-js to 1.2.2.
+- Python and Node audits report no known vulnerabilities; TypeScript, 51
+  native-free Node tests and 299 script tests pass, with four native-dependent
+  cases pending locally. No advisory exemptions or Rust runtime changes.
 
 ### 2026-09-29 — Verify canonical links in inline email
 
