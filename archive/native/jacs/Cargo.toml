@@ -103,7 +103,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 tracing-opentelemetry = { version = "0.33", optional = true }
 opentelemetry = { version = "0.32.0", optional = true }
-opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "logs", "metrics", "http-proto", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
 # 0.32.1 floor: <= 0.32.0 has unbounded memory allocation in W3C Baggage propagation (GHSA-w9wp-h8wv-79jx)
 opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio", "experimental_metrics_custom_reader"], optional = true }
 opentelemetry-appender-tracing = { version = "0.32.0", optional = true }
