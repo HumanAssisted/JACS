@@ -27,6 +27,15 @@
 
 ## Unreleased
 
+### 2026-10-24 — Keep unchanged native Cargo builds fresh
+
+- Resolve the agreement schema guard against portable core after the native
+  workspace move. Watch only a present optional core schema, so published
+  packages also avoid perpetual rebuilds; schema drift still fails the build.
+- Real-build-script Cargo probes verify freshness, both schema invalidations,
+  mismatch recovery and package fallback. Script checks pass; `make check`
+  remains blocked by the existing October 9 security-exception deadlines.
+
 ### 2026-10-07 — Integrate compatible Rust dependency upgrades
 
 - Update portable schemas and UniFFI, native parsers, DNS, cryptography and

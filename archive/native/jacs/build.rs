@@ -13,17 +13,20 @@ fn main() {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
         let jacs_copy = manifest_dir.join("schemas/agreement/v2/agreement.schema.json");
         let core_copy =
-            manifest_dir.join("../jacs-core/schemas/agreement/v2/agreement.schema.json");
+            manifest_dir.join("../../../jacs-core/schemas/agreement/v2/agreement.schema.json");
         println!("cargo:rerun-if-changed={}", jacs_copy.display());
-        println!("cargo:rerun-if-changed={}", core_copy.display());
-        if core_copy.exists() && jacs_copy.exists() {
-            let core_bytes = fs::read(&core_copy).unwrap_or_default();
-            let jacs_bytes = fs::read(&jacs_copy).unwrap_or_default();
+        // Native compatibility crates live under archive/native; portable core
+        // remains at the repository root. Never watch its absent published-crate
+        // path: Cargo treats a missing rerun-if-changed input as always dirty.
+        if core_copy.exists() {
+            println!("cargo:rerun-if-changed={}", core_copy.display());
+            let core_bytes = fs::read(&core_copy).expect("read jacs-core agreement v2 schema");
+            let jacs_bytes = fs::read(&jacs_copy).expect("read jacs agreement v2 schema");
             if core_bytes != jacs_bytes {
                 panic!(
                     "agreement v2 schema drift: '{}' (source of truth) differs from '{}'. \
 Copy jacs-core's schema over the jacs copy: \
-cp jacs-core/schemas/agreement/v2/agreement.schema.json jacs/schemas/agreement/v2/agreement.schema.json",
+cp jacs-core/schemas/agreement/v2/agreement.schema.json archive/native/jacs/schemas/agreement/v2/agreement.schema.json",
                     core_copy.display(),
                     jacs_copy.display()
                 );
