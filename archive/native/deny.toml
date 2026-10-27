@@ -100,6 +100,180 @@ name = "surrealdb-collections"
 allow = ["BUSL-1.1"]
 name = "surrealdb-strand"
 
+# SurrealDB 3.3 split these crates out of core. Their LICENSE files are
+# byte-identical to the existing reviewed BUSL-1.1 source (see the SHA-256
+# contract in scripts/third_party_license_clarifications.toml).
+[[licenses.clarify]]
+name = "surrealdb-catalog"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-catalog"
+
+[[licenses.clarify]]
+name = "surrealdb-cnf"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-cnf"
+
+[[licenses.clarify]]
+name = "surrealdb-common"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-common"
+
+[[licenses.clarify]]
+name = "surrealdb-datastore"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-datastore"
+
+[[licenses.clarify]]
+name = "surrealdb-engine-api"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-engine-api"
+
+[[licenses.clarify]]
+name = "surrealdb-engine-local"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-engine-local"
+
+[[licenses.clarify]]
+name = "surrealdb-expr"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-expr"
+
+[[licenses.clarify]]
+name = "surrealdb-iam"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-iam"
+
+[[licenses.clarify]]
+name = "surrealdb-idx"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-idx"
+
+[[licenses.clarify]]
+name = "surrealdb-keyspace-macro"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-keyspace-macro"
+
+[[licenses.clarify]]
+name = "surrealdb-kvs"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-kvs"
+
+[[licenses.clarify]]
+name = "surrealdb-kvs-any"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-kvs-any"
+
+[[licenses.clarify]]
+name = "surrealdb-kvs-mem"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-kvs-mem"
+
+[[licenses.clarify]]
+name = "surrealdb-observe"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-observe"
+
+[[licenses.clarify]]
+name = "surrealdb-parse-common"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-parse-common"
+
+[[licenses.clarify]]
+name = "surrealdb-rpc"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-rpc"
+
+[[licenses.clarify]]
+name = "surrealdb-runtime"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-runtime"
+
+[[licenses.clarify]]
+name = "surrealdb-sql"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-sql"
+
+[[licenses.clarify]]
+name = "surrealdb-syn"
+expression = "BUSL-1.1"
+license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-syn"
+
 [licenses.private]
 ignore = true
 
@@ -111,16 +285,19 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # whenever the named upstream releases and no later than the recorded date.
 ignore = [
     # rsa 0.9.10 is present only in the standalone SurrealDB lock through
-    # jsonwebtoken. That backend verifies public-key JWTs and does not expose
-    # RSA private-key operations. Owner: JACS storage maintainers.
-    # Review by: 2026-10-09.
+    # jsonwebtoken's WASM target feature, not the native backend. The JACS
+    # adapter exposes no JWT auth or RSA private-key operations.
+    # Owner: JACS storage maintainers. Reviewed 2026-10-27 in SECURITY_AUDIT.md.
+    # Review by: 2026-11-26.
     "RUSTSEC-2023-0071",
     # atomic-polyfill is unmaintained in the standalone SurrealDB geometry
     # graph; it has no reported vulnerability and is not cryptographic code.
-    # Owner: JACS storage maintainers. Review by: 2026-10-09.
+    # Owner: JACS storage maintainers. Reviewed 2026-10-27 in SECURITY_AUDIT.md.
+    # Review by: 2026-11-26.
     "RUSTSEC-2023-0089",
     # bincode 2.0.1 is unmaintained in SurrealDB's surrealmx graph; no
     # exploitable flaw is reported and JACS has no direct bincode use.
-    # Owner: JACS storage maintainers. Review by: 2026-10-09.
+    # Owner: JACS storage maintainers. Reviewed 2026-10-27 in SECURITY_AUDIT.md.
+    # Review by: 2026-11-26.
     "RUSTSEC-2025-0141",
 ]

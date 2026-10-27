@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1029
+Third-party packages: 1069
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -85,7 +85,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0
-Used by 52 package(s):
+Used by 51 package(s):
 
   - approx 0.5.1 (https://github.com/brendanzab/approx)
   - arrow 58.4.0 (https://github.com/apache/arrow-rs)
@@ -114,12 +114,12 @@ Used by 52 package(s):
   - num-modular 0.6.5 (https://github.com/cmpute/num-modular)
   - num-order 1.2.0 (https://github.com/cmpute/num-order)
   - openssl 0.10.81 (https://github.com/rust-openssl/rust-openssl)
-  - opentelemetry 0.32.0 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry)
-  - opentelemetry-appender-tracing 0.32.0 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-appender-tracing)
-  - opentelemetry-http 0.32.0 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-http)
-  - opentelemetry-otlp 0.32.0 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-otlp)
-  - opentelemetry-proto 0.32.0 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto)
-  - opentelemetry_sdk 0.32.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-sdk)
+  - opentelemetry 0.33.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry)
+  - opentelemetry-appender-tracing 0.33.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-appender-tracing)
+  - opentelemetry-http 0.33.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-http)
+  - opentelemetry-otlp 0.33.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-otlp)
+  - opentelemetry-proto 0.33.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto)
+  - opentelemetry_sdk 0.33.1 (https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-sdk)
   - prost 0.14.4 (https://github.com/tokio-rs/prost)
   - prost-derive 0.14.4 (https://github.com/tokio-rs/prost)
   - prost-types 0.14.4 (https://github.com/tokio-rs/prost)
@@ -133,11 +133,10 @@ Used by 52 package(s):
   - similar 2.7.0 (https://github.com/mitsuhiko/similar)
   - storekey 0.11.0 (https://github.com/surrealdb/storekey)
   - storekey-derive 0.11.0 (https://github.com/surrealdb/storekey)
-  - surrealmx 0.22.0 (https://github.com/surrealdb/surrealmx)
+  - surrealmx 0.27.0 (https://github.com/surrealdb/surrealmx)
   - sync_wrapper 1.0.2 (https://github.com/Actyx/sync_wrapper)
   - trice 0.4.0 (https://github.com/surrealdb/trice)
   - unicode-general-category 1.1.0 (https://github.com/yeslogic/unicode-general-category)
-  - vart 0.9.3 (https://github.com/surrealdb/vart)
   - zopfli 0.8.3 (https://github.com/zopfli-rs/zopfli)
 
 -------------------------------------------------------------------------------
@@ -177,7 +176,7 @@ License expression: Apache-2.0 OR ISC OR MIT
 Used by 3 package(s):
 
   - hyper-rustls 0.27.9 (https://github.com/rustls/hyper-rustls)
-  - rustls 0.23.45 (https://github.com/rustls/rustls)
+  - rustls 0.23.46 (https://github.com/rustls/rustls)
   - rustls-native-certs 0.8.4 (https://github.com/rustls/rustls-native-certs)
 
 -------------------------------------------------------------------------------
@@ -202,9 +201,9 @@ Used by 89 package(s):
   - const-oid 0.9.6 (https://github.com/RustCrypto/formats/tree/master/const-oid)
   - criterion 0.6.0 (https://github.com/bheisler/criterion.rs)
   - crypto-bigint 0.5.5 (https://github.com/RustCrypto/crypto-bigint)
-  - crypto-bigint 0.7.5 (https://github.com/RustCrypto/crypto-bigint)
+  - crypto-bigint 0.7.10 (https://github.com/RustCrypto/crypto-bigint)
   - ctor 1.0.13 (https://github.com/mmastrac/linktime)
-  - ctutils 0.4.2 (https://github.com/RustCrypto/utils)
+  - ctutils 0.4.6 (https://github.com/RustCrypto/utils)
   - der 0.7.10 (https://github.com/RustCrypto/formats/tree/master/der)
   - der 0.8.2 (https://github.com/RustCrypto/formats)
   - ecdsa 0.16.9 (https://github.com/RustCrypto/signatures/tree/master/ecdsa)
@@ -339,7 +338,7 @@ Used by 2 package(s):
 License expression: BUSL-1.1
 Used by 1 package(s):
 
-  - surrealdb-protocol 0.10.2 (https://github.com/surrealdb/surrealdb-protocol)
+  - surrealdb-protocol 0.13.1 (https://github.com/surrealdb/surrealdb-protocol)
 
 -------------------------------------------------------------------------------
 License expression: CC0-1.0
@@ -363,22 +362,20 @@ Used by 2 package(s):
 
 -------------------------------------------------------------------------------
 License expression: CDLA-Permissive-2.0
-Used by 4 package(s):
+Used by 3 package(s):
 
-  - webpki-root-certs 1.0.8 (https://github.com/rustls/webpki-roots)
-  - webpki-root-certs 1.0.9 (https://github.com/rustls/webpki-roots)
+  - webpki-root-certs 1.0.10 (https://github.com/rustls/webpki-roots)
   - webpki-roots 0.26.11 (https://github.com/rustls/webpki-roots)
-  - webpki-roots 1.0.9 (https://github.com/rustls/webpki-roots)
+  - webpki-roots 1.0.10 (https://github.com/rustls/webpki-roots)
 
 -------------------------------------------------------------------------------
 License expression: ISC
-Used by 8 package(s):
+Used by 7 package(s):
 
-  - earcutr 0.4.3 (https://github.com/frewsxcv/earcutr/)
   - inotify 0.11.5 (https://github.com/hannobraun/inotify-rs)
   - inotify-sys 0.1.8 (https://github.com/hannobraun/inotify-sys)
   - libloading 0.9.0 (https://github.com/nagisa/rust_libloading/)
-  - rustls-webpki 0.103.15 (https://github.com/rustls/webpki)
+  - rustls-webpki 0.103.16 (https://github.com/rustls/webpki)
   - simple_asn1 0.6.4 (https://github.com/acw/simple_asn1)
   - untrusted 0.7.1 (https://github.com/briansmith/untrusted)
   - untrusted 0.9.0 (https://github.com/briansmith/untrusted)
@@ -397,7 +394,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 190 package(s):
+Used by 206 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -408,6 +405,8 @@ Used by 190 package(s):
   - bincode 2.0.1 (https://github.com/bincode-org/bincode)
   - bincode_derive 2.0.1 (https://github.com/bincode-org/bincode)
   - boxcar 0.2.14 (https://github.com/ibraheemdev/boxcar)
+  - bytecheck 0.8.3 (https://github.com/rkyv/bytecheck)
+  - bytecheck_derive 0.8.3 (https://github.com/rkyv/bytecheck)
   - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
   - castaway 0.2.4 (https://github.com/sagebind/castaway)
   - cfg_aliases 0.2.1 (https://github.com/katharostech/cfg_aliases)
@@ -429,13 +428,13 @@ Used by 190 package(s):
   - data-encoding 2.11.0 (https://github.com/ia0/data-encoding)
   - data-encoding 2.11.1 (https://github.com/ia0/data-encoding)
   - difflib 0.4.0 (https://github.com/DimaKudosh/difflib)
-  - diskann 0.54.0 (https://github.com/microsoft/DiskANN)
-  - diskann-utils 0.54.0 (https://github.com/microsoft/DiskANN)
-  - diskann-vector 0.54.0 (https://github.com/microsoft/DiskANN)
-  - diskann-wide 0.54.0 (https://github.com/microsoft/DiskANN)
+  - diskann 0.56.0 (https://github.com/microsoft/DiskANN)
+  - diskann-utils 0.56.0 (https://github.com/microsoft/DiskANN)
+  - diskann-vector 0.56.0 (https://github.com/microsoft/DiskANN)
+  - diskann-wide 0.56.0 (https://github.com/microsoft/DiskANN)
   - dmp 0.2.3 (https://github.com/surrealdb/dmp)
   - dotenvy 0.15.7 (https://github.com/allan2/dotenvy)
-  - duckdb 1.10505.0 (https://github.com/duckdb/duckdb-rs)
+  - duckdb 1.10506.1 (https://github.com/duckdb/duckdb-rs)
   - email_address 0.2.9 (https://github.com/johnstonskj/rust-email_address.git)
   - fancy-regex 0.19.2 (https://github.com/fancy-regex/fancy-regex)
   - float-cmp 0.10.0 (https://github.com/mikedilger/float-cmp)
@@ -467,16 +466,22 @@ Used by 190 package(s):
   - i_shape 1.14.0 (https://github.com/iShape-Rust/iShape)
   - i_tree 0.16.0 (https://github.com/iShape-Rust/iTree)
   - jsonschema 0.58.6 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.60.1 (https://github.com/Stranger6667/jsonschema)
   - jsonschema-regex 0.58.6 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.60.1 (https://github.com/Stranger6667/jsonschema)
   - jsonschema-value 0.58.6 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.60.1 (https://github.com/Stranger6667/jsonschema)
   - jsonwebtoken 10.4.0 (https://github.com/Keats/jsonwebtoken)
   - kqueue 1.2.1 (https://gitlab.com/rust-kqueue/rust-kqueue)
   - kqueue-sys 1.1.2 (https://gitlab.com/rust-kqueue/rust-kqueue-sys)
-  - libduckdb-sys 1.10505.0 (https://github.com/duckdb/duckdb-rs)
+  - libduckdb-sys 1.10506.1 (https://github.com/duckdb/duckdb-rs)
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
   - libredox 0.1.18 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libredox 0.1.23 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libsqlite3-sys 0.30.1 (https://github.com/rusqlite/rusqlite)
+  - libyaml-rs 0.3.0 (https://github.com/yaml/libyaml-rs)
+  - lindera 6.2.0 (https://github.com/lindera/lindera)
+  - lindera-dictionary 6.2.0 (https://github.com/lindera/lindera)
   - lz4 1.28.1 (https://github.com/10xGenomics/lz4-rs)
   - lz4-sys 1.11.1+lz4-1.10.0 (https://github.com/10xGenomics/lz4-rs)
   - matchers 0.2.0 (https://github.com/hawkw/matchers)
@@ -484,6 +489,8 @@ Used by 190 package(s):
   - mime_guess 2.0.5 (https://github.com/abonander/mime_guess)
   - mio 1.2.2 (https://github.com/tokio-rs/mio)
   - mio 1.2.3 (https://github.com/tokio-rs/mio)
+  - munge 0.4.7 (https://github.com/djkoloski/munge)
+  - munge_macro 0.4.7 (https://github.com/djkoloski/munge)
   - napi 3.12.2 (https://github.com/napi-rs/napi-rs)
   - napi-build 2.4.1 (https://github.com/napi-rs/napi-rs)
   - napi-derive 3.6.7 (https://github.com/napi-rs/napi-rs)
@@ -498,7 +505,7 @@ Used by 190 package(s):
   - outref 0.5.2 (https://github.com/Nugine/outref)
   - owo-colors 4.4.0 (https://github.com/owo-colors/owo-colors)
   - oxipng 10.2.1 (https://github.com/oxipng/oxipng)
-  - papaya 0.2.4 (https://github.com/ibraheemdev/papaya)
+  - papaya 0.2.5 (https://github.com/ibraheemdev/papaya)
   - pem 3.0.6 (https://github.com/jcreekmore/pem-rs.git)
   - phf 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf 0.14.0 (https://github.com/rust-phf/rust-phf)
@@ -513,16 +520,24 @@ Used by 190 package(s):
   - plotters-backend 0.3.7 (https://github.com/plotters-rs/plotters)
   - plotters-svg 0.3.7 (https://github.com/plotters-rs/plotters.git)
   - precomputed-hash 0.1.1 (https://github.com/emilio/precomputed-hash)
+  - ptr_meta 0.3.2 (https://github.com/rkyv/ptr_meta)
+  - ptr_meta_derive 0.3.2 (https://github.com/rkyv/ptr_meta)
   - pulldown-cmark 0.10.3 (https://github.com/raphlinus/pulldown-cmark)
   - pulldown-cmark-escape 0.10.1 (https://github.com/raphlinus/pulldown-cmark)
+  - quick-xml 0.39.4 (https://github.com/tafia/quick-xml)
   - quick-xml 0.41.0 (https://github.com/tafia/quick-xml)
   - quick_cache 0.6.24 (https://github.com/arthurprs/quick-cache)
+  - rancor 0.1.3 (https://github.com/rkyv/rancor)
   - reblessive 0.4.3 (https://github.com/DelSkayn/reblessive.git)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
   - redox_syscall 0.9.4 (https://gitlab.redox-os.org/redox-os/kernel)
   - redox_users 0.5.3 (https://gitlab.redox-os.org/redox-os/users)
   - referencing 0.58.6 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.60.1 (https://github.com/Stranger6667/jsonschema)
+  - rend 0.5.4 (https://github.com/djkoloski/rend)
   - rgb 0.8.53 (https://github.com/kornelski/rust-rgb)
+  - rkyv 0.8.18 (https://github.com/rkyv/rkyv)
+  - rkyv_derive 0.8.18 (https://github.com/rkyv/rkyv)
   - rmp 0.8.15 (https://github.com/3Hren/msgpack-rust)
   - rmp-serde 1.3.1 (https://github.com/3Hren/msgpack-rust)
   - rusqlite 0.32.1 (https://github.com/rusqlite/rusqlite)
@@ -533,7 +548,7 @@ Used by 190 package(s):
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
   - seize 0.5.1 (https://github.com/ibraheemdev/seize)
   - serde_json_canonicalizer 0.3.2 (https://github.com/evik42/serde-json-canonicalizer)
-  - serde_yaml_ng 0.10.0 (https://github.com/acatton/serde-yaml-ng)
+  - serde_json_canonicalizer 0.4.1 (https://github.com/evik42/serde-json-canonicalizer)
   - serial_test 3.5.0 (https://github.com/palfrey/serial_test/)
   - serial_test 4.0.1 (https://github.com/palfrey/serial_test/)
   - serial_test_derive 3.5.0 (https://github.com/palfrey/serial_test/)
@@ -552,10 +567,9 @@ Used by 190 package(s):
   - sysinfo 0.37.2 (https://github.com/GuillaumeGomez/sysinfo)
   - termtree 0.5.1 (https://github.com/rust-cli/termtree)
   - testcontainers-modules 0.15.0 (https://github.com/testcontainers/testcontainers-rs-modules-community)
-  - tokio 1.53.1 (https://github.com/tokio-rs/tokio)
+  - tokio 1.54.1 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.0 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.2 (https://github.com/tokio-rs/tokio)
-  - tokio-stream 0.1.18 (https://github.com/tokio-rs/tokio)
   - tokio-stream 0.1.19 (https://github.com/tokio-rs/tokio)
   - tokio-tungstenite 0.28.0 (https://github.com/snapview/tokio-tungstenite)
   - tokio-tungstenite 0.29.0 (https://github.com/snapview/tokio-tungstenite)
@@ -573,11 +587,10 @@ Used by 190 package(s):
   - tracing-core 0.1.36 (https://github.com/tokio-rs/tracing)
   - tracing-error 0.2.1 (https://github.com/tokio-rs/tracing)
   - tracing-log 0.2.0 (https://github.com/tokio-rs/tracing)
-  - tracing-opentelemetry 0.33.0 (https://github.com/tokio-rs/tracing-opentelemetry)
+  - tracing-opentelemetry 0.34.0 (https://github.com/tokio-rs/tracing-opentelemetry)
   - tracing-subscriber 0.3.23 (https://github.com/tokio-rs/tracing)
   - try-lock 0.2.5 (https://github.com/seanmonstar/try-lock)
   - ulid 1.2.1 (https://github.com/dylanhart/ulid-rs)
-  - unsafe-libyaml 0.2.11 (https://github.com/dtolnay/unsafe-libyaml)
   - urlencoding 2.1.3 (https://github.com/kornelski/rust_urlencoding)
   - uuid-simd 0.8.0 (https://github.com/Nugine/simd)
   - validator 0.21.0 (https://github.com/Keats/validator)
@@ -587,7 +600,7 @@ Used by 190 package(s):
   - want 0.3.1 (https://github.com/seanmonstar/want)
   - wasmtimer 0.4.3 (https://github.com/whizsid/wasmtimer-rs)
   - winnow 1.0.4 (https://github.com/winnow-rs/winnow)
-  - zip 6.0.0 (https://github.com/zip-rs/zip2.git)
+  - zip 9.1.2 (https://github.com/zip-rs/zip2)
   - zmij 1.0.23 (https://github.com/dtolnay/zmij)
 
 -------------------------------------------------------------------------------
@@ -598,13 +611,13 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 480 package(s):
+Used by 486 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
   - ahash 0.8.12 (https://github.com/tkaitchuck/ahash)
   - allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
-  - ammonia 4.1.4 (https://github.com/rust-ammonia/ammonia)
+  - ammonia 4.1.8 (https://github.com/rust-ammonia/ammonia)
   - android_system_properties 0.1.6 (https://github.com/nical/android_system_properties)
   - anes 0.1.6 (https://github.com/zrzka/anes-rs)
   - anstream 1.0.0 (https://github.com/rust-cli/anstyle.git)
@@ -612,9 +625,7 @@ Used by 480 package(s):
   - anstyle-parse 1.0.0 (https://github.com/rust-cli/anstyle.git)
   - anstyle-query 1.1.5 (https://github.com/rust-cli/anstyle.git)
   - anstyle-wincon 3.0.11 (https://github.com/rust-cli/anstyle.git)
-  - anyhow 1.0.103 (https://github.com/dtolnay/anyhow)
   - anyhow 1.0.104 (https://github.com/dtolnay/anyhow)
-  - arbitrary 1.4.2 (https://github.com/rust-fuzz/arbitrary/)
   - arc-swap 1.9.2 (https://github.com/vorner/arc-swap)
   - argon2 0.5.3 (https://github.com/RustCrypto/password-hashes/tree/master/argon2)
   - argon2 0.6.0 (https://github.com/RustCrypto/password-hashes)
@@ -669,6 +680,7 @@ Used by 480 package(s):
   - cpufeatures 0.2.17 (https://github.com/RustCrypto/utils)
   - cpufeatures 0.3.0 (https://github.com/RustCrypto/utils)
   - cpufeatures 0.3.1 (https://github.com/RustCrypto/utils)
+  - crawdad 0.4.1 (https://github.com/daac-tools/crawdad)
   - crc 3.4.0 (https://github.com/mrhooray/crc-rs.git)
   - crc-catalog 2.5.0 (https://github.com/akhilles/crc-catalog.git)
   - crc-fast 1.10.0 (https://github.com/awesomized/crc-fast-rust)
@@ -689,12 +701,12 @@ Used by 480 package(s):
   - crypto-common 0.1.7 (https://github.com/RustCrypto/traits)
   - crypto-common 0.2.2 (https://github.com/RustCrypto/traits)
   - ctr 0.10.1 (https://github.com/RustCrypto/block-modes)
+  - daachorse 5.1.0 (https://github.com/daac-tools/daachorse)
   - dbus-secret-service 4.1.0 (https://github.com/brotskydotcom/dbus-secret-service.git)
   - defmt 1.1.1 (https://github.com/knurling-rs/defmt)
   - defmt-macros 1.1.1 (https://github.com/knurling-rs/defmt)
   - defmt-parser 1.0.0 (https://github.com/knurling-rs/defmt)
   - deranged 0.5.8 (https://github.com/jhpratt/deranged)
-  - derive_arbitrary 1.4.2 (https://github.com/rust-fuzz/arbitrary)
   - derive_builder 0.20.2 (https://github.com/colin-kiegel/rust-derive-builder)
   - derive_builder_core 0.20.2 (https://github.com/colin-kiegel/rust-derive-builder)
   - derive_builder_macro 0.20.2 (https://github.com/colin-kiegel/rust-derive-builder)
@@ -709,6 +721,7 @@ Used by 480 package(s):
   - dyn-clone 1.0.20 (https://github.com/dtolnay/dyn-clone)
   - either 1.16.0 (https://github.com/rayon-rs/either)
   - either 1.18.0 (https://github.com/rayon-rs/either)
+  - encoding_rs_io 0.1.8 (https://github.com/BurntSushi/encoding_rs_io)
   - env_filter 2.0.0 (https://github.com/rust-cli/env_logger)
   - env_logger 0.11.11 (https://github.com/rust-cli/env_logger)
   - errno 0.3.14 (https://github.com/lambda-fairy/rust-errno)
@@ -722,6 +735,7 @@ Used by 480 package(s):
   - find-msvc-tools 0.1.9 (https://github.com/rust-lang/cc-rs)
   - fips203 0.4.3 (https://github.com/integritychain/fips203)
   - fips204 0.4.6 (https://github.com/integritychain/fips204)
+  - fips204 0.5.0 (https://github.com/integritychain/fips204)
   - flate2 1.1.10 (https://github.com/rust-lang/flate2-rs)
   - flate2 1.1.9 (https://github.com/rust-lang/flate2-rs)
   - form_urlencoded 1.2.2 (https://github.com/servo/rust-url)
@@ -751,6 +765,7 @@ Used by 480 package(s):
   - getrandom 0.3.4 (https://github.com/rust-random/getrandom)
   - getrandom 0.4.3 (https://github.com/rust-random/getrandom)
   - gimli 0.32.3 (https://github.com/gimli-rs/gimli)
+  - glob 0.3.4 (https://github.com/rust-lang/glob)
   - half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   - hash32 0.1.1 (https://github.com/japaric/hash32)
   - hash32 0.2.1 (https://github.com/japaric/hash32)
@@ -797,7 +812,6 @@ Used by 480 package(s):
   - ipnet 2.12.0 (https://github.com/krisprice/ipnet)
   - ipnet 2.12.2 (https://github.com/krisprice/ipnet)
   - is_terminal_polyfill 1.70.2 (https://github.com/polyfill-rs/is_terminal_polyfill)
-  - itertools 0.11.0 (https://github.com/rust-itertools/itertools)
   - itertools 0.13.0 (https://github.com/rust-itertools/itertools)
   - itertools 0.14.0 (https://github.com/rust-itertools/itertools)
   - itertools 0.15.0 (https://github.com/rust-itertools/itertools)
@@ -817,9 +831,13 @@ Used by 480 package(s):
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
   - log 0.4.33 (https://github.com/rust-lang/log)
   - log 0.4.34 (https://github.com/rust-lang/log)
+  - logos 0.16.1 (https://github.com/maciejhirsz/logos)
+  - logos-codegen 0.16.1 (https://github.com/maciejhirsz/logos)
+  - logos-derive 0.16.1 (https://github.com/maciejhirsz/logos)
   - markup5ever 0.39.0 (https://github.com/servo/html5ever)
   - md-5 0.10.6 (https://github.com/RustCrypto/hashes)
   - md-5 0.11.0 (https://github.com/RustCrypto/hashes)
+  - memmap2 0.9.11 (https://github.com/RazrFalcon/memmap2-rs)
   - mime 0.3.17 (https://github.com/hyperium/mime)
   - multiversion 0.9.0 (https://github.com/calebzulawski/multiversion)
   - multiversion-macros 0.9.0 (https://github.com/calebzulawski/multiversion)
@@ -879,8 +897,7 @@ Used by 480 package(s):
   - pyo3-macros 0.29.2 (https://github.com/pyo3/pyo3)
   - pyo3-macros-backend 0.29.2 (https://github.com/pyo3/pyo3)
   - quinn 0.11.11 (https://github.com/quinn-rs/quinn)
-  - quinn-proto 0.11.16 (https://github.com/quinn-rs/quinn)
-  - quinn-proto 0.11.17 (https://github.com/quinn-rs/quinn)
+  - quinn-proto 0.11.18 (https://github.com/quinn-rs/quinn)
   - quinn-udp 0.5.15 (https://github.com/quinn-rs/quinn)
   - quote 1.0.46 (https://github.com/dtolnay/quote)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
@@ -907,6 +924,7 @@ Used by 480 package(s):
   - regex 1.13.1 (https://github.com/rust-lang/regex)
   - regex-automata 0.4.18 (https://github.com/rust-lang/regex)
   - regex-syntax 0.8.11 (https://github.com/rust-lang/regex)
+  - reqwest 0.12.28 (https://github.com/seanmonstar/reqwest)
   - reqwest 0.13.4 (https://github.com/seanmonstar/reqwest)
   - reqwest 0.13.5 (https://github.com/seanmonstar/reqwest)
   - resolv-conf 0.7.6 (https://github.com/hickory-dns/resolv-conf)
@@ -935,6 +953,7 @@ Used by 480 package(s):
   - serde_derive 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive_internals 0.30.0 (https://github.com/serde-rs/serde)
   - serde_json 1.0.151 (https://github.com/serde-rs/json)
+  - serde_json 1.0.154 (https://github.com/serde-rs/json)
   - serde_path_to_error 0.1.20 (https://github.com/dtolnay/path-to-error)
   - serde_repr 0.1.21 (https://github.com/dtolnay/serde-repr)
   - serde_with 3.23.0 (https://github.com/jonasbb/serde_with/)
@@ -951,7 +970,6 @@ Used by 480 package(s):
   - smallvec 1.15.2 (https://github.com/servo/rust-smallvec)
   - smallvec 1.16.0 (https://github.com/servo/rust-smallvec)
   - socket2 0.6.5 (https://github.com/rust-lang/socket2)
-  - spade 2.15.1 (https://github.com/Stoeoef/spade)
   - sqlx 0.8.6 (https://github.com/launchbadge/sqlx)
   - sqlx-core 0.8.6 (https://github.com/launchbadge/sqlx)
   - sqlx-macros 0.8.6 (https://github.com/launchbadge/sqlx)
@@ -974,11 +992,9 @@ Used by 480 package(s):
   - terminal_size 0.4.4 (https://github.com/eminence/terminal-size)
   - testcontainers 0.27.3 (https://github.com/testcontainers/testcontainers-rs)
   - thiserror 1.0.69 (https://github.com/dtolnay/thiserror)
-  - thiserror 2.0.18 (https://github.com/dtolnay/thiserror)
-  - thiserror 2.0.20 (https://github.com/dtolnay/thiserror)
+  - thiserror 2.0.21 (https://github.com/dtolnay/thiserror)
   - thiserror-impl 1.0.69 (https://github.com/dtolnay/thiserror)
-  - thiserror-impl 2.0.18 (https://github.com/dtolnay/thiserror)
-  - thiserror-impl 2.0.20 (https://github.com/dtolnay/thiserror)
+  - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
   - thread_local 1.1.10 (https://github.com/Amanieu/thread_local-rs)
   - time 0.3.53 (https://github.com/time-rs/time)
   - time 0.3.55 (https://github.com/time-rs/time)
@@ -994,6 +1010,7 @@ Used by 480 package(s):
   - topological-sort 0.2.2 (https://github.com/gifnksm/topological-sort-rs)
   - tungstenite 0.28.0 (https://github.com/snapview/tungstenite-rs)
   - tungstenite 0.29.0 (https://github.com/snapview/tungstenite-rs)
+  - typed-path 0.13.0 (https://github.com/chipsenkbeil/typed-path)
   - typenum 1.20.1 (https://github.com/paholg/typenum)
   - ucd-trie 0.1.7 (https://github.com/BurntSushi/ucd-generate)
   - unarray 0.1.4 (https://github.com/cameron1024/unarray)
@@ -1019,6 +1036,7 @@ Used by 480 package(s):
   - wasm-bindgen-macro-support 0.2.128 (https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support)
   - wasm-bindgen-shared 0.2.126 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared)
   - wasm-bindgen-shared 0.2.128 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared)
+  - wasm-streams 0.4.2 (https://github.com/MattiasBuelens/wasm-streams/)
   - wasm-streams 0.5.0 (https://github.com/MattiasBuelens/wasm-streams/)
   - web-sys 0.3.103 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys)
   - web-sys 0.3.105 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys)
@@ -1080,6 +1098,7 @@ Used by 480 package(s):
   - windows_x86_64_msvc 0.53.1 (https://github.com/microsoft/windows-rs)
   - x509-parser 0.16.0 (https://github.com/rusticata/x509-parser.git)
   - xattr 1.6.1 (https://github.com/Stebalien/xattr)
+  - yaml_serde 0.10.7 (https://github.com/yaml/yaml-serde)
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0 OR BSD-1-Clause
@@ -1123,7 +1142,7 @@ License expression: MIT/Apache-2.0
 Used by 64 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
-  - affinitypool 0.7.0 (https://github.com/surrealdb/affinitypool)
+  - affinitypool 0.8.0 (https://github.com/surrealdb/affinitypool)
   - android_system_properties 0.1.5 (https://github.com/nical/android_system_properties)
   - asn1-rs-impl 0.2.0 (https://github.com/rusticata/asn1-rs.git)
   - bitflags 1.3.2 (https://github.com/bitflags/bitflags)
@@ -1272,8 +1291,10 @@ Used by 15 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Unlicense/MIT
-Used by 3 package(s):
+Used by 5 package(s):
 
+  - csv 1.4.0 (https://github.com/BurntSushi/rust-csv)
+  - csv-core 0.1.13 (https://github.com/BurntSushi/rust-csv)
   - fst 0.4.7 (https://github.com/BurntSushi/fst)
   - same-file 1.0.6 (https://github.com/BurntSushi/same-file)
   - walkdir 2.5.0 (https://github.com/BurntSushi/walkdir)
@@ -1335,14 +1356,33 @@ SOFTWARE.
 Cargo license file SHA-256: 98a94ac615f88370865016487b436fa404560910bd329794ed7502277a94b805
 Cargo-deny normalized XXH32: 0xbb1191d7
 License source path: LICENSE
-Used by 6 package(s):
+Used by 25 package(s):
 
-  - surrealdb 3.2.4 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-collections 3.2.4 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-core 3.2.4 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-strand 3.2.4 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-types 3.2.4 (https://github.com/surrealdb/surrealdb)
-  - surrealdb-types-derive 3.2.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-catalog 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-cnf 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-collections 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-common 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-core 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-datastore 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-engine-api 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-engine-local 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-expr 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-iam 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-idx 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-keyspace-macro 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-kvs 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-kvs-any 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-kvs-mem 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-observe 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-parse-common 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-rpc 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-runtime 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-sql 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-strand 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-syn 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-types 3.3.4 (https://github.com/surrealdb/surrealdb)
+  - surrealdb-types-derive 3.3.4 (https://github.com/surrealdb/surrealdb)
 
 License text (the SHA-256 above identifies the source bytes):
 
@@ -1459,7 +1499,7 @@ Cargo-deny normalized XXH32: 0x2273894e
 License source path: LICENSE
 Used by 1 package(s):
 
-  - surrealdb-protocol 0.10.2 (https://github.com/surrealdb/surrealdb-protocol)
+  - surrealdb-protocol 0.13.1 (https://github.com/surrealdb/surrealdb-protocol)
 
 License text (the SHA-256 above identifies the source bytes):
 

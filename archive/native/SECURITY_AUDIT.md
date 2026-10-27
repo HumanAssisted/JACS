@@ -9,11 +9,42 @@ bounded exposure statement, and a review date.
 
 | Advisory | Surface and reachability | Disposition | Owner | Review by |
 |---|---|---|---|---|
-| RUSTSEC-2023-0071 | The separate SurrealDB lock includes `rsa` through `jsonwebtoken` on some targets. JACS native signing has no RSA mode, and this path performs public-key JWT verification rather than network-observable RSA private-key operations. | Ignore only in the SurrealDB lock audit. Remove when upstream removes `rsa` or a constant-time release exists. | JACS storage maintainers | 2026-10-09 |
-| RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless`; it is not cryptographic code and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. | JACS storage maintainers | 2026-10-09 |
-| RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is in SurrealDB's `surrealmx` graph. The advisory declares maintenance status and does not report an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-10-09 |
+| RUSTSEC-2023-0071 | The separate SurrealDB lock includes `rsa 0.9.10` through `jsonwebtoken` for WASM; native targets use AWS-LC. The in-memory JACS adapter does not invoke JWT authentication or RSA private-key operations. | Ignore only in the SurrealDB lock audit. Remove when upstream removes `rsa` or a constant-time release exists. | JACS storage maintainers | 2026-11-26 |
+| RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless` for embedded targets; it is absent from the native Linux build and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. | JACS storage maintainers | 2026-11-26 |
+| RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is required by SurrealDB's `surrealmx 0.27.0` persistence code. The JACS adapter opens only an in-memory database without a persistence path. The advisory reports maintenance status, not an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-11-26 |
 
 Any new advisory fails CI. Review dates are deadlines, not automatic renewals.
+
+The 2026-10-27 review checked these dispositions against the upgraded SurrealDB
+3.3.4 graph and renewed them for 30 days. The upstream RustSec advisories for
+[RSA](https://github.com/RustSec/advisory-db/blob/main/crates/rsa/RUSTSEC-2023-0071.md),
+[atomic-polyfill](https://github.com/RustSec/advisory-db/blob/main/crates/atomic-polyfill/RUSTSEC-2023-0089.md),
+and [bincode](https://github.com/RustSec/advisory-db/blob/main/crates/bincode/RUSTSEC-2025-0141.md)
+still list no patched release. `cargo tree --locked --all-features --target
+x86_64-unknown-linux-gnu` for `jacs-surrealdb/Cargo.toml` contains neither `rsa`
+nor `atomic-polyfill`; `bincode` remains through `surrealmx`, `surrealdb-kvs-mem`,
+`surrealdb-kvs-any`, and `surrealdb-core`. Source inspection confirmed that the
+adapter uses `Surreal::new::<Mem>(())`, exposes no JWT authentication operations,
+and configures no persistence path. SurrealMX's bincode calls are confined to
+its persistence module. The complete lock still contains all three packages,
+so the existing archive-only audit waiver and exact-parent checks remain.
+Recheck these assumptions if the backend, targets, authentication, or
+persistence configuration changes; this review does not claim the RSA flaw is
+fixed or waive any new advisory.
+
+### Remaining blockers after the 2026-10-27 updates
+
+The SurrealDB lock still fails the current advisory gate for these dependencies;
+no exception has been added for them:
+
+| Dependency | Advisory | Upstream constraint |
+|---|---|---|
+| `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | SurrealDB 3.3.4 requires `jsonwebtoken 10`, whose WASM RustCrypto feature still uses `p256 0.13` / `p384 0.13` and `elliptic-curve 0.13`. The patched `crypto-bigint 0.7` family cannot satisfy those constraints. |
+| `quick-xml 0.39.4` | RUSTSEC-2026-0194 / RUSTSEC-2026-0195 | SurrealDB 3.3.4 requires `object_store 0.13.2`, which requires `quick-xml 0.39`; the patched `quick-xml >=0.41` family requires an upstream dependency migration. |
+
+The target-specific crypto path is absent from the native Linux build, but the
+complete-lock audit deliberately continues to fail. Upstream compatible fixes
+are required before this dependency consolidation passes the security gate.
 
 The 2026-09-08 dependency recheck retired the `json-repair` disposition after a
 compatible update. Node lock and packed-candidate audits, and Rust workspace and

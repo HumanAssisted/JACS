@@ -47,7 +47,7 @@ Source graph: locked all-feature active portable workspace; archived native inte
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 318
+Third-party packages: 317
 License expressions: 20
 Distinct Cargo license files: 0
 
@@ -67,7 +67,7 @@ Used by 1 package(s):
 License expression: Apache-2.0
 Used by 4 package(s):
 
-  - rmcp 3.4.1 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rmcp 3.7.0 (https://github.com/modelcontextprotocol/rust-sdk/)
   - rpassword 7.5.4 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
   - unicode-general-category 1.1.0 (https://github.com/yeslogic/unicode-general-category)
@@ -90,8 +90,8 @@ Used by 41 package(s):
   - bit-vec 0.8.0 (https://github.com/contain-rs/bit-vec)
   - cmov 0.5.4 (https://github.com/RustCrypto/utils)
   - const-oid 0.10.2 (https://github.com/RustCrypto/formats)
-  - crypto-bigint 0.7.5 (https://github.com/RustCrypto/crypto-bigint)
-  - ctutils 0.4.2 (https://github.com/RustCrypto/utils)
+  - crypto-bigint 0.7.10 (https://github.com/RustCrypto/crypto-bigint)
+  - ctutils 0.4.6 (https://github.com/RustCrypto/utils)
   - der 0.8.2 (https://github.com/RustCrypto/formats)
   - ecdsa 0.17.0 (https://github.com/RustCrypto/signatures)
   - ed25519 3.0.0 (https://github.com/RustCrypto/signatures)
@@ -119,9 +119,9 @@ Used by 41 package(s):
   - spki 0.8.0 (https://github.com/RustCrypto/formats)
   - utf8_iter 1.0.4 (https://github.com/hsivonen/utf8_iter)
   - utf8parse 0.2.2 (https://github.com/alacritty/vte)
-  - uuid 1.26.1 (https://github.com/uuid-rs/uuid)
+  - uuid 1.29.0 (https://github.com/uuid-rs/uuid)
   - wnaf 0.14.1 (https://github.com/RustCrypto/elliptic-curves)
-  - zeroize 1.9.0 (https://github.com/RustCrypto/utils)
+  - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
 
 -------------------------------------------------------------------------------
@@ -169,9 +169,9 @@ Used by 55 package(s):
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
   - goblin 0.8.2 (https://github.com/m4b/goblin)
-  - jsonschema 0.58.0 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.58.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.58.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.60.1 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.60.1 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.60.1 (https://github.com/Stranger6667/jsonschema)
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
   - matchers 0.2.0 (https://github.com/hawkw/matchers)
   - micromap 0.3.0 (https://github.com/yegor256/micromap)
@@ -185,13 +185,13 @@ Used by 55 package(s):
   - phf_macros 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.14.0 (https://github.com/rust-phf/rust-phf)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
-  - referencing 0.58.2 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.60.1 (https://github.com/Stranger6667/jsonschema)
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
   - scroll 0.12.0 (https://github.com/m4b/scroll)
   - scroll_derive 0.12.1 (https://github.com/m4b/scroll)
   - serde-wasm-bindgen 0.6.5 (https://github.com/RReverser/serde-wasm-bindgen)
-  - serde_json_canonicalizer 0.3.2 (https://github.com/evik42/serde-json-canonicalizer)
+  - serde_json_canonicalizer 0.4.1 (https://github.com/evik42/serde-json-canonicalizer)
   - sharded-slab 0.1.7 (https://github.com/hawkw/sharded-slab)
   - slab 0.4.12 (https://github.com/tokio-rs/slab)
   - smawk 0.3.3 (https://github.com/mgeisler/smawk)
@@ -200,7 +200,7 @@ Used by 55 package(s):
   - strum_macros 0.28.0 (https://github.com/Peternator7/strum)
   - synstructure 0.13.2 (https://github.com/mystor/synstructure)
   - textwrap 0.16.4 (https://github.com/mgeisler/textwrap)
-  - tokio 1.53.1 (https://github.com/tokio-rs/tokio)
+  - tokio 1.54.1 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.2 (https://github.com/tokio-rs/tokio)
   - tokio-util 0.7.19 (https://github.com/tokio-rs/tokio)
   - tracing 0.1.44 (https://github.com/tokio-rs/tracing)
@@ -219,7 +219,7 @@ Used by 55 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 157 package(s):
+Used by 156 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -271,7 +271,7 @@ Used by 157 package(s):
   - dyn-clone 1.0.20 (https://github.com/dtolnay/dyn-clone)
   - errno 0.3.14 (https://github.com/lambda-fairy/rust-errno)
   - find-msvc-tools 0.1.12 (https://github.com/rust-lang/cc-rs)
-  - fips204 0.4.6 (https://github.com/integritychain/fips204)
+  - fips204 0.5.0 (https://github.com/integritychain/fips204)
   - form_urlencoded 1.2.2 (https://github.com/servo/rust-url)
   - fraction 0.17.0 (https://github.com/dnsl48/fraction.git)
   - fs-err 3.3.1 (https://github.com/andrewhickman/fs-err)
@@ -301,7 +301,7 @@ Used by 157 package(s):
   - itoa 1.0.18 (https://github.com/dtolnay/itoa)
   - js-sys 0.3.105 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys)
   - lazy_static 1.5.0 (https://github.com/rust-lang-nursery/lazy-static.rs)
-  - libc 0.2.189 (https://github.com/rust-lang/libc)
+  - libc 0.2.191 (https://github.com/rust-lang/libc)
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
   - log 0.4.34 (https://github.com/rust-lang/log)
   - num 0.4.3 (https://github.com/rust-num/num)
@@ -337,10 +337,9 @@ Used by 157 package(s):
   - serde_core 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive_internals 0.30.0 (https://github.com/serde-rs/serde)
-  - serde_json 1.0.151 (https://github.com/serde-rs/json)
+  - serde_json 1.0.154 (https://github.com/serde-rs/json)
   - serde_spanned 1.1.1 (https://github.com/toml-rs/toml)
-  - sha2 0.10.9 (https://github.com/RustCrypto/hashes)
-  - sha2 0.11.0 (https://github.com/RustCrypto/hashes)
+  - sha2 0.11.1 (https://github.com/RustCrypto/hashes)
   - sha3 0.10.9 (https://github.com/RustCrypto/hashes)
   - shlex 2.0.1 (https://github.com/comex/rust-shlex)
   - simdutf8 0.1.5 (https://github.com/rusticstuff/simdutf8)
