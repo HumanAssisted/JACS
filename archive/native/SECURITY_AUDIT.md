@@ -131,3 +131,12 @@ that remain at `jacs/tests/fixtures/keys/agent-{one,two}.private.pem`. They must
 never be used as trusted identities or production credentials; the allowlist
 applies only to the exact historical fingerprints, not the current paths or the
 private-key detector generally.
+
+The 2026-10-27 source backports also retain public upstream JWT test keys and
+tokens, object_store's synthetic test credentials and documentation placeholders.
+Their bytes were checked against the checksum-verified published archives; the
+backport provenance records every source-file digest. The secret scan additionally
+matches ECDSA type names and those SHA-256 digests as generic API keys. The 51
+reviewed findings at commit `76998c7aac2459b906e47a16d02326bbdcff5b54` are
+allowlisted by exact historical fingerprint only. No fixture may be used as a
+trusted credential, and no path or detector has been excluded.

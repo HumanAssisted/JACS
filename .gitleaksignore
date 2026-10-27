@@ -36,3 +36,65 @@ b20534e0c19e174d77d3174b95354e3fe0a7dd19:jacs-mcp/README.md:generic-api-key:52
 fd42449722ed83427b8dcd5574d315a32ae3a197:jacs-mcp/README.md:generic-api-key:52
 # The published rebased commit has the same reviewed README prose/blob.
 51903ce95cc2e11fecd0ddcc5697e956d0ee8ac0:archive/native/jacs-mcp/README.md:generic-api-key:52
+
+# Reviewed 2026-10-27 with gitleaks 8.30.1. These exact findings accompany
+# vendored source backports; archive digests and every resulting file hash are
+# recorded in archive/native/jacs-surrealdb/vendor/provenance.json.
+# - JWT PEM keys/tokens are unchanged public upstream test/benchmark fixtures.
+# - object_store keys/tokens are unchanged AWS examples or synthetic test data;
+#   its curl Authorization example is the literal placeholder OAUTH2_TOKEN.
+# - ECDSA verifier macro type names are generic-api-key false positives.
+# - provenance.json findings are verified SHA-256 file digests, not secrets.
+# No fixture is a trusted credential. Only these commit/path/rule/line
+# fingerprints are suppressed; no path or detector is allowlisted.
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/benches/jwt.rs:jwt:34
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/src/crypto/rust_crypto/ecdsa.rs:generic-api-key:91
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/src/crypto/rust_crypto/ecdsa.rs:generic-api-key:97
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/dangerous.rs:generic-api-key:49
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/dangerous.rs:generic-api-key:57
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/dangerous.rs:jwt:15
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/ecdsa/private_ecdsa_key.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/ecdsa/private_jwtio.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/ecdsa/private_jwtio_pkcs8.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/eddsa/private_ed25519_key.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:generic-api-key:167
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:generic-api-key:227
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:generic-api-key:246
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:134
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:147
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:179
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:191
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:215
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:236
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:256
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:266
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/hmac.rs:jwt:281
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/rsa/private_jwtio.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/rsa/private_rsa_key_pkcs1.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/jsonwebtoken/tests/rsa/private_rsa_key_pkcs8.pem:private-key:1
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/object_store/src/aws/builder.rs:aws-access-token:822
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/object_store/src/aws/credential.rs:generic-api-key:1094
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/object_store/src/aws/mod.rs:generic-api-key:818
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/object_store/src/gcp/client.rs:curl-auth-header:309
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:102
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:103
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:104
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:105
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:108
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:109
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:110
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:112
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:113
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:114
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:153
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:159
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:179
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:184
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:82
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:83
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:86
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:87
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:90
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:91
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:92
+76998c7aac2459b906e47a16d02326bbdcff5b54:archive/native/jacs-surrealdb/vendor/provenance.json:generic-api-key:93
