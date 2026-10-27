@@ -18,3 +18,9 @@ categories = ["cryptography", "text-processing", "data-structures"]
 
 [workspace.metadata.dev-requirements]
 cargo-audit = "0.22.1"
+
+# Upstream's unreleased replacement for the unmaintained basic-toml parser.
+# Remove this source-build patch when the Askama fix is published to crates.io.
+# Workspace patches do not propagate to published crates or their consumers.
+[patch.crates-io]
+askama_derive = { git = "https://github.com/askama-rs/askama", rev = "3863808cf594054f7644979ed92caaafc878f378" }

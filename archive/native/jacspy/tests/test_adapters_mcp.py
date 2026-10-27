@@ -351,11 +351,12 @@ class TestJacsMCPMiddleware:
         assert await mw(context, call_next) == "tool-result"
         mw._adapter.verify_input.assert_called_once()
 
+    @pytest.mark.parametrize("is_error", [False, True])
     async def test_real_tool_result_remains_fastmcp_compatible_and_signed(
-        self, client
+        self, client, is_error
     ):
         from fastmcp.server.middleware import MiddlewareContext
-        from fastmcp.tools.tool import ToolResult
+        from fastmcp.tools import ToolResult
         from mcp.types import CallToolRequestParams
 
         mw = JacsMCPMiddleware(client=client)
@@ -369,6 +370,7 @@ class TestJacsMCPMiddleware:
                 content="raw output",
                 structured_content={"value": 7},
                 meta={"source": "test"},
+                is_error=is_error,
             )
 
         result = await mw(context, call_next)
@@ -377,6 +379,7 @@ class TestJacsMCPMiddleware:
         assert result.structured_content == {"value": 7}
         assert result.content[0].text == "raw output"
         assert result.meta["source"] == "test"
+        assert result.is_error is is_error
         signed_document = result.meta["jacsSignedDocument"]
         signed_json = json.dumps(signed_document)
         assert client.verify(signed_json).valid is True
@@ -387,9 +390,11 @@ class TestJacsMCPMiddleware:
             ],
             "structuredContent": {"value": 7},
             "meta": {"source": "test"},
+            "isError": is_error,
         }
         mcp_result = result.to_mcp_result()
         assert mcp_result.structuredContent == {"value": 7}
+        assert mcp_result.isError is is_error
         assert mcp_result.meta["jacsSignedDocument"] == signed_document
 
     async def test_create_task_result_keeps_protocol_type_and_attaches_proof(

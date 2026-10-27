@@ -2,16 +2,17 @@
 MCP Client Example
 """
 import asyncio
+from pathlib import Path
+import sys
 import urllib.parse
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from lib import jacspy
 
 async def main():
     # Create parameters for connecting to the server
     server_params = StdioServerParameters(
-        command="python",
-        args=["main.py"],  # Path to your server script
+        command=sys.executable,
+        args=[str(Path(__file__).with_name("main.py"))],
     )
 
     async with stdio_client(server_params) as (read, write):

@@ -58,6 +58,8 @@ jobs:
           name: android-compiled-source
           path: jacs-mobile/generated/android-typecheck.jar
           if-no-files-found: error
+      - name: Test clean retries for Android SDK downloads
+        run: python3 -m unittest discover -s jacs-mobile/scripts/tests -p 'test_android_sdk_install.py'
       - name: Prepare pinned Android package build tools
         run: bash jacs-mobile/scripts/prepare-android-ci.sh
       - name: Assemble Android AAR and local Maven bundle
@@ -69,6 +71,7 @@ jobs:
         with:
           name: android-instrumentation-results
           path: |
+            jacs-mobile/generated/android-sdk-install.log
             jacs-mobile/generated/android-emulator.log
             jacs-mobile/generated/android-project/library/build/reports/androidTests/
             jacs-mobile/generated/android-project/library/build/outputs/apk/androidTest/debug/library-debug-androidTest.apk

@@ -11,6 +11,7 @@ use jacs_core::{
     sign::SigningAlgorithm,
 };
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+use p256::elliptic_curve::Generate;
 use serde_json::{Value, json};
 use webauthn_rs::prelude::{Passkey, Url, WebauthnBuilder};
 
@@ -26,8 +27,9 @@ fn pin(agent: &CoreAgent, document: &Value) -> PinnedHumanApprovalAuthorityV1 {
 }
 
 fn main() {
-    let key = SigningKey::random(&mut rand_core::OsRng);
-    let point = key.verifying_key().to_encoded_point(false);
+    let key = SigningKey::try_generate_from_rng(&mut rand_10::rngs::SysRng)
+        .expect("OS randomness for the ephemeral fixture key");
+    let point = key.verifying_key().to_sec1_point(false);
     // Public registered-credential fixture, matching the native verifier tests.
     // This does not exercise an enrollment UI, browser or physical authenticator.
     let passkey: Passkey = serde_json::from_value(json!({"cred": {

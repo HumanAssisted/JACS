@@ -73,6 +73,23 @@ def third_party(lock):
             for p in lock.get("package", []) if "source" in p}
 
 
+def require_published_dependencies(lock, source):
+    """Workspace overrides do not accompany a crate downloaded from crates.io."""
+    unpublished = []
+    for package in lock.get("package", []):
+        origin = package.get("source", "")
+        if not origin and package["name"] in CRATES:
+            continue
+        if not origin.startswith("registry+"):
+            unpublished.append(f"{package['name']}@{package['version']}")
+    if unpublished:
+        raise ValueError(
+            f"{source}: source-only dependencies cannot qualify a crates.io release: "
+            f"{', '.join(sorted(unpublished))}. Cargo workspace patches are not inherited "
+            "by registry consumers; use published fixes before preparing release candidates."
+        )
+
+
 def vendor_reviewed_dependencies(source, output):
     """Resolve only versions/checksums already reviewed in a source workspace.
 
@@ -140,6 +157,8 @@ def supplement_native_notices(source):
 
 def prepare(root, output, version, allow_dirty=False):
     validate_sources(root, version)
+    for relative in SOURCE_LOCKS:
+        require_published_dependencies(tomllib.loads((root / relative).read_text()), relative)
     dirty = run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=root, capture=True).strip()
     if dirty and not allow_dirty:
         raise ValueError("commit the reviewed candidate before preparing publication")
@@ -204,6 +223,9 @@ def load_candidate(output):
         raise ValueError("candidate crate inventory differs from the release catalog")
     if sha256(output / "source/Cargo.lock") != state["candidate_lock_sha256"]:
         raise ValueError("reviewed candidate dependency lock changed")
+    require_published_dependencies(
+        tomllib.loads((output / "source/Cargo.lock").read_text()), "candidate Cargo.lock",
+    )
     return state
 
 

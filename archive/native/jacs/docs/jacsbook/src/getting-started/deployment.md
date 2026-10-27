@@ -37,7 +37,7 @@ before choosing a deployment target.
 | Surface | Declared or tested baseline |
 |---|---|
 | Rust library, CLI, and WASM source | Rust 1.97; Edition 2024 |
-| Python | Python 3.10–3.14 is declared by `pyproject.toml`; the source release workflow smoke-tests the exact wheel candidate on each version before publication. |
+| Python | Python 3.11–3.14 is declared by `pyproject.toml`; the source release workflow smoke-tests the exact wheel candidate on each version before publication. |
 | Node | npm `0.10.1` does not declare an `engines.node` constraint. Current source and release workflows use Node 20, so the previous generic “Node 18+” statement was not a tested support guarantee. |
 | Go | `go.mod` declares Go 1.21; CGo and a platform C toolchain are also required |
 

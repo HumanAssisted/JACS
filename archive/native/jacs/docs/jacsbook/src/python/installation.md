@@ -4,7 +4,7 @@ The JACS Python package (`jacs`) provides Python bindings to the JACS Rust libra
 
 ## Requirements
 
-- **Python**: Version 3.10 or higher
+- **Python**: Version 3.11–3.14
 - **pip**: For package management
 - **Operating System**: Linux, macOS, or Windows with WSL
 - **Architecture**: x86_64 or ARM64
@@ -363,7 +363,7 @@ If you get `ModuleNotFoundError: No module named 'jacs'`:
 
 ```bash
 # Check Python version
-python --version  # Should be 3.10+
+python --version  # Should be 3.11–3.14
 
 # Check if jacs is installed
 pip list | grep jacs

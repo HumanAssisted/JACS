@@ -15,8 +15,10 @@ avdmanager="$android_sdk/cmdline-tools/latest/bin/avdmanager"
 [[ -f jacs-mobile/generated/android-project/library/build/outputs/apk/androidTest/debug/library-debug-androidTest.apk ]] || \
     fail "Run build-android-aar.sh first to compile the native library and instrumentation APK."
 image_package='system-images;android-35;google_apis;x86_64'
-# EOF makes missing/unaccepted licenses fail, rather than silently accepting them.
-"$sdkmanager" --sdk_root="$android_sdk" --install emulator platform-tools "$image_package" </dev/null
+# Keep SDK installation diagnostics even if an archive download fails before
+# the emulator starts. The helper retries in disposable staging directories.
+bash "$repo_root/jacs-mobile/scripts/install-android-test-sdk.sh" "$android_sdk" \
+    2>&1 | tee "$repo_root/jacs-mobile/generated/android-sdk-install.log"
 [[ -x "$android_sdk/emulator/emulator" && -x "$android_sdk/platform-tools/adb" ]] || fail "SDK emulator/adb installation is incomplete."
 [[ -f "$android_sdk/system-images/android-35/google_apis/x86_64/package.xml" ]] || fail "API 35 x86_64 image is unavailable (check existing license provisioning)."
 [[ -c /dev/kvm ]] || fail "A Linux runner with /dev/kvm is required for the bounded emulator gate."

@@ -46,7 +46,7 @@ jobs:
         run: python3 scripts/third_party_notices.py --check
 
       - name: Set up Node for the schema-generation regression
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
 
@@ -76,6 +76,14 @@ jobs:
             --ignore RUSTSEC-2023-0071
           cargo deny --manifest-path archive/native/jacs-surrealdb/Cargo.toml --all-features check --config archive/native/deny.toml advisories licenses
 
+      - name: Audit object-store backport test lock
+        run: cargo audit --file archive/native/jacs-surrealdb/vendor/object_store/Cargo.lock
+
+      - name: Audit JWT backport test lock
+        run: |
+          cargo audit --file archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.lock \
+            --ignore RUSTSEC-2023-0071
+
       - name: Audit standalone observability example lock
         run: |
           cargo audit --file archive/native/jacs/examples/observability/Cargo.lock
@@ -101,7 +109,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - name: Audit browser package consumer lock

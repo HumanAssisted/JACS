@@ -83,7 +83,7 @@ can connect the ES256 card key to an explicitly trusted JACS identity.
 ## Troubleshooting FAQ
 
 **Q: `pip install jacs[a2a-server]` fails.**
-A: The `a2a-server` extra requires Python 3.10+ and adds FastAPI + uvicorn. If you only need signing (not serving), use `pip install jacs` with no extras.
+A: JACS requires Python 3.11–3.14. The `a2a-server` extra adds FastAPI + uvicorn. If you only need signing (not serving), use `pip install jacs` with no extras.
 
 **Q: `discover_and_assess` returns `jacs_registered: false`.**
 A: The remote agent's Agent Card does not include the `urn:jacs:provenance-v1` extension. This is normal for non-JACS A2A agents. With the `open` trust policy, they are still allowed; with `verified`, they are rejected.

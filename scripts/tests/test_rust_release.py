@@ -92,6 +92,42 @@ class RustReleaseTests(unittest.TestCase):
                 release.vendor_reviewed_dependencies(self.root, self.root)
             runner.assert_not_called()
 
+    def test_unpublished_overrides_fail_before_staging_or_fetching(self):
+        for origin in ('source="git+https://example.invalid/fix?rev=abc#abc"\n', ''):
+            for affected in release.SOURCE_LOCKS:
+                with self.subTest(origin=origin, lock=affected):
+                    for relative in release.SOURCE_LOCKS:
+                        self.write(relative, 'version=4\n')
+                    self.write(affected, 'version=4\n[[package]]\nname="fixed-parser"\n'
+                               'version="1.0.0"\n' + origin)
+                    output = self.root / "candidate"
+                    with mock.patch.object(release, "validate_sources"), mock.patch.object(release, "run") as runner:
+                        with self.assertRaisesRegex(ValueError, "source-only dependencies.*fixed-parser"):
+                            release.prepare(self.root, output, "0.15.0", allow_dirty=True)
+                        runner.assert_not_called()
+                    self.assertFalse(output.exists())
+
+    def test_staged_source_overrides_cannot_package_or_publish(self):
+        for action in ("package", "publish"):
+            with self.subTest(action=action):
+                self.candidate()
+                lock = self.write("source/Cargo.lock", 'version=4\n[[package]]\nname="fixed-parser"\n'
+                                  'version="1.0.0"\nsource="git+https://example.invalid/fix?rev=abc#abc"\n')
+                state_path = self.root / "candidate.json"
+                state = json.loads(state_path.read_text())
+                state["candidate_lock_sha256"] = release.sha256(lock)
+                state_path.write_text(json.dumps(state))
+                with mock.patch.object(release.subprocess, "run") as runner, mock.patch.object(
+                    release, "fetch_exact_version_checksum",
+                ) as registry:
+                    with self.assertRaisesRegex(ValueError, "source-only dependencies.*fixed-parser"):
+                        if action == "package":
+                            release.package_all(self.root)
+                        else:
+                            release.publish_one(self.root, "jacs-core")
+                    runner.assert_not_called()
+                    registry.assert_not_called()
+
     def test_vendor_fetch_is_locked_but_can_populate_a_fresh_ci_cache(self):
         for relative in release.SOURCE_LOCKS:
             self.write(relative, "version=4\n")

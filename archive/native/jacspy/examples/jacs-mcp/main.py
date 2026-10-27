@@ -2,9 +2,10 @@
 FastMCP Echo Server
 """
 import signal
-from fastmcp import FastMCP
-from lib import jacspy
 import sys
+
+from mcp.server.fastmcp import FastMCP
+
 # Create server
 mcp = FastMCP("Echo Server")
 
@@ -33,7 +34,7 @@ def echo_prompt(text: str) -> str:
 
 def signal_handler(sig, frame):
     """Handle keyboard interrupt"""
-    print("\nShutting down gracefully...")
+    print("\nShutting down gracefully...", file=sys.stderr)
     sys.exit(0)
 
 
@@ -41,6 +42,6 @@ if __name__ == "__main__":
     # Register signal handler for clean shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     # Run server (without handle_signals parameter)
     mcp.run()

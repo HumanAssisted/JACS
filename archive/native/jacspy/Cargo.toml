@@ -29,7 +29,7 @@ human-approval-vendored = ["human-approval", "jacs-binding-core/human-approval-v
 lazy_static = "1.5.0"
 # 0.29 floor: 0.24 had RUSTSEC-2026-0176 (PyList/PyTuple iterator OOB read)
 # and RUSTSEC-2026-0177 (missing Sync bound on PyCFunction::new_closure)
-pyo3 = { version = "0.29", features = ["abi3-py310"] }
+pyo3 = { version = "0.29", features = ["abi3-py311"] }
 jacs = { version = "0.15.0", path = "../jacs" }
 jacs-binding-core = { version = "0.15.0", path = "../binding-core" }
 # Pulled in for `path_policy::resolve` only — PRD §4.2.6 single-source-of-truth
