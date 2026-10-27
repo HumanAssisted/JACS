@@ -15,11 +15,13 @@ package_complete() {
     [[ -s "$root/$relative/package.xml" ]] || return 1
     case "$relative" in
         emulator)
+            # Match the headless instrumentation launch. Plain -version loads
+            # the GUI backend and can fail on unrelated Qt dependencies.
             [[ -x "$root/$relative/emulator" ]] && \
-                timeout 15 "$root/$relative/emulator" -version >/dev/null 2>&1 ;;
+                timeout 15 "$root/$relative/emulator" -no-window -version ;;
         platform-tools)
             [[ -x "$root/$relative/adb" ]] && \
-                timeout 15 "$root/$relative/adb" version >/dev/null 2>&1 ;;
+                timeout 15 "$root/$relative/adb" version ;;
         system-images/android-35/google_apis/x86_64)
             [[ -s "$root/$relative/system.img" && -s "$root/$relative/ramdisk.img" && \
                 -s "$root/$relative/kernel-ranchu" ]] ;;

@@ -96,6 +96,21 @@ class AndroidSdkInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls(), [])
 
+    def test_emulator_probe_uses_headless_backend_and_keeps_diagnostics(self):
+        self.complete("emulator", "emulator")
+        (self.sdk / "emulator/emulator").write_text(
+            '#!/bin/sh\n'
+            'if [ "$1" != "-no-window" ] || [ "$2" != "-version" ]; then\n'
+            '    echo "GUI backend cannot load Qt" >&2\n'
+            '    exit 127\n'
+            'fi\n'
+            'echo "Headless emulator version fixture"\n'
+        )
+        result = self.run_installer("fail")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assertIn("Headless emulator version fixture", result.stdout)
+
     def test_corrupt_download_retries_in_fresh_owned_staging(self):
         result = self.run_installer("retry")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -113,10 +128,13 @@ class AndroidSdkInstallTests(unittest.TestCase):
 
     def test_unhealthy_installed_executable_is_replaced(self):
         self.complete("emulator", "emulator")
-        (self.sdk / "emulator/emulator").write_text("#!/bin/sh\nexit 1\n")
+        (self.sdk / "emulator/emulator").write_text(
+            "#!/bin/sh\necho 'headless loader failure' >&2\nexit 1\n"
+        )
         result = self.run_installer()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call["package"] for call in self.calls()], ["emulator"])
+        self.assertIn("headless loader failure", result.stderr)
 
     def test_incomplete_installed_image_is_replaced(self):
         self.complete("emulator", "emulator")
