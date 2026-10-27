@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Finite local A2A 1.0 proof against pinned official a2a-python 1.1.4.
+"""Finite local A2A 1.0 proof against pinned official a2a-python 1.3.0.
 
 Build the native example first; pass it explicitly with --native-bin. No mail,
 model, remote signing or production host. Private identities are discarded by
@@ -55,7 +55,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 import uvicorn
 
-PIN = "2d4d3048b245d2af854bad804f0e722ea9febc08"
+SDK_VERSION = "1.3.0"
 EXTENSION = "urn:jacs:provenance-v1"
 CARD = "/.well-known/agent-card.json"
 BINDING = "/.well-known/jacs-compat-binding.json"
@@ -73,13 +73,9 @@ def sha(data):
 
 def peer_identity():
     dist = importlib.metadata.distribution("a2a-sdk")
-    source = json.loads(dist.read_text("direct_url.json") or "{}")
-    require(dist.version == "1.1.4", "This proof requires SDK1.1.4")
-    require(
-        source.get("vcs_info", {}).get("commit_id") == PIN,
-        "Install the exact official SDK source pin",
-    )
-    return {"sdk_version": dist.version, "sdk_commit": PIN}
+    require(dist.version == SDK_VERSION, "This proof requires a2a-sdk==1.3.0")
+    return {"sdk_version": dist.version, "sdk_distribution": "a2a-sdk", "card_algorithm": "ES256"}
+
 
 
 def child_env(root):

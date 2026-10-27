@@ -83,8 +83,20 @@ jobs:
         run: npm audit --package-lock-only --audit-level=high
       - name: Check native dependency notices and Go distribution copies
         run: python3 scripts/native_bindings_notices.py --check
-      - name: Build and verify installed candidates sequentially
-        run: bash scripts/native_bindings.sh verify all
+      - name: Build native candidates sequentially
+        run: bash scripts/native_bindings.sh build all
+      - name: Build the official SDK smoke's native verifier in the shared target
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/native-bindings/cargo
+          CARGO_BUILD_TARGET_DIR: ${{ github.workspace }}/target/native-bindings/cargo
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/target/native-bindings/cargo/build
+        run: |
+          toolchain="$(python -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
+          rustup run "$toolchain" cargo build --locked --release --manifest-path archive/native/Cargo.toml -p jacs --features a2a --example a2a_v1_peer
+      - name: Verify installed candidates and official A2A SDK interoperability
+        run: |
+          bash scripts/native_bindings.sh test all \
+            --a2a-native-bin "$GITHUB_WORKSPACE/target/native-bindings/cargo/release/examples/a2a_v1_peer"
       - name: Audit the public Go module with the exact native candidate
         shell: bash
         run: |
@@ -139,7 +151,8 @@ jobs:
           for requirements in \
             examples/http/requirements.txt \
             examples/mcp/requirements.txt \
-            examples/langchain/requirements.txt
+            examples/langchain/requirements.txt \
+            ../examples/a2a_v1_peer_requirements.txt
           do
             pip-audit --requirement "$requirements"
           done

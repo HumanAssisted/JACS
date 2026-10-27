@@ -2094,6 +2094,7 @@ impl AgentWrapper {
     pub fn generate_well_known_documents(
         &self,
         a2a_algorithm: Option<&str>,
+        discovery_options_json: Option<&str>,
     ) -> BindingResult<String> {
         let mut agent = self.lock()?;
         let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
@@ -2111,11 +2112,12 @@ impl AgentWrapper {
             .key_directory
             .clone();
 
-        let documents = jacs::a2a::extension::generate_well_known_documents_for_algorithm(
+        let documents = jacs::a2a::extension::generate_well_known_documents_with_options(
             &mut agent,
             &key_directory,
             Some(card),
             a2a_algorithm,
+            discovery_options_json,
         )
         .map_err(|e| {
             BindingCoreError::generic(format!("Failed to generate well-known documents: {}", e))

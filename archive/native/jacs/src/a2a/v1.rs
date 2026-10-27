@@ -1,7 +1,9 @@
-//! Opt-in, typed A2A 1.0 card projection for the finite report profile.
+//! Opt-in, typed A2A 1.0 cards for bounded JSON-RPC service profiles.
 //!
 //! Legacy cards/codecs and discovery defaults are unchanged. This is not a
 //! production host or a v1 implementation of the legacy A2ATrustPolicy parser.
+//! General discovery requires explicit caller-declared skills and content modes;
+//! the finite report helper remains available for the example host.
 
 use crate::agent::boilerplate::BoilerPlate;
 use crate::{agent::Agent, error::JacsError, public_agent::PublicAgentProjection};
@@ -67,6 +69,18 @@ pub struct Skill {
     pub tags: Vec<String>,
 }
 
+/// Explicit description of the caller's hosted JSON-RPC service. Exporting
+/// discovery does not install a handler or provide any of these skills.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiscoveryOptions {
+    pub protocol_version: String,
+    pub messaging_url: String,
+    pub skills: Vec<Skill>,
+    pub default_input_modes: Vec<String>,
+    pub default_output_modes: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct BindingReference {
@@ -84,14 +98,43 @@ fn invalid(message: &str) -> JacsError {
 /// Build the narrow finite-host profile with an explicit, actually served URL.
 /// The caller hosts the declared report skill; projection itself hosts nothing.
 pub fn project_agent_card(agent: &Agent, messaging_url: &str) -> Result<Card, JacsError> {
+    project_agent_card_for_discovery(
+        agent,
+        DiscoveryOptions {
+            protocol_version: "1.0".into(),
+            messaging_url: messaging_url.into(),
+            skills: vec![Skill {
+                id: "synthetic-report".into(),
+                name: "Return synthetic report".into(),
+                description: "Return one pre-signed synthetic JSON report; no remote signing."
+                    .into(),
+                tags: vec!["provenance".into()],
+            }],
+            default_input_modes: vec!["text/plain".into()],
+            default_output_modes: vec!["application/json".into()],
+        },
+    )
+}
+
+/// Project a bounded A2A 1.0 card using only caller-declared service behavior.
+/// No demo skill, endpoint, or content mode is invented for ordinary callers.
+pub fn project_agent_card_for_discovery(
+    agent: &Agent,
+    options: DiscoveryOptions,
+) -> Result<Card, JacsError> {
+    if options.protocol_version != "1.0" {
+        return Err(invalid(
+            "discovery options require protocolVersion '1.0'; omit options for legacy discovery",
+        ));
+    }
     let projection = PublicAgentProjection::from_agent(agent)?;
-    validate_messaging_url(messaging_url)?;
-    Ok(Card {
+    validate_messaging_url(&options.messaging_url)?;
+    let card = Card {
         name: projection.name,
         description: projection.description,
         version: projection.jacs_version,
         supported_interfaces: vec![Interface {
-            url: messaging_url.to_owned(),
+            url: options.messaging_url,
             protocol_binding: "JSONRPC".into(),
             protocol_version: "1.0".into(),
         }],
@@ -107,15 +150,12 @@ pub fn project_agent_card(agent: &Agent, messaging_url: &str) -> Result<Card, Ja
                 params: json!({}),
             }],
         },
-        default_input_modes: vec!["text/plain".into()],
-        default_output_modes: vec!["application/json".into()],
-        skills: vec![Skill {
-            id: "synthetic-report".into(),
-            name: "Return synthetic report".into(),
-            description: "Return one pre-signed synthetic JSON report; no remote signing.".into(),
-            tags: vec!["provenance".into()],
-        }],
-    })
+        default_input_modes: options.default_input_modes,
+        default_output_modes: options.default_output_modes,
+        skills: options.skills,
+    };
+    card.validate_profile(&card.version, &json!({}))?;
+    Ok(card)
 }
 
 fn validate_messaging_url(messaging_url: &str) -> Result<(), JacsError> {
@@ -241,6 +281,10 @@ impl Card {
             return Err(invalid("missing or inconsistent required v1 card field"));
         }
         let interface = &self.supported_interfaces[0];
+        let mut skill_ids = std::collections::HashSet::new();
+        if self.skills.iter().any(|skill| !skill_ids.insert(&skill.id)) {
+            return Err(invalid("duplicate A2A skill identifier"));
+        }
         validate_messaging_url(&interface.url)?;
         if interface.protocol_binding != "JSONRPC"
             || interface.protocol_version != "1.0"

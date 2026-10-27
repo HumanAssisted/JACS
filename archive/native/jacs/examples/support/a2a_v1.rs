@@ -125,6 +125,11 @@ pub fn verify(input: &Value) -> Result<Value> {
     let version = input["expectedVersion"]
         .as_str()
         .ok_or("expected version")?;
+    let root_algorithm = match input.get("rootAlgorithm") {
+        None => "ed25519",
+        Some(Value::String(value)) if matches!(value.as_str(), "ed25519" | "pq2025") => value,
+        _ => return Err("rootAlgorithm must be ed25519 or pq2025".into()),
+    };
     let binding_valid = v1::verify_card_binding(
         &input["card"],
         &input["binding"],
@@ -138,7 +143,7 @@ pub fn verify(input: &Value) -> Result<Value> {
         .verify_with_key(
             input["report"].as_str().ok_or("report bytes")?,
             &root,
-            "ed25519",
+            root_algorithm,
             Some(ExpectedSigner {
                 agent_id: id,
                 agent_version: version,

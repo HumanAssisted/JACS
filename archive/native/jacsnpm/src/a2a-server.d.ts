@@ -14,13 +14,19 @@ export interface A2AServerOptions {
   keyAlgorithm?: string;
   /** Explicit compatibility selection ('es256'); defaults to the root key. */
   a2aAlgorithm?: string;
+  /** Opt in to bounded A2A 1.0 discovery. All profile fields are required together. */
+  protocolVersion?: '1.0';
+  /** URL of the JSON-RPC handler implemented by the caller. Discovery does not host it. */
+  messagingUrl?: string;
+  defaultInputModes?: string[];
+  defaultOutputModes?: string[];
 }
 
 export interface A2AServerClientLike {
   agentId?: string;
   name?: string;
   _agent?: {
-    generateWellKnownDocumentsSync?: (algorithm?: string) => string;
+    generateWellKnownDocumentsSync?: (algorithm?: string, discoveryOptionsJson?: string) => string;
   };
 }
 

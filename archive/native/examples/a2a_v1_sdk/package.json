@@ -1,0 +1,14 @@
+{
+  "name": "jacs-a2a-v1-sdk-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.7.0" },
+  "scripts": { "test": "node smoke.mjs" },
+  "dependencies": {
+    "@a2a-js/sdk": "1.3.0",
+    "@hai.ai/jacs": "file:../../jacsnpm",
+    "express": "5.1.0",
+    "jose": "6.2.3"
+  }
+}

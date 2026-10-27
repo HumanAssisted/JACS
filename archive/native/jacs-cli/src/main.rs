@@ -23,7 +23,9 @@ use jacs_cli::password_bootstrap::{
     ensure_cli_private_key_password, quickstart_password_bootstrap_help,
     wrap_quickstart_error_with_password_help,
 };
-use jacs_cli::{a2a_bind_address, generate_a2a_serve_documents, resolve_a2a_serve_origin};
+use jacs_cli::{
+    a2a_bind_address, generate_a2a_serve_documents_for_algorithm, resolve_a2a_serve_origin,
+};
 
 use rpassword::read_password;
 use std::env;
@@ -1348,10 +1350,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 drop(simple_agent);
                 let mut agent = load_agent()?;
                 let (agent_card, documents) =
-                    generate_a2a_serve_documents(&mut agent, &canonical_origin).map_err(
+                    generate_a2a_serve_documents_for_algorithm(
+                        &mut agent,
+                        &canonical_origin,
+                        serve_matches.get_one::<String>("a2a-algorithm").map(String::as_str),
+                    ).map_err(
                         |e| -> Box<dyn Error> {
                             Box::new(std::io::Error::other(format!(
-                                "Failed to generate well-known documents: {}",
+                                "Failed to generate well-known documents: {} (default: --a2a-algorithm ML-DSA-87; explicit compatibility: --a2a-algorithm ES256)",
                                 e
                             )))
                         },
@@ -1453,10 +1459,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 drop(simple_agent);
                 let mut agent = load_agent()?;
                 let (agent_card, documents) =
-                    generate_a2a_serve_documents(&mut agent, &canonical_origin).map_err(
+                    generate_a2a_serve_documents_for_algorithm(
+                        &mut agent,
+                        &canonical_origin,
+                        qs_matches.get_one::<String>("a2a-algorithm").map(String::as_str),
+                    ).map_err(
                         |e| -> Box<dyn Error> {
                             Box::new(std::io::Error::other(format!(
-                                "Failed to generate well-known documents: {}",
+                                "Failed to generate well-known documents: {} (default: --a2a-algorithm ML-DSA-87; explicit compatibility: --a2a-algorithm ES256)",
                                 e
                             )))
                         },

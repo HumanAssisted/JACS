@@ -1,4 +1,4 @@
-//! JACS extension management for A2A protocol (v0.4.0)
+//! JACS extension management for legacy A2A cards and opt-in A2A 1.0 discovery.
 
 use crate::a2a::agent_card::create_extension_descriptor;
 use crate::a2a::keys::sign_jws;
@@ -386,6 +386,105 @@ pub fn generate_well_known_documents_for_algorithm(
         ),
         (endpoints.jacs_extension_path, extension),
     ])
+}
+
+/// Generate discovery for an explicitly described A2A 1.0 JSON-RPC service.
+/// Omitting options preserves the legacy card format. This publishes metadata
+/// only: the caller must implement the URL, skills and content modes it declares.
+pub fn generate_well_known_documents_with_options(
+    agent: &mut Agent,
+    key_directory: &str,
+    legacy_card: Option<AgentCard>,
+    algorithm: Option<&str>,
+    options_json: Option<&str>,
+) -> Result<Vec<(String, Value)>, JacsError> {
+    let Some(options_json) = options_json else {
+        return generate_well_known_documents_for_algorithm(
+            agent,
+            key_directory,
+            legacy_card,
+            algorithm,
+        );
+    };
+    let options: super::v1::DiscoveryOptions = serde_json::from_str(options_json).map_err(|e| {
+        JacsError::ValidationError(format!(
+            "A2A 1.0 discovery requires protocolVersion, messagingUrl, explicit skills, defaultInputModes and defaultOutputModes: {e}"
+        ))
+    })?;
+    let card = super::v1::project_agent_card_for_discovery(agent, options)?;
+    let es256 = algorithm.is_some_and(|value| value.eq_ignore_ascii_case("ES256"));
+    if !es256 && algorithm.is_some_and(|value| !matches!(value, "pq2025" | "ML-DSA-87")) {
+        return Err(JacsError::ValidationError(
+            "unsupported A2A signing algorithm; select ML-DSA-87 or explicit ES256 compatibility"
+                .into(),
+        ));
+    }
+    let endpoints = WellKnownEndpoints::default();
+    let (signed_card, jwks, binding) = if es256 {
+        (
+            super::v1::export_agent_card_es256(agent, key_directory, card)?,
+            crate::compatibility::exports::export_compatibility_jwks(agent, key_directory)?,
+            Some(
+                crate::compatibility::exports::export_compatibility_key_binding(
+                    agent,
+                    key_directory,
+                )?,
+            ),
+        )
+    } else {
+        (
+            super::v1::export_agent_card(agent, key_directory, card)?,
+            json!({"keys": [jacs_core::jose::mldsa87_public_jwk(&agent.get_public_key()?)?]}),
+            None,
+        )
+    };
+    // A concurrent key/binding lifecycle change must fail closed, rather than
+    // publishing a card from one generation alongside another binding or key.
+    let root_key = agent.get_public_key()?;
+    let id = agent.get_id()?;
+    let version = agent.get_version()?;
+    if let Some(binding) = &binding {
+        super::v1::verify_card_binding(
+            &signed_card,
+            binding,
+            &jwks["keys"][0],
+            &id,
+            &version,
+            &root_key,
+        )?;
+    } else {
+        super::v1::verify_root_card(&signed_card, &jwks["keys"][0], &id, &version, &root_key)?;
+    }
+    let algorithm = agent.get_key_algorithm().ok_or("missing root algorithm")?;
+    let mut descriptor = create_jacs_agent_descriptor(agent)?;
+    let mut extension = create_extension_descriptor(algorithm);
+    extension["a2aProtocolVersion"] = json!("1.0");
+    if !es256 {
+        descriptor["endpoints"]
+            .as_object_mut()
+            .unwrap()
+            .remove("compatibilityBinding");
+        extension["endpoints"]
+            .as_object_mut()
+            .unwrap()
+            .remove("compatibilityBinding");
+        extension["endpoints"]["jwks"]["description"] =
+            json!("Retrieve the stable ML-DSA-87 root key used by the Agent Card");
+    }
+    let mut documents = vec![
+        (endpoints.agent_card_path, signed_card),
+        (endpoints.jwks_path, jwks),
+        (endpoints.jacs_descriptor_path, descriptor),
+        (
+            endpoints.jacs_pubkey_path,
+            create_jacs_pubkey_document(agent)?,
+        ),
+        (endpoints.jacs_extension_path, extension),
+    ];
+    if let Some(binding) = binding {
+        documents.push((endpoints.compat_binding_path, binding));
+    }
+    Ok(documents)
 }
 
 /// Create JACS agent descriptor document

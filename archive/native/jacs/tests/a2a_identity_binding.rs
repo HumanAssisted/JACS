@@ -109,6 +109,7 @@ fn setup_agent(name: &str) -> (SimpleAgent, tempfile::TempDir, CwdGuard) {
     }
     let params = CreateAgentParams::builder()
         .name(name)
+        .description("A test agent with explicitly declared service behavior")
         .password(TEST_PASSWORD)
         .domain("https://local-jwks.invalid")
         .key_directory("./jacs_keys")
@@ -712,5 +713,129 @@ fn remote_binding_verifier_binds_identity_root_scope_hash_and_compat_key() {
         )
         .is_err(),
         "a valid binding with the wrong scope must fail"
+    );
+}
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn explicit_v1_discovery_describes_only_the_callers_service_and_rejects_mixed_profiles() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (_agent, _temp, _guard) = setup_agent("declared-v1-service");
+    let mut core = load_core_agent();
+    let options = serde_json::json!({
+        "protocolVersion": "1.0",
+        "messagingUrl": "https://service.example/rpc",
+        "skills": [{"id":"sum", "name":"Sum", "description":"Sum supplied integers", "tags":["math"]}],
+        "defaultInputModes": ["application/json"],
+        "defaultOutputModes": ["text/plain"]
+    });
+    let generate = |core: &mut jacs::agent::Agent, algorithm, options: &str| {
+        jacs::a2a::extension::generate_well_known_documents_with_options(
+            core,
+            "./jacs_keys",
+            None,
+            algorithm,
+            Some(options),
+        )
+    };
+    let docs = documents_by_path(generate(&mut core, None, &options.to_string()).unwrap());
+    assert_eq!(docs.len(), 5);
+    let card = &docs["/.well-known/agent-card.json"];
+    assert_eq!(card["skills"], options["skills"]);
+    assert_eq!(card["defaultInputModes"], options["defaultInputModes"]);
+    assert_eq!(card["defaultOutputModes"], options["defaultOutputModes"]);
+    assert_eq!(
+        card["supportedInterfaces"][0]["url"],
+        options["messagingUrl"]
+    );
+    assert_eq!(card["supportedInterfaces"][0]["protocolVersion"], "1.0");
+    assert_eq!(
+        docs["/.well-known/jacs-extension.json"]["a2aProtocolVersion"],
+        "1.0"
+    );
+    assert!(card.get("metadata").is_none());
+    assert!(card.get("protocolVersions").is_none());
+    assert!(card["signatures"][0].get("jws").is_none());
+    let root = core.get_public_key().unwrap();
+    let id = core.get_id().unwrap();
+    let version = core.get_version().unwrap();
+    let key = &docs["/.well-known/jwks.json"]["keys"][0];
+    jacs::a2a::v1::verify_root_card(card, key, &id, &version, &root).unwrap();
+    let mut tampered = card.clone();
+    tampered["skills"][0]["description"] = serde_json::json!("Other behavior");
+    assert!(jacs::a2a::v1::verify_root_card(&tampered, key, &id, &version, &root).is_err());
+
+    for field in [
+        "messagingUrl",
+        "skills",
+        "defaultInputModes",
+        "defaultOutputModes",
+    ] {
+        let mut incomplete = options.clone();
+        incomplete.as_object_mut().unwrap().remove(field);
+        assert!(
+            generate(&mut core, None, &incomplete.to_string()).is_err(),
+            "missing {field}"
+        );
+    }
+    for (field, value) in [
+        ("protocolVersion", serde_json::json!("0.4.0")),
+        (
+            "messagingUrl",
+            serde_json::json!("http://unsafe.example/rpc"),
+        ),
+        ("skills", serde_json::json!([])),
+        ("defaultInputModes", serde_json::json!([])),
+        ("defaultOutputModes", serde_json::json!([""])),
+        ("metadata", serde_json::json!({"jacsRootKid":"untrusted"})),
+        ("signatures", serde_json::json!([])),
+    ] {
+        let mut invalid = options.clone();
+        invalid[field] = value;
+        assert!(
+            generate(&mut core, None, &invalid.to_string()).is_err(),
+            "invalid {field}"
+        );
+    }
+    let mut repeated = options.clone();
+    repeated["skills"]
+        .as_array_mut()
+        .unwrap()
+        .push(options["skills"][0].clone());
+    assert!(generate(&mut core, None, &repeated.to_string()).is_err());
+    let duplicate_json = options
+        .to_string()
+        .replacen("{", "{\"protocolVersion\":\"1.0\",", 1);
+    assert!(generate(&mut core, None, &duplicate_json).is_err());
+    assert!(generate(&mut core, Some("ML-DSA-65"), &options.to_string()).is_err());
+    assert!(!std::path::Path::new("./jacs_keys/jacs.compat-binding.json").exists());
+
+    let bridge =
+        documents_by_path(generate(&mut core, Some("ES256"), &options.to_string()).unwrap());
+    assert_eq!(bridge.len(), 6);
+    assert_eq!(bridge["/.well-known/jwks.json"]["keys"][0]["alg"], "ES256");
+    jacs::a2a::v1::verify_card_binding(
+        &bridge["/.well-known/agent-card.json"],
+        &bridge["/.well-known/jacs-compat-binding.json"],
+        &bridge["/.well-known/jwks.json"]["keys"][0],
+        &id,
+        &version,
+        &root,
+    )
+    .unwrap();
+    let legacy = documents_by_path(
+        jacs::a2a::extension::generate_well_known_documents_with_options(
+            &mut core,
+            "./jacs_keys",
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
+    );
+    assert!(legacy["/.well-known/agent-card.json"]["signatures"][0]["jws"].is_string());
+    assert_eq!(
+        legacy["/.well-known/jwks.json"],
+        docs["/.well-known/jwks.json"]
     );
 }

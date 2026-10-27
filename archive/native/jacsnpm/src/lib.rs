@@ -1024,15 +1024,19 @@ impl JacsAgent {
         self.inner.export_agent_card().to_napi()
     }
 
-    /// Generate the stable, native-root-bound ES256 .well-known A2A document set
-    /// (sync, blocks event loop). Omit the algorithm or pass ES256.
+    /// Generate native identity-bound discovery (sync). Defaults to ML-DSA-87
+    /// and legacy cards; explicit options select a caller-declared A2A 1.0 profile.
     #[napi(js_name = "generateWellKnownDocumentsSync")]
     pub fn generate_well_known_documents_sync(
         &self,
         a2a_algorithm: Option<String>,
+        discovery_options_json: Option<String>,
     ) -> Result<String> {
         self.inner
-            .generate_well_known_documents(a2a_algorithm.as_deref())
+            .generate_well_known_documents(
+                a2a_algorithm.as_deref(),
+                discovery_options_json.as_deref(),
+            )
             .to_napi()
     }
 
@@ -1112,8 +1116,8 @@ impl JacsAgent {
         })
     }
 
-    /// Generate the stable, native-root-bound ES256 .well-known A2A document set.
-    /// Omit the algorithm or pass ES256; obsolete choices are rejected.
+    /// Generate native identity-bound discovery. Defaults to ML-DSA-87 and
+    /// legacy cards; explicit options select a caller-declared A2A 1.0 profile.
     #[napi(
         js_name = "generateWellKnownDocuments",
         ts_return_type = "Promise<string>"
@@ -1121,12 +1125,16 @@ impl JacsAgent {
     pub fn generate_well_known_documents_async(
         &self,
         a2a_algorithm: Option<String>,
+        discovery_options_json: Option<String>,
     ) -> AsyncTask<AgentStringTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| {
-                a.generate_well_known_documents(a2a_algorithm.as_deref())
+                a.generate_well_known_documents(
+                    a2a_algorithm.as_deref(),
+                    discovery_options_json.as_deref(),
+                )
             })),
         })
     }

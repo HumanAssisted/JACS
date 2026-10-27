@@ -1035,13 +1035,18 @@ class JACSA2AIntegration:
 
     def generate_well_known_documents(
         self,
-        agent_card: A2AAgentCard,
-        jws_signature: str,
-        public_key_b64: str,
-        agent_data: Dict[str, Any],
+        agent_card: Optional[A2AAgentCard] = None,
+        jws_signature: str = "",
+        public_key_b64: str = "",
+        agent_data: Optional[Dict[str, Any]] = None,
         a2a_algorithm: Optional[str] = None,
+        discovery_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Generate identity-bound .well-known documents for A2A integration.
+
+        Explicit 1.0 discovery does not install a messaging handler or upgrade
+        the legacy ``assess_remote_agent`` parser. A 1.0 peer must verify the
+        detached card signature and establish root authority separately.
 
         Args:
             agent_card: Deprecated compatibility input; never replaces the
@@ -1052,6 +1057,9 @@ class JACSA2AIntegration:
             agent_data: Deprecated compatibility input.
             a2a_algorithm: Explicit compatibility selection (``es256``);
                 defaults to signing directly with the native root key.
+            discovery_options: Explicit A2A 1.0 service profile: protocolVersion,
+                messagingUrl, skills, defaultInputModes and defaultOutputModes.
+                The caller must host the declared behavior; discovery adds no handler.
 
         Returns:
             Dictionary mapping paths to document contents
@@ -1066,7 +1074,11 @@ class JACSA2AIntegration:
                 "legacy wrapper-generated keys and signatures are not trusted"
             )
         try:
-            native_pairs = json.loads(native_generate(a2a_algorithm) if a2a_algorithm is not None else native_generate())
+            if discovery_options is not None:
+                native_json = native_generate(a2a_algorithm, json.dumps(discovery_options))
+            else:
+                native_json = native_generate(a2a_algorithm) if a2a_algorithm is not None else native_generate()
+            native_pairs = json.loads(native_json)
         except Exception as exc:
             raise RuntimeError(
                 f"Identity-bound A2A discovery generation failed: {exc}"
@@ -1103,6 +1115,52 @@ class JACSA2AIntegration:
         card = documents["/.well-known/agent-card.json"]
         metadata = card.get("metadata")
         signatures = card.get("signatures")
+        is_v1 = discovery_options is not None
+        signature = signatures[0] if isinstance(signatures, list) and signatures else {}
+        signature = signature if isinstance(signature, dict) else {}
+        header = None
+        try:
+            encoded = signature.get("protected") if is_v1 else signature.get("jws", "").split(".")[0]
+            if isinstance(encoded, str) and re.fullmatch(r"[A-Za-z0-9_-]+", encoded):
+                header = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        except (TypeError, AttributeError, ValueError):
+            pass  # Malformed native output fails below.
+        if not isinstance(header, dict):
+            header = {}
+        signature_present = (
+            len(signatures) == 1
+            and isinstance(signature.get("protected"), str)
+            and isinstance(signature.get("signature"), str)
+            and re.fullmatch(r"[A-Za-z0-9_-]+", signature["signature"]) is not None
+            and "jws" not in signature and "keyId" not in signature
+        ) if is_v1 and isinstance(signatures, list) else bool(signature.get("jws"))
+        signature_kid = header.get("kid") if is_v1 else signature.get("keyId")
+        if is_v1:
+            extensions = card.get("capabilities", {}).get("extensions", [])
+            provenance = [ext for ext in extensions if isinstance(ext, dict) and ext.get("uri") == self.JACS_EXTENSION_URI] if isinstance(extensions, list) else []
+            metadata = provenance[0].get("params") if len(provenance) == 1 else None
+            interfaces = card.get("supportedInterfaces")
+            expected_algorithm = "ES256" if str(a2a_algorithm).lower() == "es256" else "ML-DSA-87"
+            if (
+                discovery_options.get("protocolVersion") != "1.0"
+                or "metadata" in card or "protocolVersions" in card
+                or not isinstance(interfaces, list) or len(interfaces) != 1
+                or not isinstance(interfaces[0], dict)
+                or interfaces[0].get("protocolVersion") != "1.0"
+                or interfaces[0].get("protocolBinding") != "JSONRPC"
+                or interfaces[0].get("url") != discovery_options.get("messagingUrl")
+                or card.get("skills") != discovery_options.get("skills")
+                or card.get("defaultInputModes") != discovery_options.get("defaultInputModes")
+                or card.get("defaultOutputModes") != discovery_options.get("defaultOutputModes")
+                or not isinstance(metadata, dict) or not signature_present
+                or header.get("alg") != expected_algorithm or header.get("typ") != "JOSE"
+                or (not metadata.get("jacsRootKid") if expected_algorithm == "ML-DSA-87" else not metadata.get("jacsCompatKid") or "jacsRootKid" in metadata)
+                or card.get("version") != metadata.get("jacsVersion")
+                or documents["/.well-known/jacs-agent.json"].get("agentId") != metadata.get("jacsId")
+                or documents["/.well-known/jacs-agent.json"].get("agentVersion") != metadata.get("jacsVersion")
+                or documents["/.well-known/jacs-extension.json"].get("a2aProtocolVersion") != "1.0"
+            ):
+                raise RuntimeError("Native A2A 1.0 discovery does not match the requested service profile and signing algorithm")
         # Validate native-generated output only. Remote identity trust remains
         # the native assessor's responsibility, never the embedded key's.
         if isinstance(metadata, dict) and "jacsRootKid" in metadata:
@@ -1110,21 +1168,13 @@ class JACSA2AIntegration:
             key = keys[0] if isinstance(keys, list) and len(keys) == 1 else None
             root = documents["/.well-known/jacs-pubkey.json"]
             descriptor = documents["/.well-known/jacs-agent.json"]
-            header = None
-            try:
-                compact = signatures[0]["jws"]
-                if isinstance(compact, str) and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", compact):
-                    encoded = compact.split(".")[0]
-                    header = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
-            except (TypeError, KeyError, IndexError, ValueError):
-                pass  # Malformed native output fails below.
             if (
                 not isinstance(metadata.get("jacsRootKid"), str)
                 or not metadata["jacsRootKid"]
                 or not isinstance(signatures, list) or len(signatures) != 1
                 or not isinstance(signatures[0], dict)
-                or signatures[0].get("keyId") != metadata["jacsRootKid"]
-                or not isinstance(signatures[0].get("jws"), str) or not signatures[0]["jws"]
+                or signature_kid != metadata["jacsRootKid"] or not signature_present
+                or (not is_v1 and (not isinstance(signature.get("jws"), str) or re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", signature["jws"]) is None))
                 or not isinstance(key, dict)
                 or key.get("kty") != "AKP" or key.get("alg") != "ML-DSA-87"
                 or key.get("kid") != metadata["jacsRootKid"] or key.get("use") != "sig"
@@ -1152,8 +1202,7 @@ class JACSA2AIntegration:
             or not isinstance(signatures, list)
             or not signatures
             or not isinstance(signatures[0], dict)
-            or not signatures[0].get("jws")
-            or signatures[0].get("keyId") != metadata.get("jacsCompatKid")
+            or not signature_present or signature_kid != metadata.get("jacsCompatKid")
         ):
             raise RuntimeError("Native A2A Agent Card is missing its bound ES256 signature metadata")
 
@@ -1165,6 +1214,7 @@ class JACSA2AIntegration:
                 and key.get("kid") == metadata.get("jacsCompatKid")
                 and key.get("alg") == "ES256"
                 and key.get("use") == "sig"
+                and (not is_v1 or (len(jwks) == 1 and key.get("kty") == "EC" and key.get("crv") == "P-256" and "d" not in key))
                 for key in jwks
             )
         ):

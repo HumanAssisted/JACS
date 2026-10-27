@@ -241,7 +241,7 @@ loaded ML-DSA-87 root. It uses the A2A 1.0 `supportedInterfaces` model and
 standard detached `signatures[].protected` / `signature` fields, with typed
 protobuf presence handling and RFC 8785 canonicalization. Its
 `verify_root_card` verifies the signature, exact trusted root and expected
-identity/version for this finite profile. See the
+identity/version for the supported profile. See the
 [source library guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md#library-entry-points).
 
 `export_agent_card_es256` is the explicit compatibility alternative. The
@@ -250,28 +250,30 @@ that the peer implements ML-DSA-87. `verify_card_binding` remains the
 compatibility binding check, and its caller must additionally verify the JWS.
 
 
-The existing language discovery adapters retain the legacy JACS-labeled
-`0.4.0` card format. The separate native `jacs::a2a::v1` projection and
-`examples/a2a_v1_peer.py` exercise a finite A2A 1.0 JSON-RPC report exchange
-against official `a2aproject/a2a-python` **1.1.4**, pinned to commit
-`2d4d3048b245d2af854bad804f0e722ea9febc08`. This example does not enable a new
-production binding, alter the existing language facade APIs, or host a remote
-signer. The SDK version and protocol version are different numbers.
+Public Node and Python discovery APIs accept explicit A2A 1.0 options with
+caller-provided skills, input/output modes and a messaging URL. Without those
+options, language discovery remains the legacy `0.4.0` format. See the
+[current public API examples](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md#a2a-10-from-nodejs-or-python).
 
-From the repository root, with Python 3.14 and uv installed:
+The [current official SDK smokes](https://github.com/HumanAssisted/JACS/blob/main/archive/native/examples/a2a_v1_sdk/README.md)
+exercise those public APIs with stock JavaScript SDK **1.3.0** (direct ML-DSA-87,
+Node 24.7+) and stock Python SDK **1.3.0** (explicit ES256 compatibility,
+Python 3.11+). Each uses actual SDK discovery, signature verification and a
+finite JSON-RPC report exchange. SDK version and wire version are different
+numbers. The Python backend does not provide ML-DSA verification.
+
+The broader retained native-fixture/Python vector harness also uses the exact
+`a2a-sdk==1.3.0` registry package and hashed transitive dependencies. From the
+repository root, with Python 3.11+ and uv installed:
 
 ```sh
-uv venv --python python3.14 /tmp/jacs-a2a-peer-env
+uv venv --python python3 /tmp/jacs-a2a-peer-env
 uv pip sync --python /tmp/jacs-a2a-peer-env/bin/python archive/native/examples/a2a_v1_peer_requirements.txt
 cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs \
   --no-default-features --features a2a --example a2a_v1_peer --target-dir target/a2a-v1-example
 /tmp/jacs-a2a-peer-env/bin/python archive/native/examples/a2a_v1_peer.py \
   --native-bin target/a2a-v1-example/debug/examples/a2a_v1_peer
 ```
-
-The test-only lock uses the exact official source commit: PyPI had no 1.1.4
-artifact when checked on September 14, 2026. It pins transitive dependencies
-with distribution hashes. No global package environment is needed.
 
 A disposable native helper creates an encrypted signing identity, a card,
 its native-root-signed compatibility binding, and a pre-signed synthetic report.
@@ -291,7 +293,7 @@ arrays must be nonempty. It rejects caller-supplied binding parameters,
 duplicate extension URIs, unsupported capability claims, non-object extension
 parameter roots, and empty/null or unsafe numeric extension values instead of silently changing them. Production
 interface URLs require HTTPS; explicit loopback HTTP is permitted for this
-example. The caller must actually implement the declared finite report skill.
+example. The caller must implement every declared skill; the example implements one report skill.
 
 This deliberately bounded profile records a pinned-peer limitation: its
 canonicalizer removes explicit optional empty strings, although the protocol's
@@ -303,8 +305,9 @@ legacy Strict discovery parser is not a v1 parser, and this stateless bridge
 does not establish rollback history. Key attribution, human approval, current
 contact authority and Agreement-policy acceptance remain separate decisions.
 
-Verification on September 15, 2026 used macOS arm64, Rust 1.98.1, Python
-3.14.7, the pinned SDK, and the reviewed Rustls 0.23.45 lock. The native profile
+Historical verification on September 15, 2026 used macOS arm64, Rust 1.98.1, Python
+3.14.7, SDK 1.1.4 at commit `2d4d3048b245d2af854bad804f0e722ea9febc08`,
+and the reviewed Rustls 0.23.45 lock. The native profile
 regression and existing legacy discovery/restart regression passed. The actual
 peer verified three card vectors and received all 1,201 report bytes unchanged;
 14 peer/native refusals and seven typed-profile refusals passed, along with

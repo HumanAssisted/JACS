@@ -166,12 +166,13 @@ def jacs_a2a_routes(
     client: "JacsClient",
     skills: Optional[List[Dict[str, Any]]] = None,
     a2a_algorithm: Optional[str] = None,
+    discovery_options: Optional[Dict[str, Any]] = None,
 ) -> APIRouter:
     """Build a FastAPI ``APIRouter`` serving A2A well-known documents.
 
     The router exposes native identity-bound endpoints under ``/.well-known/``:
 
-    - ``agent-card.json`` — A2A Agent Card (v0.4.0)
+    - ``agent-card.json`` — legacy Agent Card, or explicit bounded A2A 1.0 profile
     - ``jwks.json`` — JWK Set for external verifiers
     - ``jacs-compat-binding.json`` — key binding for explicit ES256 compatibility
     - ``jacs-agent.json`` — JACS agent descriptor
@@ -196,6 +197,8 @@ def jacs_a2a_routes(
             exported agent card.
         a2a_algorithm: Explicit compatibility selection (``es256``); defaults
             to the root key.
+        discovery_options: Explicit A2A 1.0 service profile. The caller hosts
+            its messaging URL, skills and content modes; this router serves discovery only.
 
     Returns:
         A ``fastapi.APIRouter`` ready to be included via
@@ -229,6 +232,7 @@ def jacs_a2a_routes(
             public_key_b64="",
             agent_data=agent_data,
             a2a_algorithm=a2a_algorithm,
+            discovery_options=discovery_options,
         )
         if skills is not None:
             native_skills = documents["/.well-known/agent-card.json"].get("skills", [])
@@ -326,6 +330,7 @@ def create_a2a_app(
     skills: Optional[List[Dict[str, Any]]] = None,
     title: str = "JACS A2A Agent",
     a2a_algorithm: Optional[str] = None,
+    discovery_options: Optional[Dict[str, Any]] = None,
 ) -> FastAPI:
     """Create a full FastAPI application with A2A routes and CORS.
 
@@ -347,7 +352,7 @@ def create_a2a_app(
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    router = jacs_a2a_routes(client, skills=skills, a2a_algorithm=a2a_algorithm)
+    router = jacs_a2a_routes(client, skills=skills, a2a_algorithm=a2a_algorithm, discovery_options=discovery_options)
     app.include_router(router)
 
     return app
@@ -359,6 +364,7 @@ def serve_a2a(
     host: str = "0.0.0.0",
     skills: Optional[List[Dict[str, Any]]] = None,
     a2a_algorithm: Optional[str] = None,
+    discovery_options: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Start a standalone A2A discovery server.
 
@@ -383,7 +389,7 @@ def serve_a2a(
             "Install it with: pip install jacs[a2a-server]"
         ) from exc
 
-    app = create_a2a_app(client, skills=skills, a2a_algorithm=a2a_algorithm)
+    app = create_a2a_app(client, skills=skills, a2a_algorithm=a2a_algorithm, discovery_options=discovery_options)
     uvicorn.run(app, host=host, port=port)
 
 

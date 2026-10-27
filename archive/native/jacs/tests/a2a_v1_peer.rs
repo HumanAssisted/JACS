@@ -81,6 +81,15 @@ fn finite_v1_fixture_preserves_native_authority_and_legacy_contracts() {
     let verdict = support::verify(&fixture).unwrap();
     assert_eq!(verdict["native_binding_valid"], true);
     assert_eq!(verdict["native_report_integrity_valid"], true);
+    let mut wrong_algorithm = fixture.clone();
+    wrong_algorithm["rootAlgorithm"] = json!("pq2025");
+    assert_eq!(
+        support::verify(&wrong_algorithm).unwrap()["native_report_integrity_valid"],
+        false,
+        "a mismatched explicit root algorithm must never fall back to Ed25519"
+    );
+    wrong_algorithm["rootAlgorithm"] = json!("unsupported");
+    assert!(support::verify(&wrong_algorithm).is_err());
     assert_eq!(fixture["rejectedProfiles"].as_array().unwrap().len(), 7);
     for name in [
         "scalar_extension_params",

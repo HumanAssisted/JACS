@@ -1887,7 +1887,7 @@ impl JacsMcpServer {
         }
         match self
             .agent
-            .generate_well_known_documents(params.a2a_algorithm.as_deref())
+            .generate_well_known_documents(params.a2a_algorithm.as_deref(), None)
         {
             Ok(docs_json) => {
                 // Parse to count documents

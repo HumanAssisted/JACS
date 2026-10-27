@@ -71,6 +71,52 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(selected["CARGO_TARGET_DIR"], "/isolated/native-target")
 
 
+class OfficialSDKConsumerTests(unittest.TestCase):
+    def test_node_sdk_uses_installed_candidate_despite_source_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            consumer = Path(directory)
+            inherited = {"PATH": "/usr/bin", "JACS_NODE_PACKAGE": "/unreviewed/checkout",
+                         "PYTHONPATH": "/unreviewed/python"}
+            with mock.patch.object(native, "run") as run:
+                native.test_official_a2a_sdk("npm", consumer, inherited, Path("/verifier"))
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertIn("--ignore-scripts", commands[0])
+            self.assertEqual(commands[1], ["npm", "audit", "--package-lock-only", "--audit-level=high"])
+            smoke = run.call_args_list[-1]
+            self.assertEqual(smoke.kwargs["env"]["JACS_NODE_PACKAGE"],
+                             str(consumer / "node_modules/@hai.ai/jacs"))
+            self.assertEqual(smoke.kwargs["cwd"], consumer)
+            self.assertNotIn("PYTHONPATH", smoke.kwargs["env"])
+            self.assertEqual(inherited["JACS_NODE_PACKAGE"], "/unreviewed/checkout")
+
+    def test_python_sdk_installs_hashed_dependencies_only_in_candidate_venv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            consumer = Path(directory)
+            with mock.patch.object(native, "run") as run:
+                native.test_official_a2a_sdk("python", consumer, {
+                    "PYTHONPATH": "/source/package", "PYTHONHOME": "/other/interpreter",
+                    "JACS_NODE_PACKAGE": "/source/node",
+                }, Path("/built/verifier"))
+            install, smoke = run.call_args_list
+            self.assertEqual(install.args[0][:6], [str(consumer / "venv/bin/python"),
+                             "-m", "pip", "install", "--require-hashes", "-r"])
+            self.assertEqual(smoke.args[0], [str(consumer / "venv/bin/python"),
+                             str(consumer / "a2a_v1_sdk_python.py"), "--native-bin", "/built/verifier"])
+            self.assertEqual(smoke.kwargs["cwd"], consumer)
+            for variable in ("PYTHONPATH", "PYTHONHOME", "JACS_NODE_PACKAGE"):
+                self.assertNotIn(variable, smoke.kwargs["env"])
+            for name in ("a2a_v1_sdk_python.py", "a2a_v1_peer.py"):
+                self.assertEqual((consumer / name).read_bytes(),
+                                 (native.NATIVE / "examples" / name).read_bytes())
+
+    def test_missing_verifier_fails_before_any_candidate_is_installed(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(native, "run") as run:
+            status = native.main(["test", "all", "--a2a-native-bin",
+                                  str(Path(directory) / "missing")])
+        self.assertEqual(status, 1)
+        run.assert_not_called()
+
+
 class SourceDistributionTests(unittest.TestCase):
     def test_workspace_contains_only_packaged_members_without_dependency_changes(self):
         original = '''[workspace]

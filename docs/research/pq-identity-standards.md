@@ -30,12 +30,39 @@ Existing JACS signing helpers are appropriate only when they sign those exact in
 
 | Library | Latest verified version and date | Practical consequence |
 | --- | --- | --- |
-| [`fips204`](https://docs.rs/crate/fips204/latest) | 0.5.0, 2026-10-23 | Pure Rust, final FIPS 204, all parameter sets; search indexes can still show 0.4.6. Existing 0.4.6 need not be upgraded solely for native JWK/JWS export. |
+| [`fips204`](https://docs.rs/crate/fips204/latest) | 0.5.0, 2026-10-23 | Pure Rust, final FIPS 204, all parameter sets. The portable and native JACS workspaces currently select different versions, listed below. |
 | [RustCrypto `ml-dsa`](https://docs.rs/crate/ml-dsa/0.1.1) | 0.1.1, 2026-06-05 | Pure Rust final-FIPS-204 implementation; README explicitly says it has not been independently audited. |
 | [`aws-lc-rs`](https://docs.rs/crate/aws-lc-rs/1.18.2) | 1.18.2, 2026-10-12 | Stable ML-DSA APIs in `signature`; accepts seed or expanded secret imports. [Expanded import cannot recover the original seed](https://docs.rs/aws-lc-rs/latest/aws_lc_rs/signature/struct.PqdsaKeyPair.html). |
 | [`oqs`](https://github.com/open-quantum-safe/liboqs-rust/blob/main/CHANGELOG.md) | 0.11.0, 2025-05-01 | Rust bindings to liboqs, including ML-DSA, with native build dependencies. |
 
-No library replacement is required by the standards findings. Cross-implementation verification and focused malformed-input tests are more useful than dependency churn.
+The current [portable core manifest](../../jacs-core/Cargo.toml) selects
+`fips204` **0.5.0** and `serde_json_canonicalizer` **0.4.1**. The separate
+[native library manifest](../../archive/native/jacs/Cargo.toml) retains
+`fips204` **0.4.6** and `serde_json_canonicalizer` **0.3.2** for its compatibility
+implementation. These are distinct resolved dependencies, not a claim that the
+whole repository uses one library version. Both ML-DSA implementations target
+final FIPS 204; key formats, canonical bytes and verification must remain
+compatible across the boundary. Dependency updates require renewed RFC-vector,
+SDK interoperability and malformed-input checks. The standards findings alone
+do not establish that a particular dependency version is safe or release-ready.
+
+## Current official SDK integration
+
+The [JavaScript SDK 1.3.0 signing API](https://github.com/a2aproject/a2a-js/blob/v1.3.0/src/signature.ts)
+uses its standard Agent Card canonicalizer and `jose` verification. With
+`jose` 6.2.3, ML-DSA-87 runs through Node WebCrypto. [Node 24.7.0 introduced
+ML-DSA WebCrypto support](https://nodejs.org/download/release/v24.7.0/docs/api/webcrypto.html);
+Node's generic SDK minimum of 20 is insufficient for this signature path.
+The test pins the SDK and `jose` rather than assuming the runtime supports an
+algorithm merely because the JWK parses.
+
+The [Python SDK 1.3.0 signing backend](https://github.com/a2aproject/a2a-python/blob/v1.3.0/src/a2a/utils/signing.py)
+uses PyJWT, which does not provide ML-DSA verification in the checked version.
+Its integration therefore selects ES256 explicitly and verifies the delegated
+key's native-root binding separately. This is a peer capability constraint,
+not an A2A algorithm restriction or a reason to rotate the native PQ root.
+See the [runnable SDK checks](../../archive/native/examples/a2a_v1_sdk/README.md)
+for exact dependencies, runtime requirements and the tested exchange.
 
 ## Verification and trust
 

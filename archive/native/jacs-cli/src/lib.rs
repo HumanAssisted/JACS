@@ -17,5 +17,8 @@ mod a2a_serve;
 
 mod cli_builder;
 
-pub use a2a_serve::{a2a_bind_address, generate_a2a_serve_documents, resolve_a2a_serve_origin};
+pub use a2a_serve::{
+    a2a_bind_address, generate_a2a_serve_documents, generate_a2a_serve_documents_for_algorithm,
+    resolve_a2a_serve_origin,
+};
 pub use cli_builder::build_cli;

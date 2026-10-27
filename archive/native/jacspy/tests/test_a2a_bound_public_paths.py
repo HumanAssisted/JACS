@@ -238,3 +238,70 @@ def test_legacy_source_discovery_delegates_to_configured_native_integration(monk
     assert documents["/.well-known/agent-card.json"]["name"] == "native-root"
     with pytest.raises(RuntimeError, match="requires a configured native"):
         legacy.JACSA2AIntegration().generate_well_known_documents(_card(), "jws", "key", {})
+
+
+_V1_PROFILE = {
+    "protocolVersion": "1.0", "messagingUrl": "https://service.example/rpc",
+    "skills": [{"id": "sum", "name": "Sum", "description": "Sum supplied integers", "tags": ["math"]}],
+    "defaultInputModes": ["application/json"], "defaultOutputModes": ["text/plain"],
+}
+
+
+def _v1_pairs(algorithm="ML-DSA-87"):
+    import base64
+    docs = {pair["path"]: pair["document"] for pair in (_bound_pairs() if algorithm == "ES256" else _direct_pairs())}
+    card = docs["/.well-known/agent-card.json"]
+    params = {**card.pop("metadata"), "jacsId": "root-id", "jacsVersion": "1"}
+    kid = params.get("jacsRootKid", params.get("jacsCompatKid"))
+    protected = base64.urlsafe_b64encode(json.dumps({"alg": algorithm, "kid": kid, "typ": "JOSE"}).encode()).decode().rstrip("=")
+    card.update({
+        "version": "1", "supportedInterfaces": [{"url": _V1_PROFILE["messagingUrl"], "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
+        "skills": _V1_PROFILE["skills"], "defaultInputModes": _V1_PROFILE["defaultInputModes"], "defaultOutputModes": _V1_PROFILE["defaultOutputModes"],
+        "capabilities": {"extensions": [{"uri": "urn:jacs:provenance-v1", "params": params}]},
+        "signatures": [{"protected": protected, "signature": "c2ln"}],
+    })
+    docs["/.well-known/jacs-agent.json"].update({"agentId": "root-id", "agentVersion": "1"})
+    docs["/.well-known/jacs-extension.json"]["a2aProtocolVersion"] = "1.0"
+    if algorithm == "ES256":
+        docs["/.well-known/jwks.json"]["keys"][0].update({"kty": "EC", "crv": "P-256"})
+    return [{"path": path, "document": doc} for path, doc in docs.items()]
+
+
+def test_explicit_v1_profile_uses_public_keyword_api_and_detached_signatures():
+    client = MagicMock()
+    client._agent.generate_well_known_documents.return_value = json.dumps(_v1_pairs())
+    docs = JACSA2AIntegration(client).generate_well_known_documents(discovery_options=_V1_PROFILE)
+    args = client._agent.generate_well_known_documents.call_args.args
+    assert args[0] is None and json.loads(args[1]) == _V1_PROFILE
+    assert set(docs["/.well-known/agent-card.json"]["signatures"][0]) == {"protected", "signature"}
+    assert "metadata" not in docs["/.well-known/agent-card.json"]
+
+
+def test_explicit_v1_es256_option_reaches_native_and_fastapi():
+    from fastapi.testclient import TestClient
+    from jacs.a2a_server import create_a2a_app
+    client = MagicMock()
+    client._agent.get_agent_json.return_value = json.dumps({"jacsId": "root-id", "jacsName": "native-root"})
+    client._agent.generate_well_known_documents.return_value = json.dumps(_v1_pairs("ES256"))
+    http = TestClient(create_a2a_app(client, a2a_algorithm="es256", discovery_options=_V1_PROFILE))
+    assert http.get("/.well-known/agent-card.json").json()["supportedInterfaces"][0]["protocolVersion"] == "1.0"
+    args = client._agent.generate_well_known_documents.call_args.args
+    assert args[0] == "es256" and json.loads(args[1]) == _V1_PROFILE
+    assert http.get("/.well-known/jacs-compat-binding.json").status_code == 200
+
+
+@pytest.mark.parametrize("field,value", [("metadata", {}), ("protocolVersions", ["0.4.0"]), ("defaultOutputModes", ["image/png"]), ("signatures", [{"jws": "e30.e30.c2ln"}])])
+def test_v1_rejects_mixed_or_mismatched_native_output(field, value):
+    pairs = _v1_pairs(); pairs[0]["document"][field] = value
+    client = MagicMock()
+    client._agent.generate_well_known_documents.return_value = json.dumps(pairs)
+    with pytest.raises(RuntimeError, match="A2A 1.0"):
+        JACSA2AIntegration(client).generate_well_known_documents(discovery_options=_V1_PROFILE)
+
+
+@pytest.mark.parametrize("pairs", [_direct_pairs(), _v1_pairs("ES256")])
+def test_v1_rejects_legacy_output_and_implicit_es256_downgrade(pairs):
+    client = MagicMock()
+    client._agent.generate_well_known_documents.return_value = json.dumps(pairs)
+    with pytest.raises(RuntimeError, match="A2A 1.0"):
+        JACSA2AIntegration(client).generate_well_known_documents(discovery_options=_V1_PROFILE)

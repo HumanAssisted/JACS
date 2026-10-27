@@ -34,29 +34,70 @@ A2A task executor. Never expose an endpoint merely because it appears in a card.
 In current source, default discovery signs with the same persisted ML-DSA-87
 root key and publishes its RFC 9964 AKP JWK. No unrelated ephemeral key is
 created on export or restart. The Rust helper
-`jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))`
-selects the existing ES256 compatibility path explicitly. See
+`jacs-compat a2a serve --a2a-algorithm ES256` selects the compatibility
+path explicitly. `--algorithm` on quickstart selects the native identity
+algorithm; `--a2a-algorithm` separately selects the card signing algorithm. See
 [DID and post-quantum identity](docs/identity-standards.md) for key formats,
 source APIs and trust boundaries.
 
-## Protocol and release scope
+## A2A 1.0 from Node.js or Python
 
-The legacy discovery model identifies itself as `0.4.0` and embeds compact JWS
-in `signatures[].jws`. The separate
-[`a2a::v1` module](archive/native/jacs/src/a2a/v1.rs) supports a bounded A2A 1.0
-JSON-RPC card profile. Its `export_agent_card` signs directly with the native
-ML-DSA-87 root and emits the standard detached `signatures[].protected` and
-`signature` fields. `verify_root_card` validates that signature against an
-independently trusted native root and expected identity/version. See the
-[library example](docs/identity-standards.md#library-entry-points).
+Select `protocolVersion: "1.0"` explicitly and supply the actual messaging URL,
+nonempty skills and input/output modes. JACS signs those declarations; your
+application must implement the advertised interface. The default discovery
+profile and the CLI discovery server remain the legacy `0.4.0` card format.
 
-`v1::export_agent_card_es256` is the explicit compatibility alternative.
-The [finite report example](archive/native/jacs/examples/a2a_v1_peer.rs) uses
-that alternative for its pinned official SDK peer. Its interop evidence covers
-ES256, not that peer's ML-DSA support. Neither the typed card API nor the example
-implements a general production host. Legacy discovery keeps its original
-wire format; a new signing algorithm does not upgrade that format. See the
+Node.js, using a loaded `JacsClient`:
+
+```js
+const { buildWellKnownDocuments } = require('@hai.ai/jacs/a2a-server');
+const documents = buildWellKnownDocuments(client, {
+  protocolVersion: '1.0',
+  messagingUrl: 'https://agent.example.com/a2a',
+  skills: [{ id: 'report', name: 'Report', description: 'Return a report', tags: ['report'] }],
+  defaultInputModes: ['text/plain'],
+  defaultOutputModes: ['application/json'],
+});
+```
+
+Python, using a loaded `JacsClient`, with explicit compatibility for its current
+official SDK signing backend:
+
+```python
+documents = client.get_a2a().generate_well_known_documents(
+    a2a_algorithm="ES256",
+    discovery_options={
+        "protocolVersion": "1.0",
+        "messagingUrl": "https://agent.example.com/a2a",
+        "skills": [{"id": "report", "name": "Report", "description": "Return a report", "tags": ["report"]}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["application/json"],
+    },
+)
+```
+
+Omit `a2a_algorithm` to export a direct ML-DSA-87 card in Python; that does not
+make its stock SDK verifier support the algorithm. Node's default above signs
+with the native PQ root. Both v1 paths use the standard detached
+`signatures[].protected` and `signature` fields. Legacy discovery retains compact
+`signatures[].jws`. The native Rust [`a2a::v1`](archive/native/jacs/src/a2a/v1.rs)
+module also exposes typed signing and root verification.
+
+The [runnable official SDK examples](archive/native/examples/a2a_v1_sdk/README.md)
+exercise actual discovery, signature verification and JSON-RPC report exchange:
+
+| Peer | Card signature | Runtime |
+| --- | --- | --- |
+| `@a2a-js/sdk` 1.3.0 | ML-DSA-87 using the stock SDK and `jose` 6.2.3 | Node 24.7+ with ML-DSA WebCrypto |
+| `a2a-sdk` 1.3.0 | Explicit ES256, with a PQ-root-signed compatibility binding | Python 3.11+ |
+
+SDK version `1.3.0` and wire protocol version `1.0` are different numbers.
+The Python SDK's PyJWT backend does not provide ML-DSA verification. Neither
+example upgrades legacy discovery or implements every A2A capability. See the
+[identity and trust guide](docs/identity-standards.md) and
 [checked specification research](docs/research/pq-identity-standards.md).
+
+## Release scope
 
 Version 0.15.0 is [published](docs/release-status.md), but the new native PQ
 DID/JWK/Agent Card behavior described above is a source change. Installing

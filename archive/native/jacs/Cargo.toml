@@ -92,8 +92,7 @@ hickory-resolver = { version = "0.26.3", features = ["dnssec-ring"] }
 hkdf = "0.13"
 zeroize = "1.8"
 pbkdf2 = "0.13"
-# Maintained YAML fork; preserve the existing import name without unsafe-libyaml.
-serde_yaml_ng = { package = "yaml_serde", version = "0.10.7" }
+serde-saphyr = { version = "2.0", default-features = false, features = ["serialize", "deserialize"] }
 jacs-media = { version = "0.15.0", path = "../jacs-media" }
 jacs-core = { version = "0.15.0", path = "../../../jacs-core" }
 tempfile = "3"

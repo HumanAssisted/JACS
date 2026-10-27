@@ -23,7 +23,7 @@ pub fn jacs_to_yaml(json_str: &str) -> Result<String, JacsError> {
     let value: serde_json::Value = jacs_core::strict_json::parse_strict_json(json_str)
         .map_err(|e| JacsError::conversion("JSON", "YAML", format!("invalid JSON input: {}", e)))?;
 
-    serde_yaml_ng::to_string(&value).map_err(|e| {
+    serde_saphyr::to_string(&value).map_err(|e| {
         JacsError::conversion("JSON", "YAML", format!("YAML serialization failed: {}", e))
     })
 }
@@ -41,20 +41,38 @@ fn parse_yaml_value(yaml_str: &str) -> Result<Value, JacsError> {
         )
     })?;
 
-    let mut documents = serde_yaml_ng::Deserializer::from_str(yaml_str);
-    let first = documents.next().ok_or_else(|| {
-        JacsError::conversion("YAML", "JSON", "invalid YAML input: document is empty")
-    })?;
-    let value = StrictYamlValue::deserialize(first)
+    // Preserve the JSON-shaped YAML 1.2 contract explicitly: this parser's
+    // defaults otherwise expand merge keys, infer YAML 1.1 booleans, and ignore
+    // unsupported tags. Keep its finite depth/node/alias budgets enabled and
+    // avoid including source snippets in conversion errors.
+    let options = serde_saphyr::options! {
+        duplicate_keys: serde_saphyr::DuplicateKeyPolicy::Error,
+        merge_keys: serde_saphyr::MergeKeyPolicy::Error,
+        strict_booleans: true,
+        // Historical conversion preserved !!binary text; never decode it
+        // into different covered JSON bytes during a parser migration.
+        ignore_binary_tag_for_string: true,
+        reject_unsupported_tags: true,
+        non_finite_float_policy: serde_saphyr::NonFiniteFloatPolicy::Reject,
+        with_snippet: false,
+    };
+    let value = serde_saphyr::from_str_with_options::<StrictYamlValue>(yaml_str, options)
         .map(|strict| strict.0)
-        .map_err(|e| JacsError::conversion("YAML", "JSON", format!("invalid YAML input: {}", e)))?;
-    if documents.next().is_some() {
-        return Err(JacsError::conversion(
-            "YAML",
-            "JSON",
-            "invalid YAML input: multiple YAML documents are not allowed",
-        ));
-    }
+        .map_err(|error| {
+            let reason = match &error {
+                serde_saphyr::Error::DuplicateMappingKey { .. } => {
+                    "duplicate YAML mapping key".to_owned()
+                }
+                serde_saphyr::Error::MergeKeyNotAllowed { .. } => {
+                    "YAML merge keys ('<<') are not allowed at signing boundaries".to_owned()
+                }
+                serde_saphyr::Error::MultipleDocuments { .. } => {
+                    "multiple YAML documents are not allowed".to_owned()
+                }
+                _ => error.to_string(),
+            };
+            JacsError::conversion("YAML", "JSON", format!("invalid YAML input: {reason}"))
+        })?;
 
     // Reject bare scalars -- JACS documents must be objects (or at minimum arrays)
     if !value.is_object() && !value.is_array() {
@@ -349,6 +367,70 @@ mod tests {
     }
 
     #[test]
+    fn yaml_12_plain_scalars_and_bounded_aliases_preserve_json_values() {
+        let value: Value = serde_json::from_str(&yaml_to_jacs(
+            "yes_word: yes\noff_word: off\nboolean: true\nempty: null\noriginal: &item {message: hello}\ncopy: *item\n",
+        ).unwrap()).unwrap();
+        assert_eq!(value["yes_word"], "yes");
+        assert_eq!(value["off_word"], "off");
+        assert_eq!(value["boolean"], true);
+        assert!(value["empty"].is_null());
+        assert_eq!(value["original"], value["copy"]);
+        let tagged: Value = serde_json::from_str(
+            &yaml_to_jacs("binary: !!binary c2VjcmV0\ntext: !!str true\n").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(tagged["binary"], "c2VjcmV0");
+        assert_eq!(tagged["text"], "true");
+    }
+
+    #[test]
+    fn yaml_untrusted_tags_keys_and_nonfinite_numbers_fail_closed() {
+        for yaml in [
+            "value: !include /etc/passwd\n",
+            "value: !custom arbitrary\n",
+            "value: !<tag:example.com,2026:custom> arbitrary\n",
+            "1: non-string-key\n",
+            "? [one, two]\n: composite-key\n",
+            "value: .nan\n",
+            "value: .inf\n",
+            "value: -.inf\n",
+            "value: 1e999\n",
+            "value: &cycle [*cycle]\n",
+        ] {
+            for result in [yaml_to_jacs(yaml), yaml_to_jacs_canonical(yaml)] {
+                assert!(
+                    matches!(result, Err(JacsError::ConversionError { .. })),
+                    "accepted {yaml:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn yaml_resource_limits_reject_deep_input_and_alias_expansion() {
+        let deep = format!("root: {}0{}", "[".repeat(80), "]".repeat(80));
+        assert!(
+            yaml_to_jacs(&deep).is_err(),
+            "parser depth budget must remain enabled"
+        );
+        let mut aliases = "a0: &a0 [0]\n".to_owned();
+        for level in 1..80 {
+            aliases.push_str(&format!("a{level}: &a{level} [*a{}]\n", level - 1));
+        }
+        assert!(
+            yaml_to_jacs(&aliases).is_err(),
+            "nested alias replay must be bounded"
+        );
+    }
+
+    #[test]
+    fn yaml_errors_do_not_echo_source_snippets() {
+        let error = yaml_to_jacs("credential: test-only-secret-value\nbroken: [\n").unwrap_err();
+        assert!(!error.to_string().contains("test-only-secret-value"));
+    }
+
+    #[test]
     fn yaml_to_jacs_bare_scalar_returns_error() {
         let result = yaml_to_jacs("just a string");
         assert!(result.is_err());
@@ -378,9 +460,9 @@ mod tests {
     fn yaml_output_is_valid_yaml() {
         let json_str = r#"{"hello": "world", "count": 42}"#;
         let yaml = jacs_to_yaml(json_str).unwrap();
-        // The YAML output should be parseable back by serde_yaml_ng
+        // The YAML output should be parseable back by serde_saphyr
         let _: serde_json::Value =
-            serde_yaml_ng::from_str(&yaml).expect("YAML output should be valid YAML");
+            serde_saphyr::from_str(&yaml).expect("YAML output should be valid YAML");
     }
 
     #[test]
@@ -432,7 +514,7 @@ mod tests {
     fn yaml_string_true_not_coerced_to_bool() {
         // The string "true" in JSON must not become boolean true in YAML.
         // Since we go JSON -> Value -> YAML -> Value, and serde_json::Value
-        // knows that "true" is a String, serde_yaml_ng should quote it.
+        // knows that "true" is a String, serde_saphyr should quote it.
         let json_str = r#"{"val": "true"}"#;
         let yaml = jacs_to_yaml(json_str).unwrap();
         let back = yaml_to_jacs(&yaml).unwrap();

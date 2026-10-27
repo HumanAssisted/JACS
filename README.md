@@ -56,7 +56,7 @@ signing key appears in `did:wba`, JWK/JWKS and signed Agent Cards, including
 ML-DSA-87 support and explicit ES256 compatibility. These integrations belong
 to the native library workspace; the portable MCP server has no DID resolver
 or A2A transport. The [A2A quickstart](A2A_QUICKSTART.md) covers discovery,
-signed artifacts and the supported protocol surfaces.
+signed artifacts, explicit A2A 1.0 Node/Python APIs and current SDK examples.
 
 | Integration | Install / guide |
 | --- | --- |
@@ -67,7 +67,7 @@ signed artifacts and the supported protocol surfaces.
 | Browser | [WASM package and encrypted storage](jacs-wasm/README.md) |
 | Extended CLI / MCP | `cargo install jacs-cli-compat --locked`; executable `jacs-compat`; [profiles](docs/native-mcp.md) |
 
-Native packages remain supported and publishable from the separate
+Native packages remain supported in the separate
 [`archive/native`](archive/native/README.md) workspace. Its directory name does
 not retire those APIs. See [all packages and platform coverage](docs/libraries.md)
 and [examples](examples/README.md).

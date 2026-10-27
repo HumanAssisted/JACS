@@ -381,6 +381,7 @@ class JACSA2AIntegration:
         public_key_b64: str,
         agent_data: Dict[str, Any],
         a2a_algorithm: Optional[str] = None,
+        discovery_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Generate discovery through the canonical native-backed integration.
 
@@ -396,7 +397,7 @@ class JACSA2AIntegration:
             )
         integration = NativeIntegration.from_config(self._jacs_config_path)
         return integration.generate_well_known_documents(
-            agent_card, jws_signature, public_key_b64, agent_data, a2a_algorithm
+            agent_card, jws_signature, public_key_b64, agent_data, a2a_algorithm, discovery_options
         )
 
     def _verify_wrapped_artifact_internal(

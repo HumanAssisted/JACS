@@ -27,6 +27,7 @@ const {
   JACSA2AIntegration,
   A2AAgentSkill,
 } = require('./a2a');
+const { isDeepStrictEqual } = require('node:util');
 
 /**
  * CORS headers for cross-origin agent discovery.
@@ -82,13 +83,22 @@ function buildWellKnownDocuments(client, options = {}) {
   // The compatibility arguments are ignored by the integration when the
   // required native generator is present. They remain here only for API
   // source compatibility with older callers.
-  const documents = integration.generateWellKnownDocuments(cardJson, '', '', agentData, options.a2aAlgorithm);
+  const hasProfile = ['protocolVersion', 'messagingUrl', 'defaultInputModes', 'defaultOutputModes']
+    .some((field) => options[field] !== undefined);
+  const discoveryOptions = hasProfile ? {
+    protocolVersion: options.protocolVersion,
+    messagingUrl: options.messagingUrl,
+    skills: options.skills,
+    defaultInputModes: options.defaultInputModes,
+    defaultOutputModes: options.defaultOutputModes,
+  } : undefined;
+  const documents = integration.generateWellKnownDocuments(cardJson, '', '', agentData, options.a2aAlgorithm, discoveryOptions);
 
   // Caller-side mutation after signing would invalidate the JWS. Optional
   // server overrides are therefore assertions about already-configured agent
   // data, never rewrites of the native signed card.
   const nativeCard = documents['/.well-known/agent-card.json'];
-  if (options.skills && JSON.stringify(nativeCard.skills || []) !== JSON.stringify(cardJson.skills || [])) {
+  if (options.skills && !isDeepStrictEqual(nativeCard.skills || [], cardJson.skills || [])) {
     throw new Error(
       "Cannot override A2A skills after the Agent Card is signed; configure the agent's skills before generation"
     );

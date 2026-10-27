@@ -138,6 +138,16 @@ pub fn generate_a2a_serve_documents(
     agent: &mut Agent,
     canonical_origin: &str,
 ) -> Result<(AgentCard, Vec<(String, Value)>), JacsError> {
+    generate_a2a_serve_documents_for_algorithm(agent, canonical_origin, None)
+}
+
+/// Generate discovery with the PQ root by default, or with explicitly selected
+/// ES256 compatibility. A classical root never triggers an automatic fallback.
+pub fn generate_a2a_serve_documents_for_algorithm(
+    agent: &mut Agent,
+    canonical_origin: &str,
+    algorithm: Option<&str>,
+) -> Result<(AgentCard, Vec<(String, Value)>), JacsError> {
     let canonical_origin =
         validate_explicit_origin(canonical_origin).map_err(JacsError::ValidationError)?;
     let mut card = jacs::a2a::agent_card::export_agent_card(agent)?;
@@ -160,7 +170,7 @@ pub fn generate_a2a_serve_documents(
         agent,
         &key_directory,
         Some(card.clone()),
-        None,
+        algorithm,
     )?;
     Ok((card, documents))
 }

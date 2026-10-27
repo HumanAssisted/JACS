@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1058
+Third-party packages: 1060
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -386,7 +386,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 205 package(s):
+Used by 204 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -471,7 +471,6 @@ Used by 205 package(s):
   - libredox 0.1.18 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libredox 0.1.23 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libsqlite3-sys 0.30.1 (https://github.com/rusqlite/rusqlite)
-  - libyaml-rs 0.3.0 (https://github.com/yaml/libyaml-rs)
   - lindera 6.2.0 (https://github.com/lindera/lindera)
   - lindera-dictionary 6.2.0 (https://github.com/lindera/lindera)
   - lz4 1.28.1 (https://github.com/10xGenomics/lz4-rs)
@@ -602,7 +601,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 486 package(s):
+Used by 488 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -611,6 +610,7 @@ Used by 486 package(s):
   - ammonia 4.1.8 (https://github.com/rust-ammonia/ammonia)
   - android_system_properties 0.1.6 (https://github.com/nical/android_system_properties)
   - anes 0.1.6 (https://github.com/zrzka/anes-rs)
+  - annotate-snippets 0.12.17 (https://github.com/rust-lang/annotate-snippets-rs)
   - anstream 1.0.0 (https://github.com/rust-cli/anstyle.git)
   - anstyle 1.0.14 (https://github.com/rust-cli/anstyle.git)
   - anstyle-parse 1.0.0 (https://github.com/rust-cli/anstyle.git)
@@ -757,6 +757,7 @@ Used by 486 package(s):
   - getrandom 0.4.3 (https://github.com/rust-random/getrandom)
   - gimli 0.32.3 (https://github.com/gimli-rs/gimli)
   - glob 0.3.4 (https://github.com/rust-lang/glob)
+  - granit-parser 2.0.0 (https://github.com/bourumir-wyngs/granit-parser)
   - half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   - hash32 0.1.1 (https://github.com/japaric/hash32)
   - hash32 0.2.1 (https://github.com/japaric/hash32)
@@ -939,6 +940,7 @@ Used by 486 package(s):
   - security-framework-sys 2.17.0 (https://github.com/kornelski/rust-security-framework)
   - semver 1.0.28 (https://github.com/dtolnay/semver)
   - serde 1.0.229 (https://github.com/serde-rs/serde)
+  - serde-saphyr 2.0.0 (https://github.com/bourumir-wyngs/serde-saphyr)
   - serde_cbor_2 0.13.0 (https://github.com/kanidm/cbor)
   - serde_core 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive 1.0.229 (https://github.com/serde-rs/serde)
@@ -1089,7 +1091,6 @@ Used by 486 package(s):
   - windows_x86_64_msvc 0.53.1 (https://github.com/microsoft/windows-rs)
   - x509-parser 0.16.0 (https://github.com/rusticata/x509-parser.git)
   - xattr 1.6.1 (https://github.com/Stebalien/xattr)
-  - yaml_serde 0.10.7 (https://github.com/yaml/yaml-serde)
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0 OR BSD-1-Clause
@@ -1130,11 +1131,12 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 62 package(s):
+Used by 63 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
   - affinitypool 0.8.0 (https://github.com/surrealdb/affinitypool)
   - android_system_properties 0.1.5 (https://github.com/nical/android_system_properties)
+  - arraydeque 0.5.1 (https://github.com/andylokandy/arraydeque)
   - asn1-rs-impl 0.2.0 (https://github.com/rusticata/asn1-rs.git)
   - bitflags 1.3.2 (https://github.com/bitflags/bitflags)
   - bs58 0.5.1 (https://github.com/Nullus157/bs58-rs)

@@ -92,18 +92,52 @@ jacs::a2a::v1::verify_root_card(
 
 Here `public_jwk` is the root's AKP JWK; `expected_id`, `expected_version` and
 `trusted_root` come from independent trusted evidence. `verify_root_card`
-checks the detached signature, finite card profile and exact root attribution.
+checks the detached signature, supported card profile and exact root attribution.
 It is stateless and does not establish revocation or rollback history.
 `key_directory` remains in the exporter signature for source compatibility;
 the PQ path uses the loaded root and creates no compatibility key.
 
 `v1::export_agent_card_es256` takes the same arguments for an explicitly
 selected ES256 peer. The existing `v1::verify_card_binding` validates that
-compatibility binding; callers must also verify its card JWS. The finite
-[official-SDK example](../archive/native/jacs/examples/a2a_v1_peer.rs) deliberately
-uses ES256 for peer support. Its successful exchange does not establish that
-the same peer accepts ML-DSA-87. This typed API covers the bounded JSON-RPC
-profile, not a general A2A host or every A2A 1.0 capability.
+compatibility binding; callers must also verify its card JWS. The older
+`project_agent_card` helper builds the finite report example's profile.
+Application-facing discovery options require the caller's actual skills,
+input/output modes and messaging URL; they do not invent a report skill.
+
+## Node.js and Python v1 discovery
+
+Both public language APIs now accept explicit A2A 1.0 discovery options. See
+[copyable Node/Python examples](../A2A_QUICKSTART.md#a2a-10-from-nodejs-or-python).
+Node's `buildWellKnownDocuments(client, options)` and middleware accept
+`protocolVersion`, `messagingUrl`, `skills`, `defaultInputModes` and
+`defaultOutputModes`. Python's
+`client.get_a2a().generate_well_known_documents(discovery_options=options)` and
+`create_a2a_app(..., discovery_options=options)` use the same JSON option names.
+No options preserves legacy discovery. These functions export or serve public
+discovery documents; the caller owns the messaging handler.
+
+Native ML-DSA-87 is the default signing choice. Select Node's
+`a2aAlgorithm: "ES256"` or Python's `a2a_algorithm="ES256"` explicitly only for
+a peer needing compatibility. A classical-root CLI agent likewise requires
+`jacs-compat a2a serve --a2a-algorithm ES256`; errors never silently downgrade.
+
+[Current official SDK smokes](../archive/native/examples/a2a_v1_sdk/README.md)
+use public JACS APIs, actual SDK servers/clients, and independent SDK signature
+verification. The JavaScript SDK 1.3.0 works with direct ML-DSA-87 through
+`jose` 6.2.3 on Node 24.7+ with ML-DSA WebCrypto. The Python SDK 1.3.0 uses
+explicit ES256 because its PyJWT backend lacks ML-DSA verification. Maintained
+JACS Python source requires Python 3.11+. The native root remains PQ in both
+examples, and the Python path additionally verifies its scoped native binding.
+These checks cover a finite JSON-RPC report exchange, not every A2A capability.
+
+Stock SDK signature validation still needs trusted key selection. Resolve and
+verify the card before selecting its transport or fetching an extended card.
+The JS example pins the exported JWK to independently supplied root bytes, checks the
+expected identity/version and protected algorithm, and rejects unexpected key
+URLs. Official SDK canonicalization drops fields outside its A2A schema; do
+not treat those fields as authenticated application claims. Fetching a card or
+JWKS alone establishes none of that trust. Legacy
+`verified`/`strict` discovery policy helpers are not v1 policy parsers.
 
 ## Standards boundaries
 

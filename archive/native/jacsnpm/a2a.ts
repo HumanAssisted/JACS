@@ -14,12 +14,22 @@ import {
 } from './index.js';
 import type { JacsClient } from './client.js';
 import type { Server } from 'http';
+import { isDeepStrictEqual } from 'node:util';
 import { warnDeprecated } from './deprecation.js';
 import { requirePortableV2SignedDocument } from './output-policy.js';
 
 // =============================================================================
 // Constants
 // =============================================================================
+
+/** Caller-declared behavior for an actually hosted, bounded JSON-RPC 1.0 service. */
+export interface A2ADiscoveryOptions {
+  protocolVersion: '1.0';
+  messagingUrl: string;
+  skills: Array<{ id: string; name: string; description: string; tags: string[] }>;
+  defaultInputModes: string[];
+  defaultOutputModes: string[];
+}
 
 export const A2A_PROTOCOL_VERSION = '0.4.0';
 
@@ -890,12 +900,16 @@ export class JACSA2AIntegration {
     };
   }
 
+  /** Generate native discovery. Explicit v1 options describe the caller's
+   * hosted service; they do not install a handler or upgrade legacy trust APIs.
+   */
   generateWellKnownDocuments(
     agentCard: A2AAgentCard,
     jwsSignature: string,
     publicKeyB64: string,
     agentData: AgentData,
     a2aAlgorithm?: string,
+    discoveryOptions?: A2ADiscoveryOptions,
   ): Record<string, Record<string, unknown>> {
     // These parameters remain for source compatibility only. Identity-bearing
     // discovery documents must come from the native generator as one
@@ -915,7 +929,13 @@ export class JACSA2AIntegration {
 
     let nativePairs: unknown;
     try {
-      const nativeJson = nativeGenerate.call((this.client as any)._agent, a2aAlgorithm);
+      const optionsJson = discoveryOptions === undefined ? undefined : JSON.stringify(discoveryOptions);
+      // Compare the same wire values native receives (also supports skill
+      // class instances without treating their JS prototypes as wire data).
+      if (optionsJson !== undefined) discoveryOptions = JSON.parse(optionsJson);
+      const nativeJson = optionsJson === undefined
+        ? nativeGenerate.call((this.client as any)._agent, a2aAlgorithm)
+        : nativeGenerate.call((this.client as any)._agent, a2aAlgorithm, optionsJson);
       nativePairs = JSON.parse(nativeJson);
     } catch (error) {
       throw new Error(`Identity-bound A2A discovery generation failed: ${String(error)}`);
@@ -956,8 +976,48 @@ export class JACSA2AIntegration {
     }
 
     const card = documents['/.well-known/agent-card.json'];
-    const metadata = card.metadata as Record<string, unknown> | undefined;
+    let metadata = card.metadata as Record<string, unknown> | undefined;
     const signatures = card.signatures as Array<Record<string, unknown>> | undefined;
+    const isV1 = discoveryOptions !== undefined;
+    const signature = Array.isArray(signatures) ? signatures[0] : undefined;
+    let header: Record<string, unknown> | undefined;
+    try {
+      const encoded = isV1 ? signature?.protected
+        : typeof signature?.jws === 'string' ? signature.jws.split('.')[0] : undefined;
+      if (typeof encoded === 'string' && /^[A-Za-z0-9_-]+$/.test(encoded)) {
+        header = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+      }
+    } catch { /* Malformed native output fails below. */ }
+    const signaturePresent = isV1
+      ? signatures?.length === 1 && typeof signature?.protected === 'string'
+        && typeof signature?.signature === 'string' && /^[A-Za-z0-9_-]+$/.test(signature.signature)
+        && !('jws' in signature) && !('keyId' in signature)
+      : typeof signature?.jws === 'string' && !!signature.jws;
+    const signatureKid = isV1 ? header?.kid : signature?.keyId;
+    if (discoveryOptions !== undefined) {
+      const extensions = (card.capabilities as any)?.extensions;
+      const provenance = Array.isArray(extensions) ? extensions.filter((item) => item?.uri === JACS_EXTENSION_URI) : [];
+      metadata = provenance.length === 1 ? provenance[0].params : undefined;
+      const interfaces = card.supportedInterfaces as any;
+      const expectedAlgorithm = a2aAlgorithm?.toLowerCase() === 'es256' ? 'ES256' : 'ML-DSA-87';
+      if (
+        discoveryOptions.protocolVersion !== '1.0' || 'metadata' in card || 'protocolVersions' in card
+        || !Array.isArray(interfaces) || interfaces.length !== 1
+        || interfaces[0]?.protocolVersion !== '1.0' || interfaces[0]?.protocolBinding !== 'JSONRPC'
+        || interfaces[0]?.url !== discoveryOptions.messagingUrl
+        || !isDeepStrictEqual(card.skills, discoveryOptions.skills)
+        || !isDeepStrictEqual(card.defaultInputModes, discoveryOptions.defaultInputModes)
+        || !isDeepStrictEqual(card.defaultOutputModes, discoveryOptions.defaultOutputModes)
+        || !metadata || !signaturePresent || !header || header.alg !== expectedAlgorithm || header.typ !== 'JOSE'
+        || (expectedAlgorithm === 'ML-DSA-87' ? !metadata.jacsRootKid : !metadata.jacsCompatKid || !!metadata.jacsRootKid)
+        || card.version !== metadata.jacsVersion
+        || documents['/.well-known/jacs-agent.json'].agentId !== metadata.jacsId
+        || documents['/.well-known/jacs-agent.json'].agentVersion !== metadata.jacsVersion
+        || documents['/.well-known/jacs-extension.json'].a2aProtocolVersion !== '1.0'
+      ) {
+        throw new Error('Native A2A 1.0 discovery does not match the requested service profile and signing algorithm');
+      }
+    }
     // This is validation of native-generated output, not remote identity
     // verification. Only the native assessor can establish root trust.
     if (metadata && Object.prototype.hasOwnProperty.call(metadata, 'jacsRootKid')) {
@@ -965,18 +1025,11 @@ export class JACSA2AIntegration {
       const root = documents['/.well-known/jacs-pubkey.json'];
       const descriptor = documents['/.well-known/jacs-agent.json'];
       const key = Array.isArray(keys) && keys.length === 1 ? keys[0] : undefined;
-      let header: Record<string, unknown> = {};
-      try {
-        const segments = signatures?.[0]?.jws;
-        if (typeof segments === 'string' && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(segments)) {
-          header = JSON.parse(Buffer.from(segments.split('.')[0], 'base64url').toString('utf8'));
-        }
-      } catch { /* Malformed native output fails below. */ }
       if (
         typeof metadata.jacsRootKid !== 'string' || !metadata.jacsRootKid
         || !Array.isArray(signatures) || signatures.length !== 1
-        || signatures[0]?.keyId !== metadata.jacsRootKid
-        || typeof signatures[0]?.jws !== 'string' || !signatures[0].jws
+        || signatureKid !== metadata.jacsRootKid || !signaturePresent
+        || (!isV1 && (typeof signature?.jws !== 'string' || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(signature.jws)))
         || !key || key.kty !== 'AKP' || key.alg !== 'ML-DSA-87'
         || key.kid !== metadata.jacsRootKid || key.use !== 'sig'
         || Object.prototype.hasOwnProperty.call(key, 'priv') || Object.prototype.hasOwnProperty.call(key, 'd')
@@ -1000,9 +1053,7 @@ export class JACSA2AIntegration {
       || metadata.jacsCompatBindingPath !== '/.well-known/jacs-compat-binding.json'
       || !Array.isArray(signatures)
       || signatures.length === 0
-      || typeof signatures[0]?.jws !== 'string'
-      || !signatures[0].jws
-      || signatures[0].keyId !== metadata.jacsCompatKid
+      || !signaturePresent || signatureKid !== metadata.jacsCompatKid
     ) {
       throw new Error('Native A2A Agent Card is missing its bound ES256 signature metadata');
     }
@@ -1014,6 +1065,7 @@ export class JACSA2AIntegration {
         key?.kid === metadata.jacsCompatKid
         && key.alg === 'ES256'
         && key.use === 'sig'
+        && (!isV1 || (jwks.length === 1 && key.kty === 'EC' && key.crv === 'P-256' && !('d' in key)))
       ))
     ) {
       throw new Error("Native A2A JWKS does not contain the card's ES256 signing key");

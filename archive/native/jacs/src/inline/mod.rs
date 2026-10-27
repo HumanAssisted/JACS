@@ -1159,7 +1159,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_yaml_block_body_roundtrips_through_serde_yaml_ng() {
+    fn legacy_yaml_block_body_roundtrips_through_serde_saphyr() {
         let block = SignatureBlockYaml {
             signature_block_version: 1,
             signer: "abc".into(),
@@ -1171,8 +1171,8 @@ mod tests {
             signed_content_hash: "AAAA".into(),
             signature: "BBBB".into(),
         };
-        let s = serde_yaml_ng::to_string(&block).unwrap();
-        let back: SignatureBlockYaml = serde_yaml_ng::from_str(&s).unwrap();
+        let s = serde_saphyr::to_string(&block).unwrap();
+        let back: SignatureBlockYaml = serde_saphyr::from_str(&s).unwrap();
         assert_eq!(block, back);
     }
 
@@ -1233,7 +1233,7 @@ signature: BBBB
             signed_content_hash: content_hash,
             signature,
         };
-        let body = serde_yaml_ng::to_string(&block).unwrap();
+        let body = serde_saphyr::to_string(&block).unwrap();
         let framed = format!("{content}{BEGIN_MARKER}\n{body}{END_MARKER}\n");
         let resolver = MultiKeyResolver {
             entries: vec![("legacy-agent".into(), public_key, "ed25519".into())],
@@ -1537,7 +1537,7 @@ signature: BBBB
         // Update block with a publicKeyHash we know the resolver will match.
         let mut fake = fake_block.clone();
         fake.public_key_hash = expected;
-        let body = serde_yaml_ng::to_string(&fake).unwrap();
+        let body = serde_saphyr::to_string(&fake).unwrap();
         let framed = format!("{content}{BEGIN_MARKER}\n{body}{END_MARKER}\n");
         let resolver = MultiKeyResolver {
             entries: vec![("someone".into(), pem, "ed25519".into())],

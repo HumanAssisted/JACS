@@ -174,3 +174,70 @@ describe('direct ML-DSA-87 A2A wrapper output', () => {
     } finally { clock.restore(); }
   });
 });
+
+const v1Profile = {
+  protocolVersion: '1.0', messagingUrl: 'https://service.example/rpc',
+  skills: [{ id: 'sum', name: 'Sum', description: 'Sum supplied integers', tags: ['math'] }],
+  defaultInputModes: ['application/json'], defaultOutputModes: ['text/plain'],
+};
+
+function v1Pairs(algorithm = 'ML-DSA-87') {
+  const docs = Object.fromEntries((algorithm === 'ES256' ? boundPairs() : directPairs()).map((pair) => [pair.path, pair.document]));
+  const card = docs['/.well-known/agent-card.json'];
+  const params = { ...card.metadata, jacsId: 'root-id', jacsVersion: '1' };
+  const kid = params.jacsRootKid || params.jacsCompatKid;
+  delete card.metadata;
+  Object.assign(card, {
+    version: '1', supportedInterfaces: [{ url: v1Profile.messagingUrl, protocolBinding: 'JSONRPC', protocolVersion: '1.0' }],
+    skills: v1Profile.skills, defaultInputModes: v1Profile.defaultInputModes, defaultOutputModes: v1Profile.defaultOutputModes,
+    capabilities: { extensions: [{ uri: 'urn:jacs:provenance-v1', params }] },
+    signatures: [{ protected: Buffer.from(JSON.stringify({ alg: algorithm, kid, typ: 'JOSE' })).toString('base64url'), signature: 'c2ln' }],
+  });
+  Object.assign(docs['/.well-known/jacs-agent.json'], { agentId: 'root-id', agentVersion: '1' });
+  docs['/.well-known/jacs-extension.json'].a2aProtocolVersion = '1.0';
+  if (algorithm === 'ES256') Object.assign(docs['/.well-known/jwks.json'].keys[0], { kty: 'EC', crv: 'P-256' });
+  return Object.entries(docs).map(([path, document]) => ({ path, document }));
+}
+
+describe('explicit public A2A 1.0 discovery profile', () => {
+  it('forwards the required service profile and preserves native detached signatures', () => {
+    const generate = sinon.stub().returns(JSON.stringify(v1Pairs()));
+    const docs = buildWellKnownDocuments({ _agent: { generateWellKnownDocumentsSync: generate } }, v1Profile);
+    expect(JSON.parse(generate.firstCall.args[1])).to.deep.equal(v1Profile);
+    expect(docs['/.well-known/agent-card.json'].signatures[0]).to.have.keys('protected', 'signature');
+    expect(docs['/.well-known/agent-card.json']).not.to.have.property('metadata');
+  });
+
+  it('accepts existing A2AAgentSkill instances as JSON wire values', () => {
+    const { A2AAgentSkill } = require('../src/a2a');
+    const profile = { ...v1Profile, skills: [new A2AAgentSkill(v1Profile.skills[0])] };
+    const docs = integrationWith(() => JSON.stringify(v1Pairs())).generateWellKnownDocuments({}, '', '', {}, undefined, profile);
+    expect(docs['/.well-known/agent-card.json'].skills).to.deep.equal(v1Profile.skills);
+  });
+
+  it('retains explicit ES256 selection for SDK compatibility', () => {
+    const generate = sinon.stub().returns(JSON.stringify(v1Pairs('ES256')));
+    const docs = buildWellKnownDocuments({ _agent: { generateWellKnownDocumentsSync: generate } }, { ...v1Profile, a2aAlgorithm: 'es256' });
+    expect(generate.firstCall.args[0]).to.equal('es256');
+    expect(docs).to.have.property('/.well-known/jacs-compat-binding.json');
+  });
+
+  for (const [label, mutate] of [
+    ['legacy metadata', (card) => { card.metadata = {}; }],
+    ['legacy protocol version field', (card) => { card.protocolVersions = ['0.4.0']; }],
+    ['legacy compact signature', (card) => { card.signatures[0].jws = 'e30.e30.c2ln'; }],
+    ['different hosted URL', (card) => { card.supportedInterfaces[0].url = 'https://other.example/rpc'; }],
+    ['invented content mode', (card) => { card.defaultOutputModes = ['image/png']; }],
+  ]) {
+    it(`rejects native output containing ${label}`, () => {
+      const pairs = v1Pairs(); mutate(pairs[0].document);
+      expect(() => integrationWith(() => JSON.stringify(pairs)).generateWellKnownDocuments({}, '', '', {}, undefined, v1Profile)).to.throw(/A2A 1.0/);
+    });
+  }
+
+  it('rejects legacy output and implicit ES256 downgrade when v1 PQ was requested', () => {
+    for (const pairs of [directPairs(), v1Pairs('ES256')]) {
+      expect(() => integrationWith(() => JSON.stringify(pairs)).generateWellKnownDocuments({}, '', '', {}, undefined, v1Profile)).to.throw(/A2A 1.0/);
+    }
+  });
+});
