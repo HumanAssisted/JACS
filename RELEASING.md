@@ -127,6 +127,12 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
    the affected Rust, browser, mobile and native installed-consumer checks.
    CI repeats the required functional, audit, license and secret-scan gates.
 
+   Source-only dependency patches do not qualify a crates.io release: Cargo
+   does not propagate workspace patches to downstream registry consumers.
+   Candidate preparation rejects Git dependencies and third-party path
+   overrides, even when source builds and audits pass. Replace them with
+   reviewed published fixes and regenerate the locks before release.
+
 3. Review and commit the complete candidate, including restored workflows and
    package sources, then push that reviewed commit. Release commands require
    a clean worktree, including untracked files:

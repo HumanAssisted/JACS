@@ -21,7 +21,7 @@ Usage as middleware (sign all responses):
     mcp.add_middleware(JacsMCPMiddleware(client=client, a2a=True))
     mcp.run()
 
-Requires: pip install jacs[mcp]   (fastmcp>=3.2)
+Requires: pip install jacs[mcp]   (fastmcp>=3.4.10,<4)
 """
 
 import json
@@ -928,7 +928,7 @@ class JacsMCPMiddleware:
     This operates at the MCP protocol level (not HTTP), making it
     transport-agnostic (works with stdio, SSE, and Streamable HTTP).
 
-    Requires fastmcp>=3.2.
+    Requires fastmcp>=3.4.10,<4.
 
     Usage::
 
@@ -1024,7 +1024,7 @@ class JacsMCPMiddleware:
         if self._sign and result is not None:
             try:
                 try:
-                    from fastmcp.tools.tool import ToolResult
+                    from fastmcp.tools import ToolResult
                 except ImportError:  # pragma: no cover - optional dependency absent
                     ToolResult = None  # type: ignore[assignment, misc]
 
@@ -1049,15 +1049,12 @@ class JacsMCPMiddleware:
                             result.structured_content
                         ),
                         "meta": _jsonable_mcp_value(result.meta),
+                        "isError": result.is_error,
                     }
                     signed = self._adapter.sign_output(result_payload)
                     merged_meta = dict(result.meta or {})
                     merged_meta["jacsSignedDocument"] = json.loads(signed)
-                    return ToolResult(
-                        content=result.content,
-                        structured_content=result.structured_content,
-                        meta=merged_meta,
-                    )
+                    return result.model_copy(update={"meta": merged_meta})
 
                 result_payload = result if isinstance(result, str) else result
                 signed = self._adapter.sign_output(result_payload)

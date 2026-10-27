@@ -76,6 +76,14 @@ jobs:
             --ignore RUSTSEC-2023-0071
           cargo deny --manifest-path archive/native/jacs-surrealdb/Cargo.toml --all-features check --config archive/native/deny.toml advisories licenses
 
+      - name: Audit object-store backport test lock
+        run: cargo audit --file archive/native/jacs-surrealdb/vendor/object_store/Cargo.lock
+
+      - name: Audit JWT backport test lock
+        run: |
+          cargo audit --file archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.lock \
+            --ignore RUSTSEC-2023-0071
+
       - name: Audit standalone observability example lock
         run: |
           cargo audit --file archive/native/jacs/examples/observability/Cargo.lock

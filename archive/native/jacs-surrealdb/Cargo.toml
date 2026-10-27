@@ -27,3 +27,12 @@ serial_test = "4.0.1"
 
 [features]
 default = []
+
+# These reviewed source-only backports are not published dependencies. Release
+# preparation rejects them until compatible upstream versions are available.
+[patch.crates-io]
+jsonwebtoken = { path = "vendor/jsonwebtoken" }
+object_store = { path = "vendor/object_store" }
+
+[workspace]
+resolver = "3"

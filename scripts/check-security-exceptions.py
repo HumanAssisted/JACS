@@ -159,10 +159,11 @@ def require_archive_scoped_workflow_ignores(text: str) -> None:
         if not WORKFLOW_IGNORE_PATTERN.search(line):
             continue
         if not re.fullmatch(
-            r"\s*(?:run:\s*)?cargo audit --file archive/native/jacs-surrealdb/Cargo\.lock"
+            r"\s*(?:run:\s*)?cargo audit --file archive/native/jacs-surrealdb/"
+            r"(?:vendor/jsonwebtoken/)?Cargo\.lock"
             r"\s+--ignore RUSTSEC-2023-0071\s*", line
         ):
-            raise ValueError("workflow advisory ignores must be scoped to the archived SurrealDB lock")
+            raise ValueError("workflow advisory ignores must be scoped to the archived SurrealDB lock or its reviewed JWT test lock")
 
 
 def notice_license_sources(
@@ -387,6 +388,15 @@ def main() -> int:
             require_exact_parents(ROOT / "Cargo.lock", standalone_only, set())
         require_exact_parents(
             archive / "jacs-surrealdb/Cargo.lock", "rsa", {"jsonwebtoken"}
+        )
+        # The vendored JWT regression suite signs public upstream fixtures.
+        # Its RSA disposition shares the existing owner/deadline, and must
+        # not admit a second parent or broaden into the other vendor lock.
+        require_exact_parents(
+            archive / "jacs-surrealdb/vendor/jsonwebtoken/Cargo.lock", "rsa", {"jsonwebtoken"}
+        )
+        require_exact_parents(
+            archive / "jacs-surrealdb/vendor/object_store/Cargo.lock", "rsa", set()
         )
         require_exact_parents(
             archive / "jacs-surrealdb/Cargo.lock", "atomic-polyfill", {"heapless"}

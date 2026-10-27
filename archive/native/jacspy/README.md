@@ -2,6 +2,8 @@
 
 Cryptographic identity, signing, and verification for AI agents from Python.
 
+This source version requires Python 3.11–3.14, including optional integrations.
+
 > **Published 0.15.0:** `jacs` remains a supported native Python library.
 > Wheel platforms, installed-package checks and provenance are recorded in the
 > [release inventory](../../../docs/release-status.md). Its separate native

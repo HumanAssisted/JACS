@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1069
+Third-party packages: 1058
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -181,7 +181,7 @@ Used by 3 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR MIT
-Used by 89 package(s):
+Used by 81 package(s):
 
   - addr2line 0.25.1 (https://github.com/gimli-rs/addr2line)
   - aes-gcm 0.11.1 (https://github.com/RustCrypto/AEADs)
@@ -190,7 +190,6 @@ Used by 89 package(s):
   - async-task 4.7.1 (https://github.com/smol-rs/async-task)
   - atomic-waker 1.1.2 (https://github.com/smol-rs/atomic-waker)
   - autocfg 1.5.1 (https://github.com/cuviper/autocfg)
-  - base16ct 0.2.0 (https://github.com/RustCrypto/formats/tree/master/base16ct)
   - base16ct 1.0.0 (https://github.com/RustCrypto/formats)
   - base64ct 1.8.3 (https://github.com/RustCrypto/formats)
   - bit-set 0.8.0 (https://github.com/contain-rs/bit-set)
@@ -200,17 +199,14 @@ Used by 89 package(s):
   - const-oid 0.10.2 (https://github.com/RustCrypto/formats)
   - const-oid 0.9.6 (https://github.com/RustCrypto/formats/tree/master/const-oid)
   - criterion 0.6.0 (https://github.com/bheisler/criterion.rs)
-  - crypto-bigint 0.5.5 (https://github.com/RustCrypto/crypto-bigint)
   - crypto-bigint 0.7.10 (https://github.com/RustCrypto/crypto-bigint)
   - ctor 1.0.13 (https://github.com/mmastrac/linktime)
   - ctutils 0.4.6 (https://github.com/RustCrypto/utils)
   - der 0.7.10 (https://github.com/RustCrypto/formats/tree/master/der)
   - der 0.8.2 (https://github.com/RustCrypto/formats)
-  - ecdsa 0.16.9 (https://github.com/RustCrypto/signatures/tree/master/ecdsa)
   - ecdsa 0.17.0 (https://github.com/RustCrypto/signatures)
   - ed25519 2.2.3 (https://github.com/RustCrypto/signatures/tree/master/ed25519)
   - ed25519 3.0.0 (https://github.com/RustCrypto/signatures)
-  - elliptic-curve 0.13.8 (https://github.com/RustCrypto/traits/tree/master/elliptic-curve)
   - elliptic-curve 0.14.1 (https://github.com/RustCrypto/traits)
   - equivalent 1.0.2 (https://github.com/indexmap-rs/equivalent)
   - event-listener 5.4.2 (https://github.com/smol-rs/event-listener)
@@ -230,9 +226,8 @@ Used by 89 package(s):
   - nohash-hasher 0.2.0 (https://github.com/paritytech/nohash-hasher)
   - ntapi 0.4.3 (https://github.com/MSxDOS/ntapi)
   - object 0.37.3 (https://github.com/gimli-rs/object)
-  - p256 0.13.2 (https://github.com/RustCrypto/elliptic-curves/tree/master/p256)
   - p256 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
-  - p384 0.13.1 (https://github.com/RustCrypto/elliptic-curves/tree/master/p384)
+  - p384 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
   - parking 2.2.1 (https://github.com/smol-rs/parking)
   - pem-rfc7468 0.7.0 (https://github.com/RustCrypto/formats/tree/master/pem-rfc7468)
   - pem-rfc7468 1.0.0 (https://github.com/RustCrypto/formats)
@@ -249,13 +244,10 @@ Used by 89 package(s):
   - portable-atomic-util 0.2.7 (https://github.com/taiki-e/portable-atomic-util)
   - portable-atomic-util 0.2.8 (https://github.com/taiki-e/portable-atomic-util)
   - primefield 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
-  - primeorder 0.13.6 (https://github.com/RustCrypto/elliptic-curves/tree/master/primeorder)
   - primeorder 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
   - process-wrap 10.0.0 (https://github.com/watchexec/process-wrap)
-  - rfc6979 0.4.0 (https://github.com/RustCrypto/signatures/tree/master/rfc6979)
   - rfc6979 0.6.0 (https://github.com/RustCrypto/signatures)
   - rustc-hash 2.1.3 (https://github.com/rust-lang/rustc-hash)
-  - sec1 0.7.3 (https://github.com/RustCrypto/formats/tree/master/sec1)
   - sec1 0.8.1 (https://github.com/RustCrypto/formats)
   - secrecy 0.10.3 (https://github.com/iqlusioninc/crates/tree/main/secrecy)
   - serdect 0.4.3 (https://github.com/RustCrypto/formats)
@@ -394,7 +386,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 206 package(s):
+Used by 205 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -524,7 +516,6 @@ Used by 206 package(s):
   - ptr_meta_derive 0.3.2 (https://github.com/rkyv/ptr_meta)
   - pulldown-cmark 0.10.3 (https://github.com/raphlinus/pulldown-cmark)
   - pulldown-cmark-escape 0.10.1 (https://github.com/raphlinus/pulldown-cmark)
-  - quick-xml 0.39.4 (https://github.com/tafia/quick-xml)
   - quick-xml 0.41.0 (https://github.com/tafia/quick-xml)
   - quick_cache 0.6.24 (https://github.com/arthurprs/quick-cache)
   - rancor 0.1.3 (https://github.com/rkyv/rancor)
@@ -1139,7 +1130,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 64 package(s):
+Used by 62 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
   - affinitypool 0.8.0 (https://github.com/surrealdb/affinitypool)
@@ -1153,12 +1144,10 @@ Used by 64 package(s):
   - der-parser 9.0.0 (https://github.com/rusticata/der-parser.git)
   - fallible-iterator 0.3.0 (https://github.com/sfackler/rust-fallible-iterator)
   - fallible-streaming-iterator 0.1.9 (https://github.com/sfackler/fallible-streaming-iterator)
-  - ff 0.13.1 (https://github.com/zkcrypto/ff)
   - ff 0.14.0 (https://github.com/zkcrypto/ff)
   - filetime 0.2.29 (https://github.com/alexcrichton/filetime)
   - foreign-types 0.3.2 (https://github.com/sfackler/foreign-types)
   - foreign-types-shared 0.1.1 (https://github.com/sfackler/foreign-types)
-  - group 0.13.0 (https://github.com/zkcrypto/group)
   - group 0.14.0 (https://github.com/zkcrypto/group)
   - ident_case 1.0.1 (https://github.com/TedDriggs/ident_case)
   - ipconfig 0.3.4 (https://github.com/liranringel/ipconfig)

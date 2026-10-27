@@ -71,3 +71,36 @@ jobs:
         run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-cli-compat --no-default-features --features mcp,agreements --test mcp_mime_demo
       - name: Preserve the native A2A peer authority boundary
         run: cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a --test a2a_v1_peer
+
+  dependency-backports:
+    name: SurrealDB dependency backport regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          workspaces: |
+            archive/native/jacs-surrealdb/vendor/jsonwebtoken
+            archive/native/jacs-surrealdb/vendor/object_store
+      - name: Preserve JWT ECDSA behavior with RustCrypto
+        run: |
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.toml --no-default-features --features rust_crypto,use_pem --test lib ecdsa::
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.toml --no-default-features --features rust_crypto,use_pem --test backport_ecdsa
+      - name: Preserve JWT ECDSA behavior with AWS-LC
+        run: |
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.toml --no-default-features --features aws_lc_rs,use_pem --test lib ecdsa::
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.toml --no-default-features --features aws_lc_rs,use_pem --test backport_ecdsa
+      - name: Compile JWT RustCrypto for WebAssembly
+        run: cargo check --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.toml --target wasm32-unknown-unknown --no-default-features --features rust_crypto --lib
+      - name: Preserve object-store XML parsing and serialization
+        run: |
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/object_store/Cargo.toml --all-features --lib deserde_
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/object_store/Cargo.toml --all-features --lib to_xml
+          cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/object_store/Cargo.toml --all-features --lib test_delegated_key_response

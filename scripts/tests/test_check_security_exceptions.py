@@ -37,12 +37,17 @@ class SecurityExceptionPolicyTests(unittest.TestCase):
     def test_workflow_waiver_is_bound_to_exact_archived_lock(self) -> None:
         valid = "cargo audit --file archive/native/jacs-surrealdb/Cargo.lock \\\n  --ignore RUSTSEC-2023-0071"
         security_exceptions.require_archive_scoped_workflow_ignores(valid)
+        vendor_valid = valid.replace("jacs-surrealdb/Cargo.lock", "jacs-surrealdb/vendor/jsonwebtoken/Cargo.lock")
+        security_exceptions.require_archive_scoped_workflow_ignores(vendor_valid)
         for invalid in (
             valid.replace("archive/native/jacs-surrealdb/Cargo.lock", "Cargo.lock"),
             valid.replace("archive/native/jacs-surrealdb/Cargo.lock", "archive/native/Cargo.lock"),
             "cargo audit --ignore RUSTSEC-2023-0071",
             valid + "; cargo audit --ignore RUSTSEC-2023-0071",
             valid.replace("RUSTSEC-2023-0071", "RUSTSEC-2099-9999"),
+            vendor_valid.replace("vendor/jsonwebtoken", "vendor/object_store"),
+            vendor_valid.replace("vendor/jsonwebtoken", "vendor/another-jwt"),
+            vendor_valid + " --ignore RUSTSEC-2099-9999",
         ):
             with self.subTest(command=invalid):
                 with self.assertRaisesRegex(ValueError, "archived SurrealDB lock"):
