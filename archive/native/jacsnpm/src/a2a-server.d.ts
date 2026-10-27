@@ -10,8 +10,10 @@ export interface A2AServerOptions {
   skills?: A2AServerSkill[];
   /** Must match the public origin already present in the native signed card. */
   url?: string;
-  /** Must match the native algorithm descriptor; discovery JWS is fixed ES256. */
+  /** Must match the native root algorithm descriptor. */
   keyAlgorithm?: string;
+  /** Explicit compatibility selection ('es256'); defaults to the root key. */
+  a2aAlgorithm?: string;
 }
 
 export interface A2AServerClientLike {

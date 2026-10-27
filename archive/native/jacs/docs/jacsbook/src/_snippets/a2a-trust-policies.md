@@ -2,7 +2,7 @@
 |--------|----------|
 | `open` | Accept all agents without verification |
 | `verified` | Require a valid Agent Card JWS against the same-origin JWKS and a durable `jacsId:jacsVersion` key pin (**default**). This is origin/key continuity, not proof of the claimed native JACS identity. |
-| `strict` | Require an explicitly trusted native JACS root. ES256 cards must also carry the fixed-path compatibility binding, whose native signature, identity/version, binding hash, compatibility JWK/kid, scope, expiry, and signed issuance time all verify. Bindings are accepted for at most seven days after `issuedAt` (with five minutes of future clock skew), and the verifier durably pins the latest observed hash, kid, and `issuedAt`; a newer root-signed binding advances the pin and older replays fail closed. |
+| `strict` | Require an explicitly trusted native JACS root. Direct ML-DSA-87 cards must use that exact key. ES256 cards must also carry the fixed-path compatibility binding, whose native signature, identity/version, binding hash, compatibility JWK/kid, scope, expiry, and signed issuance time all verify. Bindings are accepted for at most seven days after `issuedAt` (with five minutes of future clock skew), and the verifier durably pins the latest observed hash, kid, and `issuedAt`; a newer root-signed binding advances the pin and older replays fail closed. |
 
 > **Lifecycle boundary:** The absolute seven-day freshness check also applies
 > on first contact, independently of `expiresAt`. Local discovery generation

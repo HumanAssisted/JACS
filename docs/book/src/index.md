@@ -31,3 +31,6 @@ Rust, Node.js, Python and Go remain supported direct libraries, alongside
 browser and mobile bindings. See [supported packages](packages.md) or choose
 your language in the navigation. Native APIs include capabilities beyond the
 portable MCP tool set; they remain in their own dependency workspace.
+
+For persistent native identity across DID documents and signed Agent Cards, see
+[DID and A2A identity](identity.md), including protocol and release boundaries.

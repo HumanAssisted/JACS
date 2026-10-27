@@ -692,8 +692,8 @@ export class JACSA2AIntegration {
    *
    * - open: allows all agents
    * - verified: requires native JWS/JWKS verification plus durable TOFU pinning
-   * - strict: additionally requires an explicitly trusted native root and its
-   *   valid compatibility binding for the exact ES256 card key
+   * - strict: additionally requires an explicitly trusted native root, with
+   *   a valid compatibility binding when using an ES256 card key
    */
   assessRemoteAgent(agentCardJson: string | Record<string, unknown>): TrustAssessment {
     const cardJson = typeof agentCardJson === 'string'
@@ -895,6 +895,7 @@ export class JACSA2AIntegration {
     jwsSignature: string,
     publicKeyB64: string,
     agentData: AgentData,
+    a2aAlgorithm?: string,
   ): Record<string, Record<string, unknown>> {
     // These parameters remain for source compatibility only. Identity-bearing
     // discovery documents must come from the native generator as one
@@ -914,7 +915,7 @@ export class JACSA2AIntegration {
 
     let nativePairs: unknown;
     try {
-      const nativeJson = nativeGenerate.call((this.client as any)._agent);
+      const nativeJson = nativeGenerate.call((this.client as any)._agent, a2aAlgorithm);
       nativePairs = JSON.parse(nativeJson);
     } catch (error) {
       throw new Error(`Identity-bound A2A discovery generation failed: ${String(error)}`);
@@ -945,7 +946,6 @@ export class JACSA2AIntegration {
     const requiredPaths = [
       '/.well-known/agent-card.json',
       '/.well-known/jwks.json',
-      '/.well-known/jacs-compat-binding.json',
       '/.well-known/jacs-agent.json',
       '/.well-known/jacs-pubkey.json',
       '/.well-known/jacs-extension.json',
@@ -958,6 +958,43 @@ export class JACSA2AIntegration {
     const card = documents['/.well-known/agent-card.json'];
     const metadata = card.metadata as Record<string, unknown> | undefined;
     const signatures = card.signatures as Array<Record<string, unknown>> | undefined;
+    // This is validation of native-generated output, not remote identity
+    // verification. Only the native assessor can establish root trust.
+    if (metadata && Object.prototype.hasOwnProperty.call(metadata, 'jacsRootKid')) {
+      const keys = documents['/.well-known/jwks.json'].keys;
+      const root = documents['/.well-known/jacs-pubkey.json'];
+      const descriptor = documents['/.well-known/jacs-agent.json'];
+      const key = Array.isArray(keys) && keys.length === 1 ? keys[0] : undefined;
+      let header: Record<string, unknown> = {};
+      try {
+        const segments = signatures?.[0]?.jws;
+        if (typeof segments === 'string' && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(segments)) {
+          header = JSON.parse(Buffer.from(segments.split('.')[0], 'base64url').toString('utf8'));
+        }
+      } catch { /* Malformed native output fails below. */ }
+      if (
+        typeof metadata.jacsRootKid !== 'string' || !metadata.jacsRootKid
+        || !Array.isArray(signatures) || signatures.length !== 1
+        || signatures[0]?.keyId !== metadata.jacsRootKid
+        || typeof signatures[0]?.jws !== 'string' || !signatures[0].jws
+        || !key || key.kty !== 'AKP' || key.alg !== 'ML-DSA-87'
+        || key.kid !== metadata.jacsRootKid || key.use !== 'sig'
+        || Object.prototype.hasOwnProperty.call(key, 'priv') || Object.prototype.hasOwnProperty.call(key, 'd')
+        || !header || header.alg !== 'ML-DSA-87' || header.kid !== metadata.jacsRootKid || header.typ !== 'JOSE'
+        || typeof key.pub !== 'string' || !/^[A-Za-z0-9_-]{3456}$/.test(key.pub)
+        || root.algorithm !== 'pq2025'
+        || root.publicKey !== Buffer.from(key.pub, 'base64url').toString('base64')
+        || !metadata.jacsId || !metadata.jacsVersion
+        || root.agentId !== metadata.jacsId || root.agentVersion !== metadata.jacsVersion
+        || descriptor.agentId !== metadata.jacsId || descriptor.agentVersion !== metadata.jacsVersion
+        || documents['/.well-known/jacs-compat-binding.json']
+        || ['jacsCompatKid', 'jacsCompatBindingHash', 'jacsCompatBindingPath']
+          .some((field) => Object.prototype.hasOwnProperty.call(metadata, field))
+      ) {
+        throw new Error('Native A2A discovery has inconsistent ML-DSA-87 root key metadata');
+      }
+      return documents;
+    }
     if (
       !metadata
       || metadata.jacsCompatBindingPath !== '/.well-known/jacs-compat-binding.json'
@@ -982,7 +1019,7 @@ export class JACSA2AIntegration {
       throw new Error("Native A2A JWKS does not contain the card's ES256 signing key");
     }
     const binding = documents['/.well-known/jacs-compat-binding.json'];
-    if (binding.jacsSha256 !== metadata.jacsCompatBindingHash) {
+    if (!binding || binding.jacsSha256 !== metadata.jacsCompatBindingHash) {
       throw new Error('Native A2A compatibility binding hash does not match the Agent Card');
     }
 

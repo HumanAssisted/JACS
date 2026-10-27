@@ -105,10 +105,12 @@ a2a.trustA2AAgent(remoteNativeAgentDocument, remoteNativePublicKeyPem);
 
 With `open`, all agents pass step 3 without identity assurance. With
 `verified`, the Agent Card JWS must verify against the same-origin JWKS and the
-ES256 key must match its durable TOFU pin; this proves origin/key continuity,
+signing key must match its durable TOFU pin; this proves origin/key continuity,
 not native identity. With `strict`, the native root must be explicitly trusted
-and its signed compatibility binding must authorize the exact card key,
-identity, version, scope, and current binding hash.
+and a directly signed card must use that exact root key. ES256 compatibility
+additionally requires a signed binding authorizing the exact card key, identity,
+version, scope, and current binding hash. These policies parse the legacy card
+format; they are not an A2A 1.0 verifier.
 
 ## Next Steps
 

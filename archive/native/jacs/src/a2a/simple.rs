@@ -25,13 +25,13 @@ pub fn export_agent_card(agent: &SimpleAgent) -> Result<crate::a2a::AgentCard, J
 
 /// Generate .well-known documents for A2A discovery.
 ///
-/// Creates the signed Agent Card, ES256 compatibility JWKS, the
-/// native-root-signed compatibility binding, JACS descriptor, public key
-/// document, and extension descriptor. The identity tuple is persisted and is
-/// stable across calls and restarts.
+/// Signs with the persisted ML-DSA-87 root and publishes its AKP JWKS by
+/// default. Explicit `ES256` selects the persisted compatibility key and its
+/// native-root-signed binding. Key identity is stable across calls and restarts;
+/// randomized PQ signatures can differ.
 ///
-/// `a2a_algorithm` is retained for source compatibility. Omit it or pass
-/// `ES256`. The former `ring-Ed25519` choice is rejected because it minted an
+/// Omit `a2a_algorithm` or pass `ML-DSA-87` / `pq2025` for direct root signing.
+/// The former `ring-Ed25519` choice is rejected because it minted an
 /// unrelated ephemeral key and could not prove the card's claimed identity.
 ///
 /// Returns a vector of (path, JSON value) tuples suitable for serving.
@@ -39,15 +39,6 @@ pub fn generate_well_known_documents(
     agent: &SimpleAgent,
     a2a_algorithm: Option<&str>,
 ) -> Result<Vec<(String, Value)>, JacsError> {
-    if let Some(requested) = a2a_algorithm
-        && !requested.eq_ignore_ascii_case("ES256")
-    {
-        return Err(JacsError::ValidationError(format!(
-            "A2A well-known discovery uses the persisted compatibility key and fixed ES256 \
-             algorithm; obsolete or unsupported explicit choice '{requested}' is rejected"
-        )));
-    }
-
     let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),
     })?;
@@ -57,10 +48,15 @@ pub fn generate_well_known_documents(
         .key_directory
         .clone();
 
-    crate::a2a::extension::generate_bound_well_known_documents(&mut inner, &key_directory, None)
-        .map_err(|e| JacsError::Internal {
-            message: format!("Failed to generate well-known documents: {}", e),
-        })
+    crate::a2a::extension::generate_well_known_documents_for_algorithm(
+        &mut inner,
+        &key_directory,
+        None,
+        a2a_algorithm,
+    )
+    .map_err(|e| JacsError::Internal {
+        message: format!("Failed to generate well-known documents: {}", e),
+    })
 }
 
 /// Wrap an A2A artifact with JACS provenance signature.

@@ -1,182 +1,100 @@
-# JACS: MCP and portable signed JSON
+# JACS: signed JSON for agents
 
-JACS creates, unlocks, signs with, verifies, rotates, and transfers encrypted agent keys across Rust, browsers, Android, and iOS. New browser, mobile, CLI, and MCP agents use `pq2025` (ML-DSA-87). Algorithm changes are explicit; no automatic classical fallback occurs.
+JACS gives agents a persistent cryptographic identity to sign JSON and verify
+messages, artifacts and identity updates. New identities use `pq2025`
+(ML-DSA-87); classical algorithms require an explicit choice, with no automatic
+fallback. Keep the same key across sessions; rotate it deliberately with a
+signed identity transition.
 
-**MCP is the primary integration guide.** Start the stdio server from this
-checkout with `cargo run --locked -p jacs-cli -- mcp`, then follow the
-[MCP guide](jacs-mcp/README.md). It starts with verification only; local signing
-requires explicit configuration. The installed CLI exposes the same server as
-`jacs mcp`.
+**Start with MCP.** For direct service integration, jump to
+[DID and post-quantum identity](docs/identity-standards.md),
+[A2A](A2A_QUICKSTART.md), or [Rust, Node.js, Python and Go](docs/libraries.md).
 
-The active workspace has five crates:
+## Quick setup
 
-| Crate | Responsibility |
+Install the CLI and start the local MCP server:
+
+```sh
+cargo install jacs-cli --locked
+jacs mcp
+```
+
+For clients that use `mcpServers`, add:
+
+```json
+{
+  "mcpServers": {
+    "jacs": { "command": "jacs", "args": ["mcp"] }
+  }
+}
+```
+
+The default server exposes `jacs_verify_document` over stdio. Verification uses
+an independently trusted public key; check the returned `valid` field.
+A valid signature establishes integrity under that key, not permission to act.
+See [client setup and local signing](docs/mcp-quickstart.md),
+[MCP use cases](USECASES.md), and the [tool contract](jacs-mcp/README.md).
+
+To create an encrypted identity and sign locally from a terminal:
+
+```sh
+mkdir -m 700 .jacs
+jacs create --output .jacs/agent.json > public-identity.json
+printf '%s' '{"message":"hello"}' | jacs sign --agent .jacs/agent.json --input - > signed.json
+jacs verify --public-identity public-identity.json --input signed.json
+```
+
+The CLI prompts for a password. Local MCP signing is an explicit opt-in:
+`jacs mcp --profile local-sign --agent .jacs/agent.json`.
+Passwords belong in the terminal or the host's secret manager, never command
+arguments or MCP tool parameters. See the [CLI guide](jacs-cli/README.md).
+
+## DID, A2A and direct libraries
+
+[DID and identity standards](docs/identity-standards.md) explains how the native
+signing key appears in `did:wba`, JWK/JWKS and signed Agent Cards, including
+ML-DSA-87 support and explicit ES256 compatibility. These integrations belong
+to the native library workspace; the portable MCP server has no DID resolver
+or A2A transport. The [A2A quickstart](A2A_QUICKSTART.md) covers discovery,
+signed artifacts and the supported protocol surfaces.
+
+| Integration | Install / guide |
 | --- | --- |
-| `jacs-core` | No-I/O signatures, verification, encrypted envelopes, identity updates, staged key rotation, request authentication and transfer validation |
-| `jacs-wasm` | Browser/WASM handles, workers and encrypted-only local storage |
-| `jacs-mobile` | UniFFI bindings and Android/iOS biometric vault/session libraries |
-| `jacs-mcp` | Stdio create/sign/verify/rotate/reencrypt and encrypted import/export; verify-only by default |
-| `jacs-cli` | Thin `jacs` binary, including `jacs mcp` |
+| Native Rust | `jacs = "=0.15.0"`; [library guide](archive/native/jacs/docs/jacsbook/src/rust/library.md) |
+| Node.js | `npm install --save-exact @hai.ai/jacs@0.15.0` |
+| Python | `python -m pip install jacs==0.15.0` |
+| Go | [CGo and native library setup](archive/native/jacsgo/README.md) |
+| Browser | [WASM package and encrypted storage](jacs-wasm/README.md) |
+| Extended CLI / MCP | `cargo install jacs-cli-compat --locked`; executable `jacs-compat`; [profiles](docs/native-mcp.md) |
 
-**Rust, Node.js, Python and Go libraries remain supported and published.** Native
-email, media, A2A, agreements, trust and storage integrations live in the separate
-[`archive/native`](archive/native/README.md) workspace. That directory name
-describes the repository layout; it does not retire those packages. Their
-dependencies stay outside the five portable crates, and their builds, installed
-consumer tests and releases run through the root Makefile and CI. Existing
-licenses remain in force.
+Native packages remain supported and publishable from the separate
+[`archive/native`](archive/native/README.md) workspace. Its directory name does
+not retire those APIs. See [all packages and platform coverage](docs/libraries.md)
+and [examples](examples/README.md).
 
-Start with [MCP use cases](USECASES.md), or choose a
-[direct library integration](docs/libraries.md). The [A2A quickstart](A2A_QUICKSTART.md)
-and [example index](examples/README.md) make the broader native APIs accessible
-from the root again.
+**Published packages and this checkout differ.** Version 0.15.0 has a recorded
+[release inventory](docs/release-status.md). New identity-standards behavior in
+this checkout is source work, not evidence of a new registry release; use the
+[source integration guide](docs/identity-standards.md) for those changes.
 
-## Build and use
+## Build from source
 
 ```sh
 cargo build --locked -p jacs-cli
-cargo test --locked --workspace
-cargo run --locked -p jacs-core --example portable_quickstart
-cargo run --locked -p jacs-cli -- --help
 cargo run --locked -p jacs-cli -- mcp
+cargo run --locked -p jacs-core --example portable_quickstart
+cargo test --locked --workspace
 ```
 
-Published packages may precede this source change. See [release status](docs/release-status.md); these commands build this checkout. The distribution command remains `cargo install jacs-cli`, with one executable named `jacs`.
+The active workspace is `jacs-core`, `jacs-wasm`, `jacs-mobile`, `jacs-mcp` and
+`jacs-cli`. Native Node/Python/Go builds use `make build-jacsnpm`,
+`make build-jacspy` and `make build-jacsgo`; `make test-bindings` tests installed
+consumers. See [developer commands](docs/developer-commands.md),
+[shared Rust cache setup](docs/rust-cache.md), [development](DEVELOPMENT.md)
+and [releases](RELEASING.md).
 
-See the [CLI guide](jacs-cli/README.md), [MCP contract](jacs-mcp/README.md), [browser guide](jacs-wasm/README.md), and [mobile guide](jacs-mobile/README.md). Passwords are obtained from the terminal or a designated environment variable, never command arguments or MCP tool parameters. File custody uses private directories, locked atomic replacement, and encrypted material only; Windows custody refuses operations until an ACL-backed store is provided.
-
-## Native language packages
-
-Node, Python and Go remain available for direct library integration. From the
-repository root, with Rust, Node/npm, Python/maturin and Go installed:
-
-```sh
-make build-jacsnpm       # @hai.ai/jacs npm tarball
-make build-jacspy        # jacs Python wheel
-make build-jacsgo        # Go native library and checksum
-make test-bindings       # Build all three and test fresh installed consumers
-```
-
-Candidates are written to `target/native-bindings/artifacts`. Builds share an
-isolated native Cargo target and run sequentially. Set `JACS_NATIVE_TARGET_DIR`
-and `JACS_NATIVE_OUTPUT_DIR` to place outputs elsewhere. These commands preserve
-the native APIs, including the Node client and signing-input exports. They do
-not publish packages.
-
-All release packages follow the coordinated 0.15 version. `make versions` checks
-all 17 Rust crates, both npm packages, Python, Go, mobile metadata and contracts.
-The compatibility MCP and CLI crates publish as `jacs-mcp-compat` and
-`jacs-cli-compat`; the portable `jacs mcp` remains the primary documented entry.
-See [releasing](RELEASING.md) for registry setup and the release commands.
-
-For the extended agreement and media server, see [extended CLI and MCP profiles](docs/native-mcp.md).
-The [developer command reference](docs/developer-commands.md) covers restored
-browser, documentation, native test and Homebrew entry points. `make build-jacsbook`
-builds the MCP use-case guide, direct-library navigation and native API reference.
-
-## Shared Rust cache for local worktrees
-
-JACS, haiai, musubi and hai can use one [kache](https://github.com/kunobi-ninja/kache)
-store while keeping separate Cargo outputs for each worktree. This is optional
-local development tooling; normal builds do not require kache.
-
-**Run setup once per user and Cargo home on each machine**, from the JACS root:
-
-```sh
-make rust-cache-preview  # Inspect paths and wrapper conflicts; no writes
-make rust-cache-setup    # Install/configure pinned kache 0.23.1 once
-make rust-cache-smoke    # Small offline check with disposable source/target dirs
-make rust-cache-status   # Shared store usage and hit/miss counters
-```
-
-If you already configured it from hai, JACS uses that same user configuration
-and cache; no second install is needed. Existing and future worktrees inherit
-it, including in new shells and after reboot. A different machine, user,
-container or `CARGO_HOME` needs its own setup unless it shares the configured
-Cargo home and compatible binary. Keep custom home paths absolute and stable.
-
-Setup requires Python 3.11+, curl, Cargo and `$CARGO_HOME/bin` (normally
-`~/.cargo/bin`) on PATH. It supports macOS/Linux ARM64 and x86_64, verifies the
-release checksum before execution, and refuses conflicting Rust wrappers or a
-different installed kache version. Cargo `include` configurations require manual
-review; `KACHE_CONFIG` must be unset, and `XDG_CONFIG_HOME` must be unset or an
-absolute path. An empty `CARGO_HOME` uses Cargo's default.
-
-Setup stages and validates the user Cargo edit before publishing it atomically
-with an exact backup. Existing profiles, patches, compiler settings, symlinks
-and cache configuration are preserved; repeating setup does not duplicate
-entries. Avoid editing Cargo configuration concurrently. Unusual TOML layouts
-unsupported by the pinned initializer fail without publishing an edit. Setup
-does not edit shell startup files or install a login service.
-
-A new cache configuration uses local-only storage, a **10 GiB retention target**
-and disabled adaptive incremental storage. New Cargo policy sets
-`KACHE_BUILD_SCRIPT_CACHE=0`, preserving normal Cargo build-script execution;
-existing explicit policies are preserved and reported. Native C/C++ compiler
-settings are left unchanged. The default store is `~/Library/Caches/kache` on
-macOS or `$XDG_CACHE_HOME/kache` / `~/.cache/kache` on Linux. Keep cache and
-worktrees on the same filesystem for copy-on-write restores; leave unrestricted
-shared hardlink restores off for reused targets.
-
-Use the normal build commands after setup. Run `kache doctor` from the affected
-Cargo directory when diagnosing overrides or misses. Environment Rust wrappers,
-repo Cargo settings, another Cargo home or `.kache.toml` can override user
-defaults. Keep **both target and intermediate build directories separate** for
-concurrent worktrees; check inherited `CARGO_TARGET_DIR`,
-`CARGO_BUILD_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR`. Do not copy local Cargo
-configuration that points at another worktree or commit absolute paths/a required
-wrapper. Toolchain, profile, feature and dependency differences can prevent hits.
-
-**Disk use and cleanup.** Enabling the cache does not import or deduplicate old
-outputs. It fills on subsequent compilations. The retention target is not a disk
-quota: live targets can retain shared blocks and other outputs occupy space.
-Check `df -h` before substantial builds; `du` can count APFS shared blocks more
-than once. Inspect `kache report --last-build` for hits and reflink/copy bytes.
-Use `--root` to select a specific recorded build root during concurrent work.
-Preview observed stale targets with `kache clean --tracked --stale 14d --dry-run`;
-for older targets, use `kache clean --dry-run` from a specific checkout and review
-every path. Stop builds and clean only selected disposable targets, then run
-`kache gc`. Setup and smoke never delete existing targets. Do not automate a broad
-cleanup while other worktrees are active.
-
-**Verification and recovery.** `make rust-cache-smoke` builds a dependency-free
-probe in separate directories with a private cache, checks warm reuse and
-changed-source failure, then tests bypass and removes its temporary outputs.
-It does not qualify JACS crypto, native, mobile/WASM or release workloads.
-Proc macros with undeclared file/environment inputs need workload-specific
-checks or bypass rules. Disabling incremental storage can slow repeated edits;
-different filesystems may require copies. Keep release validation separate.
-
-`KACHE_DISABLED=1` bypasses caching for compilations Cargo schedules; it does not
-invalidate Cargo-fresh outputs and still strips incremental flags. For fully
-unwrapped diagnosis, use fresh disposable target and intermediate directories:
-
-```sh
-rust_cache_trial="$(mktemp -d)"
-RUSTC_WRAPPER='' RUSTC_WORKSPACE_WRAPPER='' \
-  CARGO_BUILD_BUILD_DIR="$rust_cache_trial/target" \
-  cargo build --locked --target-dir "$rust_cache_trial/target" -p jacs-cli
-```
-
-Review/remove that directory afterward. To roll back setup, restore the printed
-Cargo backup if no later edits need preserving; otherwise remove only the
-`build.rustc-wrapper` and `env.KACHE_BUILD_SCRIPT_CACHE` entries setup added.
-Stop the daemon with `kache daemon stop`. If older builds used build-script run
-caching, keep the binary until their launchers are rebuilt unwrapped or cleaned.
-A failed setup leaves the Cargo config unchanged; a downloaded binary or new
-cache config may remain for retry. Installer regressions run through `make check`
-or `python3 -m unittest discover -s scripts/tests -p 'test_rust_cache.py'`.
-
-## Biometric custody
-
-Android protects a random wrapping secret with a per-use, enrollment-bound, strong-biometric Keystore key. iOS stores the wrapping secret and encrypted PQ material as one biometric-only, device-local Keychain record. The platform prompt releases access; the Rust core performs PQ signatures in process. Session wrappers reject cancelled or late unlock results and clear keys when backgrounded or locked. They do not silently fall back to a device passcode.
-
-This is software PQ signing with hardware-backed custody where supported. It is not a claim that Secure Enclave or Android Keystore signs ML-DSA. ES256 hardware callbacks remain an explicit compatibility option. See [Android](jacs-mobile/platforms/android/README.md) and [iOS](jacs-mobile/platforms/ios/README.md) for lifecycle, enrollment, recovery and device-test requirements.
-
-Encrypted transfers bind the expected identity and registered public key, validate the source material, and immediately rewrap it for destination storage. A generated six-word transfer code has 66 bits of entropy; it is not a 128-bit PQ confidentiality claim. No relay receives the unlocking code. Production relay behavior belongs to the HAI API, outside this public primitive.
-
-## Scope and verification
-
-Actual HAI API endpoints and mobile app integration are deferred. Library CI tests portable PQ behavior, actual browser packages, Android AAR/iOS XCFramework assembly, lifecycle races, and simulator/emulator Keychain/Keystore policies. Real-device biometric prompts, enrollment changes, secure hardware behavior and app lifecycle integration still require physical-device acceptance testing.
-
-Run `make check` for the active boundary, license and source policy checks. Release workflows retain audits, exact candidate checksums, SBOMs and provenance verification. See [development](DEVELOPMENT.md), [release process](RELEASING.md), and [security](SECURITY.md).
+Private keys remain encrypted at rest and software-held while signing.
+Hardware-backed custody does not imply hardware ML-DSA signing. Native private
+file operations enforce Unix owner-only permissions and fail closed where the
+required ACL adapter is unavailable. See [security](SECURITY.md) and the
+[platform custody guide](jacs-mobile/README.md).

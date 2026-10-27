@@ -6,6 +6,7 @@ The documentation source remains with the native workspace. Some chapters
 retain historical installation/version text: use [current package guidance](packages.md)
 and the `jacs-compat` executable for extended CLI commands.
 
+Start with [DID and A2A identity](identity.md) for current source behavior.
 Jump to [A2A](native/integrations/a2a.html),
 [Agreement v2](native/guides/agreement-v2.html),
 [attestations](native/guides/attestation-tutorial.html),

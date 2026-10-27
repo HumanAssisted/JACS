@@ -35,7 +35,7 @@ pub fn fixture(url: &str) -> Result<Value> {
     )?;
     let key_dir = keys.to_str().ok_or("key path")?;
     let projection = v1::project_agent_card(&core, url)?;
-    let card = v1::export_agent_card(&mut core, key_dir, projection.clone())?;
+    let card = v1::export_agent_card_es256(&mut core, key_dir, projection.clone())?;
     let binding = exports::export_compatibility_key_binding(&mut core, key_dir)?;
     let jwk = exports::export_compatibility_jwks(&mut core, key_dir)?["keys"][0].clone();
     let root = sender.get_public_key()?;
@@ -50,7 +50,7 @@ pub fn fixture(url: &str) -> Result<Value> {
     absent.capabilities.streaming = None;
     absent.capabilities.push_notifications = None;
     absent.capabilities.extended_agent_card = None;
-    vectors.push(json!({"name": "absent-optionals", "card": v1::export_agent_card(&mut core, key_dir, absent)?}));
+    vectors.push(json!({"name": "absent-optionals", "card": v1::export_agent_card_es256(&mut core, key_dir, absent)?}));
     let mut defaults = projection.clone();
     defaults.capabilities.extensions.push(Extension {
         uri: "urn:example.test:canonicalization-vector".into(),
@@ -59,7 +59,7 @@ pub fn fixture(url: &str) -> Result<Value> {
         params: json!({"unicode": "café 雪 🦀", "decimal": 1.25, "whole": 1.0, "zero": 0,
             "small": 0.0000001, "false": false, "items": ["retained", 2]}),
     });
-    vectors.push(json!({"name": "numeric-unicode-struct", "card": v1::export_agent_card(&mut core, key_dir, defaults)?}));
+    vectors.push(json!({"name": "numeric-unicode-struct", "card": v1::export_agent_card_es256(&mut core, key_dir, defaults)?}));
 
     let mut rejected_profiles = Vec::new();
     for name in [
@@ -90,7 +90,7 @@ pub fn fixture(url: &str) -> Result<Value> {
                 },
             }),
         }
-        if v1::export_agent_card(&mut core, key_dir, candidate).is_ok() {
+        if v1::export_agent_card_es256(&mut core, key_dir, candidate).is_ok() {
             return Err("unsupported profile was accepted".into());
         }
         rejected_profiles.push(name);

@@ -9,9 +9,11 @@ Implements A2A protocol v0.4.0 (September 2025).
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
+import re
 import warnings
 from typing import Dict, List, Optional, Any, TYPE_CHECKING, Set
 from dataclasses import dataclass
@@ -1036,7 +1038,8 @@ class JACSA2AIntegration:
         agent_card: A2AAgentCard,
         jws_signature: str,
         public_key_b64: str,
-        agent_data: Dict[str, Any]
+        agent_data: Dict[str, Any],
+        a2a_algorithm: Optional[str] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Generate identity-bound .well-known documents for A2A integration.
 
@@ -1047,6 +1050,8 @@ class JACSA2AIntegration:
                 an identity signature.
             public_key_b64: Deprecated compatibility input.
             agent_data: Deprecated compatibility input.
+            a2a_algorithm: Explicit compatibility selection (``es256``);
+                defaults to signing directly with the native root key.
 
         Returns:
             Dictionary mapping paths to document contents
@@ -1061,7 +1066,7 @@ class JACSA2AIntegration:
                 "legacy wrapper-generated keys and signatures are not trusted"
             )
         try:
-            native_pairs = json.loads(native_generate())
+            native_pairs = json.loads(native_generate(a2a_algorithm) if a2a_algorithm is not None else native_generate())
         except Exception as exc:
             raise RuntimeError(
                 f"Identity-bound A2A discovery generation failed: {exc}"
@@ -1085,7 +1090,6 @@ class JACSA2AIntegration:
         required_paths = {
             "/.well-known/agent-card.json",
             "/.well-known/jwks.json",
-            "/.well-known/jacs-compat-binding.json",
             "/.well-known/jacs-agent.json",
             "/.well-known/jacs-pubkey.json",
             "/.well-known/jacs-extension.json",
@@ -1099,6 +1103,48 @@ class JACSA2AIntegration:
         card = documents["/.well-known/agent-card.json"]
         metadata = card.get("metadata")
         signatures = card.get("signatures")
+        # Validate native-generated output only. Remote identity trust remains
+        # the native assessor's responsibility, never the embedded key's.
+        if isinstance(metadata, dict) and "jacsRootKid" in metadata:
+            keys = documents["/.well-known/jwks.json"].get("keys")
+            key = keys[0] if isinstance(keys, list) and len(keys) == 1 else None
+            root = documents["/.well-known/jacs-pubkey.json"]
+            descriptor = documents["/.well-known/jacs-agent.json"]
+            header = None
+            try:
+                compact = signatures[0]["jws"]
+                if isinstance(compact, str) and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", compact):
+                    encoded = compact.split(".")[0]
+                    header = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+            except (TypeError, KeyError, IndexError, ValueError):
+                pass  # Malformed native output fails below.
+            if (
+                not isinstance(metadata.get("jacsRootKid"), str)
+                or not metadata["jacsRootKid"]
+                or not isinstance(signatures, list) or len(signatures) != 1
+                or not isinstance(signatures[0], dict)
+                or signatures[0].get("keyId") != metadata["jacsRootKid"]
+                or not isinstance(signatures[0].get("jws"), str) or not signatures[0]["jws"]
+                or not isinstance(key, dict)
+                or key.get("kty") != "AKP" or key.get("alg") != "ML-DSA-87"
+                or key.get("kid") != metadata["jacsRootKid"] or key.get("use") != "sig"
+                or "priv" in key or "d" in key
+                or not isinstance(header, dict) or header.get("alg") != "ML-DSA-87"
+                or header.get("kid") != metadata["jacsRootKid"] or header.get("typ") != "JOSE"
+                or not isinstance(key.get("pub"), str)
+                or re.fullmatch(r"[A-Za-z0-9_-]{3456}", key["pub"]) is None
+                or root.get("algorithm") != "pq2025"
+                or root.get("publicKey") != base64.b64encode(base64.urlsafe_b64decode(key["pub"])).decode("ascii")
+                or not metadata.get("jacsId") or not metadata.get("jacsVersion")
+                or root.get("agentId") != metadata["jacsId"]
+                or root.get("agentVersion") != metadata["jacsVersion"]
+                or descriptor.get("agentId") != metadata["jacsId"]
+                or descriptor.get("agentVersion") != metadata["jacsVersion"]
+                or "/.well-known/jacs-compat-binding.json" in documents
+                or any(field in metadata for field in ("jacsCompatKid", "jacsCompatBindingHash", "jacsCompatBindingPath"))
+            ):
+                raise RuntimeError("Native A2A discovery has inconsistent ML-DSA-87 root key metadata")
+            return documents
         if (
             not isinstance(metadata, dict)
             or metadata.get("jacsCompatBindingPath")
@@ -1123,8 +1169,8 @@ class JACSA2AIntegration:
             )
         ):
             raise RuntimeError("Native A2A JWKS does not contain the card's ES256 signing key")
-        binding = documents["/.well-known/jacs-compat-binding.json"]
-        if binding.get("jacsSha256") != metadata.get("jacsCompatBindingHash"):
+        binding = documents.get("/.well-known/jacs-compat-binding.json")
+        if binding is None or binding.get("jacsSha256") != metadata.get("jacsCompatBindingHash"):
             raise RuntimeError("Native A2A compatibility binding hash does not match the Agent Card")
 
         return documents

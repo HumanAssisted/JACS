@@ -55,7 +55,8 @@
   },
   "/agent/22dbef6c-b85e-40e5-b82e-f95a4259339a/did.json": {
     "@context": [
-      "https://www.w3.org/ns/did/v1"
+      "https://www.w3.org/ns/did/v1",
+      "https://www.w3.org/ns/cid/v1"
     ],
     "assertionMethod": [
       "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129"
@@ -90,7 +91,7 @@
           "kty": "OKP",
           "x": "GRTtI-QA4HmfJyK_rOVhjdq3tmLR_93_w_xasZwoqyY"
         },
-        "type": "JsonWebKey2020"
+        "type": "JsonWebKey"
       }
     ]
   }

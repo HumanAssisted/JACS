@@ -1,8 +1,9 @@
-//! Opt-in, typed A2A 1.0 card projection for the finite report example.
+//! Opt-in, typed A2A 1.0 card projection for the finite report profile.
 //!
 //! Legacy cards/codecs and discovery defaults are unchanged. This is not a
 //! production host or a v1 implementation of the legacy A2ATrustPolicy parser.
 
+use crate::agent::boilerplate::BoilerPlate;
 use crate::{agent::Agent, error::JacsError, public_agent::PublicAgentProjection};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -84,19 +85,7 @@ fn invalid(message: &str) -> JacsError {
 /// The caller hosts the declared report skill; projection itself hosts nothing.
 pub fn project_agent_card(agent: &Agent, messaging_url: &str) -> Result<Card, JacsError> {
     let projection = PublicAgentProjection::from_agent(agent)?;
-    let url = url::Url::parse(messaging_url).map_err(|_| invalid("invalid A2A messaging URL"))?;
-    if !(url.scheme() == "https"
-        || (url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "[::1]"))))
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(invalid(
-            "A2A messaging URL must be explicit HTTP(S), without credentials/query/fragment",
-        ));
-    }
+    validate_messaging_url(messaging_url)?;
     Ok(Card {
         name: projection.name,
         description: projection.description,
@@ -129,9 +118,68 @@ pub fn project_agent_card(agent: &Agent, messaging_url: &str) -> Result<Card, Ja
     })
 }
 
-/// Sign a typed v1 card using existing compatibility custody and card scope.
-/// No new public binding method or generic JWS signing API is introduced.
+fn validate_messaging_url(messaging_url: &str) -> Result<(), JacsError> {
+    let url = url::Url::parse(messaging_url).map_err(|_| invalid("invalid A2A messaging URL"))?;
+    if !(url.scheme() == "https"
+        || (url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "[::1]"))))
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(invalid(
+            "A2A messaging URL must be explicit HTTP(S), without credentials/query/fragment",
+        ));
+    }
+    Ok(())
+}
+
+/// Sign a typed v1 card directly with the loaded ML-DSA-87 root. The key
+/// directory argument is retained for source compatibility; no bridge is made.
+/// This narrow finite profile emits A2A's detached JWS signature object.
 pub fn export_agent_card(
+    agent: &mut Agent,
+    _key_directory: &str,
+    mut card: Card,
+) -> Result<Value, JacsError> {
+    use crate::crypt::KeyManager;
+    use base64::{
+        Engine as _,
+        engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    };
+    if agent.get_key_algorithm().map(String::as_str) != Some("pq2025") {
+        return Err(invalid(
+            "direct v1 card requires a loaded pq2025 root; explicitly select ES256 compatibility if required",
+        ));
+    }
+    let key = agent.get_public_key()?.clone();
+    let jwk = jacs_core::jose::mldsa87_public_jwk(&key)?;
+    let kid = jwk["kid"]
+        .as_str()
+        .ok_or_else(|| invalid("missing root kid"))?;
+    let projection = PublicAgentProjection::from_agent(agent)?;
+    card.bind_parameters(
+        agent,
+        json!({
+            "jacsId": projection.jacs_id, "jacsVersion": projection.jacs_version,
+            "jacsRootKid": kid,
+        }),
+    )?;
+    let mut wire = card.signing_value()?;
+    let canonical = jacs_core::canonical::canonicalize_json_try(&wire)?;
+    let input = jacs_core::jose::mldsa87_jws_signing_input(canonical.as_bytes(), kid)?;
+    let signature = URL_SAFE_NO_PAD.encode(STANDARD.decode(agent.sign_string(&input)?)?);
+    jacs_core::jose::verify_mldsa87_jws(&format!("{input}.{signature}"), &key, Some(kid))?;
+    let (protected, _) = input
+        .split_once('.')
+        .ok_or_else(|| invalid("invalid JWS input"))?;
+    wire["signatures"] = json!([{ "protected": protected, "signature": signature }]);
+    Ok(wire)
+}
+
+/// Explicit ES256 compatibility export for peers without ML-DSA-87 support.
+pub fn export_agent_card_es256(
     agent: &mut Agent,
     key_directory: &str,
     card: Card,
@@ -142,9 +190,37 @@ pub fn export_agent_card(
 impl Card {
     pub(crate) fn bind(&mut self, agent: &Agent, kid: &str, hash: &str) -> Result<(), JacsError> {
         let projection = PublicAgentProjection::from_agent(agent)?;
+        self.bind_parameters(
+            agent,
+            json!({
+                "jacsId": projection.jacs_id, "jacsVersion": projection.jacs_version,
+                "jacsCompatKid": kid, "jacsCompatBindingHash": hash,
+                "jacsCompatBindingPath": A2A_COMPAT_BINDING_PATH,
+            }),
+        )
+    }
+
+    fn bind_parameters(&mut self, agent: &Agent, parameters: Value) -> Result<(), JacsError> {
+        let projection = PublicAgentProjection::from_agent(agent)?;
+        self.validate_profile(&projection.jacs_version, &json!({}))?;
+        let entry = self
+            .capabilities
+            .extensions
+            .iter_mut()
+            .find(|e| e.uri == JACS_EXTENSION_URI)
+            .ok_or_else(|| invalid("missing JACS provenance extension"))?;
+        entry.params = parameters;
+        Ok(())
+    }
+
+    fn validate_profile(
+        &self,
+        expected_version: &str,
+        expected_params: &Value,
+    ) -> Result<(), JacsError> {
         if self.name.is_empty()
             || self.description.is_empty()
-            || self.version != projection.jacs_version
+            || self.version != expected_version
             || self.supported_interfaces.len() != 1
             || self.skills.is_empty()
             || self.default_input_modes.is_empty()
@@ -165,7 +241,7 @@ impl Card {
             return Err(invalid("missing or inconsistent required v1 card field"));
         }
         let interface = &self.supported_interfaces[0];
-        project_agent_card(agent, &interface.url)?; // Reuse explicit URL validation.
+        validate_messaging_url(&interface.url)?;
         if interface.protocol_binding != "JSONRPC"
             || interface.protocol_version != "1.0"
             || [
@@ -187,9 +263,9 @@ impl Card {
                 ));
             }
             if extension.uri == JACS_EXTENSION_URI {
-                if extension.params != json!({}) {
+                if &extension.params != expected_params {
                     return Err(invalid(
-                        "JACS binding parameters are generated, not caller supplied",
+                        "JACS identity parameters do not match the expected profile",
                     ));
                 }
             } else {
@@ -199,22 +275,9 @@ impl Card {
                 validate_params(&extension.params, 0)?;
             }
         }
-        let mut entries = self
-            .capabilities
-            .extensions
-            .iter_mut()
-            .filter(|e| e.uri == JACS_EXTENSION_URI);
-        let entry = entries
-            .next()
-            .ok_or_else(|| invalid("missing JACS provenance extension"))?;
-        if entries.next().is_some() {
-            return Err(invalid("duplicate JACS provenance extension"));
+        if !uris.contains(&JACS_EXTENSION_URI.to_owned()) {
+            return Err(invalid("missing JACS provenance extension"));
         }
-        entry.params = json!({
-            "jacsId": projection.jacs_id, "jacsVersion": projection.jacs_version,
-            "jacsCompatKid": kid, "jacsCompatBindingHash": hash,
-            "jacsCompatBindingPath": A2A_COMPAT_BINDING_PATH,
-        });
         Ok(())
     }
 
@@ -224,6 +287,82 @@ impl Card {
         // accommodate the pinned peer's recursive-empty canonicalization bug.
         Ok(serde_json::to_value(self)?)
     }
+}
+
+/// Verify this finite A2A v1 profile against an explicitly trusted native root
+/// and identity/version. A self-published JWKS alone is not a trust input.
+pub fn verify_root_card(
+    card: &Value,
+    jwk: &Value,
+    expected_id: &str,
+    expected_version: &str,
+    trusted_root: &[u8],
+) -> Result<(), JacsError> {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let key = jacs_core::jose::mldsa87_public_key(jwk)?;
+    let expected_jwk = jacs_core::jose::mldsa87_public_jwk(&key)?;
+    if key != trusted_root || jwk["kid"] != expected_jwk["kid"] {
+        return Err(invalid(
+            "v1 card key does not match the trusted root and thumbprint",
+        ));
+    }
+    let kid = expected_jwk["kid"]
+        .as_str()
+        .ok_or_else(|| invalid("missing root kid"))?;
+    let signatures = card["signatures"]
+        .as_array()
+        .filter(|s| s.len() == 1)
+        .ok_or_else(|| invalid("expected one v1 card signature"))?;
+    let sig = signatures[0]
+        .as_object()
+        .filter(|s| s.len() == 2)
+        .ok_or_else(|| invalid("invalid v1 signature object"))?;
+    let protected = sig
+        .get("protected")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("missing protected header"))?;
+    let signature = sig
+        .get("signature")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("missing signature"))?;
+    let mut unsigned = card.clone();
+    unsigned
+        .as_object_mut()
+        .ok_or_else(|| invalid("card must be an object"))?
+        .remove("signatures");
+    // Reject unknown fields and noncanonical presence representations rather
+    // than silently removing anything before verification.
+    let typed: Card = serde_json::from_value(unsigned.clone())?;
+    if typed.signing_value()? != unsigned || typed.version != expected_version {
+        return Err(invalid("unsupported v1 card profile or identity version"));
+    }
+    let entries: Vec<_> = typed
+        .capabilities
+        .extensions
+        .iter()
+        .filter(|e| e.uri == JACS_EXTENSION_URI)
+        .collect();
+    if entries.len() != 1
+        || entries[0].params
+            != json!({
+                "jacsId": expected_id, "jacsVersion": expected_version, "jacsRootKid": kid,
+            })
+    {
+        return Err(invalid("v1 root identity reference mismatch"));
+    }
+    typed.validate_profile(
+        expected_version,
+        &json!({
+            "jacsId": expected_id, "jacsVersion": expected_version, "jacsRootKid": kid,
+        }),
+    )?;
+    let payload = jacs_core::canonical::canonicalize_json_try(&unsigned)?;
+    let compact = format!(
+        "{protected}.{}.{signature}",
+        URL_SAFE_NO_PAD.encode(payload)
+    );
+    jacs_core::jose::verify_mldsa87_jws(&compact, &key, Some(kid))?;
+    Ok(())
 }
 
 // Keep the finite profile inside both protobuf Struct's numeric range and the

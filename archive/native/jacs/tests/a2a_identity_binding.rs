@@ -1,13 +1,14 @@
 //! Regression tests for the A2A discovery identity lifecycle.
 //!
-//! The discovery card and JWKS are identity artifacts, not per-request
-//! credentials: every generator must reuse the persisted ES256 compatibility
-//! key and publish the native-root-signed binding that authorizes it.
+//! Default discovery reuses the native ML-DSA-87 root directly. Explicit ES256
+//! compatibility reuses its persisted key and root-signed authorization binding.
+//! Neither path creates unrelated per-request signing identities.
 
 #![cfg(feature = "a2a")]
 
 mod utils;
 
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs::{agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME, agent::document::DocumentTraits};
 use serde_json::Value;
@@ -17,6 +18,76 @@ use std::sync::Mutex;
 
 const TEST_PASSWORD: &str = "A2aIdentityBindingTest!2026";
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn default_discovery_uses_persisted_pq_root_without_compatibility_artifacts() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _temp, _guard) = setup_agent("direct-pq-root");
+    let first =
+        documents_by_path(jacs::a2a::simple::generate_well_known_documents(&agent, None).unwrap());
+    let reloaded = SimpleAgent::load(Some("./jacs.config.json"), Some(true)).unwrap();
+    let second = documents_by_path(
+        jacs::a2a::simple::generate_well_known_documents(&reloaded, Some("ML-DSA-87")).unwrap(),
+    );
+    assert_eq!(first.len(), 5);
+    assert_eq!(
+        first["/.well-known/jwks.json"],
+        second["/.well-known/jwks.json"]
+    );
+    assert!(!first.contains_key("/.well-known/jacs-compat-binding.json"));
+    assert!(!std::path::Path::new("./jacs_keys/jacs.compat-binding.json").exists());
+    let core = load_core_agent();
+    let jwk = &first["/.well-known/jwks.json"]["keys"][0];
+    let key = jacs_core::jose::mldsa87_public_key(jwk).unwrap();
+    assert_eq!(key, core.get_public_key().unwrap());
+    for documents in [&first, &second] {
+        let card: jacs::a2a::AgentCard =
+            serde_json::from_value(documents["/.well-known/agent-card.json"].clone()).unwrap();
+        assert_eq!(card.metadata.as_ref().unwrap()["jacsRootKid"], jwk["kid"]);
+        assert!(jacs::a2a::extension::verify_agent_card_jws(&card, &key, "pq2025").unwrap());
+        let mut tampered = card.clone();
+        tampered.name.push_str(" changed");
+        assert!(jacs::a2a::extension::verify_agent_card_jws(&tampered, &key, "pq2025").is_err());
+        assert!(jacs::a2a::extension::verify_agent_card_jws(&card, &key, "ES256").is_err());
+    }
+    // DID and A2A expose exactly the same native identity key and thumbprint.
+    let did = jacs::w3c::did_wba::export_did_document(&core, Default::default()).unwrap();
+    assert_eq!(did["verificationMethod"][0]["type"], "JsonWebKey");
+    assert_eq!(did["verificationMethod"][0]["publicKeyJwk"], *jwk);
+    assert!(
+        did["@context"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("https://www.w3.org/ns/cid/v1"))
+    );
+    // A corrupt configured algorithm must not mint a compatibility identity.
+    let mut mismatched = load_core_agent();
+    mismatched.set_keys_raw(vec![], vec![], "ring-Ed25519");
+    assert!(
+        jacs::a2a::extension::generate_well_known_documents_for_algorithm(
+            &mut mismatched,
+            "./jacs_keys",
+            None,
+            None
+        )
+        .is_err()
+    );
+    assert!(!std::path::Path::new("./jacs_keys/jacs.compat-binding.json").exists());
+    let mut corrupt = load_core_agent();
+    corrupt.set_keys_raw(vec![], key, "pq2025");
+    assert!(
+        jacs::a2a::extension::generate_well_known_documents_for_algorithm(
+            &mut corrupt,
+            "./jacs_keys",
+            None,
+            None
+        )
+        .is_err(),
+        "root signing/decryption failure must fail rather than use an ES256 bridge"
+    );
+    assert!(!std::path::Path::new("./jacs_keys/jacs.compat-binding.json").exists());
+}
 
 struct CwdGuard(std::path::PathBuf);
 
@@ -79,7 +150,7 @@ fn well_known_card_jwks_and_binding_survive_repeated_calls_and_restart() {
     let export = |agent: SimpleAgent, barrier: std::sync::Arc<std::sync::Barrier>| {
         std::thread::spawn(move || {
             barrier.wait();
-            let generated = jacs::a2a::simple::generate_well_known_documents(&agent, None)
+            let generated = jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
                 .unwrap_or_else(|error| {
                     let cwd = std::env::current_dir();
                     let key_dir = std::fs::canonicalize("./jacs_keys");
@@ -116,7 +187,7 @@ fn well_known_card_jwks_and_binding_survive_repeated_calls_and_restart() {
     drop(replica);
 
     let second = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("second discovery export"),
     );
 
@@ -162,7 +233,7 @@ fn well_known_card_jwks_and_binding_survive_repeated_calls_and_restart() {
     let reloaded = SimpleAgent::load(Some("./jacs.config.json"), Some(true))
         .expect("reload the same persisted identity");
     let after_restart = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&reloaded, None)
+        jacs::a2a::simple::generate_well_known_documents(&reloaded, Some("ES256"))
             .expect("discovery export after restart"),
     );
     assert_eq!(
@@ -190,7 +261,7 @@ fn well_known_generator_rejects_obsolete_algorithm_override() {
     let message = error.to_string();
     assert!(message.contains("ES256"), "unexpected error: {message}");
     assert!(
-        message.contains("persisted compatibility key"),
+        message.contains("explicit ES256 compatibility"),
         "unexpected error: {message}"
     );
 }
@@ -205,7 +276,7 @@ fn crashed_issuer_lock_file_does_not_permanently_block_binding_generation() {
         .expect("create stale persistent lock file");
 
     let documents = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("an unlocked persistent lock file must be reusable after process death"),
     );
     assert!(documents.contains_key("/.well-known/jacs-compat-binding.json"));
@@ -246,7 +317,7 @@ fn issuer_lock_rejects_symlink_and_hardlink_targets_without_touching_them() {
         .expect("set symlink target mode");
     symlink(&symlink_target, lock_path).expect("install malicious issuance-lock symlink");
     assert!(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None).is_err(),
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256")).is_err(),
         "binding issuance must reject a symlink lock path"
     );
     assert_eq!(
@@ -281,7 +352,7 @@ fn issuer_lock_rejects_symlink_and_hardlink_targets_without_touching_them() {
         2
     );
     assert!(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None).is_err(),
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256")).is_err(),
         "binding issuance must reject a multiply-linked lock inode"
     );
     assert_eq!(
@@ -314,7 +385,7 @@ fn well_known_generation_reissues_an_authentic_stale_version_binding() {
         )
         .expect("issue explicit identity policy before version update");
     let before = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("generate initial discovery"),
     );
     let old_binding = before["/.well-known/jacs-compat-binding.json"].clone();
@@ -337,7 +408,7 @@ fn well_known_generation_reissues_an_authentic_stale_version_binding() {
     );
 
     let after = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("generation safely reissues the authentic stale binding"),
     );
     let card = &after["/.well-known/agent-card.json"];
@@ -370,7 +441,7 @@ fn well_known_generation_refreshes_binding_before_strict_max_age() {
     let _lock = TEST_MUTEX.lock().unwrap_or_else(|error| error.into_inner());
     let (agent, _temp, _guard) = setup_agent("refresh-a2a-binding-before-cutoff");
     let first = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("generate initial discovery"),
     );
     let initial_binding = &first["/.well-known/jacs-compat-binding.json"];
@@ -404,7 +475,7 @@ fn well_known_generation_refreshes_binding_before_strict_max_age() {
     .expect("install matching old watermark fixture");
 
     let refreshed = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("A2A generation refreshes an authentic old binding"),
     );
     let refreshed_binding = &refreshed["/.well-known/jacs-compat-binding.json"];
@@ -489,7 +560,7 @@ fn remote_binding_verifier_binds_identity_root_scope_hash_and_compat_key() {
     let _lock = TEST_MUTEX.lock().unwrap_or_else(|error| error.into_inner());
     let (agent, _temp, _guard) = setup_agent("verify-remote-a2a-binding");
     let documents = documents_by_path(
-        jacs::a2a::simple::generate_well_known_documents(&agent, None)
+        jacs::a2a::simple::generate_well_known_documents(&agent, Some("ES256"))
             .expect("generate discovery documents"),
     );
     let card = &documents["/.well-known/agent-card.json"];

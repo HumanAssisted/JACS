@@ -1,7 +1,8 @@
 //! A2A CLI serving helpers.
 //!
 //! The URL inside an Agent Card is signed, and the trust verifier uses its
-//! origin to resolve the sibling JWKS and compatibility-binding documents.
+//! origin to resolve the sibling JWKS. Explicit compatibility cards also use a
+//! native-root-signed binding; the default native PQ card needs no delegation.
 //! These helpers keep that signed origin aligned with the endpoint operators
 //! actually publish.
 
@@ -155,10 +156,11 @@ pub fn generate_a2a_serve_documents(
         .jacs_key_directory()
         .clone()
         .unwrap_or_else(|| jacs::paths::local_keys_dir().to_string_lossy().into_owned());
-    let documents = jacs::a2a::extension::generate_bound_well_known_documents(
+    let documents = jacs::a2a::extension::generate_well_known_documents_for_algorithm(
         agent,
         &key_directory,
         Some(card.clone()),
+        None,
     )?;
     Ok((card, documents))
 }

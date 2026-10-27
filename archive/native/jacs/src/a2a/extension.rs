@@ -21,7 +21,13 @@ pub fn sign_agent_card_jws(
     key_id: &str,
 ) -> Result<String, JacsError> {
     // Serialize the agent card to JSON
-    let agent_card_json = serde_json::to_vec(agent_card)?;
+    let agent_card_json = if matches!(algorithm, "pq2025" | "ML-DSA-87") {
+        let mut unsigned = agent_card.clone();
+        unsigned.signatures = None;
+        jacs_core::canonical::canonicalize_json_try(&serde_json::to_value(unsigned)?)?.into_bytes()
+    } else {
+        serde_json::to_vec(agent_card)?
+    };
 
     // Sign using JWS
     let jws = sign_jws(&agent_card_json, private_key, algorithm, key_id)?;
@@ -124,7 +130,10 @@ pub fn verify_agent_card_jws(
     // AgentCard serializer's bytes. Support both contracts explicitly.
     let mut card_without_sig = agent_card.clone();
     card_without_sig.signatures = None;
-    let expected_payload = if matches!(algorithm, "ES256" | "es256" | "ecdsa") {
+    let expected_payload = if matches!(
+        algorithm,
+        "ES256" | "es256" | "ecdsa" | "pq2025" | "ML-DSA-87"
+    ) {
         let value = serde_json::to_value(&card_without_sig)?;
         jacs_core::canonical::canonicalize_json_try(&value)
             .map_err(|error| {
@@ -284,6 +293,99 @@ pub fn generate_bound_well_known_documents(
     documents.push((endpoints.jacs_extension_path, extension_descriptor));
 
     Ok(documents)
+}
+
+/// Generate discovery with the loaded PQ root by default. ES256 delegation is
+/// available only when explicitly selected; a PQ error never triggers fallback.
+/// The legacy card model is retained; this does not upgrade its A2A wire version.
+pub fn generate_well_known_documents_for_algorithm(
+    agent: &mut Agent,
+    key_directory: &str,
+    agent_card: Option<AgentCard>,
+    algorithm: Option<&str>,
+) -> Result<Vec<(String, Value)>, JacsError> {
+    if algorithm.is_some_and(|a| a.eq_ignore_ascii_case("ES256")) {
+        return generate_bound_well_known_documents(agent, key_directory, agent_card);
+    }
+    if algorithm.is_some_and(|a| !matches!(a, "pq2025" | "ML-DSA-87")) {
+        return Err(JacsError::ValidationError(
+            "unsupported A2A signing algorithm; select ML-DSA-87 or explicit ES256 compatibility"
+                .into(),
+        ));
+    }
+    if agent.get_key_algorithm().map(String::as_str) != Some("pq2025") {
+        return Err(JacsError::ValidationError("direct A2A discovery requires a loaded pq2025 root; ES256 compatibility must be explicitly selected".into()));
+    }
+    use crate::crypt::KeyManager;
+    use base64::{
+        Engine as _,
+        engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    };
+
+    let mut card = match agent_card {
+        Some(card) => card,
+        None => crate::a2a::agent_card::export_agent_card(agent)?,
+    };
+    let id = agent.get_id()?;
+    let version = agent.get_version()?;
+    let metadata = card
+        .metadata
+        .as_mut()
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            JacsError::ValidationError("Agent Card metadata must be an object".into())
+        })?;
+    if metadata.get("jacsId").and_then(Value::as_str) != Some(id.as_str())
+        || metadata.get("jacsVersion").and_then(Value::as_str) != Some(version.as_str())
+        || card.version != version
+    {
+        return Err(JacsError::ValidationError(
+            "Agent Card does not match the loaded identity and version".into(),
+        ));
+    }
+    // An already signed/delegated projection must not smuggle stale authority.
+    if card.signatures.is_some() || metadata.keys().any(|k| k.starts_with("jacsCompat")) {
+        return Err(JacsError::ValidationError(
+            "direct-root Agent Card must be unsigned and contain no compatibility binding".into(),
+        ));
+    }
+    let public_key = agent.get_public_key()?.clone();
+    let jwk = jacs_core::jose::mldsa87_public_jwk(&public_key)?;
+    let kid = jwk["kid"]
+        .as_str()
+        .ok_or_else(|| JacsError::CryptoError("missing root kid".into()))?;
+    metadata.insert("jacsRootKid".into(), json!(kid));
+    let payload = jacs_core::canonical::canonicalize_json_try(&serde_json::to_value(&card)?)?;
+    let input = jacs_core::jose::mldsa87_jws_signing_input(payload.as_bytes(), kid)?;
+    // The native custody boundary handles encrypted keys and zeroizing owners.
+    let signature = STANDARD.decode(agent.sign_string(&input)?)?;
+    let jws = format!("{input}.{}", URL_SAFE_NO_PAD.encode(signature));
+    jacs_core::jose::verify_mldsa87_jws(&jws, &public_key, Some(kid))?;
+    let signed = embed_signature_in_agent_card(&card, &jws, Some(kid));
+    let endpoints = WellKnownEndpoints::default();
+    let mut descriptor = create_jacs_agent_descriptor(agent)?;
+    descriptor["endpoints"]
+        .as_object_mut()
+        .unwrap()
+        .remove("compatibilityBinding");
+    let mut extension = create_extension_descriptor("pq2025");
+    extension["endpoints"]
+        .as_object_mut()
+        .unwrap()
+        .remove("compatibilityBinding");
+    extension["endpoints"]["jwks"]["description"] =
+        json!("Retrieve the stable ML-DSA-87 root key used by the Agent Card");
+    info!(event = "ecosystem_export_generated", format = "a2a", algorithm = "ML-DSA-87", kid = %kid, "A2A discovery signed directly by the native root");
+    Ok(vec![
+        (endpoints.agent_card_path, serde_json::to_value(signed)?),
+        (endpoints.jwks_path, json!({"keys": [jwk]})),
+        (endpoints.jacs_descriptor_path, descriptor),
+        (
+            endpoints.jacs_pubkey_path,
+            create_jacs_pubkey_document(agent)?,
+        ),
+        (endpoints.jacs_extension_path, extension),
+    ])
 }
 
 /// Create JACS agent descriptor document

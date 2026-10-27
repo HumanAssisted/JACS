@@ -110,11 +110,10 @@ pub struct ExportAgentCardResult {
 /// Parameters for generating well-known documents.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GenerateWellKnownParams {
-    /// Compatibility-only parameter. Omit or pass `ES256`; obsolete explicit
-    /// algorithms are rejected because discovery reuses the persisted,
-    /// native-root-bound compatibility key.
+    /// Omit or select ML-DSA-87/pq2025 for the native root; select ES256
+    /// explicitly for the persisted compatibility key and root-signed binding.
     #[schemars(
-        description = "Compatibility-only algorithm selector: omit or pass ES256. Other values are rejected; discovery always uses the persisted native-root-bound compatibility key."
+        description = "Omit or select ML-DSA-87/pq2025 for the stable native PQ root; select ES256 explicitly for compatibility with a root-signed binding. Unsupported choices fail closed."
     )]
     pub a2a_algorithm: Option<String>,
 }
@@ -195,9 +194,8 @@ pub fn tools() -> Vec<Tool> {
         ),
         Tool::new(
             "jacs_generate_well_known",
-            "Generate the identity-bound .well-known documents for A2A discovery: the stable \
-             ES256-signed Agent Card, compatibility JWKS, native-root-signed binding, and JACS \
-             descriptors. Returns {path, document} entries for serving.",
+            "Generate A2A discovery signed directly by the stable ML-DSA-87 root, or explicitly \
+             select ES256 compatibility with its native-root-signed binding.",
             schema_map::<GenerateWellKnownParams>(),
         ),
         Tool::new(

@@ -1,7 +1,7 @@
 # Developer commands after the native workspace move
 
 Run commands from the repository root. Check disk headroom and the shared Rust
-cache as described in the root README before substantial builds. Native Cargo
+cache as described in the [shared Rust cache guide](rust-cache.md) before substantial builds. Native Cargo
 commands select `archive/native/Cargo.toml`; they do not add native dependencies
 to the five portable crates. SurrealDB retains its own Cargo workspace.
 

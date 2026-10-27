@@ -1519,9 +1519,13 @@ fn agent_card_export_via_binding_core() {
 fn well_known_documents_generated() {
     let ctx = load_agent_in_workspace();
 
+    // This compatibility fixture has an Ed25519 native root. The default PQ
+    // route must refuse it; selecting ES256 is an explicit caller decision.
+    assert!(ctx.agent.generate_well_known_documents(None).is_err());
+
     let docs_json = ctx
         .agent
-        .generate_well_known_documents(None)
+        .generate_well_known_documents(Some("ES256"))
         .expect("generate_well_known_documents should succeed");
     let docs: Vec<serde_json::Value> =
         serde_json::from_str(&docs_json).expect("Well-known documents should be valid JSON array");

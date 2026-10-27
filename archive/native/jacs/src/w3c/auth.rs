@@ -287,6 +287,22 @@ fn public_key_for_method(
     did_document: &Value,
     verification_method: &str,
 ) -> Result<(Vec<u8>, String), JacsError> {
+    // This request-proof profile uses the absolute method references emitted by
+    // export_did_document. Merely publishing a key does not authorize it for
+    // authentication (and removing that relationship must revoke this use).
+    let did = required_str(did_document, "id")?;
+    if !did_document["authentication"]
+        .as_array()
+        .is_some_and(|methods| {
+            methods
+                .iter()
+                .any(|method| method.as_str() == Some(verification_method))
+        })
+    {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "DID verification method is not authorized for authentication".to_string(),
+        });
+    }
     let methods = did_document["verificationMethod"]
         .as_array()
         .ok_or_else(|| JacsError::DocumentMalformed {
@@ -299,6 +315,11 @@ fn public_key_for_method(
         .ok_or_else(|| JacsError::KeyNotFound {
             path: format!("verification method '{}'", verification_method),
         })?;
+    if method["controller"].as_str() != Some(did) {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "DID authentication method controller does not match document id".to_string(),
+        });
+    }
     let algorithm = method["jacsSigningAlgorithm"]
         .as_str()
         .filter(|algorithm| !algorithm.trim().is_empty())
@@ -308,6 +329,14 @@ fn public_key_for_method(
         })?
         .to_string();
     if let Some(jwk) = method.get("publicKeyJwk") {
+        if algorithm == "pq2025" {
+            return Ok((jacs_core::jose::mldsa87_public_key(jwk)?, algorithm));
+        }
+        if algorithm != "ring-Ed25519" || jwk["kty"] != "OKP" || jwk["crv"] != "Ed25519" {
+            return Err(JacsError::CryptoError(
+                "DID JWK does not match its signing algorithm".into(),
+            ));
+        }
         let x = jwk["x"]
             .as_str()
             .ok_or_else(|| JacsError::DocumentMalformed {
@@ -355,8 +384,11 @@ mod tests {
     fn verification_method_without_algorithm_fails_closed() {
         let method_id = "did:wba:example.com:agent#key-1";
         let did_document = json!({
+            "id": "did:wba:example.com:agent",
+            "authentication": [method_id],
             "verificationMethod": [{
                 "id": method_id,
+                "controller": "did:wba:example.com:agent",
                 "publicKeyJwk": {
                     "kty": "OKP",
                     "crv": "Ed25519",
@@ -404,6 +436,65 @@ mod tests {
         .expect("verified");
 
         assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    #[serial_test::serial(replay_store)]
+    fn pq_request_proof_requires_current_authentication_authorization() {
+        let mut agent = Agent::ephemeral("pq2025").expect("PQ agent");
+        agent
+            .create_agent_and_load(
+                &json!({"jacsAgentType": "ai", "name": "pq-auth-test", "description": "PQ auth"})
+                    .to_string(),
+                true,
+                Some("pq2025"),
+            )
+            .expect("agent created");
+        let did_document = export_did_document(
+            &agent,
+            W3cDidOptions {
+                origin: Some("https://example.com".to_string()),
+            },
+        )
+        .expect("DID document");
+        assert_eq!(
+            did_document["verificationMethod"][0]["publicKeyJwk"]["alg"],
+            "ML-DSA-87"
+        );
+        let proof = build_request_proof(
+            &mut agent,
+            W3cRequestProofParams {
+                method: "GET".to_string(),
+                url: "https://service.example/tasks".to_string(),
+                body: None,
+                nonce: Some(format!("pq-auth-{}", uuid::Uuid::new_v4())),
+                created: Some(now_rfc3339()),
+                origin: Some("https://example.com".to_string()),
+            },
+        )
+        .expect("request proof");
+
+        let mut revoked = did_document.clone();
+        revoked["authentication"] = json!([]);
+        let error = verify_request_proof_value(&agent, &proof, &revoked, None, 300).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("not authorized for authentication")
+        );
+
+        let mut wrong_controller = did_document.clone();
+        wrong_controller["verificationMethod"][0]["controller"] = json!("did:wba:attacker.example");
+        let error =
+            verify_request_proof_value(&agent, &proof, &wrong_controller, None, 300).unwrap_err();
+        assert!(error.to_string().contains("controller does not match"));
+
+        // Rejected authorization must not consume the nonce, and the native AKP
+        // public key must still verify the original proof without fallback.
+        let verified = verify_request_proof_value(&agent, &proof, &did_document, None, 300)
+            .expect("native PQ request proof verifies");
+        assert_eq!(verified["valid"], true);
+        assert_eq!(verified["signingAlgorithm"], "pq2025");
     }
 
     #[derive(Default)]

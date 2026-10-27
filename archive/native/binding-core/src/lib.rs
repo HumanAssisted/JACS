@@ -2087,25 +2087,14 @@ impl AgentWrapper {
 
     /// Generate the stable, identity-bound .well-known A2A document set.
     ///
-    /// The card and JWKS reuse the persisted ES256 compatibility key and the
-    /// set includes its native-root-signed binding at the deterministic
-    /// compatibility-binding path. `a2a_algorithm` is compatibility-only:
-    /// omit it or pass `ES256`; obsolete choices are rejected.
+    /// By default the card and JWKS use the persisted ML-DSA-87 root directly.
+    /// Explicit `ES256` retains the compatibility key and its root-signed binding.
     ///
     /// Returns a JSON string containing an array of [path, document] pairs.
     pub fn generate_well_known_documents(
         &self,
         a2a_algorithm: Option<&str>,
     ) -> BindingResult<String> {
-        if let Some(requested) = a2a_algorithm
-            && !requested.eq_ignore_ascii_case("ES256")
-        {
-            return Err(BindingCoreError::invalid_argument(format!(
-                "A2A well-known discovery uses the persisted compatibility key and fixed ES256 \
-                 algorithm; obsolete or unsupported explicit choice '{requested}' is rejected"
-            )));
-        }
-
         let mut agent = self.lock()?;
         let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
@@ -2122,10 +2111,11 @@ impl AgentWrapper {
             .key_directory
             .clone();
 
-        let documents = jacs::a2a::extension::generate_bound_well_known_documents(
+        let documents = jacs::a2a::extension::generate_well_known_documents_for_algorithm(
             &mut agent,
             &key_directory,
             Some(card),
+            a2a_algorithm,
         )
         .map_err(|e| {
             BindingCoreError::generic(format!("Failed to generate well-known documents: {}", e))

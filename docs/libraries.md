@@ -7,7 +7,10 @@ does not deprecate the native Rust, Node.js, Python or Go packages.
 
 JACS 0.15.0 is published across all 17 Rust crates, native npm, browser npm,
 PyPI and Go. See the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-for platform coverage, verified artifacts and provenance.
+for platform coverage, verified artifacts and provenance. New native PQ DID/JWK
+and Agent Card exports described in the [identity guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
+are changes in this checkout; the 0.15.0 inventory does not establish their
+availability in published packages.
 
 | Integration | Package / installation | Reference |
 |---|---|---|

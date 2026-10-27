@@ -17,6 +17,8 @@ categories = ["cryptography", "no-std::no-alloc", "wasm"]
 # every $ref offline. Mirrors jacs/Cargo.toml's `include = [...]` list.
 include = [
     "src/**/*",
+    "tests/fixtures/rfc9964-mldsa87-public-vector.json",
+    "examples/mldsa87_jose.rs",
     "schemas/agent/v1/agent.schema.json",
     "schemas/header/v1/header.schema.json",
     "schemas/components/files/v1/files.schema.json",

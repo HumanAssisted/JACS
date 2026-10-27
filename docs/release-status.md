@@ -3,6 +3,11 @@
 The release inventory was observed
 2026-09-21 against source version 0.15.0.
 
+This inventory describes those recorded release artifacts, not every subsequent
+change in this repository. The new native PQ DID/JWK and Agent Card exports in
+the [identity guide](identity-standards.md) are source changes; their publication
+requires a separate release record.
+
 Source version **0.15.0 is published and verified** across all 17 Rust crates,
 CLI binaries, native npm, Python, Go and WASM npm. The
 [verification record](../release/0.15.0-verification.json) records exact public

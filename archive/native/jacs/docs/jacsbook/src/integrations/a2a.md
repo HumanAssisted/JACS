@@ -1,7 +1,12 @@
 # A2A Interoperability
 
-The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
-with current released A2A peers remains unproven.
+The default discovery adapters retain the legacy A2A `0.4.0` card shape.
+The separate typed `jacs::a2a::v1` API uses the A2A 1.0 shape for a bounded
+JSON-RPC profile; see the
+[current source quickstart](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md)
+and the [v1 example](#opt-in-a2a-10-peer-example) below.
+
+{{#include ../_snippets/node-registry-status.md}}
 
 Use A2A when your agent needs to be discoverable and verifiable by another service, team, or organization. This is the cross-boundary story; MCP is the inside-the-app story.
 
@@ -168,7 +173,16 @@ Use the trust store when you want explicit admission:
 
 This is the cleanest path into `strict` policy.
 
-## ES256-Signed Agent Cards (P2)
+## Native post-quantum discovery
+
+Current source defaults to the persisted native ML-DSA-87 root for
+`generate_well_known_documents`. It publishes that root's RFC 9964 AKP JWK and
+five discovery documents, with no delegated-key binding. The card's JWS signs
+canonical card bytes and its `metadata.jacsRootKid` identifies the root's JWK
+thumbprint. Loading or exporting does not create another signing key. The
+legacy card wire shape remains unchanged.
+
+## Explicit ES256 compatibility
 
 Agent cards can also be exported with an ES256 signature from the agent's
 compatibility key (`export_a2a_agent_card` in the Rust core and bindings,
@@ -183,11 +197,12 @@ feature `a2a`). This is a card-typed exporter, not a generic JWS API:
   `jacsCompatBindingPath` (`/.well-known/jacs-compat-binding.json`).
 
 A stock JOSE verifier can check the ES256 signature against the agent's
-JWKS (`jacs agent export-jwks`), but that proves possession of the
+compatibility JWKS (`jacs-compat agent export-jwks`), but that proves possession of the
 compatibility key only. Tracing the card to the agent's native root requires
 verifying the native-root-signed compatibility key binding
-(`jacs agent export-compat-binding`). Native `generate_well_known_documents`
-publishes the binding at the fixed path and reuses the same persisted ES256 key
+(`jacs-compat agent export-compat-binding`). Calling native
+`generate_well_known_documents` with explicit `ES256` publishes the binding at
+the fixed path and reuses the same persisted ES256 key
 across calls and restarts. An obsolete explicit `ring-Ed25519` discovery-key
 choice is rejected rather than silently ignored — see the
 [Security Model](../advanced/security.md#compatibility-key-binding-p2).
@@ -202,12 +217,12 @@ JWKS key by itself can never establish the claimed JACS identity.
 
 ## Current Runtime Differences
 
-- **Python and Node.js**: the FastAPI and Express routers serve the six native
-  discovery documents, including the signed card, JWKS and compatibility
-  binding. They are discovery-only; `serve()` and `listen()` are convenience
+- **Python and Node.js**: the FastAPI and Express routers serve five native
+  discovery documents by default, including the signed card and JWKS. Explicit
+  ES256 adds a compatibility binding. They are discovery-only; `serve()` and `listen()` are convenience
   hosts, not complete A2A task/message services.
 - The mounted routers refresh their complete snapshots lazily at six days from
-  binding issuance. HTTP freshness ends at renewal or earlier explicit expiry;
+  local generation (direct root) or signed binding issuance (ES256). HTTP freshness ends at renewal or earlier explicit expiry;
   separate fetches can still straddle replacement. Verify the related documents
   together and refetch on a mismatch. See [Serve Your Agent Card](../guides/a2a-serve.md).
 
@@ -221,7 +236,21 @@ JWKS key by itself can never establish the claimed JACS identity.
 
 ## Opt-in A2A 1.0 peer example
 
-The existing exporters and discovery adapters retain the legacy JACS-labeled
+Current source's typed `jacs::a2a::v1::export_agent_card` signs directly with the
+loaded ML-DSA-87 root. It uses the A2A 1.0 `supportedInterfaces` model and
+standard detached `signatures[].protected` / `signature` fields, with typed
+protobuf presence handling and RFC 8785 canonicalization. Its
+`verify_root_card` verifies the signature, exact trusted root and expected
+identity/version for this finite profile. See the
+[source library guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md#library-entry-points).
+
+`export_agent_card_es256` is the explicit compatibility alternative. The
+pinned official-SDK example below selects this ES256 path; it does not prove
+that the peer implements ML-DSA-87. `verify_card_binding` remains the
+compatibility binding check, and its caller must additionally verify the JWS.
+
+
+The existing language discovery adapters retain the legacy JACS-labeled
 `0.4.0` card format. The separate native `jacs::a2a::v1` projection and
 `examples/a2a_v1_peer.py` exercise a finite A2A 1.0 JSON-RPC report exchange
 against official `a2aproject/a2a-python` **1.1.4**, pinned to commit
@@ -233,9 +262,11 @@ From the repository root, with Python 3.14 and uv installed:
 
 ```sh
 uv venv --python python3.14 /tmp/jacs-a2a-peer-env
-uv pip sync --python /tmp/jacs-a2a-peer-env/bin/python examples/a2a_v1_peer_requirements.txt
-cargo build -p jacs --no-default-features --features a2a --example a2a_v1_peer
-/tmp/jacs-a2a-peer-env/bin/python examples/a2a_v1_peer.py --native-bin target/debug/examples/a2a_v1_peer
+uv pip sync --python /tmp/jacs-a2a-peer-env/bin/python archive/native/examples/a2a_v1_peer_requirements.txt
+cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs \
+  --no-default-features --features a2a --example a2a_v1_peer --target-dir target/a2a-v1-example
+/tmp/jacs-a2a-peer-env/bin/python archive/native/examples/a2a_v1_peer.py \
+  --native-bin target/a2a-v1-example/debug/examples/a2a_v1_peer
 ```
 
 The test-only lock uses the exact official source commit: PyPI had no 1.1.4

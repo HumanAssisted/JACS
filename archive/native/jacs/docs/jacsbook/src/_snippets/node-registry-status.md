@@ -1,5 +1,5 @@
-> **Registry status (observed 2026-07-11):** npm serves
-> `@hai.ai/jacs@0.10.1`, while these pages describe source `0.11.4`. The
-> registry package does not expose every method shown here. Pin the version and
-> inspect its exports; use a source build only when that is an explicit
-> deployment choice.
+> **Source and published packages:** Version 0.15.0 has a recorded
+> [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
+> New native PQ DID/JWK and Agent Card behavior is a source change; the inventory
+> does not establish its availability in published packages. See the
+> [source integration guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md).

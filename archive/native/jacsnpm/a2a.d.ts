@@ -234,8 +234,8 @@ export declare class JACSA2AIntegration {
      *
      * - open: allows all agents
      * - verified: requires native JWS/JWKS verification plus durable TOFU pinning
-     * - strict: additionally requires an explicitly trusted native root and its
-     *   valid compatibility binding for the exact ES256 card key
+     * - strict: additionally requires an explicitly trusted native root, with
+     *   a valid compatibility binding when using an ES256 card key
      */
     assessRemoteAgent(agentCardJson: string | Record<string, unknown>): TrustAssessment;
     /**
@@ -265,7 +265,7 @@ export declare class JACSA2AIntegration {
      */
     verifyWrappedArtifact(wrappedArtifact: Record<string, unknown>, agentCard?: Record<string, unknown>): Promise<ArtifactVerificationResult>;
     createChainOfCustody(artifacts: Record<string, unknown>[]): Record<string, unknown>;
-    generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData): Record<string, Record<string, unknown>>;
+    generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData, a2aAlgorithm?: string): Record<string, Record<string, unknown>>;
     private _hasJacsExtension;
     private _legacyAssessRemoteAgent;
     private _buildCanonicalTrustAssessment;

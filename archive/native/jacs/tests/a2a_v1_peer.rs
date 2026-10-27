@@ -2,7 +2,78 @@
 #![cfg(feature = "a2a")]
 #[path = "../examples/support/a2a_v1.rs"]
 mod support;
+use jacs::agent::boilerplate::BoilerPlate;
 use serde_json::{Value, json};
+
+#[test]
+fn v1_direct_pq_root_uses_detached_jws_and_explicit_trust() {
+    use jacs::a2a::v1;
+    let mut agent = jacs::agent::Agent::ephemeral("pq2025").unwrap();
+    agent
+        .create_agent_and_load(
+            &json!({"jacsAgentType":"ai", "name":"v1-pq", "description":"Direct PQ v1 test"})
+                .to_string(),
+            true,
+            Some("pq2025"),
+        )
+        .unwrap();
+    let id = agent.get_id().unwrap();
+    let version = agent.get_version().unwrap();
+    let root = agent.get_public_key().unwrap().clone();
+    let jwk = jacs_core::jose::mldsa87_public_jwk(&root).unwrap();
+    let projection = v1::project_agent_card(&agent, "http://127.0.0.1:18080/a2a").unwrap();
+    let card = v1::export_agent_card(&mut agent, "unused", projection).unwrap();
+    assert!(card["signatures"][0]["protected"].is_string());
+    assert!(card["signatures"][0]["signature"].is_string());
+    assert!(card["signatures"][0].get("jws").is_none());
+    assert_eq!(card["supportedInterfaces"][0]["protocolVersion"], "1.0");
+    assert_eq!(
+        card["capabilities"]["extensions"][0]["params"]
+            .as_object()
+            .unwrap()
+            .len(),
+        3
+    );
+    v1::verify_root_card(&card, &jwk, &id, &version, &root).unwrap();
+    assert!(v1::verify_root_card(&card, &jwk, "other", &version, &root).is_err());
+    assert!(v1::verify_root_card(&card, &jwk, &id, "other", &root).is_err());
+    let wrong = jacs_core::Pq2025Signer::generate().unwrap();
+    use jacs_core::DetachedSigner;
+    assert!(v1::verify_root_card(&card, &jwk, &id, &version, wrong.public_key()).is_err());
+    let mut tampered = card.clone();
+    tampered["name"] = json!("tampered");
+    assert!(v1::verify_root_card(&tampered, &jwk, &id, &version, &root).is_err());
+
+    // A valid root signature cannot make unsupported profile fields valid.
+    use base64::{
+        Engine as _,
+        engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    };
+    use jacs::crypt::KeyManager;
+    for (field, value) in [
+        ("skills", json!([])),
+        ("defaultInputModes", json!([])),
+        ("supportedInterfaces", json!([])),
+    ] {
+        let mut invalid = card.clone();
+        invalid.as_object_mut().unwrap().remove("signatures");
+        invalid[field] = value;
+        let payload = jacs_core::canonical::canonicalize_json_try(&invalid).unwrap();
+        let input = jacs_core::jose::mldsa87_jws_signing_input(
+            payload.as_bytes(),
+            jwk["kid"].as_str().unwrap(),
+        )
+        .unwrap();
+        let signature =
+            URL_SAFE_NO_PAD.encode(STANDARD.decode(agent.sign_string(&input).unwrap()).unwrap());
+        invalid["signatures"] =
+            json!([{"protected": input.split('.').next().unwrap(), "signature":signature}]);
+        assert!(
+            v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err(),
+            "{field}"
+        );
+    }
+}
 
 #[test]
 fn finite_v1_fixture_preserves_native_authority_and_legacy_contracts() {
