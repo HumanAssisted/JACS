@@ -1,24 +1,26 @@
-# DID and A2A identity
+# Identity across MCP, A2A and DID
 
-A persistent native JACS `pq2025` key can identify an agent across DID documents,
-public JWK/JWKS exports and signed Agent Cards. Current source adds direct
-ML-DSA-87 public-key and JWS support; published 0.15.0 artifacts are a separate
-release baseline. Start with the
-[DID and post-quantum identity guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
-for source installation, `did:wba` exports, and trust requirements.
+A persistent JACS identity signs documents with the same key across sessions.
+New identities use ML-DSA-87 (`pq2025`); verification errors never trigger a
+classical fallback. Choose the integration boundary you need:
 
-The [A2A quickstart](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md)
-covers local discovery, source versus release behavior, and explicit ES256
-compatibility. Legacy discovery retains its `0.4.0` model and compact JWS
-representation. The separate typed A2A 1.0 API signs its bounded profile with
-the native ML-DSA-87 root and standard detached signature fields.
-Public Node/Python APIs accept explicit v1 options with the caller's skills,
-modes and messaging URL. Current official SDK examples verify direct PQ with
-JavaScript SDK 1.3.0 on Node 24.7+, and explicit ES256 compatibility with Python
-SDK 1.3.0 on Python 3.11+. Neither surface is a general production host. The portable MCP server does not provide DID
-resolution or A2A transport.
+| Goal | Start here | What JACS supplies |
+| --- | --- | --- |
+| Connect an agent to local signing/verification tools | [MCP client setup](mcp-quickstart.md) | A stdio server; verification-only by default |
+| Publish an Agent Card or exchange A2A artifacts | [A2A how-to](a2a.md) | Native discovery and signing APIs; explicit A2A 1.0 profile |
+| Export a DID document or test a DID-bound request proof | [W3C DID how-to](w3c-did.md) | `did:wba` export and JACS-specific request proofs |
 
-See the [checked standards research](https://github.com/HumanAssisted/JACS/blob/main/docs/research/pq-identity-standards.md)
-for primary sources and independent ML-DSA verification evidence. Standardized
-JOSE key representation does not imply support in every peer or a finalized
-ML-DSA-87 Data Integrity cryptosuite.
+MCP is the primary integration. The portable `jacs` server does not host A2A
+messaging or resolve DIDs. The separate native `jacs-compat` CLI and language
+libraries provide those documented exports; an application supplies its own
+messaging handler and identity/authorization policy.
+
+The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+records published 0.15.0 packages. New direct-PQ DID/JWK and Agent Card behavior
+in this checkout is **source work**. The A2A and DID how-tos therefore start with
+source builds. A public key fetched alongside a signature is not an independent
+trust anchor, and a valid signature is not permission to act.
+
+See the [standards evidence](https://github.com/HumanAssisted/JACS/blob/main/docs/research/pq-identity-standards.md)
+for RFC 9964, DID and A2A references. An AKP JWK represents an ML-DSA key; it does
+not imply a finalized ML-DSA Data Integrity cryptosuite or universal peer support.

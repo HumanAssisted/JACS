@@ -1,122 +1,38 @@
 # A2A Quickstart
 
-Three focused mini-guides to get your JACS agent working with A2A.
+Start with the [A2A how-to](https://humanassisted.github.io/JACS/a2a.html) for source installation, local discovery, A2A 1.0 export and a real official-SDK message exchange. Current source adds capabilities beyond the published 0.15.0 baseline; see the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
 
-| Guide | What You'll Do | Time |
-|-------|---------------|------|
-| **[1. Serve](a2a-serve.md)** | Publish your Agent Card so other agents can find you | 2 min |
-| **[2. Discover & Trust](a2a-discover.md)** | Find remote agents and assess their trustworthiness | 2 min |
-| **[3. Exchange](a2a-exchange.md)** | Sign and verify A2A artifacts with chain of custody | 3 min |
+| Guide | Task |
+|-------|------|
+| [Serve](a2a-serve.md) | Publish signed Agent Cards and public discovery documents |
+| [Discover and trust](a2a-discover.md) | Assess a remote legacy card against an explicit policy |
+| [Exchange](a2a-exchange.md) | Sign artifacts and verify their linked parent signatures |
 
-> **Single-page version:** See the [A2A Quick Start](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md) at the repo root for a 10-line journey.
+## Cards, keys and handlers
 
----
+Default native discovery exports the legacy `0.4.0` card format. Explicit A2A `1.0` options produce typed cards with detached signatures; the [interoperability reference](../integrations/a2a.md) describes the supported profile and official SDK tests. SDK version numbers and wire protocol versions are separate.
 
-## JACS for A2A Developers
+The persisted ML-DSA-87 root signs discovery by default: five public documents, with no compatibility binding required. Explicit ES256 uses a persisted compatibility key and adds a sixth, root-signed binding document. Agent creation may generate that optional key; loading or exporting does not mint an unrelated signer.
 
-Already using the A2A protocol? Here's what JACS adds -- and what stays the same.
+The discovery servers do not implement message/task handlers. The host must implement and authorize the advertised service. A2A already defines card signatures; JACS adds native-root attribution, signed artifact envelopes and explicit verification policies.
 
-### What Stays the Same
-
-- **Agent Cards** currently export the legacy v0.4.0 shape, preserving fields such as `name`, `description`, `skills` and `url`. Interoperability with current released A2A peers remains unproven; this guide does not claim current wire compatibility.
-- **Discovery** publishes the native six-document well-known set, including
-  `/.well-known/agent-card.json`. The bundled routers do not implement
-  message/task or remote-signing endpoints; callable services require separate
-  host implementation and authorization.
-- **JSON-RPC** transport is untouched. JACS works alongside A2A, not instead of it.
-
-### What JACS Adds
-
-| A2A Alone | With JACS |
-|-----------|-----------|
-| Agent Card has no signature | Agent Card is JWS-signed + JWKS published |
-| Artifacts are unsigned payloads | Artifacts carry `jacsSignature` with signer ID, algorithm, and timestamp |
-| Trust is transport-level (TLS) | Trust is data-level -- signatures persist offline |
-| No chain of custody | `parent_signatures` link artifacts into a verifiable chain |
-| No standard trust policy | `open` / `verified` / `strict` policies built in |
-
-### Minimal Integration (Add JACS to Existing A2A Code)
-
-If you already serve an Agent Card, adding JACS provenance takes two steps:
-
-**Step 1:** Add the JACS extension to your Agent Card's `capabilities`:
-
-```json
-{
-  "capabilities": {
-    "extensions": [{
-      "uri": "urn:jacs:provenance-v1",
-      "description": "JACS cryptographic document signing",
-      "required": false
-    }]
-  }
-}
-```
-
-**Step 2:** Sign artifacts before sending them:
+## Sign an artifact
 
 ```python
 from jacs.client import JacsClient
 
 client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
-# Wrap your existing artifact payload
-signed = client.sign_artifact(your_existing_artifact, "artifact")
-# Send `signed` instead of the raw artifact
+signed = client.sign_artifact({"result": "ready"}, "result")
 ```
 
-Receiving agents that don't understand JACS will ignore the extra fields. Receiving agents that do understand JACS can verify the signature and assess trust.
+The wire payload is `signed["a2aArtifact"]`; `jacsType` is `a2a-result` here. Extracting the payload discards its signed envelope, so a recipient must verify before relying on provenance.
 
-### Dual Key Architecture
+## Troubleshooting
 
-JACS generates two key pairs per agent:
+- **Valid signature, rejected policy:** independently enroll the full native agent document and public key before using `strict`. A self-advertised card cannot enroll itself.
+- **No agent loaded:** create/load a client before signing or discovery assessment. Different local agents need different `config_path`/`configPath` values.
+- **Missing skills:** provide skills before generating signed discovery. Post-signing overrides are rejected.
+- **Missing signer key:** native key resolution defaults to `local,registry`; set `JACS_KEY_RESOLUTION=local` for offline lookup. DNS checks fingerprints, not key bytes. Obtaining a key is separate from trusting it.
+- **Python installation:** published 0.15.0 wheels support Python 3.10–3.14; current source requires 3.11–3.14. The `a2a-server` extra adds FastAPI and uvicorn.
 
-- A **native JACS root** (`pq2025` by default, or `ring-Ed25519`) for JACS
-  documents and compatibility-key authorization.
-- A persisted **P-256 / ES256 compatibility key** for RFC 8785-canonicalized
-  Agent Card JWS signatures.
-
-The native root signs the published compatibility binding, so strict verifiers
-can connect the ES256 card key to an explicitly trusted JACS identity.
-
----
-
-## Troubleshooting FAQ
-
-**Q: `pip install jacs[a2a-server]` fails.**
-A: JACS requires Python 3.11–3.14. The `a2a-server` extra adds FastAPI + uvicorn. If you only need signing (not serving), use `pip install jacs` with no extras.
-
-**Q: `discover_and_assess` returns `jacs_registered: false`.**
-A: The remote agent's Agent Card does not include the `urn:jacs:provenance-v1` extension. This is normal for non-JACS A2A agents. With the `open` trust policy, they are still allowed; with `verified`, they are rejected.
-
-**Q: Verification returns `valid: true` but `trust.allowed: false`.**
-A: The card signature may be correct while identity policy still rejects it.
-For `strict`, import the full native self-signed agent document and explicit
-native public key through an authenticated out-of-band channel with
-`a2a.trust_a2a_agent(agent_document_json, public_key_pem)`. Passing the
-self-advertised Agent Card is rejected.
-
-**Q: `sign_artifact` raises "no agent loaded".**
-A: Call `JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")` or `JacsClient(config_path=...)` before signing. The client must have a loaded agent with keys.
-
-**Q: Agent Card export returns empty skills.**
-A: Skills are part of the signed Agent Card. Configure them on the agent before
-generating or mounting discovery documents; servers reject post-signing skill
-overrides.
-
-**Q: My existing A2A client doesn't understand the JACS fields.**
-A: This is expected. JACS fields (`jacsId`, `jacsSignature`, `jacsSha256`) are additive. Non-JACS clients should ignore unknown fields per JSON convention. If a client rejects them, strip JACS fields before sending by extracting `signed["payload"]`.
-
-**Q: How do I verify artifacts from agents I've never seen before?**
-A: Use `JACS_KEY_RESOLUTION` to configure key lookup. Set `JACS_KEY_RESOLUTION=local,hai` to check your local cache first, then the HAI key service. For offline-only verification, set `JACS_KEY_RESOLUTION=local`.
-
----
-
-## Next Steps
-
-- **[A2A Interoperability Reference](../integrations/a2a.md)** -- Full API reference, well-known documents, MCP integration
-- **[Trust Store](../advanced/trust-store.md)** -- Managing trusted agents
-- **[Express Middleware](../nodejs/express.md)** -- Add A2A to existing Express apps
-- **[Framework Adapters](../python/adapters.md)** -- Auto-sign with LangChain, FastAPI, Anthropic
-- **[Observability & Monitoring Guide](observability.md)** -- Monitor signing and verification events
-- **[Hero Demo (Python)](https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.py)** -- 3-agent trust verification example
-- **[Hero Demo (Node.js)](https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.ts)** -- Same demo in TypeScript
+Continue with [trust-store enrollment](../advanced/trust-store.md) and [the A2A reference](../integrations/a2a.md).

@@ -239,7 +239,7 @@ jacs-compat document check-agreement -f agreement-signed-1.json
 # Missing: agent2-uuid
 
 # Second agent signs (using their configuration)
-JACS_CONFIG_PATH=./agent2.config.json \
+JACS_CONFIG=./agent2.config.json \
   jacs-compat document sign-agreement -f agreement-signed-1.json -o agreement-complete.json
 
 # Verify completion
@@ -294,7 +294,7 @@ jacs-compat document check-agreement -f contract-seller-signed.json
 
 # Step 6: Buyer signs
 echo "Buyer signing..."
-JACS_CONFIG_PATH=./buyer.config.json \
+JACS_CONFIG=./buyer.config.json \
   jacs-compat document sign-agreement \
   -f contract-seller-signed.json \
   -o contract-complete.json
@@ -383,8 +383,8 @@ jacs-compat agent verify -a ./other-agent.json
 # With DNS requirements
 jacs-compat agent verify --require-dns          # Require DNS (not strict)
 jacs-compat agent verify --require-strict-dns   # Require DNSSEC
-jacs-compat agent verify --no-dns              # Skip DNS entirely
-jacs-compat agent verify --ignore-dns          # Ignore DNS validation failures
+jacs-compat agent verify --no-dns              # Attempt optional DNS; fall back to embedded fingerprint
+jacs-compat agent verify --ignore-dns          # Skip DNS checks
 ```
 
 ## Scripting Examples
@@ -483,7 +483,7 @@ inotifywait -m "$WATCH_DIR" -e create -e moved_to |
 
 ```bash
 # Use a specific config file
-export JACS_CONFIG_PATH=./production.config.json
+export JACS_CONFIG=./production.config.json
 jacs-compat document create -f invoice.json
 
 # Override specific settings
@@ -492,23 +492,23 @@ export JACS_KEY_DIRECTORY=./secure-keys
 jacs-compat agent create --create-keys true
 
 # One-time override
-JACS_CONFIG_PATH=./test.config.json jacs-compat document verify -f test-doc.json
+JACS_CONFIG=./test.config.json jacs-compat document verify -f test-doc.json
 ```
 
 ### Multiple Configurations
 
 ```bash
 # Development
-alias jacs-dev='JACS_CONFIG_PATH=./dev.config.json jacs-compat'
+alias jacs-dev='JACS_CONFIG=./dev.config.json jacs-compat'
 jacs-dev document create -f test.json
 
 # Production
-alias jacs-prod='JACS_CONFIG_PATH=./prod.config.json jacs-compat'
+alias jacs-prod='JACS_CONFIG=./prod.config.json jacs-compat'
 jacs-prod document verify -f important.json
 
 # Different agents
-alias jacs-alice='JACS_CONFIG_PATH=./alice.config.json jacs-compat'
-alias jacs-bob='JACS_CONFIG_PATH=./bob.config.json jacs-compat'
+alias jacs-alice='JACS_CONFIG=./alice.config.json jacs-compat'
+alias jacs-bob='JACS_CONFIG=./bob.config.json jacs-compat'
 ```
 
 ## Error Handling
@@ -523,9 +523,6 @@ case $exit_code in
   0) echo "Success" ;;
   1) echo "General error" ;;
   2) echo "Invalid arguments" ;;
-  3) echo "File not found" ;;
-  4) echo "Verification failed" ;;
-  5) echo "Signature invalid" ;;
   *) echo "Unknown error: $exit_code" ;;
 esac
 ```

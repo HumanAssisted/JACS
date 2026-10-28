@@ -54,7 +54,7 @@ The header schema provides:
     "date": "2024-01-15T10:30:00Z",
     "signature": "base64-encoded-signature-string",
     "publicKeyHash": "sha256-hash-of-public-key",
-    "signingAlgorithm": "ring-Ed25519",
+    "signingAlgorithm": "pq2025",
     "fields": ["jacsId", "jacsVersion", "jacsType", "content"]
   }
 }
@@ -119,7 +119,7 @@ Documents can include file attachments using `jacsFiles`:
     "date": "2024-01-15T10:30:00Z",
     "signature": "signature-base64...",
     "publicKeyHash": "public-key-hash...",
-    "signingAlgorithm": "ring-Ed25519",
+    "signingAlgorithm": "pq2025",
     "fields": ["$schema", "jacsId", "jacsType", "jacsVersion", "content"]
   },
   "jacsSha256": "document-hash..."

@@ -4,7 +4,7 @@
 
 The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.
 
-## v0.7.0: Async-First API
+## Async and synchronous methods
 
 {{#include ../_snippets/node-async-first.md}}
 
@@ -13,15 +13,16 @@ The simplified API (`@hai.ai/jacs/simple`) provides a streamlined, module-level 
 const signed = await jacs.signMessage({ action: 'approve' });
 
 // Sync (blocks event loop, use in scripts or CLI tools)
-const signed = jacs.signMessageSync({ action: 'approve' });
+const syncSigned = jacs.signMessageSync({ action: 'approve' });
 ```
 
 ## Quick Start
 
-Quickstart -- one call (with required `name`/`domain`) to start signing:
+Quickstart creates or loads an identity. Run this example as an ES module
+(`.mjs`); `name` and `domain` are required:
 
 ```javascript
-const jacs = require('@hai.ai/jacs/simple');
+import * as jacs from '@hai.ai/jacs/simple';
 
 const info = await jacs.quickstart({
   name: 'my-agent',
@@ -56,7 +57,7 @@ const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 
 ## API Reference
 
-Every function that calls into NAPI has both async (default) and sync variants:
+The following operations offer async and explicit synchronous variants:
 
 | Function | Sync Variant | Description |
 |----------|-------------|-------------|
@@ -76,7 +77,7 @@ Every function that calls into NAPI has both async (default) and sync variants:
 | `checkAgreement(doc)` | `checkAgreementSync(doc)` | Check agreement status |
 | `audit(options?)` | `auditSync(options?)` | Run a security audit |
 
-Pure sync functions (no NAPI call, no suffix needed):
+Synchronous helpers (some call the native binding; no suffix is needed):
 
 | Function | Description |
 |----------|-------------|
@@ -112,18 +113,20 @@ console.log(`Config path: ${info.configPath}`);
 console.log(`Public key: ${info.publicKeyPath}`);
 console.log(`Private key: ${info.privateKeyPath}`);
 
-// Or with a specific algorithm
-const info = await jacs.quickstart({
+// Explicit compatibility identity in a separate config directory
+const compatibilityInfo = await jacs.quickstart({
   name: 'my-agent',
   domain: 'my-agent.example.com',
   algorithm: 'ed25519',
+  configPath: './compatibility/jacs.config.json',
 });
 
 // Sync variant (blocks event loop)
-const info = jacs.quickstartSync({
+const syncInfo = jacs.quickstartSync({
   name: 'my-agent',
   domain: 'my-agent.example.com',
   algorithm: 'ed25519',
+  configPath: './compatibility/jacs.config.json',
 });
 ```
 
@@ -143,7 +146,7 @@ const info = await jacs.load('./jacs.config.json');
 console.log(`Agent ID: ${info.agentId}`);
 
 // Sync variant
-const info = jacs.loadSync('./jacs.config.json');
+const syncInfo = jacs.loadSync('./jacs.config.json');
 ```
 
 ---
@@ -216,7 +219,7 @@ const signed = await jacs.signMessage({
 });
 
 // Sync
-const signed = jacs.signMessageSync({
+const syncSigned = jacs.signMessageSync({
   action: 'transfer',
   amount: 500,
   recipient: 'agent-123'
@@ -278,7 +281,7 @@ Verify a signed document **without** loading an agent. Use when you only need to
 - `signedDocument` (string): The signed JACS document JSON
 - `options` (object, optional): `{ keyResolution?, dataDirectory?, keyDirectory? }`
 
-**Returns:** `VerificationResult` (always sync -- no NAPI call)
+**Returns:** `VerificationResult` (synchronous native verification)
 
 ```javascript
 const result = jacs.verifyStandalone(signedJson, { keyResolution: 'local', keyDirectory: './keys' });
@@ -293,7 +296,7 @@ The module-level async API focuses on durable documents. Request-bound HTTP
 auth and signed event methods live on the synchronous instance class:
 
 ```javascript
-const { JacsSimpleAgent } = require('@hai.ai/jacs');
+import { JacsSimpleAgent } from '@hai.ai/jacs';
 
 const agent = JacsSimpleAgent.ephemeral('ed25519');
 const body = '{"action":"approve"}';
@@ -335,13 +338,14 @@ legacy method with `JACS_REJECT_UNBOUND_AUTH_HEADER=true`. See
 
 ---
 
-### signText(path)
+### signText(path, options?)
 
-Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered. Async-first since v0.7.0 — returns `Promise`.
+Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered. Returns a Promise containing the signing report.
 
-**Parameters:** `path` (string): file to sign in place
+**Parameters:** `path` (string): file to sign in place; `options` may contain
+`noBackup?: boolean` (default false).
 
-**Returns:** `Promise<void>`
+**Returns:** `Promise<any>` — the native signing report
 
 **Throws:** `MarkerCollision` error if the file contains a column-zero `-----BEGIN JACS SIGNATURE-----` outside a valid block.
 
@@ -390,7 +394,7 @@ Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in
 - `out` (string): output path
 - `options` (object, optional): `{ robust?: boolean, refuseOverwrite?: boolean }`. `robust` opts in to LSB fallback for PNG/JPEG (off by default; WebP deferred). `refuseOverwrite` rejects with `AlreadySigned` if the input already carries a signature.
 
-**Returns:** `Promise<void>`
+**Returns:** `Promise<any>` — the native signing report
 
 ```typescript
 await jacs.signImage('photo.png', 'signed.png');
@@ -423,11 +427,13 @@ Extract the embedded signature payload **without verifying** it.
 - `path` (string)
 - `options` (object, optional): `{ rawPayload?: boolean }` — when `true`, returns the base64url wire form instead of decoded JSON.
 
-**Returns:** `Promise<object>` (decoded JSON) or `Promise<string>` (base64url when `rawPayload: true`).
+**Returns:** `Promise<string | null>` — serialized JSON by default, base64url
+when `rawPayload: true`, or `null` when no payload is found.
 
 ```typescript
-const payload = await jacs.extractMediaSignature('signed.png');
-console.log(payload.signedAt);
+const payloadJson = await jacs.extractMediaSignature('signed.png');
+if (payloadJson !== null) console.log(JSON.parse(payloadJson));
+// Extraction does not verify the signature.
 ```
 
 ---
@@ -468,12 +474,12 @@ const updated = await jacs.updateAgent(agentDoc);
 
 ---
 
-### updateDocument(documentId, newDocumentData, attachments?, embed?)
+### updateDocument(documentKey, newDocumentData, attachments?, embed?)
 
 Update an existing document with new data and re-sign it.
 
 **Parameters:**
-- `documentId` (string): The document ID (jacsId) to update
+- `documentKey` (string): Stored document key, `${jacsId}:${jacsVersion}`
 - `newDocumentData` (object|string): Updated document as JSON string or object
 - `attachments` (string[], optional): Array of file paths to attach
 - `embed` (boolean, optional): If true, embed attachment contents
@@ -484,7 +490,8 @@ Update an existing document with new data and re-sign it.
 const original = await jacs.signMessage({ status: 'pending', amount: 100 });
 const doc = JSON.parse(original.raw);
 doc.content.status = 'approved';
-const updated = await jacs.updateDocument(original.documentId, doc);
+const documentKey = `${doc.jacsId}:${doc.jacsVersion}`;
+const updated = await jacs.updateDocument(documentKey, doc);
 ```
 
 ---
@@ -493,7 +500,7 @@ const updated = await jacs.updateDocument(original.documentId, doc);
 
 Export the current agent document for sharing or inspection.
 
-**Returns:** string -- The agent JSON document (pure sync, no suffix needed)
+**Returns:** string -- The agent JSON document (synchronous, no suffix needed)
 
 ```javascript
 const agentDoc = jacs.exportAgent();
@@ -505,7 +512,7 @@ console.log(`Agent type: ${agent.jacsAgentType}`);
 
 ### getDnsRecord(domain, ttl?)
 
-Return the DNS TXT record line for the loaded agent. Pure sync, no suffix needed.
+Return the DNS TXT record line for the loaded agent. Synchronous, no suffix needed.
 
 **Parameters:** `domain` (string), `ttl` (number, optional, default 3600)
 
@@ -515,7 +522,7 @@ Return the DNS TXT record line for the loaded agent. Pure sync, no suffix needed
 
 ### getWellKnownJson()
 
-Return the well-known JSON object for the loaded agent. Pure sync, no suffix needed.
+Return the well-known JSON object for the loaded agent. Synchronous, no suffix needed.
 
 **Returns:** object
 
@@ -523,7 +530,7 @@ Return the well-known JSON object for the loaded agent. Pure sync, no suffix nee
 
 ### getPublicKey()
 
-Get the loaded agent's public key in PEM format. Pure sync, no suffix needed.
+Get the loaded agent's public key in PEM format. Synchronous, no suffix needed.
 
 **Returns:** string -- PEM-encoded public key
 
@@ -588,7 +595,7 @@ interface Attachment {
 ## Complete Example
 
 ```javascript
-const jacs = require('@hai.ai/jacs/simple');
+import * as jacs from '@hai.ai/jacs/simple';
 
 // Load agent
 const agent = await jacs.load('./jacs.config.json');
@@ -643,39 +650,17 @@ console.log(publicKey);
 
 ## MCP Integration
 
-The simplified API works well with MCP tool implementations:
-
-```javascript
-const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
-const jacs = require('@hai.ai/jacs/simple');
-
-// Load agent once at startup
-await jacs.load('./jacs.config.json');
-
-// Define a signed tool
-server.setRequestHandler('tools/call', async (request) => {
-  const { name, arguments: args } = request.params;
-
-  if (name === 'approve_request') {
-    const signed = await jacs.signMessage({
-      action: 'approve',
-      requestId: args.requestId,
-      approvedBy: jacs.getAgentInfo().agentId
-    });
-
-    return {
-      content: [{ type: 'text', text: signed.raw }]
-    };
-  }
-});
-```
+Use the simplified API inside a real MCP SDK handler. The [MCP chapter](mcp.md)
+shows `ListToolsRequestSchema` and `CallToolRequestSchema`, transport setup, and
+peer policy. A tool can return `signed.raw` as MCP text content, but signing a
+tool result alone does not authenticate the transport or authorize its caller.
 
 ---
 
 ## Error Handling
 
 ```javascript
-const jacs = require('@hai.ai/jacs/simple');
+import * as jacs from '@hai.ai/jacs/simple';
 
 try {
   await jacs.load('./missing-config.json');
@@ -696,7 +681,7 @@ try {
   console.error('File not found:', e.message);
 }
 
-// Verification doesn't throw - check result.valid
+// With a loaded agent, invalid documents return valid:false; setup failures may throw
 const result = await jacs.verify('invalid json');
 if (!result.valid) {
   console.error('Verification errors:', result.errors);

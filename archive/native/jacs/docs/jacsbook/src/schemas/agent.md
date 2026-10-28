@@ -78,7 +78,7 @@ The domain should have a DNS TXT record at `_v1.agent.jacs.example.com.` contain
     "date": "2024-01-15T10:30:00Z",
     "signature": "base64-encoded-signature...",
     "publicKeyHash": "sha256-hash-of-public-key",
-    "signingAlgorithm": "ring-Ed25519",
+    "signingAlgorithm": "pq2025",
     "fields": ["jacsId", "jacsVersion", "jacsAgentType", "jacsAgentDomain"]
   },
   "jacsSha256": "document-hash..."

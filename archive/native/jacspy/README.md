@@ -28,7 +28,7 @@ If the Python shim shadows Cargo's binary, invoke `~/.cargo/bin/jacs` directly
 (or `%USERPROFILE%\.cargo\bin\jacs.exe` on Windows). With `CARGO_HOME` set, use
 its `bin` directory instead.
 
-[Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+[Full documentation](https://humanassisted.github.io/JACS/) | [Python Quick Start](https://humanassisted.github.io/JACS/native/python/installation.html)
 
 ## Quick start
 
@@ -98,7 +98,7 @@ the header from the exact request values that will be sent:
 import json
 from jacs import SimpleAgent
 
-agent, _ = SimpleAgent.ephemeral(algorithm="ed25519")
+agent, _ = SimpleAgent.ephemeral()  # default pq2025
 body = '{"action":"approve"}'
 authorization = agent.build_request_auth_header(
     "POST",
@@ -191,7 +191,7 @@ Use Agreement v2 to inspect native compatibility agreement documents:
 ```python
 from jacs import SimpleAgent
 
-agent, info = SimpleAgent.ephemeral(algorithm="ed25519")
+agent, info = SimpleAgent.ephemeral()  # default pq2025
 agent_id = info["agent_id"]
 
 agreement = agent.create_agreement_v2({
@@ -255,7 +255,7 @@ and [native development guide](https://github.com/HumanAssisted/JACS/blob/main/a
 ## Links
 
 - [JACS Documentation](https://humanassisted.github.io/JACS/)
-- [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html)
-- [Framework Adapters](https://humanassisted.github.io/JACS/python/adapters.html)
+- [Verification Guide](https://humanassisted.github.io/JACS/native/getting-started/verification.html)
+- [Framework Adapters](https://humanassisted.github.io/JACS/native/python/adapters.html)
 - [Source](https://github.com/HumanAssisted/JACS)
 - [Examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/examples)

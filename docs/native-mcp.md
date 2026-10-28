@@ -42,7 +42,8 @@ JACS_MCP_BASE_DIR=/path/to/content \
   jacs-compat mcp --profile local-sign --config /path/to/jacs.config.json
 ```
 
-Use the existing password prompt or designated password environment variable.
+Supply the host password through the configured environment, protected password
+file or keychain. The MCP signing process does not prompt interactively.
 Keep network capability flags unset. File arguments are relative to the selected
 content directory; config and key directories cannot be used as content roots.
 The selected process can sign as this agent; it does not provide per-call human

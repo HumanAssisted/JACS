@@ -1,6 +1,6 @@
 # Discover & Trust Remote Agents
 
-Find other A2A agents and decide whether to trust them.
+Find other A2A agents and apply an explicit admission policy. Node.js snippets below run inside an async function. Remote evidence variables denote values obtained through an independently authenticated channel.
 
 <div class="tabs">
 <div class="tab">
@@ -10,8 +10,10 @@ Find other A2A agents and decide whether to trust them.
 
 ```python
 from jacs.a2a_discovery import discover_and_assess_sync
+from jacs.client import JacsClient
 
-result = discover_and_assess_sync("https://agent.example.com")
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
+result = discover_and_assess_sync("https://agent.example.com", client=client)
 if result["allowed"]:
     print(f"Trusted: {result['card']['name']} ({result['trust_level']})")
 ```
@@ -29,13 +31,15 @@ from jacs.a2a import JACSA2AIntegration
 client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = JACSA2AIntegration(client, trust_policy="strict")
 
+# Enroll independently authenticated evidence before assessment
+a2a.trust_a2a_agent(remote_native_agent_json, remote_native_public_key_pem)
+
 # Assess a remote agent's trustworthiness
 assessment = a2a.assess_remote_agent(remote_card_json)
 print(f"JACS registered: {assessment['jacs_registered']}")
 print(f"Allowed: {assessment['allowed']}")
 
-# Obtain both values through an authenticated out-of-band channel.
-a2a.trust_a2a_agent(remote_native_agent_json, remote_native_public_key_pem)
+
 ```
 
 ### Async API
@@ -58,7 +62,9 @@ result = await discover_and_assess("https://agent.example.com", policy="verified
 ```javascript
 const { discoverAndAssess } = require('@hai.ai/jacs/a2a-discovery');
 
-const result = await discoverAndAssess('https://agent.example.com');
+const { JacsClient } = require('@hai.ai/jacs/client');
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'my-agent.example.com' });
+const result = await discoverAndAssess('https://agent.example.com', { client });
 if (result.allowed) {
   console.log(`Trusted: ${result.card.name} (${result.trustLevel})`);
 }
@@ -76,14 +82,15 @@ const client = await JacsClient.quickstart({
 });
 const a2a = new JACSA2AIntegration(client, 'strict');
 
+// Enroll independently authenticated evidence before assessment.
+a2a.trustA2AAgent(remoteNativeAgentDocument, remoteNativePublicKeyPem);
+
 // Assess a remote agent
 const assessment = a2a.assessRemoteAgent(remoteCardJson);
 console.log(`JACS registered: ${assessment.jacsRegistered}`);
 console.log(`Allowed: ${assessment.allowed}`);
 
-// Obtain both through an authenticated out-of-band channel. Passing an
-// Agent Card here is rejected.
-a2a.trustA2AAgent(remoteNativeAgentDocument, remoteNativePublicKeyPem);
+
 ```
 
 </div>
@@ -100,7 +107,7 @@ a2a.trustA2AAgent(remoteNativeAgentDocument, remoteNativePublicKeyPem);
 1. Discover  -- Fetch /.well-known/agent-card.json from a remote URL
 2. Assess    -- Check for JACS extension, verify signatures
 3. Decide    -- Trust policy determines if the agent is allowed
-4. Trust     -- Optionally add the agent to your local trust store
+4. Authorize -- Apply application policy; strict enrollment precedes assessment
 ```
 
 With `open`, all agents pass step 3 without identity assurance. With
@@ -117,3 +124,5 @@ format; they are not an A2A 1.0 verifier.
 - **[Exchange Signed Artifacts](a2a-exchange.md)** -- Sign and verify artifacts with trusted agents
 - **[Serve Your Agent Card](a2a-serve.md)** -- Make your agent discoverable
 - **[Trust Store](../advanced/trust-store.md)** -- Managing the local trust store
+
+CLI `a2a discover` is an inspection command: `--json` skips trust assessment, and a disallowed assessment can still exit successfully. Use the assessor's explicit `allowed` result for admission; an exit code or fetched card is not authentication.

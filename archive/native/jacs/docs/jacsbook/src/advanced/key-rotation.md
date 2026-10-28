@@ -226,33 +226,13 @@ const result = await client.rotateKeys({ algorithm: 'pq2025' });
 
 After cross-algorithm rotation, the config file's `jacs_agent_key_algorithm` field is updated atomically. Documents signed before the rotation remain verifiable using the archived old key.
 
-### Example Rotation Flow
+### Version transition
 
-```
-Time T0: Agent created
-  - jacsId: "abc-123"
-  - jacsVersion: "v1-uuid"
-  - jacsCurrentKeyHash: "hash-A"
-
-Time T1: Agent signs document D1
-  - D1.jacsSignature.agentVersion: "v1-uuid"
-  - D1.jacsSignature.publicKeyHash: "hash-A"
-
-Time T2: Key rotation
-  - New keys generated with hash-B
-  - jacsVersion: "v2-uuid"
-  - jacsKeyHistory: [{ hash: "hash-A", status: "rotated" }]
-  - jacsCurrentKeyHash: "hash-B"
-
-Time T3: Verify D1
-  - Extract agentVersion "v1-uuid" and hash "hash-A"
-  - Look up key: find "hash-A" with status "rotated"
-  - Verification succeeds (old key still valid for old docs)
-
-Time T4: Agent signs document D2
-  - D2.jacsSignature.agentVersion: "v2-uuid"
-  - D2.jacsSignature.publicKeyHash: "hash-B"
-```
+Rotation retains `jacsId`, assigns a new `jacsVersion` and `jacsVersionDate`,
+links `jacsPreviousVersion`, and embeds `jacsKeyRotationProof`. A document signed
+before rotation still identifies its original agent version and key hash.
+Retain that independently trusted public key to verify the older document;
+there is no on-document `jacsKeyHistory` revocation registry.
 
 ## Trust Store with Version History
 
@@ -281,7 +261,7 @@ version transitions outside this single current-key DNS record. See
 
 When a key is compromised:
 
-1. **Mark as revoked** in the agent's key history
+1. **Revoke the key in the relying application's trust policy**
 2. **Update DNS** to the trusted replacement key; DNS has no per-key revocation field
 3. **Enforce revocation policy** in the relying application; mathematical validity alone does not establish current trust
 4. **Notify trusted peers** if possible

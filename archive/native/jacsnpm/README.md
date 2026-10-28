@@ -211,7 +211,10 @@ Agreement v2 inspection checks mathematical signatures and claimed status;
 `valid` and `policyAccepted` remain false. Application policy acceptance and
 permission to execute are separate decisions.
 
-The older `createAgreement()` / `signAgreement()` / `checkAgreement()` methods remain for simple `jacsAgreement` sidecars on existing documents.
+The older `createAgreement()` / `signAgreement()` / `checkAgreement()` methods
+inspect `jacsAgreement` sidecars. Their reports keep `complete`,
+`policy_authenticated`, and `policy_accepted` false because participant and role
+policy are not authenticated.
 
 ## Framework adapters
 

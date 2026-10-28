@@ -8,7 +8,9 @@
 # Direct libraries
 
 - [Supported libraries and packages](packages.md)
-- [DID and A2A identity](identity.md)
+- [Identity across protocols](identity.md)
+- [Use JACS with A2A](a2a.md)
+- [Use JACS with W3C DIDs](w3c-did.md)
 - [Rust](rust.md)
 - [Node.js](nodejs.md)
 - [Python](python.md)

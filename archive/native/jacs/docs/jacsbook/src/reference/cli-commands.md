@@ -4,11 +4,11 @@ This page provides a comprehensive reference for all JACS command-line interface
 
 ## Global Commands
 
-### `jacs version`
+### `jacs-compat --version`
 Prints version and build information for the JACS installation.
 
 ```bash
-jacs version
+jacs-compat --version
 ```
 
 ### `jacs-compat quickstart`
@@ -81,7 +81,7 @@ See the [Verification Guide](../getting-started/verification.md) for Python, Nod
 
 Manage private key passwords in the OS keychain (macOS Keychain or Linux Secret Service via D-Bus). This allows JACS to retrieve your private key password without environment variables or password files.
 
-> Requires the `keychain` feature (enabled by default in `jacs-cli`).
+> Requires the `keychain` feature (enabled by default in `jacs-cli-compat`).
 > Set `JACS_KEYCHAIN_BACKEND=disabled` to skip keychain lookups in CI/headless environments.
 
 Every keychain command requires `--agent-id` so that each agent's password is stored separately. This prevents collisions when multiple agents coexist on the same machine.
@@ -89,9 +89,6 @@ Every keychain command requires `--agent-id` so that each agent's password is st
 ```bash
 # Store a password interactively (prompts for input)
 jacs-compat keychain set --agent-id <AGENT_UUID>
-
-# Store a password non-interactively (for scripting)
-jacs-compat keychain set --agent-id <AGENT_UUID> --password "YourStr0ng!Pass#Here"
 
 # Retrieve the stored password (prints to stdout, for piping)
 export JACS_PRIVATE_KEY_PASSWORD=$(jacs-compat keychain get --agent-id <AGENT_UUID>)
@@ -106,7 +103,6 @@ jacs-compat keychain status --agent-id <AGENT_UUID>
 | Subcommand | Description |
 |------------|-------------|
 | `jacs-compat keychain set --agent-id <ID>` | Store a password for an agent (prompts interactively) |
-| `jacs-compat keychain set --agent-id <ID> --password <pw>` | Store a specific password (for scripting) |
 | `jacs-compat keychain get --agent-id <ID>` | Print stored password to stdout |
 | `jacs-compat keychain delete --agent-id <ID>` | Remove stored password from OS keychain |
 | `jacs-compat keychain status --agent-id <ID>` | Check keychain availability and storage state |
@@ -126,11 +122,11 @@ jacs-compat init
 jacs-compat init --no-compat-key
 ```
 
-### `jacs help`
+### `jacs-compat --help`
 Print help information for JACS commands.
 
 ```bash
-jacs help [COMMAND]
+jacs-compat [COMMAND] --help
 ```
 
 ## Configuration Commands
@@ -370,7 +366,7 @@ jacs-compat document sign-agreement [OPTIONS]
 
 ### `jacs-compat agreement-v2`
 
-Standalone agreement v2 documents are the recommended consent workflow. Each is a self-contained, cryptographically signed `jacsType: "agreement"` artifact — terms, parties, signature policy (quorum, required roles), an optional transcript, links, controllers, and owners — with its own content hash and version chain. Running `jacs-compat agreement-v2` with no subcommand prints help and exits non-zero.
+Standalone Agreement v2 documents provide compatibility inspection, not consent-policy acceptance. Each is a self-contained, cryptographically signed `jacsType: "agreement"` artifact — terms, parties, signature policy (quorum, required roles), an optional transcript, links, controllers, and owners — with its own content hash and version chain. Running `jacs-compat agreement-v2` with no subcommand prints help and exits non-zero.
 
 Typical order: **create → sign → verify**. Use `apply` to evolve an agreement via a typed mutation; use the branch commands when two agents diverge from the same prior version.
 
@@ -541,20 +537,17 @@ Most commands support these common options:
 
 - `-h, --help` - Show help information
 - `-v, --verbose` - Enable verbose output for debugging
-- `-a <agent-file>` - Specify custom agent file (overrides config default)
 
 ## Exit Codes
 
-- `0` - Success
-- `1` - General error (invalid arguments, file not found, etc.)
-- `2` - Missing signature OR verification failure — exact meaning per-command in its section. For `verify-text` / `verify-image` (v0.10.0): `2` = permissive missing-signature; `--strict` collapses it into `1`. For other verify surfaces: `2` = verification failure (hash mismatch, invalid signature).
-- `3` - Schema validation failure
+See [CLI exit codes](errors.md#cli-exit-codes). Inspect the command's result
+fields as well as process status; Agreement v2 inspection never grants policy
+acceptance.
 
 ## Environment Variables
 
-- `JACS_CONFIG_PATH` - Override default configuration file location
-- `JACS_DATA_DIR` - Override default data directory location
-- `JACS_AGENT_FILE` - Default agent file to use (if not specified with `-a`)
+- `JACS_CONFIG` - Override default configuration file location
+- `JACS_DATA_DIRECTORY` - Override default data directory location
 
 ## File Formats
 

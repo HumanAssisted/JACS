@@ -12,7 +12,7 @@ Application-specific payloads belong in the document body or in a custom schema 
 |--------|---------|
 | `header/v1/header.schema.json` | Generic signature wrapper for signed JSON documents |
 | `agent/v1/agent.schema.json` | Agent identity and public signing metadata |
-| `agreement/v2/agreement.schema.json` | Standalone agreement document for verifiable consent to terms |
+| `agreement/v2/agreement.schema.json` | Standalone compatibility agreement document for signature inspection |
 | `a2a-verification-result.schema.json` | Cross-language A2A artifact verification result |
 
 ### Component Schemas
@@ -84,18 +84,10 @@ Custom schemas may extend the header when an integration needs stronger payload 
 
 ## Agreements
 
-Use `agreement/v2/agreement.schema.json` for new agreement workflows. It is a standalone `jacsType: "agreement"` document with explicit terms, parties, signer/witness/notary policy, transcript references, links, controllers, and portable verification.
+Native Agreement v2 represents standalone terms, parties and signature records, but its verifier reports mathematical checks only: `valid=false`, `policyAccepted=false`, `overallScope=consent_signatures_only`. Legacy `jacsAgreement` v1 countersignatures likewise do not authenticate participant, role, quorum, question or context policy.
 
-Use `components/agreement/v1/agreement.schema.json` only when a generic signed document needs simple legacy `jacsAgreement` countersignature metadata. V1 answers "did these agents approve this payload?" V2 answers "did these agents consent to these terms with this process record?"
+For authenticated portable consent policy, use [Agreement v3](https://github.com/HumanAssisted/JACS/blob/main/jacs-core/README.md). Application authorization remains separate. The [native agreement reference](../rust/agreements.md) documents compatibility inspection.
 
 ## HAI Extensions
 
-JACS schemas include a custom `hai` property that categorizes fields:
-
-| Value | Description |
-|-------|-------------|
-| `meta` | Metadata fields such as IDs, timestamps, and versions |
-| `base` | Core cryptographic fields such as hashes and signatures |
-| `agent` | Agent-controlled content fields |
-
-These categories help determine which fields participate in hashing and signing.
+The schema's custom `hai` property categorizes fields as `meta`, `base` or `agent`. These annotations participate in native schema-driven hashing; they do not supply an authorization policy.

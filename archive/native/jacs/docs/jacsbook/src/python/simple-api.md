@@ -220,7 +220,7 @@ signed event helpers live on the instance-based native `SimpleAgent`:
 import json
 from jacs import SimpleAgent
 
-agent, _ = SimpleAgent.ephemeral(algorithm="ed25519")
+agent, _ = SimpleAgent.ephemeral()  # default pq2025
 body = '{"action":"approve"}'
 authorization = agent.build_request_auth_header(
     "POST",
@@ -432,11 +432,12 @@ print(f"Previous: {new_doc['jacsPreviousVersion']}")
 
 Update an existing document with new data and re-sign it.
 
-**Note:** The original document must have been saved to disk (created without `no_save=True`).
+The original must be available in the agent's document store. `no_save` controls
+file export; it does not prevent in-memory storage.
 
 **Parameters:**
-- `document_id` (str): The document ID (jacsId) to update
-- `new_document_data` (dict|str): Updated document as JSON string or dict
+- `document_id` (str): Full `jacsId:jacsVersion` lookup key
+- `new_document_data` (dict|str): Complete updated document, preserving its headers
 - `attachments` (list, optional): List of file paths to attach
 - `embed` (bool, optional): If True, embed attachment contents
 
@@ -451,7 +452,9 @@ import jacs as native
 # Use a native stored document and its full id:version lookup key.
 agent = native.JacsAgent()
 agent.load("./jacs.config.json")
-original = json.loads(agent.create_document(json.dumps({"content": {"status": "pending"}})))
+original = json.loads(agent.create_document(
+    json.dumps({"content": {"status": "pending"}}), None, None, False, None, None
+))
 document_key = f"{original['jacsId']}:{original['jacsVersion']}"
 original["content"]["status"] = "approved"
 updated = json.loads(agent.update_document(document_key, json.dumps(original), None, None))
@@ -655,6 +658,6 @@ if not result.valid:
 
 ## See Also
 
-- [Basic Usage](basic-usage.md) - JacsAgent class usage
-- [API Reference](api.md) - Complete JacsAgent API
+- [Basic Usage](basic-usage.md) - Independent JacsClient instances
+- [API Reference](api.md) - Client APIs and native argument requirements
 - [MCP Integration](mcp.md) - Model Context Protocol

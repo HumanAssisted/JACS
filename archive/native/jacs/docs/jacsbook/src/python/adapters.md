@@ -8,7 +8,7 @@ Use adapters when the model already runs inside your Python app and you want pro
 |---|---|---|
 | Signed LangChain tool results | `jacs_signing_middleware`, `signed_tool` | LangChain / LangGraph section below |
 | Signed LangGraph `ToolNode` outputs | `jacs_wrap_tool_call`, `with_jacs_signing` | LangChain / LangGraph section below |
-| Signed FastAPI responses and verified inbound requests | `JacsMiddleware`, `jacs_route` | FastAPI section below |
+| Signed FastAPI responses and verification of signed POST bodies | `JacsMiddleware`, `jacs_route` | FastAPI section below |
 | Signed Anthropic tool return values | `jacs.adapters.anthropic.signed_tool` | Anthropic section below |
 
 Install only the extra you need:
@@ -75,9 +75,16 @@ app.add_middleware(JacsMiddleware, client=client)
 
 Useful options:
 
-- Signing and verification failures fail closed by default
+- Signing failures and invalid signed POST bodies fail closed by default
 - `sign_responses=False` or `verify_requests=False` to narrow the behavior
-- `a2a=True` to also expose A2A discovery routes from the same FastAPI app
+- `a2a=True` exposes discovery documents cached at middleware initialization;
+  use the [A2A serving guide](../guides/a2a-serve.md) for renewal-aware routes
+
+Request verification only examines POST JSON objects containing `jacsSignature`.
+Unsigned, empty and non-JSON bodies, and other HTTP methods, continue to the
+application even with `strict=True`. This middleware verifies documents; it
+does not authenticate every request or bind the signature to HTTP method, URL
+and audience. Enforce required authentication separately.
 
 Legacy compatibility options are explicit and dangerous:
 
@@ -102,6 +109,12 @@ app.add_middleware(
     auth_clock_skew_seconds=5,
 )
 ```
+
+This checks freshness and duplicate signatures only for verified signed POST
+bodies. Its replay cache is local to the middleware instance; it is lost on
+restart and is not shared across workers or replicas. It does not make unsigned
+requests fail closed. See the [request authentication and replay guide](../advanced/security.md#request-bound-http-authorization)
+for a complete authentication boundary.
 
 To sign only one route:
 

@@ -1,6 +1,6 @@
 # Exchange Signed Artifacts
 
-Sign artifacts with cryptographic provenance and verify artifacts from other agents.
+Sign artifacts with cryptographic provenance and verify artifacts from other agents. Node.js snippets run inside an async function. For multi-agent examples, create separate clients/configurations and independently authenticate each signer's public evidence and configure the verifier's key resolver before verification. Native artifact verification uses its local public-key cache or registry; trust-store enrollment alone does not populate that cache. See [cross-agent setup](a2a-attestation-composition.md).
 
 <div class="tabs">
 <div class="tab">
@@ -49,7 +49,8 @@ assert result["parent_signatures_valid"]
 
 ```python
 chain = a2a.create_chain_of_custody([step1, step2])
-# chain contains: steps (ordered), signers, timestamps, validity
+# Metadata only: chainOfCustody, created, totalArtifacts.
+# This helper does not verify signatures, ordering or validity.
 ```
 
 </div>
@@ -121,15 +122,15 @@ Every signed artifact includes:
 | `jacsId` | Unique document ID |
 | `jacsSignature` | Signer ID, algorithm, timestamp, and base64 signature |
 | `jacsSha256` | Content hash for integrity verification |
-| `jacsType` | The artifact type label |
+| `jacsType` | `a2a-` followed by the caller's artifact type label |
 | `jacsParentSignatures` | Parent artifacts for chain of custody (if any) |
-| `payload` | The original artifact data |
+| `a2aArtifact` | The original artifact data |
 
-Non-JACS receivers can safely ignore the `jacs*` fields and extract `payload` directly.
+Extract `a2aArtifact` only after the required signature and trust checks. Discarding the envelope also discards its provenance.
 
 ## Next Steps
 
 - **[Serve Your Agent Card](a2a-serve.md)** -- Make your agent discoverable
 - **[Discover & Trust Remote Agents](a2a-discover.md)** -- Find and assess other agents
 - **[A2A Interoperability Reference](../integrations/a2a.md)** -- Full API reference
-- **[Hero Demo (Python)](https://github.com/HumanAssisted/JACS/blob/main/examples/a2a_trust_demo.py)** -- 3-agent trust verification example
+- **[Hero Demo (Python)](https://github.com/HumanAssisted/JACS/blob/main/archive/native/examples/a2a_trust_demo.py)** -- 3-agent trust verification example

@@ -5,7 +5,7 @@ JACS supports multiple cryptographic algorithms for digital signatures, providin
 **`pq2025` (ML-DSA-87 / FIPS-204) is the native default.** Explicit
 `ed25519` selection creates genuine Ed25519 keys and emits the canonical
 `ring-Ed25519` wire label; JACS never silently substitutes one supported
-algorithm for another. Every key rotation currently resolves to `pq2025`.
+algorithm for another. Native rotation preserves the current algorithm unless explicitly upgraded.
 ES256 exists in JACS only as an ecosystem
 compatibility key for targeted exports; it is never a native
 `jacsSignature` algorithm. See the
@@ -135,7 +135,7 @@ Choose the native algorithm at agent creation. `pq2025` is the default;
   "jacs_agent_key_algorithm": "pq2025"
 }
 ```
-Native signing defaults to `pq2025`; explicitly selected Ed25519 agents remain Ed25519 until rotation.
+Native signing defaults to `pq2025`; explicitly selected Ed25519 agents remain Ed25519 until an explicit algorithm upgrade.
 
 **Legal/Financial Documents**:
 ```json
@@ -205,7 +205,7 @@ JACS uses SHA-256 for all hash operations:
 
 - Document content hashing (`jacsSha256`)
 - Public key fingerprints (`publicKeyHash`)
-- Agreement content locking (`jacsAgreementHash`)
+- Legacy agreement payload hashing (`jacsAgreementHash`), without authenticated consent policy
 
 ```json
 {
@@ -216,14 +216,13 @@ JACS uses SHA-256 for all hash operations:
 ## Algorithm Migration
 
 **Key rotation is the designated Ed25519 → `pq2025` migration path.**
-Every rotation resolves to `pq2025` — with or without an explicit
-algorithm argument — so an Ed25519 agent becomes PQ-rooted
-the first time it rotates. Requesting any other rotation target is a
-typed error.
+Rotation without an override preserves the current algorithm. Explicit
+Ed25519-to-`pq2025` upgrades are supported; PQ-to-Ed25519 downgrades are rejected.
+
 
 1. **Rotate Keys**
    ```bash
-   jacs-compat agent rotate-keys
+   jacs-compat agent rotate-keys --algorithm pq2025
    ```
 
 2. **Re-issue the Compatibility Key Binding (if present)**

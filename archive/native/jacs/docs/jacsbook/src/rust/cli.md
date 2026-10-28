@@ -100,7 +100,7 @@ jacs-compat agent verify --ignore-dns
 | Option | Short | Description |
 |--------|-------|-------------|
 | `-a` | `--agent-file` | Path to agent file (optional) |
-| `--no-dns` | | Disable DNS validation |
+| `--no-dns` | | Attempt DNS with embedded-fingerprint fallback |
 | `--require-dns` | | Require DNS validation (not strict) |
 | `--require-strict-dns` | | Require DNSSEC validation |
 | `--ignore-dns` | | Ignore DNS validation entirely |
@@ -258,7 +258,7 @@ The CLI respects the following environment variables:
 
 ```bash
 # Use a specific configuration file
-JACS_CONFIG_PATH=./custom-config.json jacs-compat agent verify
+JACS_CONFIG=./custom-config.json jacs-compat agent verify
 
 # Override settings
 JACS_DATA_DIRECTORY=./data jacs-compat document create -f ./doc.json
@@ -288,7 +288,7 @@ jacs-compat document create-agreement -f ./document.json -i agent1-id,agent2-id
 jacs-compat document sign-agreement -f ./document.json
 
 # 3. Second agent signs (using their config)
-JACS_CONFIG_PATH=./agent2.config.json jacs-compat document sign-agreement -f ./document.json
+JACS_CONFIG=./agent2.config.json jacs-compat document sign-agreement -f ./document.json
 
 # 4. Check agreement is complete
 jacs-compat document check-agreement -f ./document.json
@@ -305,14 +305,10 @@ jacs-compat agent verify -a ./other-agent.json --require-strict-dns
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Invalid arguments |
-| 3 | File not found |
-| 4 | Verification failed |
-| 5 | Signature invalid |
+Success is `0`; operation/verification errors generally use `1`. Argument
+parsing uses `2`, as does permissive text/image inspection with no signature.
+Check the [error reference](../reference/errors.md) and the command's result
+fields; a completed inspection is not an authorization decision.
 
 ## Next Steps
 

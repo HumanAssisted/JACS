@@ -4,7 +4,7 @@
 
 This chapter covers fundamental JACS operations in Node.js, including agent initialization, document creation, signing, and verification.
 
-## v0.7.0: Async-First API
+## Async and synchronous methods
 
 {{#include ../_snippets/node-async-first.md}}
 
@@ -15,7 +15,7 @@ const doc = await agent.createDocument(JSON.stringify(content));
 
 // Sync (blocks event loop)
 agent.loadSync('./jacs.config.json');
-const doc = agent.createDocumentSync(JSON.stringify(content));
+const syncDoc = agent.createDocumentSync(JSON.stringify(content));
 ```
 
 ## Initializing an Agent
@@ -37,7 +37,10 @@ agent.loadSync('./jacs.config.json');
 
 ### Configuration File
 
-Create `jacs.config.json`:
+Create an identity with [quickstart](simple-api.md#quickstartoptions) first.
+A configuration only points to existing keys and an agent document; writing
+placeholder IDs does not initialize an agent. A generated config contains
+fields like:
 
 ```json
 {
@@ -45,7 +48,7 @@ Create `jacs.config.json`:
   "jacs_data_directory": "./jacs_data",
   "jacs_key_directory": "./jacs_keys",
   "jacs_default_storage": "fs",
-  "jacs_agent_key_algorithm": "ring-Ed25519",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_agent_id_and_version": "agent-uuid:version-uuid"
 }
 ```
@@ -141,17 +144,11 @@ const isValid = await agent.verifySignature(
 ### Update Existing Document
 
 ```javascript
-// Original document key format: "id:version"
-const documentKey = 'doc-uuid:version-uuid';
-
-// Modified document content
-const updatedData = {
-  jacsId: 'doc-uuid',
-  jacsVersion: 'version-uuid',
-  title: "Updated Proposal",
-  content: "Revised quarterly plan",
-  budget: 75000
-};
+// Use a complete document previously created and stored by this agent.
+const updatedData = JSON.parse(signedDocument);
+const documentKey = `${updatedData.jacsId}:${updatedData.jacsVersion}`;
+updatedData.title = 'Updated Proposal';
+updatedData.budget = 75000;
 
 const updatedDocument = await agent.updateDocument(
   documentKey,
@@ -196,7 +193,10 @@ const isValid = await agent.verifyString(
 
 ## Working with Agreements
 
-The methods in this section use the legacy `jacsAgreement` sidecar on an existing signed document. For new standalone consent workflows, prefer Agreement v2 through `createAgreementV2()`, `signAgreementV2()`, and `verifyAgreementV2()`.
+The methods below inspect the legacy `jacsAgreement` sidecar. Its participant,
+role and quorum policy is not authenticated; `complete`, `policy_authenticated`
+and `policy_accepted` remain false. Agreement v2 also provides inspection, not
+application consent or execution permission. See [Agreement v2](../guides/agreement-v2.md).
 
 ### Create an Agreement
 
@@ -204,7 +204,7 @@ The methods in this section use the legacy `jacsAgreement` sidecar on an existin
 // Add agreement requiring multiple agent signatures
 const documentWithAgreement = await agent.createAgreement(
   signedDocumentJson,
-  ['agent1-uuid', 'agent2-uuid'],           // required signers
+  [JSON.parse(agent.exportAgent()).jacsId], // local signer for this example
   'Do you agree to these terms?',            // question
   'Q1 2024 service contract',                // context
   'jacsAgreement'                            // field name
@@ -247,12 +247,9 @@ console.log('Agent valid:', isValid);
 
 ```javascript
 // Update agent document
-const updatedAgentJson = await agent.updateAgent(JSON.stringify({
-  jacsId: 'agent-uuid',
-  jacsVersion: 'version-uuid',
-  name: 'Updated Agent Name',
-  description: 'Updated description'
-}));
+const agentDocument = JSON.parse(agent.exportAgent());
+agentDocument.jacsAgentType = 'hybrid';
+const updatedAgentJson = await agent.updateAgent(JSON.stringify(agentDocument));
 ```
 
 ### Sign External Agent
@@ -268,7 +265,9 @@ const signedAgentJson = await agent.signAgent(
 
 ## Request/Response Signing
 
-These methods remain synchronous (V8-thread-only, no `Sync` suffix):
+These legacy instance methods sign generic documents. They do not bind HTTP
+request context or authorize a route. Use [request-bound HTTP credentials](http.md)
+for that purpose. These methods remain synchronous (V8-thread-only, no `Sync` suffix):
 
 ### Sign a Request
 
@@ -318,7 +317,7 @@ const configJson = createConfig(
   './jacs_keys',        // jacs_key_directory
   undefined,            // private key filename
   undefined,            // public key filename
-  'ring-Ed25519',       // key algorithm
+  'pq2025',            // key algorithm
   undefined,            // private key password
   undefined,            // agent id and version
   'fs'                  // default storage
@@ -379,10 +378,10 @@ async function main() {
     console.log('Document signature valid');
   }
 
-  // Create agreement for proposal approval
+  // Create a sidecar for signature inspection
   const proposalWithAgreement = await agent.createAgreement(
     signedProposal,
-    ['manager-uuid', 'developer-uuid'],
+    [JSON.parse(agent.exportAgent()).jacsId],
     'Do you approve this proposal?'
   );
 

@@ -8,14 +8,14 @@ Add JACS to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-jacs = "0.3"
+jacs = "=0.15.0"
 ```
 
 ### Feature Flags
 
 ```toml
 [dependencies]
-jacs = { version = "0.3", features = ["cli", "observability"] }
+jacs = { version = "=0.15.0", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
 ```
 
 | Feature | Description |
@@ -407,7 +407,7 @@ let storage = MultiStorage::new("fs".to_string())?;
 // In-memory storage
 let storage = MultiStorage::new("memory".to_string())?;
 
-// AWS object storage
+// AWS object storage (requires the native s3 feature)
 let storage = MultiStorage::new("aws".to_string())?;
 ```
 
@@ -417,12 +417,12 @@ For signed document CRUD/search, prefer the unified `DocumentService` surface:
 use jacs::document::service_from_agent;
 
 let docs = service_from_agent(agent_handle)?;
-// `fs` and `rusqlite` currently resolve in JACS core.
+// `fs` and `rusqlite` resolve in the native document service.
 ```
 
 ## Error Handling
 
-JACS functions return `Result<T, Box<dyn Error>>`:
+Fallible APIs return `Result`; the exact error type depends on the API (including `JacsError` and storage-specific errors):
 
 ```rust
 use jacs::get_empty_agent;

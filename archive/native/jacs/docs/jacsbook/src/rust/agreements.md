@@ -78,7 +78,9 @@ let agreement = create(&agent, input)?;
 let signed = sign(&agent, &agreement.raw, AgreementV2Role::Signer)?;
 let report = verify(&agent, &signed.raw)?;
 
-assert!(report.valid);
+assert!(report.mathematical_checks_valid);
+assert!(!report.valid);
+assert!(!report.policy_accepted);
 ```
 
 Use mutations for successor versions instead of editing JSON by hand. The helpers maintain `jacsAgreementHash`, `jacsPreviousVersion`, `allPreviousVersions`, status, and signature invalidation.
@@ -96,7 +98,7 @@ Branch handling is also in core and exposed through the CLI:
 ```bash
 jacs-compat agreement-v2 detect-conflict --base base.json --left left.json --right right.json
 jacs-compat agreement-v2 merge-transcript --base base.json --left left.json --right right.json
-jacs-compat agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+jacs-compat agreement-v2 resolve-conflict --base base.json --previous left.json --side-branch right.json --mutation resolution.json
 ```
 
 Transcript-only branches can auto-merge. Terms conflicts require an explicit successor mutation.

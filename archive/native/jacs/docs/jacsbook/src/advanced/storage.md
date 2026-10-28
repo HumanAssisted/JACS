@@ -12,9 +12,9 @@ Those are related, but they are not identical. The most important rule is the si
 - If an update payload changes an already-signed JACS document without re-signing it, the write fails.
 - Visibility changes create a new signed version instead of mutating metadata in place.
 
-## Built-in Core Backends
+## Native Backends
 
-| Backend | Config Value | Core Surface | Notes |
+| Backend | Config Value | Native Surface | Notes |
 |---------|--------------|--------------|-------|
 | Filesystem | `fs` | `MultiStorage` + `DocumentService` | Default. Signed JSON files on disk. |
 | Local indexed SQLite | `rusqlite` | `DocumentService` + `SearchProvider` | Stores signed documents in a local SQLite DB with FTS search. |
@@ -22,7 +22,7 @@ Those are related, but they are not identical. The most important rule is the si
 | Memory | `memory` | `MultiStorage` | Non-persistent, useful for tests and temporary flows. |
 | Browser local storage | `local` | `MultiStorage` | WASM-only. |
 
-For local indexed document search in JACS core, use `rusqlite`.
+For local indexed document search in native JACS, use `rusqlite`.
 
 ## Filesystem (`fs`)
 
@@ -51,7 +51,7 @@ Use filesystem when you want the simplest possible deployment, inspectable files
 
 ## Local Indexed SQLite (`rusqlite`)
 
-`rusqlite` is the built-in indexed document backend used by the upgraded bindings and MCP search path.
+`rusqlite` is the indexed document backend used by the bindings and MCP search path when built with the `sqlite` feature (enabled by the native crate's defaults).
 
 ```json
 {
@@ -72,7 +72,7 @@ Use `rusqlite` when you want local full-text search, filtered document queries, 
 
 ## AWS (`aws`)
 
-AWS support is an object-store backend for lower-level storage operations.
+AWS is an object-store backend for lower-level storage operations and requires a source build with the native `jacs` crate's `s3` feature. Selecting `aws` in config alone cannot add this support to a prebuilt package.
 
 ```json
 {

@@ -2,16 +2,16 @@
 
 ## Why this matters
 
-You have a shared README that five agents review and counter-sign before a release; today that workflow requires a separate JACS JSON next to the markdown, which is easy to misplace and impossible to read on GitHub alongside the file. With `jacs-compat sign-text` the signature sits at the end of the markdown in a YAML-bodied block; the file still renders as markdown on GitHub; every signer's identity and timestamp are attached to the exact canonical bytes. The signature proves *who* signed *what bytes* at the agent's *claimed* time — it does not prove first creation or legal ownership.
+`jacs-compat sign-text` appends a YAML signature footer to a text file. Verification binds canonicalized content and a signer-supplied timestamp to a key. Independent evidence must establish that key's identity; a signature does not prove authorship, human approval or legal ownership.
 
 ## At a glance
 
 | Action | CLI verb | Python | Node | Go | Rust |
 |--------|----------|--------|------|-----|------|
-| Sign | `jacs-compat sign-text <file>` | `jacs.sign_text(path)` | `jacs.signText(path)` | `jacs.SignText(path, nil)` | `jacs::simple::advanced::sign_text_file(&agent, path, opts)` |
-| Verify | `jacs-compat verify-text <file>` | `jacs.verify_text(path)` | `jacs.verifyText(path)` | `jacs.VerifyText(path, nil)` | `jacs::simple::advanced::verify_text_file(&agent, path, opts)` |
+| Sign | `jacs-compat sign-text <file>` | `jacs.sign_text(path)` | `jacs.signText(path)` | `agent.SignText(path, nil)` | `jacs::simple::advanced::sign_text_file(&agent, path, opts)` |
+| Verify | `jacs-compat verify-text <file>` | `jacs.verify_text(path)` | `jacs.verifyText(path)` | `agent.VerifyText(path, nil)` | `jacs::simple::advanced::verify_text_file(&agent, path, opts)` |
 
-All bindings are async-first on Node (returns `Promise`); CLI is synchronous; Python and Rust are synchronous; Go is synchronous.
+Python examples use `from jacs import simple as jacs`; Node examples use `@hai.ai/jacs/simple` and return Promises. Go calls are methods on a loaded `*JacsSimpleAgent`. Python, Go and Rust calls are synchronous.
 
 ## The signature block
 
@@ -33,7 +33,7 @@ content:
   signedContentHash: no5d...
 jacsSignature:
   agentID: agent-abc123
-  signingAlgorithm: ring-Ed25519
+  signingAlgorithm: pq2025
   publicKeyHash: 3b2f...
   signature: ...
 jacsSha256: 9a8b...
@@ -53,8 +53,8 @@ Multi-signer files contain multiple back-to-back blocks. The signers are unorder
 | `jacsType` | `inline-md` for inline markdown/text footers. |
 | `content.signedContentHash` | Base64url SHA-256 of the canonicalised markdown/text body. |
 | `content.canonicalization` | Tag identifying how the bytes are normalised before hashing (currently `jacs-text-v1`). |
-| `jacsSignature.agentID` | Agent ID. Resolves to a public key via the local trust store, the `--key-dir` override, or DNS. |
-| `jacsSignature.publicKeyHash` | SHA-256 of the signer's public key — defends against silent key swap. |
+| `jacsSignature.agentID` | Agent ID used by the inline key resolver described below. |
+| `jacsSignature.publicKeyHash` | Native key-hash field; not a substitute for independently trusted key selection. |
 | `jacsSignature.signature` | Normal JACS document signature over the footer document fields. |
 | `jacsSha256` | Normal JACS document hash for the signed footer. |
 
@@ -70,7 +70,7 @@ input as JSON. When the MIME type is known, callers should pass
 
 The bytes hashed by `content.signedContentHash` are derived from the file content (everything before the first signature block) by:
 
-1. Normalising line endings to `\n` (CRLF / CR collapsed to LF).
+1. Removing every carriage-return (`\r`) character. CRLF becomes LF; CR-only separators disappear.
 2. Stripping trailing spaces, tabs, and blank lines at the end of the content.
 
 The file *on disk* is NOT modified by canonicalization — the original bytes are preserved. Canonicalization only affects the hash input.
@@ -79,14 +79,14 @@ The file *on disk* is NOT modified by canonicalization — the original bytes ar
 
 By default, verification is **permissive**: a missing signature is a typed status, not an error. Strict mode opts in to treating missing signatures as a real failure.
 
-| Mode | CLI exit code | Python | Node | Go | Rust |
-|------|---------------|--------|------|-----|------|
-| Valid signature | `0` | `result.status == 'signed'` | `result.status === 'signed'` | `result.Status == "signed"` | `Status::Signed { signers }` |
-| Invalid signature | `1` | raises `VerificationError` | rejects | returns error | `Err(ErrorKind::InvalidSignature)` |
-| Missing signature (permissive) | `2` | `result.status == 'missing_signature'` | `result.status === 'missing_signature'` | `result.Status == "missing_signature"` | `Status::MissingSignature` |
-| Missing signature (strict) | `1` (stderr: `no JACS signature found`) | raises `MissingSignatureError` | rejects with `MissingSignature` | `errors.Is(err, jacs.ErrMissingSignature)` | `Err(ErrorKind::MissingSignature)` |
+| Outcome | CLI exit | Library result |
+|---------|----------|----------------|
+| All blocks valid | `0` | Signed result; every signature entry is valid |
+| A block is invalid or its key is unavailable | `1` | Per-block status in `signatures`; not necessarily an exception |
+| No signature, permissive mode | `2` | Missing-signature status |
+| No signature, strict mode | `1` | Missing-signature error |
 
-Pick permissive when verification is part of a check that may run against unsigned files (CI on a PR that adds the first signature). Pick strict when a missing signature is genuinely a failure (release-gate, post-merge audit).
+A `signed` result only means blocks were found. Inspect **every** signature entry and require the expected signer set; otherwise a valid block can hide a failed or missing required signer. Rust returns `VerifyTextResult::Signed { signatures }` with `SignatureStatus` entries. File-level malformed input and I/O can fail separately. Strict mode does not convert every per-block failure into an exception.
 
 ## Worked example — countersigned README
 
@@ -129,13 +129,15 @@ You can swap the order of the two blocks on disk and `jacs-compat verify-text` s
 
 ## `--key-dir` override
 
-When verifying a file from someone whose key is not in your local trust store, point at a directory of `<signer_id>.public.pem` files:
+When verifying a remote signer, provide a directory of authenticated `<signer_id>.public.pem` files:
 
 ```bash
 jacs-compat verify-text README.md --key-dir ./trusted-keys/
 ```
 
-Resolution order: self → `--key-dir` (when provided) → local trust store → DNS (deferred). When `--key-dir` is supplied, a matching `<signer_id>.public.pem` wins for that specific signer; signers absent from the directory fall through to the trust store.
+Use independently authenticated keys in `--key-dir` for remote signers. A matching file is considered after the local signer's own key; version-qualified IDs encode `:` as `%3A` in filenames. Ordinary trust-store enrollment is not sufficient for this resolver: its trust-store branch expects a public-key field inside the stored agent JSON, while enrollment also stores key bytes separately.
+
+Optional network lookup uses configured `JACS_DNS_KEY_DOMAINS`: TXT supplies a fingerprint and HTTPS supplies key bytes. The inline resolver uses non-DNSSEC TXT lookup; do not confuse it with strict agent DNS verification or independent identity authorization.
 
 ## Marker collision — what happens if your file mentions the marker
 
@@ -149,13 +151,7 @@ There is intentionally **no** `--force-overwrite-markers` escape hatch. Its sema
 
 ## Caps and rejected inputs
 
-| Limit | Cause failure |
-|-------|--------------|
-| Block body > 16 KiB | `Err(ErrorKind::PayloadTooLarge)` (Rust) / equivalents in bindings |
-| File > 256 signature blocks | `Err(ErrorKind::TooManySignatures)` |
-| Body contains YAML anchor / tag / alias | `Err(ErrorKind::InvalidSignatureBlock)` |
-| Body field unknown to the schema | `Err(ErrorKind::InvalidSignatureBlock)` (`deny_unknown_fields`) |
-| File on disk contains stray column-zero `-----BEGIN JACS SIGNATURE-----` outside a block | `Err(ErrorKind::MarkerCollision)` |
+The parser limits each footer body to 16 KiB and each file to 256 blocks. Oversized or malformed blocks and unsupported YAML constructs produce validation failures/statuses; inspect the returned result rather than matching invented error-type names. Stray column-zero signature markers prevent signing. See the [parser contract](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/src/inline/mod.rs) for exact framing and accepted fields.
 
 ## Next step
 

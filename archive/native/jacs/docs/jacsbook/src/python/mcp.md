@@ -1,11 +1,26 @@
 # MCP Integration (Python)
 
+For the primary ready-made JACS tool server, install `jacs-cli` and run
+`jacs mcp` (ordinary stdio MCP, verify-only by default). The native Python
+integrations below serve different purposes. Install their optional dependency:
+
+```bash
+python -m pip install "jacs[mcp]==0.15.0"
+```
+
+When building this checkout, use its `mcp` extra and source Python requirements.
+
 Python exposes two different MCP stories:
 
 1. **Secure a local FastMCP transport** with `jacs.mcp`
 2. **Expose JACS operations as MCP tools** with `jacs.adapters.mcp`
 
 Use the first when you already have an MCP server or client. Use the second when you want the model to call JACS signing, agreement, A2A, or trust helpers as normal MCP tools.
+
+The signed local HTTP transport requires JACS wrappers at **both endpoints**
+and trusted peer keys. A stock MCP client cannot consume its signed carriers
+directly. Registering tools on ordinary FastMCP instead preserves ordinary MCP
+transport; it does not add caller authentication or permission to sign.
 
 ## What Is Supported
 
@@ -126,7 +141,11 @@ register_a2a_tools(mcp, client=client)
 register_trust_tools(mcp, client=client)
 ```
 
-The core tool set includes document signing, verification, agreements, audit, and agent-info helpers. The A2A and trust helpers are opt-in registrations.
+The core tool set includes document/file signing, verification, legacy sidecar
+agreement inspection, agent-info, public sharing and media helpers; it does not
+register an audit tool. A2A and trust helpers are separate opt-in registrations.
+Expose signing and trust mutations only to callers authorized by your host
+policy. Agreement inspection does not establish application consent.
 
 ## Useful Helper APIs
 

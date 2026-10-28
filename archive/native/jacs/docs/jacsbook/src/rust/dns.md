@@ -55,29 +55,20 @@ Where:
 
 ### Setting Up with Route 53 (AWS)
 
-1. Generate the AWS-formatted command:
+1. Generate the record and Route 53 change-batch JSON:
+
 ```bash
 jacs-compat agent dns --domain myagent.example.com --provider aws
 ```
 
-2. The output will include an AWS CLI command like:
+2. Save only the JSON following `Route53 change-batch JSON:` to `change-batch.json`, inspect its identity/domain/fingerprint, then apply it to your hosted zone:
+
 ```bash
 aws route53 change-resource-record-sets \
-  --hosted-zone-id YOUR_ZONE_ID \
-  --change-batch '{
-    "Changes": [{
-      "Action": "UPSERT",
-      "ResourceRecordSet": {
-        "Name": "_v1.agent.jacs.myagent.example.com",
-        "Type": "TXT",
-        "TTL": 3600,
-        "ResourceRecords": [{"Value": "\"v=jacs; jacs_agent_id=<agent-uuid>; alg=SHA-256; enc=base64; jac_public_key_hash=<digest>\""}]
-      }
-    }]
-  }'
+  --hosted-zone-id YOUR_ZONE_ID --change-batch file://change-batch.json
 ```
 
-3. Replace `YOUR_ZONE_ID` with your actual Route 53 hosted zone ID.
+The JACS output also includes headings and a BIND record; it is not an executable shell script or a raw JSON file. Do not pipe it to `eval`.
 
 ### Setting Up with Cloudflare
 
@@ -99,7 +90,7 @@ jacs-compat agent dns --domain myagent.example.com --provider cloudflare
 jacs-compat agent dns --domain myagent.example.com --provider azure
 ```
 
-2. The output will include an Azure CLI command that you can run directly.
+2. Inspect the Azure command and supply your resource group and DNS zone before running it. The output also contains headings and a BIND record.
 
 ## Verifying Agents with DNS
 

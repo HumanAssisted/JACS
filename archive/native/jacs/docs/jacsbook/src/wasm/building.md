@@ -40,7 +40,7 @@ import { createEphemeral, initJacsWasm } from "@hai.ai/jacs-wasm";
 
 await initJacsWasm();
 
-const agent = await createEphemeral() // pq2025; no classical fallback;
+const agent = await createEphemeral(); // pq2025; no classical fallback
 const signed = agent.signMessageJson(JSON.stringify({ hello: "world" }));
 const result = JSON.parse(agent.verifyJson(signed));
 
@@ -99,36 +99,44 @@ agent.metrics(): string
 `clearSecrets()` zeroes the in-memory private key. Signing then fails
 with a `Locked` error, while verification continues to work.
 
-## Multi-Party Agreements
+## Agreement signature inspection
 
-Browser callers can build, sign, and verify agreement documents:
+Browser callers can collect and inspect v1 sidecar signatures. This local
+example constructs both handles and pins their actual IDs and keys before
+receiving an agreement. In an application, obtain the signer-key mapping
+through independently trusted enrollment, never from the submitted document.
 
 ```ts
-import { createAgreementJson } from "@hai.ai/jacs-wasm";
+import { createEphemeral, createVerifier, createAgreementJson } from "@hai.ai/jacs-wasm";
 
-const documentJson = JSON.stringify({ action: "deploy", version: "1.2.3" });
-const agentIdsJson = JSON.stringify(["alice", "bob"]);
+const alice = await createEphemeral();
+const bob = await createEphemeral();
+const aliceId = JSON.parse(alice.exportAgent()).jacsId;
+const bobId = JSON.parse(bob.exportAgent()).jacsId;
+const trustedSigners = [
+  { agentId: aliceId, publicKeyBase64: alice.getPublicKeyBase64(), algorithm: alice.algorithm() },
+  { agentId: bobId, publicKeyBase64: bob.getPublicKeyBase64(), algorithm: bob.algorithm() },
+];
+const verifier = await createVerifier(alice.getPublicKeyBase64(), alice.algorithm());
 const agreement = createAgreementJson(
-  documentJson,
-  agentIdsJson,
-  "Ship this release?",
-  "Production release vote",
+  JSON.stringify({ action: "review", version: "1.2.3" }),
+  JSON.stringify([aliceId, bobId]),
+  "Have you reviewed this release?",
+  "Signature inspection example",
 );
-
-const signedByAlice = alice.signAgreementJson(agreement, "approver");
+const signedByAlice = alice.signAgreementJson(agreement, "reviewer");
+const signedByBoth = bob.signAgreementJson(signedByAlice, "reviewer");
 const outcome = JSON.parse(
-  verifier.verifyAgreementJson(
-    signedByAlice,
-    JSON.stringify([
-      {
-        agentId: "alice",
-        publicKeyBase64: alice.getPublicKeyBase64(),
-        algorithm: alice.algorithm(),
-      },
-    ]),
-  ),
+  verifier.verifyAgreementJson(signedByBoth, JSON.stringify(trustedSigners)),
 );
+console.log(outcome);
 ```
+
+The v1 signature does not authenticate participant, role or quorum policy;
+`role` can be edited without invalidating its signature. The report's
+mathematical outcomes are not consent, policy acceptance or permission to
+execute. Missing signer keys are reported per signer. Keep application
+acceptance policy separate from these inspection results.
 
 ## Browser Persistence
 

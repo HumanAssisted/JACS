@@ -47,15 +47,21 @@ import (
 
 func main() {
     if err := jacs.Load(nil); err != nil {
-        log.Fatal("Run: jacs quickstart --name my-agent --domain example.com")
+        log.Fatal("Create an agent first with jacs.Create or jacs-compat quickstart: ", err)
     }
 
-    signed, _ := jacs.SignMessage(map[string]interface{}{
+    signed, err := jacs.SignMessage(map[string]interface{}{
         "action": "approve",
         "amount": 100,
     })
 
-    result, _ := jacs.Verify(signed.Raw)
+    if err != nil {
+        log.Fatal(err)
+    }
+    result, err := jacs.Verify(signed.Raw)
+    if err != nil {
+        log.Fatal(err)
+    }
     fmt.Printf("Valid: %t, Signer: %s\n", result.Valid, result.SignerID)
 }
 ```
@@ -71,9 +77,9 @@ func main() {
 | `Verify(doc)` | Verify signed document |
 | `VerifyStandalone(doc, opts)` | Verify without loading an agent |
 | `VerifyHumanApprovedDocument(bundle, expected, authority, provenance)` | Verify retained public approval evidence with independently selected context and pins |
-| `CreateAgreementV2(input)` | Create a standalone Agreement v2 document |
-| `SignAgreementV2(doc, role)` | Sign as `signer`, `witness`, or `notary` |
-| `VerifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
+| `(*JacsSimpleAgent).CreateAgreementV2(input)` | Create an Agreement v2 document from JSON |
+| `(*JacsSimpleAgent).SignAgreementV2(doc, role)` | Add a claimed `signer`, `witness`, or `notary` signature |
+| `(*JacsSimpleAgent).VerifyAgreementV2(doc)` | Inspect mathematical and structural checks; not consent-policy acceptance |
 | `ExportAgent()` | Export agent JSON for sharing |
 | `Audit(opts)` | Run a security audit |
 
@@ -83,8 +89,7 @@ The instance-based `JacsSimpleAgent` carries the cross-language transport
 contract. The body slice must contain the exact bytes sent on the wire:
 
 ```go
-algorithm := "ed25519"
-agent, _, err := jacs.EphemeralSimpleAgent(&algorithm)
+agent, _, err := jacs.EphemeralSimpleAgent(nil) // default pq2025
 if err != nil {
     log.Fatal(err)
 }
@@ -182,7 +187,7 @@ is a relocatable executable/library pair, not a statically linked executable.
 
 Because `jacsgo` is a nested Go module, its source tag is
 `jacsgo/vX.Y.Z`, while consumers request `@vX.Y.Z`. The release workflow rejects
-a tag whose version differs from `jacsgo/lib/Cargo.toml`, publishes one native
+a tag whose version differs from `archive/native/jacsgo/lib/Cargo.toml`, publishes one native
 asset per supported target plus a checksum manifest, and then builds and runs
 an empty external consumer without a local `replace` directive.
 
@@ -216,23 +221,21 @@ for versions that actually have jacsgo assets.
 git clone https://github.com/HumanAssisted/JACS.git
 cd JACS
 # For reproducible use, pin a reviewed source commit before building.
-make -C jacsgo build-rust
-cd jacsgo
+make -C archive/native/jacsgo build-rust
+cd archive/native/jacsgo
 go build ./...
 ```
 
 Linux source builds require `pkg-config`, a C toolchain, and D-Bus development
 headers. Source builds place `libjacsgo.dylib` or `libjacsgo.so` in
-`jacsgo/build/`, which is the same layout used by the installer. The Make build
+`archive/native/jacsgo/build/`, using the same package-local layout as the installer. The Make build
 uses the native host platform; setting Go cross-compilation variables alone
 does not build a matching Rust library. `CARGO_TARGET_DIR` can isolate native
 and CLI build artifacts; the Make build stages the library from that exact
 directory and fails if it cannot copy it.
 
-`make test` and `make bench` supply a command-scoped loader path for Go's
-temporary test executables; `make examples` copies the library beside its
-example binaries. For direct `go test` or `go run` during source development,
-set the loader path explicitly (from `jacsgo/`):
+For direct `go test` or `go run` during source development,
+set the loader path explicitly (from `archive/native/jacsgo/`):
 
 ```bash
 DYLD_LIBRARY_PATH="$PWD/build" LD_LIBRARY_PATH="$PWD/build" go test ./...
@@ -242,7 +245,10 @@ Use the vendored `build/` path instead when developing an external module.
 This development override is not embedded in your executable or needed for
 the adjacent-library deployment above.
 
-Agreement v2 is the preferred model for new multi-agent consent workflows. It is shared with Rust, Python, Node.js, CLI, MCP, and WASM through the same JSON workflow. The older sidecar agreement helpers remain for simple countersignature metadata.
+Agreement v2 is a native compatibility inspection format. Its report can set
+`MathematicalChecksValid` to true, but `Valid` and `PolicyAccepted` remain false:
+party proofs do not authenticate role, quorum or notary authority. Neither these
+checks nor older sidecar agreement inspection grant application consent.
 
 ### Public human-approval verification
 
@@ -264,8 +270,8 @@ source builds remain slim and return an explicit unsupported error for this
 function. To enable the release verifier feature profile from the repository root:
 
 ```bash
-make -C jacsgo build-rust CARGO_FEATURES=human-approval-vendored
-cd jacsgo
+make -C archive/native/jacsgo build-rust CARGO_FEATURES=human-approval-vendored
+cd archive/native/jacsgo
 go build ./...
 DYLD_LIBRARY_PATH="$PWD/build" LD_LIBRARY_PATH="$PWD/build" \
   go test -tags human_approval -run 'TestHumanApprovedDocument|TestMethodParityAgainstFixture' .
@@ -282,13 +288,15 @@ matching released module and library, or build both from the same source checkou
 The Go tag enables the optional behavioral tests, not native compilation; the
 Cargo feature and matching rebuilt shared library are both required. Default Go
 tests still check that the package-level function remains available in the ABI.
-CI tests both the slim and release verifier feature profiles. To run the full
-feature-enabled suite locally after building, use
-`make -C jacsgo test CARGO_FEATURES=human-approval-vendored GO_TEST_TAGS=human_approval`.
+CI tests both the slim and release verifier feature profiles. The `go test`
+command above runs the focused proof and parity checks from
+`archive/native/jacsgo`; remove its `-run` filter to broaden the test selection.
 
-## What's new in 0.10.0
+## Text and image provenance
 
-*Why this matters:* shared markdown reviewed by multiple Go agents and signed images for AI-era provenance are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
+Media methods belong to `JacsSimpleAgent`, not the package-level API. This
+example creates a temporary identity; use `LoadSimpleAgent` for a persistent one.
+The input files must already exist.
 
 ```go
 package main
@@ -301,19 +309,24 @@ import (
 )
 
 func main() {
-    if err := jacs.Load(nil); err != nil {
+    agent, _, err := jacs.EphemeralSimpleAgent(nil)
+    if err != nil {
         log.Fatal(err)
     }
+    defer agent.Close()
 
     // Text — permissive verify (default)
-    if _, err := jacs.SignText("README.md", nil); err != nil {
+    if err := agent.SignText("README.md", nil); err != nil {
         log.Fatal(err)
     }
-    result, _ := jacs.VerifyText("README.md", nil)
+    result, err := agent.VerifyText("README.md", nil)
+    if err != nil {
+        log.Fatal(err)
+    }
     fmt.Println("status:", result.Status) // "signed" | "missing_signature" | "malformed"
 
     // Hard-fail if the file isn't signed
-    if _, err := jacs.VerifyText("README.md", &jacs.VerifyTextOpts{Strict: true}); err != nil {
+    if _, err := agent.VerifyText("README.md", &jacs.VerifyTextOpts{Strict: true}); err != nil {
         if errors.Is(err, jacs.ErrMissingSignature) {
             fmt.Println("not signed")
         } else {
@@ -321,23 +334,31 @@ func main() {
         }
     }
 
-    // Override trust store with a directory of <signer_id>.public.pem files
-    jacs.VerifyText("README.md", &jacs.VerifyTextOpts{KeyDir: "./trusted-keys/"})
-
     // Images
-    jacs.SignImage("photo.png", "signed.png", nil)
-    v, _ := jacs.VerifyImage("signed.png", nil)
+    if _, err := agent.SignImage("photo.png", "signed.png", nil); err != nil {
+        log.Fatal(err)
+    }
+    v, err := agent.VerifyImage("signed.png", nil)
+    if err != nil {
+        log.Fatal(err)
+    }
     fmt.Println("status:", v.Status)
 
     // Extract embedded provenance payload (decoded JSON by default)
-    payload, _ := jacs.ExtractMediaSignature("signed.png", nil)
-    fmt.Println(string(payload))
+    payload, present, err := agent.ExtractMediaSignature("signed.png", nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if present {
+        fmt.Println(payload) // Extraction alone does not verify a signature.
+    }
 }
 ```
 
 A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
 
-See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference and build instructions.
+See the [native development guide](../DEVELOPMENT.md) and
+[Go book](https://humanassisted.github.io/JACS/native/go/installation.html).
 
 ## Links
 

@@ -6,7 +6,12 @@ This is the comprehensive configuration guide covering zero-config quickstart, s
 
 ### Key resolution for verifiers
 
-When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set **`JACS_KEY_RESOLUTION`** (environment variable or in config) to a comma-separated list of sources: `local` (local key cache by `publicKeyHash`), `dns` (DNS TXT fingerprint validation), `hai` (HAI key service). Example: `JACS_KEY_RESOLUTION=local,hai` or `local,dns,hai`. The first source that yields verifiable key material is used. Use `verify_standalone()` with explicit `keyResolution` for one-off verification without loading a full config.
+`JACS_KEY_RESOLUTION` is an environment-only comma-separated source list.
+The default is `local,registry`: local public-key cache/trust data, then the
+configured registry when network policy permits. `dns` is a recognized option
+but native document lookup skips it: DNS authenticates fingerprints, not public
+key bytes. `hai` is not a source name. Use independently trusted key evidence
+and the [DNS guide](../rust/dns.md) for domain anchoring.
 
 ## Zero-Config Path
 
@@ -35,17 +40,24 @@ jacs-compat quickstart --name config-agent --domain config.example.com
 
 ## Minimal Configuration
 
-For persistent agents, a config file needs only two fields (plus `$schema`):
+Use `quickstart()` to create and sign a persistent config. A creation template
+must include the schema's six required settings:
 
 ```json
 {
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
-  "jacs_agent_key_algorithm": "pq2025"
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_agent_private_key_filename": "jacs.private.pem.enc",
+  "jacs_agent_public_key_filename": "jacs.public.pem",
+  "jacs_agent_key_algorithm": "pq2025",
+  "jacs_default_storage": "fs"
 }
 ```
 
-All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` storage). Override only what you need.
+This unsigned template does not load an existing identity. Existing-agent
+configs also need the generated identity/version and valid config signature;
+do not reconstruct them by editing this template.
 
 ## Signed-config integrity
 
@@ -408,7 +420,10 @@ You can also override via environment variable:
 export JACS_KEYCHAIN_BACKEND=disabled  # skip keychain in CI
 ```
 
-When not set to `"disabled"`, password resolution checks: env var first, then OS keychain, then error. See the [CLI keychain commands](cli-commands.md#jacs-compat-keychain) for storing and managing passwords.
+An explicit instance password takes precedence. Otherwise resolution checks the
+password environment variable, the selected/legacy password file, then the
+agent-specific OS keychain. The CLI rejects simultaneously configured explicit
+environment and password-file sources. See the [CLI keychain commands](cli-commands.md#jacs-compat-keychain) for storing and managing passwords.
 
 These can be overridden by environment variables if needed, but they are primarily configured through the `jacs.config.json` file.
 

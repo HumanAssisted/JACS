@@ -178,7 +178,7 @@ This outputs the TXT record to add to your DNS zone. Provider options: `plain`, 
 jacs-compat agent lookup example.com
 ```
 
-This fetches the agent's public key from `https://example.com/.well-known/jacs-pubkey.json` and checks the DNS TXT record at `_v1.agent.jacs.example.com`.
+This inspection command fetches and prints `https://example.com/.well-known/jacs-pubkey.json` and the DNS TXT record at `_v1.agent.jacs.example.com`. It does not compare the fetched key against the TXT fingerprint or establish trust. Use the verification APIs and an independently selected key for that decision.
 
 ### CLI verification with DNS
 
@@ -218,12 +218,9 @@ Test sources:
 
 ## Key Resolution Order
 
-When verifying a document, JACS resolves the signer's public key in a configurable order. Set `JACS_KEY_RESOLUTION` to control this:
-
-| Value | Source |
-|-------|--------|
-| `local` | Local trust store (added via `trust_agent`) |
-| `dns` | DNS TXT record lookup |
-| `hai` | HAI key distribution service |
-
-Default: `local,hai`. Example: `JACS_KEY_RESOLUTION=local,dns,hai`.
+Native document verification uses `JACS_KEY_RESOLUTION` (environment only),
+defaulting to `local,registry`. Local storage supplies cached/trusted public
+keys; registry lookup requires the relevant network policy. DNS does not fetch
+historical public keys: its TXT record anchors a fingerprint, and native document
+key lookup skips that source. See [DNS verification](../rust/dns.md) and
+[trust enrollment](../advanced/trust-store.md).

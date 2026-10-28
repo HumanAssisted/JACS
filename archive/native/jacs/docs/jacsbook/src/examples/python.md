@@ -1,819 +1,90 @@
 # Python Examples
 
-This chapter provides practical Python examples using the `jacs` (jacspy) package.
+These recipes use `JacsClient`. See [installation](../python/installation.md)
+for the native package and platform requirements.
 
-## Setup
-
-```bash
-# Install dependencies
-pip install jacs fastmcp fastapi uvicorn
-```
+## Sign a tool result and reject tampering
 
 ```python
-# Initialize JACS
-import jacs
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-```
-
-## Basic Document Operations
-
-### Creating and Signing Documents
-
-```python
-import jacs
 import json
-
-def create_signed_document():
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    # Create document content
-    content = {
-        "title": "Invoice",
-        "invoiceNumber": "INV-001",
-        "amount": 1500.00,
-        "customer": "Acme Corp",
-        "items": [
-            {"description": "Consulting", "quantity": 10, "price": 150}
-        ]
-    }
-
-    # Create and sign the document
-    signed_doc = agent.create_document(json.dumps(content))
-
-    # Parse the result
-    doc = json.loads(signed_doc)
-    print(f"Document ID: {doc['jacsId']}")
-    print(f"Version: {doc['jacsVersion']}")
-    print(f"Signature: {'Present' if 'jacsSignature' in doc else 'Missing'}")
-
-    return doc
-
-if __name__ == "__main__":
-    create_signed_document()
-```
-
-### Verifying Documents
-
-```python
-import jacs
-import json
-
-def verify_document(file_path: str) -> bool:
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    # Read the document
-    with open(file_path, 'r') as f:
-        doc_string = f.read()
-
-    # Verify signature
-    is_valid = agent.verify_document(doc_string)
-
-    if is_valid:
-        doc = json.loads(doc_string)
-        print("✓ Document signature is valid")
-        print(f"  Signed by: {doc.get('jacsSignature', {}).get('agentID')}")
-        print(f"  Signed at: {doc.get('jacsSignature', {}).get('date')}")
-    else:
-        print("✗ Document signature is INVALID")
-
-    return is_valid
-
-if __name__ == "__main__":
-    verify_document('./invoice.json')
-```
-
-### Updating Documents
-
-```python
-import jacs
-import json
-
-def update_document(original_path: str, new_content: dict) -> dict:
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    # Read original document
-    with open(original_path, 'r') as f:
-        original_doc = f.read()
-
-    # Update with new content (preserves version chain)
-    updated_doc = agent.update_document(
-        original_doc,
-        json.dumps(new_content)
-    )
-
-    doc = json.loads(updated_doc)
-    print(f"Updated Document ID: {doc['jacsId']}")
-    print(f"New Version: {doc['jacsVersion']}")
-
-    return doc
-
-if __name__ == "__main__":
-    updated = update_document('./invoice-v1.json', {
-        "title": "Invoice",
-        "invoiceNumber": "INV-001",
-        "amount": 1500.00,
-        "customer": "Acme Corp",
-        "status": "paid"  # New field
-    })
-```
-
-## HTTP Server with FastAPI
-
-> **Signed-artifact example, not request authentication:** the legacy
-> `sign_request` / `verify_request` calls below sign a generic JACS document but
-> do not bind the HTTP method, absolute URL, query, body bytes, or audience. Do
-> not use this pattern to authorize an endpoint. A source `0.11.4` client builds
-> `JACS v2` with `SimpleAgent.build_request_auth_header(method, url, body, audience)`;
-> the server must verify the same context with a trusted key and atomically
-> consume the nonce. Likewise, use `SimpleAgent.sign_response` and
-> `unwrap_signed_event` with pinned keys for fail-closed response events. See
-> [Security](../advanced/security.md#request-bound-http-authorization).
-
-### Complete FastAPI Server
-
-```python
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import PlainTextResponse
-import jacs
-import json
-
-app = FastAPI(title="JACS API")
-
-# Initialize JACS agent at startup
-agent = None
-
-@app.on_event("startup")
-async def startup():
-    global agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-# Health check (no JACS)
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-# JACS-protected endpoint
-@app.post("/api/echo")
-async def echo(request: Request):
-    # Read raw body
-    body = await request.body()
-    body_str = body.decode('utf-8')
-
-    # Verify JACS request
-    try:
-        verified = jacs.verify_request(body_str)
-        payload = json.loads(verified).get('payload')
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid JACS request")
-
-    # Process and respond
-    result = {
-        "echo": payload,
-        "serverTime": str(datetime.now())
-    }
-
-    # Sign response
-    signed_response = jacs.sign_response(result)
-    return PlainTextResponse(content=signed_response)
-
-# Create document endpoint
-@app.post("/api/documents")
-async def create_document(request: Request):
-    body = await request.body()
-    body_str = body.decode('utf-8')
-
-    try:
-        verified = jacs.verify_request(body_str)
-        payload = json.loads(verified).get('payload')
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid JACS request")
-
-    # Create signed document
-    signed_doc = agent.create_document(json.dumps(payload))
-    doc = json.loads(signed_doc)
-
-    result = {
-        "success": True,
-        "documentId": doc['jacsId'],
-        "version": doc['jacsVersion']
-    }
-
-    signed_response = jacs.sign_response(result)
-    return PlainTextResponse(content=signed_response)
-
-# Calculate endpoint
-@app.post("/api/calculate")
-async def calculate(request: Request):
-    body = await request.body()
-    body_str = body.decode('utf-8')
-
-    try:
-        verified = jacs.verify_request(body_str)
-        payload = json.loads(verified).get('payload')
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid JACS request")
-
-    operation = payload.get('operation')
-    a = payload.get('a', 0)
-    b = payload.get('b', 0)
-
-    if operation == 'add':
-        result = a + b
-    elif operation == 'subtract':
-        result = a - b
-    elif operation == 'multiply':
-        result = a * b
-    elif operation == 'divide':
-        result = a / b if b != 0 else None
-    else:
-        raise HTTPException(status_code=400, detail="Unknown operation")
-
-    response = {"operation": operation, "a": a, "b": b, "result": result}
-    signed_response = jacs.sign_response(response)
-    return PlainTextResponse(content=signed_response)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="localhost", port=8000)
-```
-
-### HTTP Client
-
-```python
-import jacs
-import requests
-import json
-
-def call_jacs_api(url: str, payload: dict) -> dict:
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.client.config.json')
-
-    # Sign the request
-    signed_request = jacs.sign_request(payload)
-
-    # Send HTTP request
-    response = requests.post(
-        url,
-        data=signed_request,
-        headers={"Content-Type": "text/plain"}
-    )
-
-    if response.status_code != 200:
-        raise Exception(f"HTTP {response.status_code}")
-
-    # Verify and extract response
-    verified = jacs.verify_response(response.text)
-    return json.loads(verified).get('payload')
-
-if __name__ == "__main__":
-    # Call echo endpoint
-    echo_result = call_jacs_api(
-        'http://localhost:8000/api/echo',
-        {"message": "Hello, server!"}
-    )
-    print("Echo:", echo_result)
-
-    # Call calculate endpoint
-    calc_result = call_jacs_api(
-        'http://localhost:8000/api/calculate',
-        {"operation": "multiply", "a": 7, "b": 6}
-    )
-    print("Calculate:", calc_result)
-```
-
-## MCP Integration
-
-### FastMCP Server with JACS
-
-```python
-import jacs
-from jacs.mcp import JACSMCPServer
-from fastmcp import FastMCP
-import uvicorn
-
-# Initialize JACS
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-
-# Create FastMCP server with JACS
-mcp = JACSMCPServer(
-    FastMCP("JACS Demo Server"),
-    "./jacs.config.json",
-    allowed_peer_agent_ids=["CLIENT_AGENT_ID"],
-)
-
-@mcp.tool()
-def echo(message: str) -> str:
-    """Echo the input message"""
-    return f"Echo: {message}"
-
-@mcp.tool()
-def calculate(operation: str, a: float, b: float) -> str:
-    """Perform basic arithmetic"""
-    if operation == 'add':
-        result = a + b
-    elif operation == 'subtract':
-        result = a - b
-    elif operation == 'multiply':
-        result = a * b
-    elif operation == 'divide':
-        result = a / b if b != 0 else "undefined"
-    else:
-        return f"Unknown operation: {operation}"
-
-    return f"{a} {operation} {b} = {result}"
-
-@mcp.resource("info://server")
-def server_info() -> str:
-    """Get server information"""
-    return json.dumps({
-        "name": "JACS Demo Server",
-        "version": "1.0.0",
-        "tools": ["echo", "calculate"]
-    })
-
-# Get ASGI app with JACS middleware
-app = mcp.http_app(transport="sse")
-
-if __name__ == "__main__":
-    print("Starting JACS MCP Server...")
-    uvicorn.run(app, host="localhost", port=8000)
-```
-
-### MCP Client with JACS
-
-```python
-import asyncio
-import jacs
-from jacs.mcp import JACSMCPClient
-
-async def main():
-    # Initialize JACS
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.client.config.json')
-
-    # Create authenticated client
-    client = JACSMCPClient(
-        "http://localhost:8000/sse",
-        "./jacs.client.config.json",
-        expected_peer_agent_id="SERVER_AGENT_ID",
-    )
-
-    async with client:
-        # Call echo tool
-        echo_result = await client.call_tool("echo", {
-            "message": "Hello from JACS client!"
-        })
-        print(f"Echo: {echo_result}")
-
-        # Call calculate tool
-        calc_result = await client.call_tool("calculate", {
-            "operation": "multiply",
-            "a": 6,
-            "b": 7
-        })
-        print(f"Calculate: {calc_result}")
-
-        # Read resource
-        info = await client.read_resource("info://server")
-        print(f"Server info: {info}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-## Agreements
-
-This section shows the legacy `jacsAgreement` sidecar API for simple approval of an existing signed document. For new standalone consent workflows, use Agreement v2: see [Agreement v2 Developer Guide](../guides/agreement-v2.md) and `examples/agreement_v2_three_party.py`.
-
-### Creating Multi-Party Agreements
-
-```python
-import jacs
-import json
-
-def create_agreement():
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    # Create contract document
-    contract = {
-        "type": "service_agreement",
-        "title": "Professional Services Agreement",
-        "parties": ["Company A", "Company B"],
-        "terms": "Terms and conditions here...",
-        "value": 50000,
-        "effectiveDate": "2024-02-01"
-    }
-
-    signed_contract = agent.create_document(json.dumps(contract))
-
-    # Define required signers (replace with actual UUIDs)
-    agent_ids = [
-        "agent1-uuid-here",
-        "agent2-uuid-here"
-    ]
-
-    # Create agreement
-    agreement_doc = agent.create_agreement(
-        signed_contract,
-        agent_ids,
-        question="Do you agree to the terms of this service agreement?",
-        context="This is a legally binding agreement"
-    )
-
-    doc = json.loads(agreement_doc)
-    print("Agreement created")
-    print(f"Document ID: {doc['jacsId']}")
-    print(f"Required signatures: {len(doc.get('jacsAgreement', {}).get('agentIDs', []))}")
-
-    # Save for signing
-    with open('agreement-pending.json', 'w') as f:
-        f.write(agreement_doc)
-
-    return doc
-
-if __name__ == "__main__":
-    create_agreement()
-```
-
-### Signing Agreements
-
-```python
-import jacs
-import json
-
-def sign_agreement(agreement_path: str, output_path: str) -> dict:
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    # Read agreement
-    with open(agreement_path, 'r') as f:
-        agreement_doc = f.read()
-
-    # Sign agreement
-    signed_agreement = agent.sign_agreement(agreement_doc)
-
-    # Check status
-    status_json = agent.check_agreement(signed_agreement)
-    status = json.loads(status_json)
-
-    print("Agreement signed")
-    print(f"Status: {'Complete' if status.get('complete') else 'Pending'}")
-    print(f"Signatures: {len(status.get('signatures', []))}")
-
-    # Save
-    with open(output_path, 'w') as f:
-        f.write(signed_agreement)
-
-    return status
-
-if __name__ == "__main__":
-    sign_agreement('./agreement-pending.json', './agreement-signed.json')
-```
-
-### Checking Agreement Status
-
-```python
-import jacs
-import json
-
-def check_agreement_status(agreement_path: str) -> dict:
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    with open(agreement_path, 'r') as f:
-        agreement_doc = f.read()
-
-    status_json = agent.check_agreement(agreement_doc)
-    status = json.loads(status_json)
-
-    print("Agreement Status:")
-    print(f"  Complete: {status.get('complete')}")
-    print(f"  Required agents: {status.get('requiredAgents', [])}")
-    print(f"  Signed by: {status.get('signedBy', [])}")
-    print(f"  Missing: {status.get('missing', [])}")
-
-    return status
-
-if __name__ == "__main__":
-    check_agreement_status('./agreement.json')
-```
-
-## Document Store
-
-### Simple File-Based Store
-
-```python
-import jacs
-import json
-import os
-from pathlib import Path
-from typing import Optional, Dict, List
-
-class JacsDocumentStore:
-    def __init__(self, config_path: str, data_dir: str = './documents'):
-        self.config_path = config_path
-        self.data_dir = Path(data_dir)
-        self.agent = None
-
-    def initialize(self):
-        self.agent = jacs.JacsAgent()
-        self.agent.load(self.config_path)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
-    def create(self, content: dict) -> dict:
-        signed_doc = self.agent.create_document(json.dumps(content))
-        doc = json.loads(signed_doc)
-
-        filename = f"{doc['jacsId']}.json"
-        filepath = self.data_dir / filename
-
-        with open(filepath, 'w') as f:
-            f.write(signed_doc)
-
-        return {
-            'id': doc['jacsId'],
-            'version': doc['jacsVersion'],
-            'path': str(filepath)
-        }
-
-    def get(self, document_id: str) -> Optional[dict]:
-        filepath = self.data_dir / f"{document_id}.json"
-
-        if not filepath.exists():
-            return None
-
-        with open(filepath, 'r') as f:
-            return json.load(f)
-
-    def verify(self, document_id: str) -> dict:
-        filepath = self.data_dir / f"{document_id}.json"
-
-        if not filepath.exists():
-            return {'valid': False, 'error': 'Document not found'}
-
-        with open(filepath, 'r') as f:
-            doc_string = f.read()
-
-        is_valid = self.agent.verify_document(doc_string)
-        return {'valid': is_valid, 'document': json.loads(doc_string)}
-
-    def list(self) -> List[str]:
-        return [
-            f.stem for f in self.data_dir.glob('*.json')
-        ]
-
-if __name__ == "__main__":
-    store = JacsDocumentStore('./jacs.config.json')
-    store.initialize()
-
-    # Create document
-    result = store.create({
-        'type': 'note',
-        'title': 'Meeting Notes',
-        'content': 'Discussed project timeline...'
-    })
-    print(f"Created: {result['id']}")
-
-    # Verify document
-    verification = store.verify(result['id'])
-    print(f"Valid: {verification['valid']}")
-
-    # List all documents
-    docs = store.list()
-    print(f"Documents: {docs}")
-```
-
-## Batch Processing
-
-### Batch Document Creator
-
-```python
-import jacs
-import json
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-
-class BatchDocumentProcessor:
-    def __init__(self, config_path: str):
-        self.config_path = config_path
-
-    def create_documents(self, documents: list, output_dir: str) -> list:
-        """Create multiple signed documents"""
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        results = []
-
-        # Initialize agent
-        agent = jacs.JacsAgent()
-        agent.load(self.config_path)
-
-        for i, content in enumerate(documents):
-            try:
-                signed_doc = agent.create_document(json.dumps(content))
-                doc = json.loads(signed_doc)
-
-                filename = f"{doc['jacsId']}.json"
-                filepath = output_path / filename
-
-                with open(filepath, 'w') as f:
-                    f.write(signed_doc)
-
-                results.append({
-                    'success': True,
-                    'index': i,
-                    'id': doc['jacsId'],
-                    'path': str(filepath)
-                })
-            except Exception as e:
-                results.append({
-                    'success': False,
-                    'index': i,
-                    'error': str(e)
-                })
-
-        return results
-
-    def verify_documents(self, input_dir: str) -> list:
-        """Verify all documents in a directory"""
-        input_path = Path(input_dir)
-
-        # Initialize agent
-        agent = jacs.JacsAgent()
-        agent.load(self.config_path)
-
-        results = []
-
-        for filepath in input_path.glob('*.json'):
-            try:
-                with open(filepath, 'r') as f:
-                    doc_string = f.read()
-
-                is_valid = agent.verify_document(doc_string)
-                doc = json.loads(doc_string)
-
-                results.append({
-                    'file': filepath.name,
-                    'valid': is_valid,
-                    'id': doc.get('jacsId')
-                })
-            except Exception as e:
-                results.append({
-                    'file': filepath.name,
-                    'valid': False,
-                    'error': str(e)
-                })
-
-        return results
-
-if __name__ == "__main__":
-    processor = BatchDocumentProcessor('./jacs.config.json')
-
-    # Create batch of documents
-    documents = [
-        {'type': 'invoice', 'number': f'INV-{i:03d}', 'amount': i * 100}
-        for i in range(1, 11)
-    ]
-
-    results = processor.create_documents(documents, './batch-output')
-
-    success_count = sum(1 for r in results if r['success'])
-    print(f"Created {success_count}/{len(documents)} documents")
-
-    # Verify all documents
-    verification_results = processor.verify_documents('./batch-output')
-
-    valid_count = sum(1 for r in verification_results if r['valid'])
-    print(f"Valid: {valid_count}/{len(verification_results)} documents")
-```
-
-## Testing
-
-### Pytest Setup
-
-```python
-# tests/test_jacs.py
-import json
-import pytest
 from jacs.client import JacsClient
 
-@pytest.fixture
-def client():
-    # PQ identity entirely in memory; no config or password files required.
-    return JacsClient.ephemeral()
+client = JacsClient.ephemeral()
+signed = client.sign_message({"tool": "calculator", "answer": 42})
+assert client.verify(signed.raw).valid
 
-def test_sign_and_verify(client):
-    signed = client.sign_message({"title": "Test Document", "value": 42})
-    document = json.loads(signed.raw)
-    assert "jacsId" in document
-    assert "jacsSignature" in document
-    assert client.verify(signed.raw).valid
-
-def test_detect_tampering(client):
-    signed = client.sign_message({"title": "Tamper Test"})
-    document = json.loads(signed.raw)
-    document["jacsId"] = "00000000-0000-4000-8000-000000000000"
-    assert not client.verify(json.dumps(document)).valid
-
-def test_distinct_messages(client):
-    first = json.loads(client.sign_message({"a": 1}).raw)
-    second = json.loads(client.sign_message({"a": 2}).raw)
-    assert first["jacsSignature"]["signature"] != second["jacsSignature"]["signature"]
+tampered = json.loads(signed.raw)
+tampered["content"] = {"answer": 43}
+assert not client.verify(tampered).valid
 ```
 
-## Error Handling
+This identity exists only in memory. Before acting on a verified result, also
+check the expected signer and your application's authorization policy.
 
-### Robust Error Handling Pattern
+## Persist an identity and signed document
 
 ```python
-import jacs
-import json
-from typing import Optional
+from pathlib import Path
+from jacs.client import JacsClient
 
-class JacsError(Exception):
-    def __init__(self, message: str, code: str, details: dict = None):
-        super().__init__(message)
-        self.code = code
-        self.details = details or {}
-
-def robust_create_document(config_path: str, content: dict) -> dict:
-    """Create a document with comprehensive error handling"""
-    try:
-        agent = jacs.JacsAgent()
-        agent.load(config_path)
-    except FileNotFoundError:
-        raise JacsError(
-            "Configuration file not found",
-            "CONFIG_NOT_FOUND",
-            {"path": config_path}
-        )
-    except Exception as e:
-        raise JacsError(
-            "Failed to initialize JACS agent",
-            "INIT_ERROR",
-            {"original_error": str(e)}
-        )
-
-    try:
-        signed_doc = agent.create_document(json.dumps(content))
-        return json.loads(signed_doc)
-    except Exception as e:
-        raise JacsError(
-            "Failed to create document",
-            "CREATE_ERROR",
-            {"original_error": str(e), "content": content}
-        )
-
-def robust_verify_document(config_path: str, doc_string: str) -> dict:
-    """Verify a document with comprehensive error handling"""
-    try:
-        agent = jacs.JacsAgent()
-        agent.load(config_path)
-    except Exception as e:
-        raise JacsError(
-            "Failed to initialize JACS agent",
-            "INIT_ERROR",
-            {"original_error": str(e)}
-        )
-
-    try:
-        is_valid = agent.verify_document(doc_string)
-        return {"valid": is_valid}
-    except Exception as e:
-        raise JacsError(
-            "Verification error",
-            "VERIFY_ERROR",
-            {"original_error": str(e)}
-        )
-
-if __name__ == "__main__":
-    try:
-        doc = robust_create_document('./jacs.config.json', {'title': 'Test'})
-        print(f"Created: {doc['jacsId']}")
-    except JacsError as e:
-        print(f"JACS Error [{e.code}]: {e}")
-        print(f"Details: {e.details}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+client = JacsClient.quickstart(name="publisher", domain="publisher.example.com")
+signed = client.sign_message({"event": "report-ready", "report_id": "report-123"})
+Path("report.json").write_text(signed.raw, encoding="utf-8")
+received = Path("report.json").read_text(encoding="utf-8")
+result = client.verify(received)
+if not result.valid:
+    raise ValueError(result.errors)
+print(result.signer_id)
 ```
 
-## See Also
+Quickstart creates encrypted `pq2025` keys or loads existing configuration.
+Preserve its password through a host secret source or keychain; see
+[password bootstrap](../getting-started/quick-start.md#native-password-bootstrap).
 
-- [Python Installation](../python/installation.md) - Setup guide
-- [Python API Reference](../python/api.md) - Complete API documentation
-- [Python MCP Integration](../python/mcp.md) - MCP details
+## Sign an existing file
+
+```python
+from jacs.client import JacsClient
+
+client = JacsClient(config_path="./jacs.config.json")
+signed = client.sign_file("report.pdf", embed=True)
+assert client.verify(signed.raw).valid
+```
+
+Share the complete signed JSON. With `embed=False`, the envelope records the
+file reference/hash; the receiver also needs the referenced bytes and an
+external-file verification policy.
+
+## Return signed content from an MCP tool
+
+Install `jacs[mcp]`, then run this as an ordinary stdio MCP server:
+
+```python
+from fastmcp import FastMCP
+from jacs.client import JacsClient
+
+client = JacsClient.quickstart(name="tools", domain="tools.example.com")
+mcp = FastMCP("Signed tools")
+
+@mcp.tool()
+def calculate() -> dict:
+    """Return a signed calculation result."""
+    signed = client.sign_message({"answer": 6 * 7})
+    return {"signed_document": signed.raw}
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+```
+
+This signs result content; it does not authenticate the transport or caller.
+The receiver verifies `signed_document` under its own trust policy.
+For the primary JACS tool server use `jacs mcp`; for custom native tools and
+the separate signed local HTTP transport, see [Python MCP](../python/mcp.md).
+
+## More recipes
+
+- [Framework adapters](../python/adapters.md): LangChain, LangGraph, FastAPI and Anthropic.
+- [A2A serving](../guides/a2a-serve.md): discovery documents and trust requirements.
+- [DID integration](../integrations/did.md): identity binding without a blockchain.
+- [Simplified API](../python/simple-api.md): request authentication, signed events and agreement inspection.
+- [Native API reference](../python/api.md): exact low-level arguments.

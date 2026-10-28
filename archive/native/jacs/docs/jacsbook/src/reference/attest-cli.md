@@ -1,17 +1,17 @@
-# CLI Reference: jacs attest
+# CLI Reference: jacs-compat attest
 
-The `jacs attest` command creates and verifies attestation documents from
+The `jacs-compat attest` command creates and verifies attestation documents from
 the command line. Attestation extends basic signing with structured claims,
 evidence references, and derivation chains.
 
-## jacs attest create
+## jacs-compat attest create
 
 Create a signed attestation document.
 
 ### Synopsis
 
 ```bash
-jacs attest create --claims '<JSON>' [options]
+jacs-compat attest create --claims '<JSON>' [options]
 ```
 
 ### Options
@@ -31,7 +31,7 @@ jacs attest create --claims '<JSON>' [options]
 **Create a basic attestation:**
 
 ```bash
-jacs attest create \
+jacs-compat attest create \
   --subject-type artifact \
   --subject-id "doc-001" \
   --subject-digest "abc123def456..." \
@@ -41,7 +41,7 @@ jacs attest create \
 **Attestation with multiple claims:**
 
 ```bash
-jacs attest create \
+jacs-compat attest create \
   --subject-type agent \
   --subject-id "agent-abc" \
   --subject-digest "sha256hash..." \
@@ -54,7 +54,7 @@ jacs attest create \
 **Lift an existing signed document to attestation:**
 
 ```bash
-jacs attest create \
+jacs-compat attest create \
   --from-document mydata.signed.json \
   --claims '[{"name": "approved", "value": true}]'
 ```
@@ -62,7 +62,7 @@ jacs attest create \
 **With evidence references:**
 
 ```bash
-jacs attest create \
+jacs-compat attest create \
   --subject-type artifact \
   --subject-id "report-456" \
   --subject-digest "def789..." \
@@ -79,7 +79,7 @@ jacs attest create \
 **Write to file:**
 
 ```bash
-jacs attest create \
+jacs-compat attest create \
   --subject-type artifact \
   --subject-id "doc-001" \
   --subject-digest "abc123..." \
@@ -87,14 +87,14 @@ jacs attest create \
   -o attestation.json
 ```
 
-## jacs attest verify
+## jacs-compat attest verify
 
 Verify an attestation document.
 
 ### Synopsis
 
 ```bash
-jacs attest verify <FILE> [options]
+jacs-compat attest verify <FILE> [options]
 ```
 
 ### Arguments
@@ -117,7 +117,7 @@ jacs attest verify <FILE> [options]
 **Basic verification (local tier):**
 
 ```bash
-jacs attest verify attestation.json
+jacs-compat attest verify attestation.json
 ```
 
 Output:
@@ -132,7 +132,7 @@ Attestation verification: VALID
 **Full verification:**
 
 ```bash
-jacs attest verify attestation.json --full
+jacs-compat attest verify attestation.json --full
 ```
 
 Output:
@@ -150,7 +150,7 @@ Attestation verification: VALID
 **JSON output (for scripting):**
 
 ```bash
-jacs attest verify attestation.json --json
+jacs-compat attest verify attestation.json --json
 ```
 
 Output:
@@ -172,13 +172,13 @@ Output:
 **Verify with external keys:**
 
 ```bash
-jacs attest verify attestation.json --key-dir ./trusted_keys/
+jacs-compat attest verify attestation.json --key-dir ./trusted_keys/
 ```
 
 **Pipe through jq:**
 
 ```bash
-jacs attest verify attestation.json --json | jq '.crypto'
+jacs-compat attest verify attestation.json --json | jq '.crypto'
 ```
 
 ## Piping and Scripting Patterns
@@ -186,13 +186,13 @@ jacs attest verify attestation.json --json | jq '.crypto'
 ### Create and verify in one pipeline
 
 ```bash
-jacs attest create \
+jacs-compat attest create \
   --subject-type artifact \
   --subject-id "doc-001" \
   --subject-digest "abc..." \
   --claims '[{"name": "ok", "value": true}]' \
   -o att.json && \
-jacs attest verify att.json --json | jq '.valid'
+jacs-compat attest verify att.json --json | jq '.valid'
 ```
 
 ### Check validity in a script
@@ -201,7 +201,7 @@ jacs attest verify att.json --json | jq '.valid'
 #!/bin/bash
 set -e
 
-RESULT=$(jacs attest verify "$1" --json 2>/dev/null)
+RESULT=$(jacs-compat attest verify "$1" --json 2>/dev/null)
 VALID=$(echo "$RESULT" | jq -r '.valid')
 
 if [ "$VALID" = "true" ]; then
@@ -219,7 +219,7 @@ fi
 ```bash
 for file in attestations/*.json; do
     echo -n "$file: "
-    jacs attest verify "$file" --json | jq -r '.valid'
+    jacs-compat attest verify "$file" --json | jq -r '.valid'
 done
 ```
 

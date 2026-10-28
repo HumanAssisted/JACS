@@ -10,15 +10,24 @@ https://hai.ai/schemas/jacs.config.schema.json
 
 ## Minimal Configuration
 
+Use `quickstart()` to create and sign a persistent config. A creation template
+must include the schema's six required settings:
+
 ```json
 {
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys",
+  "jacs_agent_private_key_filename": "jacs.private.pem.enc",
+  "jacs_agent_public_key_filename": "jacs.public.pem",
+  "jacs_agent_key_algorithm": "pq2025",
+  "jacs_default_storage": "fs"
 }
 ```
 
-All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` storage). Override only what you need.
+This unsigned template does not load an existing identity. Existing-agent
+configs also need the generated identity/version and valid config signature;
+do not reconstruct them by editing this template.
 
 ## Fields
 
@@ -42,12 +51,12 @@ Specifies the cryptographic algorithm for signing:
 
 | Value | Description |
 |-------|-------------|
-| `ring-Ed25519` | Ed25519 signatures (recommended) |
+| `ring-Ed25519` | Ed25519 signatures (explicit compatibility) |
 | `pq2025` | FIPS-204 ML-DSA-87 post-quantum signatures |
 
 ```json
 {
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
 
@@ -61,7 +70,7 @@ Name of the private key file in the key directory:
 }
 ```
 
-If the key is encrypted, it will have `.enc` appended automatically when loading.
+Use the filename produced by agent creation; do not rename encrypted key files independently of their config.
 
 #### jacs_agent_public_key_filename
 
@@ -75,15 +84,7 @@ Name of the public key file:
 
 #### jacs_private_key_password
 
-Password for encrypted private keys:
-
-```json
-{
-  "jacs_private_key_password": "your-password"
-}
-```
-
-**Warning**: Do not store passwords in config files for production. Use the `JACS_PRIVATE_KEY_PASSWORD` environment variable or `jacs-compat keychain set` (OS keychain) instead. See [OS Keychain Configuration](../reference/configuration.md#os-keychain-configuration).
+Supply the password through the host's `JACS_PRIVATE_KEY_PASSWORD`, a protected password file or the OS keychain. Do not persist plaintext passwords in JSON config. See [password sources](../reference/configuration.md#os-keychain-configuration).
 
 ### Storage Configuration
 
@@ -94,8 +95,10 @@ Specifies where documents are stored:
 | Value | Description |
 |-------|-------------|
 | `fs` | Local filesystem |
-| `aws` | AWS S3 storage |
-| `hai` | HAI cloud storage |
+| `memory` | In-memory storage |
+| `aws` | AWS S3; requires a build with the `s3` feature |
+| `rusqlite` | Indexed SQLite; requires the `sqlite` feature |
+| `sqlite` | SQLx SQLite storage; requires the `sqlx-sqlite` feature |
 
 ```json
 {
@@ -139,47 +142,23 @@ Specify which schema versions to use:
 
 ### DNS Configuration
 
-For DNSSEC-based agent verification:
+DNS compares a published fingerprint with the selected native key; strict mode also validates DNSSEC. A domain does not independently authorize an agent.
 
 #### jacs_agent_domain
 
-Domain for DNS-based public key verification:
-
-```json
-{
-  "jacs_agent_domain": "example.com"
-}
-```
+The domain used for DNS fingerprint checks. Configure it during agent creation, then publish the [required TXT record](../rust/dns.md).
 
 #### jacs_dns_validate
 
-Enable DNS TXT fingerprint validation:
-
-```json
-{
-  "jacs_dns_validate": true
-}
-```
+Controls whether native verification attempts DNS, with the domain and explicit CLI options determining the effective behavior. See the [DNS mode table](../rust/dns.md).
 
 #### jacs_dns_strict
 
-Require DNSSEC validation (no fallback):
-
-```json
-{
-  "jacs_dns_strict": true
-}
-```
+This field exists in the schema, but the current native loader does not apply it to the runtime strict flag. Use `jacs-compat agent verify --require-strict-dns` or `AgentBuilder::dns_strict(true)` to require strict validation. A verified DNS claim also forces strict validation.
 
 #### jacs_dns_required
 
-Require domain and DNS validation:
-
-```json
-{
-  "jacs_dns_required": true
-}
-```
+Controls whether a domain and successful DNS validation are required. Select CLI flags or builder settings explicitly when this is part of the application's policy.
 
 ### Security
 
@@ -226,7 +205,7 @@ Configuration can be overridden with environment variables:
 
 | Variable | Config Field |
 |----------|--------------|
-| `JACS_PRIVATE_KEY_PASSWORD` | `jacs_private_key_password` |
+| `JACS_PRIVATE_KEY_PASSWORD` | Host password source; do not write it into config |
 | `JACS_DATA_DIRECTORY` | `jacs_data_directory` |
 | `JACS_KEY_DIRECTORY` | `jacs_key_directory` |
 | `JACS_KEYCHAIN_BACKEND` | `jacs_keychain_backend` |

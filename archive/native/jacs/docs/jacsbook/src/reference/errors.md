@@ -4,14 +4,14 @@ This reference documents error codes and messages you may encounter when using J
 
 ## CLI Exit Codes
 
-| Code | Name | Description |
-|------|------|-------------|
-| 0 | Success | Operation completed successfully |
-| 1 | General Error | Unspecified error occurred (in `verify-text` / `verify-image --strict`, this also covers the missing-signature case; stderr: `no JACS signature found`) |
-| 2 | Invalid Arguments OR Missing Signature (v0.10.0) | Command-line arguments invalid; OR for permissive `verify-text` / `verify-image`, the file is unsigned (typed status, not an error) |
-| 3 | File Not Found | Specified file does not exist |
-| 4 | Verification Failed | Document or signature verification failed |
-| 5 | Signature Invalid | Cryptographic signature is invalid |
+| Code | Meaning |
+| --- | --- |
+| 0 | Command completed; inspect the operation's result fields before accepting evidence. |
+| 1 | Operation/verification error; strict text/image verification also uses this for a missing signature. |
+| 2 | Argument parsing error, or permissive text/image inspection found no signature. |
+
+The native CLI does not assign universal file/schema/signature codes 3–5.
+Use the command's structured output and stderr, not an invented global taxonomy.
 
 ## Configuration Errors
 
@@ -27,7 +27,7 @@ This reference documents error codes and messages you may encounter when using J
 jacs-compat init
 
 # Or specify a custom config path
-JACS_CONFIG_PATH=./custom.config.json jacs-compat agent verify
+JACS_CONFIG=./custom.config.json jacs-compat agent verify
 ```
 
 ### Invalid Configuration

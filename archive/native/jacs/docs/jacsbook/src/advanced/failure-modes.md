@@ -1,6 +1,6 @@
 # Failure Modes
 
-This page documents the error messages you will see when multi-agent agreements fail, plus the [P2 compatibility and export failure table](#p2-compatibility-and-export-failures) for operators. Each agreement scenario is validated by the chaos agreement tests in the JACS test suite.
+This page documents the error messages you will see when multi-agent agreements fail, plus the [P2 compatibility and export failure table](#p2-compatibility-and-export-failures) for operators. The legacy diagnostics below inspect supplied metadata and signatures; they do not authenticate consent policy. Even a mathematically valid v1 report returns `complete=false` and `policy_accepted=false`. Native v2 also remains inspection-only.
 
 ## Partial Signing (Agent Crash)
 
@@ -12,7 +12,7 @@ This page documents the error messages you will see when multi-agent agreements 
 not all agents have signed: ["<unsigned-agent-id>"] { ... agreement object ... }
 ```
 
-**What to do:** Identify the unsigned agent from the error, re-establish contact, and have them call `sign_agreement` on the document. The partially-signed document is still valid and can accept additional signatures -- signing is additive.
+**What to do:** Identify the unsigned agent from the error, re-establish contact, and have them call `sign_agreement` on the document. Additional signatures can be collected, but this does not turn unauthenticated legacy policy into authorization.
 
 ## Quorum Not Met
 
@@ -24,7 +24,7 @@ not all agents have signed: ["<unsigned-agent-id>"] { ... agreement object ... }
 Quorum not met: need 2 signatures, have 1 (unsigned: ["<agent-id>"])
 ```
 
-**What to do:** Either collect more signatures to meet the quorum threshold, or create a new agreement with a lower quorum if appropriate. The unsigned agent IDs in the error tell you exactly who still needs to sign.
+**What to do:** Treat this as a diagnostic of the supplied legacy quorum metadata, not an authenticated consent decision. The unsigned agent IDs in the error tell you exactly who still needs to sign.
 
 ## Tampered Signature
 
@@ -32,7 +32,7 @@ Quorum not met: need 2 signatures, have 1 (unsigned: ["<agent-id>"])
 
 **Error message:**
 
-The exact message comes from the crypto verification layer and varies by algorithm, but it will always fail on the signature check rather than reporting missing signatures. You will not see "not all agents have signed" for this case -- the error is a cryptographic verification failure.
+The message varies by algorithm and the first failed check. Legacy checking evaluates supplied quorum/missing-signer metadata before individual signatures, so an incomplete document may report that earlier diagnostic even if a signature is also corrupted. Do not infer that unexamined signatures are valid.
 
 **What to do:** This indicates data corruption in transit or deliberate tampering. Discard the document and request a fresh copy from the signing agent. Do not attempt to re-sign a document with a corrupted signature.
 
@@ -50,11 +50,9 @@ Agreement verification failed: agreement hashes do not match
 
 ## In-Memory Consistency After Signing
 
-**What happened:** `sign_agreement` succeeded but `save()` was never called -- for example, a storage backend failure or process interruption before persistence.
+`sign_agreement` stores the resulting document before returning. Storage errors make the operation fail; a separate later `save()` is not required to make a successful return persistent in the configured backend. An in-memory backend remains nonpersistent by design.
 
-**Error message:** None. This is not an error. After `sign_agreement` returns successfully, the signed document is immediately retrievable and verifiable from in-memory storage.
-
-**What to do:** Retry the `save()` call to persist to disk. The in-memory state is consistent: you can retrieve the document with `get_document`, verify it with `check_agreement`, serialize it, and transfer it to other agents for additional signatures -- all without saving first.
+After an error, inspect the actual stored state before retrying or broadcasting. Do not assume a failed call committed a complete signature update.
 
 ## P2 Compatibility and Export Failures
 
@@ -66,7 +64,7 @@ and the usual fix.
 
 Note on the Metric column: the counters exist only in builds with the
 `otlp-metrics` feature enabled — it is not in the default feature set of
-the `jacs` crate or of `cargo install jacs-cli`, so in a default build the
+the `jacs` crate or of `cargo install jacs-cli-compat`, so in a default build the
 counters compile to no-ops. The log events are always emitted once a
 tracing subscriber is installed (see
 [Observability](../guides/observability.md)).

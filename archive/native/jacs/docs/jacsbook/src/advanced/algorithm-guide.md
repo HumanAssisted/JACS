@@ -11,8 +11,8 @@ persisted configuration, and emitted signature algorithm always agree.
 `ring-Ed25519` remains accepted as a legacy input alias. ES256 is an ecosystem
 compatibility key, never a native `jacsSignature` algorithm.
 
-All key rotations currently resolve to `pq2025`, so rotation is also the
-supported Ed25519-to-post-quantum migration path — see
+Native rotation preserves the current algorithm unless an Ed25519 identity
+explicitly upgrades to `pq2025`; PQ-to-Ed25519 downgrade is rejected. See
 [Key Rotation](key-rotation.md).
 
 ## Supported Algorithms
@@ -73,7 +73,7 @@ client = JacsClient.quickstart(
 ```
 
 ```typescript
-import { JacsClient } from "@hai.ai/jacs";
+import { JacsClient } from "@hai.ai/jacs/client";
 const client = await JacsClient.quickstart({
   name: "algo-agent",
   domain: "algo.example.com",
@@ -83,6 +83,7 @@ const client = await JacsClient.quickstart({
 
 ## Current Limitations
 
-- Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.
+- Each active native key has one algorithm. Changing it requires an authorized
+  key rotation; editing the config does not convert an existing key.
 - Algorithm negotiation between agents is planned but not yet implemented.
 - Use `pq2025` for ML-DSA-87 post-quantum signatures and verification hints.

@@ -40,10 +40,10 @@ JACS ships with three optional feature flags for OpenTelemetry backends. By defa
 
 ```bash
 # Enable all three OTEL pipelines
-cargo build --features otlp-logs,otlp-metrics,otlp-tracing
+cargo build --manifest-path archive/native/Cargo.toml -p jacs --features otlp-logs,otlp-metrics,otlp-tracing
 
 # Or enable just tracing
-cargo build --features otlp-tracing
+cargo build --manifest-path archive/native/Cargo.toml -p jacs --features otlp-tracing
 ```
 
 | Feature | What it adds |
@@ -56,7 +56,7 @@ Convenience helpers for automatic counter/gauge recording for sign and verify op
 
 ## OTEL Collector Configuration
 
-Route JACS events through an OpenTelemetry Collector. This configuration receives OTLP over HTTP, batches events, and exports to common backends.
+This illustrative OpenTelemetry Collector configuration receives OTLP over HTTP, batches events and exports to selected backends. Pin a collector distribution/version with the configured exporters and validate its schema; exporter availability and configuration vary by distribution.
 
 ```yaml
 # otel-collector-config.yaml
@@ -154,7 +154,7 @@ In `jacs.config.json`:
 }
 ```
 
-Or via environment variables (useful in containers):
+For a host configured to read standard OpenTelemetry environment variables, the corresponding deployment settings are below. They do not enable JACS exporters by themselves; the host must initialize the observability pipelines and select the endpoint.
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector:4318"

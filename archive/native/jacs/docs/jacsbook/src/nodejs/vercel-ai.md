@@ -4,7 +4,8 @@
 
 **Sign it. Prove it.** -- for every AI model output.
 
-The JACS Vercel AI SDK adapter adds cryptographic provenance to AI-generated text and tool results using the `LanguageModelV3Middleware` pattern. Works with `generateText`, `streamText`, and any model provider (OpenAI, Anthropic, etc.).
+The JACS Vercel AI SDK adapter adds cryptographic provenance to AI-generated text and tool results using the `LanguageModelV3Middleware` pattern. Use the nonstreaming `generateText` path with a compatible V3 provider.
+The current streaming path has an SDK shape limitation described below.
 
 ## 5-Minute Quickstart
 
@@ -110,51 +111,47 @@ interface ProvenanceOptions {
   signText?: boolean;                  // Sign generated text (default: true)
   signToolResults?: boolean;           // Sign tool call results (default: true)
   strict?: boolean;                    // Enforce signing; override unsigned-output opt-ins
+  maxBufferedStreamBytes?: number;     // Default 1 MiB; maximum 16 MiB
   metadata?: Record<string, unknown>;  // Extra metadata in provenance records
 }
 ```
 
-## Streaming
+## Streaming limitation
 
-Streaming works automatically. Text chunks are accumulated and signed when the stream completes:
+Use `generateText` for this guide. The current stream adapter reads
+`text-delta` chunks from a `textDelta` property and throws if it is absent.
+The repository tests supply that mocked shape; they do not qualify actual
+provider streams. The package declares broad optional `ai >=4` and
+`@ai-sdk/provider >=1` peer ranges rather than a tested pinned V3 provider.
+Do not assume a provider emitting a different delta shape is supported.
 
-```typescript
-import { streamText } from 'ai';
-
-const result = streamText({
-  model: withProvenance(openai('gpt-4'), { client }),
-  prompt: 'Write a haiku.',
-});
-
-for await (const chunk of result.textStream) {
-  process.stdout.write(chunk);
-}
-
-// Provenance is available after stream completes
-const metadata = await result.providerMetadata;
-console.log(metadata?.jacs?.text?.signed); // true
-```
+When compatible chunks are supplied, the adapter buffers the whole stream,
+signs it, and only then releases chunks. The default bound is 1 MiB;
+`maxBufferedStreamBytes` can raise it to at most 16 MiB. Overflow or signing
+failure withholds output. Explicit unsigned/post-hoc options weaken that
+boundary and are not a remedy for an incompatible SDK shape.
 
 ## Tool Call Signing
 
 When `signToolResults` is true (default), tool results in the prompt are signed:
 
 ```typescript
-import { generateText, tool } from 'ai';
+import { generateText, tool, stepCountIs } from 'ai';
 import { z } from 'zod';
 
 const { text, providerMetadata } = await generateText({
   model: withProvenance(openai('gpt-4'), { client }),
   tools: {
     getWeather: tool({
-      parameters: z.object({ city: z.string() }),
+      inputSchema: z.object({ city: z.string() }),
       execute: async ({ city }) => `Weather in ${city}: sunny, 72F`,
     }),
   },
   prompt: 'What is the weather in Paris?',
+  stopWhen: stepCountIs(2),
 });
 
-// Both text output and tool results are signed
+// Tool results are signed when fed back into a subsequent model step
 console.log(providerMetadata?.jacs?.text?.signed);
 console.log(providerMetadata?.jacs?.toolResults?.signed);
 ```
@@ -164,15 +161,20 @@ console.log(providerMetadata?.jacs?.toolResults?.signed);
 Each signed output produces a `ProvenanceRecord`:
 
 ```typescript
-interface ProvenanceRecord {
-  signed: boolean;       // Whether signing succeeded
+interface SignedProvenanceRecord {
+  signed: true;
   documentId: string;    // JACS document ID
   agentId: string;       // Signing agent's ID
   timestamp: string;     // ISO 8601 timestamp
-  error?: string;        // Error message if signing failed
+  signedDocument: string; // Full portable signed JACS document
   metadata?: Record<string, unknown>;
 }
 ```
+
+`ProvenanceRecord` is a union of that signed shape and an unsigned failure
+shape (`signed: false`, empty IDs/timestamp, and `error`). Unsigned records are
+only returned through explicit compatibility options. Verify `signedDocument`
+and compare its signed output and metadata; the other fields alone are not proof.
 
 Access records from `providerMetadata.jacs`:
 

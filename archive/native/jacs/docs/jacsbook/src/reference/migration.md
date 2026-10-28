@@ -2,7 +2,7 @@
 
 {{#include ../_snippets/node-registry-status.md}}
 
-This guide covers migrating between JACS versions and common migration scenarios.
+Version-numbered sections below are historical migration notes, not the current install or API reference. Use the [package guide](https://humanassisted.github.io/JACS/packages.html) and current language chapters for supported calls, defaults and profiles. The algorithm migration section describes current explicit upgrades.
 
 ## Version Compatibility
 
@@ -115,25 +115,32 @@ These methods remain synchronous without a `Sync` suffix because they use V8-thr
 
 ### Simplified API (Module-Level)
 
-The `@hai.ai/jacs/simple` module follows the same pattern:
+Historical module-level comparison; each block is a separate version-specific example.
+
+Before (v0.6.x):
 
 ```javascript
-// v0.6.x
 await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessage({ action: 'approve' });
+```
 
-// v0.7.0 async (recommended)
+After (v0.7.0 asynchronous API):
+
+```javascript
 await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve' });
+```
 
-// v0.7.0 sync
+Alternative (v0.7.0 synchronous API):
+
+```javascript
 jacs.quickstartSync({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 ```
 
 ### Pure Sync Functions (No Change)
 
-These functions do not call NAPI and remain unchanged (no suffix needed):
+Historical synchronous API list (current methods may call native code; consult the current API reference):
 
 - `hashString()`, `createConfig()`, `getPublicKey()`, `isLoaded()`, `exportAgent()`, `getAgentInfo()`
 - `getDnsRecord()`, `getWellKnownJson()`, `verifyStandalone()`
@@ -150,12 +157,7 @@ These functions do not call NAPI and remain unchanged (no suffix needed):
 
 ### Migration Notes
 
-**PBKDF2 Iteration Count**: New key encryptions use 600,000 iterations (up from 100,000). Existing encrypted keys are decrypted automatically via fallback. To upgrade existing keys, re-encrypt them:
-
-```bash
-# Re-generate keys to use the new iteration count
-jacs keygen
-```
+**Historical encryption change:** 0.5.2 increased PBKDF2 to 600,000 iterations. Current new writes use the V2 Argon2id/AES-GCM envelope and retain legacy reads. Use the current `jacs-compat key reencrypt` workflow to change at-rest encryption; generating a new signing key is a separate identity rotation.
 
 ### Deprecated Environment Variables
 
@@ -349,14 +351,13 @@ Native JACS signing defaults to `pq2025` (ML-DSA-87 / FIPS-204). Explicit
 `ed25519` creation remains supported; agents using it continue to load and
 sign with the canonical `ring-Ed25519` label until they rotate.
 
-**Key rotation is the designated migration path.** Every rotation
-resolves to `pq2025` — with or without an explicit algorithm argument —
-so rotating an Ed25519 agent converges it to a post-quantum root.
-Rotating to any other algorithm is a typed error.
+**Key rotation is the designated migration path.** Rotation without an override preserves the current algorithm. Explicit
+Ed25519-to-`pq2025` upgrades are supported; PQ-to-Ed25519 downgrades are rejected.
+
 
 1. **Rotate Keys:**
    ```bash
-   jacs-compat agent rotate-keys
+   jacs-compat agent rotate-keys --algorithm pq2025
    ```
 
 2. **Re-issue the Compatibility Key Binding (if present):**
@@ -680,7 +681,7 @@ After any migration:
 
 5. **Verify Version:**
    ```bash
-   jacs version
+   jacs-compat --version
    ```
 
 ## Rollback Procedures

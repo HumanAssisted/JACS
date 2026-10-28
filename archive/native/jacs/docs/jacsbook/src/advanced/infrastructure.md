@@ -1,65 +1,19 @@
-# Infrastructure vs Tools: JACS as Middleware
+# Signing at Integration Boundaries
 
-Most signing libraries work as **tools**: the developer calls `sign()` and `verify()` manually at each point where integrity matters. JACS can work that way too, but its real value appears when it operates as **infrastructure** -- signing happens automatically as a side effect of normal framework usage.
+Use explicit signing calls for selected artifacts, or an adapter to apply signing at a framework boundary. Adapters cover their documented message/body types; they do not guarantee that every application path is signed or authorized.
 
-## The difference
+## MCP transports
 
-| Approach | Developer effort | Coverage |
-|----------|-----------------|----------|
-| **Tool** | Call `sign()`/`verify()` at every boundary | Only where you remember to add it |
-| **Infrastructure** | Add 1-3 lines of setup | Every request/response automatically |
+The ready-made Rust server exposes ordinary MCP tools to standard clients. Node/Python signed transport wrappers instead require a matching JACS wrapper at both endpoints, trusted peer keys and expected identities. They sign custom carriers over supported local transports; they do not encrypt them. See [MCP integration](../integrations/mcp.md).
 
-## Transport-level: MCP proxies
+## HTTP middleware
 
-JACS MCP transport proxies sit between client and server. Every JSON-RPC message is signed on the way out and verified on the way in. The MCP tools themselves never call a signing function -- it happens at the transport layer.
+Express, Koa and FastAPI adapters sign or inspect supported document bodies. Coverage differs by adapter: FastAPI's request verifier handles signed JSON objects on POST, while unsigned/non-JSON bodies and other methods can reach the application even with strict mode. Do not treat middleware installation as caller authentication or route authorization.
 
-```
-Client --> [JACS Proxy: sign] --> Server
-Client <-- [JACS Proxy: verify] <-- Server
-```
+For request-bound authentication, bind method, URL, exact body bytes and audience, verify under independently trusted keys, enforce replay protection and apply application policy. See [HTTP protocol](../nodejs/http.md), [Express](../nodejs/express.md), [Koa](../nodejs/koa.md) and [Python adapters](../python/adapters.md).
 
-No application code changes. The proxy handles it.
+## A2A discovery
 
-## Framework-level: Express / FastAPI middleware
+JACS publishes signed cards and public evidence using a persisted native PQ root or explicit ES256 compatibility. Peers need support for the chosen algorithm and independently trusted key selection. Discovery routers do not implement advertised message/task handlers or grant permission to call them. Follow the [A2A how-to](https://humanassisted.github.io/JACS/a2a.html).
 
-A single middleware line signs every HTTP response automatically:
-
-```python
-# FastAPI -- one line of setup
-app.add_middleware(JacsMiddleware, client=jacs_client)
-# Every response now carries a JACS signature header
-```
-
-```typescript
-// Express -- one line of setup
-app.use(jacsMiddleware({ client }));
-// Every response now carries a JACS signature header
-```
-
-The route handlers are unchanged. Signing is invisible to the developer writing business logic.
-
-## Protocol-level: A2A agent cards
-
-When JACS publishes an A2A agent card, the card includes the agent's public key and supported algorithms. Peers must support the selected signing algorithm (including ML-DSA-87 for
-direct PQ exports, or the explicit ES256 compatibility path) and select trusted
-keys independently. Discovery and a valid self-signature do not establish
-identity, consent or permission. See the
-[current identity guide](https://humanassisted.github.io/JACS/identity.html).
-
-## Why this matters
-
-Manual signing has the same problem as manual memory management: developers forget, and the places they forget are the places attackers target. Infrastructure-level signing eliminates that gap.
-
-- **MCP transport**: every tool call and result is signed, not just the ones you thought to protect
-- **HTTP middleware**: every API response is signed, including error responses and health checks
-- **A2A integration**: every agent interaction is verifiable, including discovery
-
-The developer adds setup code once. After that, signing happens everywhere automatically -- including in code paths the developer never explicitly considered.
-
-## When to use each approach
-
-Use JACS as a **tool** when you need fine-grained control: signing specific documents, creating agreements between named parties, or building custom verification workflows.
-
-Use JACS as **infrastructure** when you want blanket coverage: every message signed, every response verifiable, every agent interaction auditable. This is the recommended default for production deployments.
-
-Both approaches use the same keys, the same signatures, and the same verification. The difference is who calls `sign()` -- you, or the framework.
+Choose the integration that covers the actual boundary, then test unsigned, malformed and unauthorized input as well as successful signing. Signature validity establishes integrity under a key; the host owns identity attribution, claim evaluation and authorization.

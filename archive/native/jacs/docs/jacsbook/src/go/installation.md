@@ -2,7 +2,10 @@
 
 `jacsgo` provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.
 
-> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For the full MCP surface, install `jacs-cli-compat` and run `jacs-compat mcp`; the Go MCP examples in the repo are demo code.
+Go bindings are supported native packages; Python and Node.js have broader
+framework adapter coverage. For the primary verify-only MCP server, install
+`jacs-cli` and run `jacs mcp`. The extended native server is `jacs-compat mcp`
+from `jacs-cli-compat`; Go MCP examples are demos.
 
 ## Install
 
@@ -25,7 +28,7 @@ not imply that later source APIs have been released.
 ## Minimal Sign + Verify
 
 Create an agent first (CLI: `jacs-compat quickstart --name my-agent --domain
-my-agent.example.com`, or programmatically with `jacs.Create()` and
+my-agent.example.com`, or programmatically with `jacs.Create(name, opts)` and
 `JACS_PRIVATE_KEY_PASSWORD`). Then:
 
 ```go
@@ -67,22 +70,25 @@ Use `jacs.Create(name, &jacs.CreateAgentOptions{...})`. Password must be set in 
 
 ## Concurrent use
 
-For multiple agents in one process, use `NewJacsAgent()`, then `agent.Load(path)` and agent methods; call `agent.Close()` when done. Attestation, A2A (agent cards, trust policy), and protocol helpers are available on `JacsAgent` and as package-level wrappers (see godoc or the jacsgo README).
+For multiple agents in one process, use `NewJacsAgent()`, then `agent.Load(path)`
+and agent methods; call `agent.Close()` when done. Attestation and A2A helpers
+also have package-level wrappers. Request authentication and signed-event
+helpers require an agent instance; use `JacsSimpleAgent` for the shared simple
+binding contract.
 
 ## Request authentication and signed events
 
 For the cross-language simple contract, use `JacsSimpleAgent`:
 
 ```go
-algorithm := "ed25519"
-agent, _, err := jacs.EphemeralSimpleAgent(&algorithm)
+agent, _, err := jacs.EphemeralSimpleAgent(nil) // default pq2025
 if err != nil {
 	log.Fatal(err)
 }
 defer agent.Close()
 
 body := []byte(`{"action":"approve"}`)
-authorization, err := agent.BuildAuthHeader(
+authorization, err := agent.BuildRequestAuthHeader(
 	"POST",
 	"https://api.example.com/v1/jobs?mode=strict",
 	body,
@@ -98,7 +104,7 @@ if err != nil {
 }
 ```
 
-`BuildAuthHeader` binds method, absolute URL including query, exact body bytes,
+`BuildRequestAuthHeader` binds method, absolute URL including query, exact body bytes,
 audience, signer/key, issue time, and nonce. `SignResponse` creates a fully
 bound `2.0.0` response envelope. Verify an incoming envelope with
 `UnwrapSignedEvent(eventJSON, serverKeysJSON)`, where `serverKeysJSON` is a JSON
@@ -107,10 +113,10 @@ signers, legacy payload-only envelopes, and mutations return errors without
 releasing data.
 
 The key map is a configured trust decision. A valid signature proves key
-possession, not a real-world identity by itself. For legacy `JacsAgent`, migrate
-from the denied-by-default no-argument `BuildAuthHeader` to
-`BuildRequestAuthHeader`; `JacsSimpleAgent.BuildAuthHeader` already requires the
-full request context and emits v2. See the
+possession, not a real-world identity by itself. Both `JacsAgent.BuildAuthHeader()`
+and `JacsSimpleAgent.BuildAuthHeader()` retain the legacy no-argument form and
+emit a warning. Use `BuildRequestAuthHeader` for v2; deployments can reject the
+legacy form with `JACS_REJECT_UNBOUND_AUTH_HEADER=true`. See the
 [security guide](../advanced/security.md#request-bound-http-authorization).
 
 ## Common Go Use Cases
@@ -124,8 +130,8 @@ full request context and emits v2. See the
 
 The Go repository includes runnable examples for transport-level signing:
 
-- `jacsgo/examples/mcp/main.go` for MCP-style request/response signing
-- `jacsgo/examples/http/` for signed HTTP client/server traffic
+- `archive/native/jacsgo/examples/mcp/main.go` for MCP-style request/response signing
+- `archive/native/jacsgo/examples/http/` for signed HTTP client/server traffic
 
 ## Identity and Trust Notes
 

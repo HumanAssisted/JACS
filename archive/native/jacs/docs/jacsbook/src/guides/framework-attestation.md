@@ -1,216 +1,89 @@
-# Framework Adapter Attestation Guide
+# Framework Adapter Attestations
 
-JACS provides Python framework adapters for LangChain, FastAPI, and
-Anthropic. Each adapter can be configured to produce attestations (not just
-signatures) for tool calls, API requests, and agent actions.
+Python adapters accept `attest=True` to produce an attestation about their
+output. A signed claim records what its issuer asserted; it does not prove a
+human reviewed the output or that an action is authorized.
 
-## Common Patterns
+Install the corresponding [framework extra](../python/adapters.md). These
+examples require a native build with attestation support.
 
-All framework adapters share these attestation patterns:
+## LangChain and LangGraph
 
-### Default Claims
-
-When `attest=True` is enabled on any adapter, it automatically includes
-these default claims:
+Wrap a LangChain tool instance:
 
 ```python
-[
-    {"name": "framework", "value": "langchain", "confidence": 1.0},
-    {"name": "tool_name", "value": "my_tool", "confidence": 1.0},
-    {"name": "timestamp", "value": "2026-03-04T...", "confidence": 1.0},
-]
-```
-
-### Custom Claims
-
-Add your own claims to any adapter call:
-
-```python
-extra_claims = [
-    {"name": "reviewed_by", "value": "human", "confidence": 0.95},
-    {"name": "approved", "value": True, "assuranceLevel": "verified"},
-]
-```
-
-### Evidence Attachment
-
-Attach evidence references from external systems:
-
-```python
-evidence = [
-    {
-        "kind": "custom",
-        "digests": {"sha256": "abc123..."},
-        "uri": "https://scanner.example.com/report/456",
-        "collectedAt": "2026-03-04T00:00:00Z",
-        "verifier": {"name": "security-scanner", "version": "2.0"},
-    }
-]
-```
-
-## LangChain
-
-### Enabling Attestation on Tool Calls
-
-Use `jacs_wrap_tool_call` with `attest=True`:
-
-```python
-from jacs.adapters.langchain import jacs_wrap_tool_call
+from langchain_core.tools import tool
 from jacs.client import JacsClient
-
-client = JacsClient.quickstart()
-
-# Wrap a tool call with attestation
-@jacs_wrap_tool_call(client, attest=True)
-def my_tool(query: str) -> str:
-    return f"Result for: {query}"
-
-# The tool call now produces a signed attestation
-result = my_tool("test query")
-# result.attestation contains the signed attestation document
-```
-
-### Using the signed_tool Decorator
-
-```python
 from jacs.adapters.langchain import signed_tool
 
-@signed_tool(client, attest=True, claims=[
-    {"name": "data_source", "value": "internal_db", "confidence": 1.0}
-])
-def lookup_customer(customer_id: str) -> dict:
-    return {"name": "Alice", "status": "active"}
+client = JacsClient.ephemeral()
+
+@tool
+def lookup_customer(customer_id: str) -> str:
+    """Return the customer status."""
+    return "active"
+
+attested_lookup = signed_tool(lookup_customer, client=client, attest=True)
 ```
 
-### With LangChain Chains
-
-```python
-from jacs.adapters.langchain import with_jacs_signing
-
-# Wrap an entire chain with attestation
-signed_chain = with_jacs_signing(
-    chain=my_chain,
-    client=client,
-    attest=True,
-)
-```
+For LangGraph, `with_jacs_signing([lookup_customer], client=client, attest=True)`
+constructs a `ToolNode`. `jacs_wrap_tool_call(client=client, attest=True)`
+returns a `(request, execute)` hook for a tool node; it is not a decorator for
+an ordinary Python function. For LangChain agents use
+`jacs_signing_middleware(client=client, attest=True)`.
 
 ## FastAPI
 
-### Attestation Middleware
-
-The `JacsMiddleware` can be configured to produce attestations for all
-responses:
-
 ```python
 from fastapi import FastAPI
+from jacs.client import JacsClient
 from jacs.adapters.fastapi import JacsMiddleware
-from jacs.client import JacsClient
 
+client = JacsClient.quickstart(name="api", domain="api.example.com")
 app = FastAPI()
-client = JacsClient.quickstart()
-
-app.add_middleware(
-    JacsMiddleware,
-    client=client,
-    attest=True,  # Produce attestations, not just signatures
-    default_claims=[
-        {"name": "service", "value": "my-api", "confidence": 1.0},
-    ],
-)
+app.add_middleware(JacsMiddleware, client=client, attest=True)
 ```
 
-### Per-Route Attestation
+For an individual route, use `@jacs_route(client=client, attest=True)`.
+These constructors do not accept `claims` or `default_claims`.
+Request verification only checks signed POST JSON bodies; unsigned requests
+still pass through, including in strict mode. See
+[FastAPI verification limits](../python/adapters.md#fastapi--starlette).
 
-Use `jacs_route` for route-level attestation control:
-
-```python
-from jacs.adapters.fastapi import jacs_route
-
-@app.post("/approve")
-@jacs_route(client, attest=True, claims=[
-    {"name": "action", "value": "approve", "confidence": 1.0},
-    {"name": "requires_review", "value": True},
-])
-async def approve_request(request_id: str):
-    return {"approved": True, "request_id": request_id}
-```
-
-The response headers will include `X-JACS-Attestation-Id` with the
-attestation document ID.
-
-## Anthropic
-
-### Tool Hook Attestation
-
-The Anthropic adapter hooks into Claude tool calls to produce attestations:
+## Anthropic tools
 
 ```python
-from jacs.adapters.anthropic import signed_tool, JacsToolHook
 from jacs.client import JacsClient
+from jacs.adapters.anthropic import signed_tool
 
-client = JacsClient.quickstart()
+client = JacsClient.ephemeral()
 
-@signed_tool(client, attest=True)
+@signed_tool(client=client, attest=True)
 def search_database(query: str) -> str:
     return "Found 3 results"
 
-# Or use the hook class for more control
-hook = JacsToolHook(
-    client=client,
-    attest=True,
-    default_claims=[
-        {"name": "model", "value": "claude-4.6"},
-        {"name": "tool_use_id", "value": "auto"},  # Auto-filled from tool call
-    ],
-)
+attestation_json = search_database("example")
 ```
 
-### With the Anthropic SDK
+`JacsToolHook(client=client, attest=True)` is an async post-tool hook accepting
+an input dictionary containing `tool_response`. It does not register or wrap a
+list of tool schemas.
 
-```python
-import anthropic
-from jacs.adapters.anthropic import JacsToolHook
+## Custom claims and verification
 
-client = anthropic.Anthropic()
-jacs_client = JacsClient.quickstart()
-hook = JacsToolHook(jacs_client, attest=True)
+Use `JacsClient.create_attestation(subject=..., claims=..., evidence=...)`
+when you need explicit claims and evidence. The lower-level
+`BaseJacsAdapter` also accepts `default_claims`, and its
+`sign_output(data, extra_claims=...)` adds per-output claims. Framework wrappers
+do not expose all of those arguments.
 
-# Register tools with JACS attestation
-tools = hook.wrap_tools([
-    {
-        "name": "get_weather",
-        "description": "Get weather for a location",
-        "input_schema": {"type": "object", "properties": {"location": {"type": "string"}}},
-    }
-])
-```
+`client.verify_attestation(attestation_json)` returns `valid`, `crypto`,
+`evidence`, `chain` and `errors`; it does not return a top-level `claims`
+list. The attestation must already be available in this agent's document store.
+Read the [attestation tutorial](attestation-tutorial.md) for exact result keys
+and full-verification limits.
 
-## Verifying Framework Attestations
-
-All framework attestations use the same JACS verification API:
-
-```python
-# Verify any attestation (from any framework adapter)
-result = client.verify_attestation(attestation_json, full=True)
-print(f"Valid: {result['valid']}")
-print(f"Framework: {result['claims'][0]['value']}")
-print(f"Evidence: {result.get('evidence', [])}")
-```
-
-## Strict vs. Permissive Mode
-
-All adapters respect the `strict` flag on `JacsClient`:
-
-- **Permissive (default):** Signing/attestation failures log warnings but
-  do not block the operation
-- **Strict:** Signing/attestation failures raise exceptions and block
-  the operation
-
-```python
-# Strict mode: attestation failure = operation failure
-client = JacsClient.quickstart(strict=True)
-
-# Permissive mode: attestation failure = warning + continue
-client = JacsClient.quickstart(strict=False)
-```
+Signing and attestation failures raise by default, even when strict mode is off.
+The explicit compatibility options `allow_unsigned_output=True` and
+`allow_plain_signature_fallback=True` respectively permit unsigned output or
+dropping attestation claims. `strict=True` disables those fallbacks.

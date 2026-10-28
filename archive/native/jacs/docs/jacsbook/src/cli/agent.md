@@ -73,10 +73,10 @@ To make it easier to use, add `jacs_agent_id_and_version` to your config and you
 
 ## Role-based keyring and the ecosystem compatibility key
 
-Every new agent holds two key roles:
+Native creation supports two key roles; the compatibility key can be omitted:
 
-- `native_root` (`pq2025`) — signs native JACS documents. New creation and
-  all rotations are PQ-only.
+- `native_root` — defaults to `pq2025`; explicit Ed25519 creation is supported.
+  Rotation preserves the algorithm unless Ed25519 explicitly upgrades to PQ.
 - `ecosystem_signing` (`ES256` / ECDSA P-256) — a compatibility credential
   for ecosystems that require classical P-256 signatures (JWKS, DID
   documents, A2A agent cards, and targeted content exports). It never signs

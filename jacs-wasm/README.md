@@ -9,8 +9,12 @@
 
 `@hai.ai/jacs-wasm` is the WebAssembly bindings for [JACS](https://github.com/HumanAssisted/JACS).
 Await one init call and you can create JACS
-agents, sign messages, verify signed documents, and run multi-party agreements
+agents, sign messages, verify signed documents, and inspect multi-party agreement signatures
 entirely client-side.
+
+Agreement v1 inspection verifies signatures against supplied keys; it does not
+authenticate participant, role or quorum policy. Roles are unsigned metadata.
+Treat inspection results separately from consent or permission to execute.
 
 **New identities use post-quantum ML-DSA-87 (`pq2025`) by default**, in both
 the main-thread and worker APIs. Use `createEphemeral()` or

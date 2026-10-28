@@ -1,575 +1,133 @@
-# API Reference
+# Python API Reference
 
-Complete API documentation for the `jacs` Python package.
+| API | Use |
+| --- | --- |
+| `jacs.client.JacsClient` | Independent clients with Python result types |
+| `jacs.simple` | One process-wide session |
+| `jacs.JacsAgent` / `jacs.SimpleAgent` | Distinct direct native APIs |
 
-For most use cases, the **[Simplified API](simple-api.md)** (`jacs.simple`) and **[JacsClient](simple-api.md)** (instance-based, multiple agents) are recommended. This page documents the lower-level `JacsAgent` class and module-level functions.
+Start with [Basic Usage](basic-usage.md). Native arguments accepting `None`
+are not necessarily optional at the call site.
 
-See [installation](installation.md) for package and platform requirements.
+## JacsClient
 
-## JacsAgent Class
+```python
+from jacs.client import JacsClient
 
-`JacsAgent()` creates an independent empty instance. Call `load()` with an
-existing configuration before document operations.
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
+signed = client.sign_message({"message": "hello"})
+assert client.verify(signed.raw).valid
+```
 
-### agent.load(config_path)
+| Method | Result |
+| --- | --- |
+| `JacsClient(config_path=None, algorithm=None, strict=None)` | Client; loads only when a path is supplied |
+| `JacsClient.quickstart(name, domain, description=None, algorithm=None, config_path=None, strict=None)` | Persistent client |
+| `JacsClient.ephemeral(algorithm=None, strict=None)` | In-memory client |
+| `sign_message(data)` | `SignedDocument` |
+| `sign_file(path, embed=False)` | `SignedDocument` |
+| `verify(document)` / `verify_self()` | `VerificationResult` |
+| `verify_by_id(doc_id)` | Verification of stored `uuid:version` |
+| `export_agent()` / `get_public_key()` | Agent JSON / public PEM string |
+| `update_agent(data)` | Updated JSON; supply the complete agent document |
+| `update_document(doc_id, data, attachments=None, embed=False)` | Updated document; supply its full `id:version` key and complete replacement |
+| `reset()` | Clear the client session |
 
-Load and initialize the agent from a configuration file.
+The constructor's `algorithm` argument does not create an agent; select an
+algorithm through a factory. New agents default to `pq2025`.
+`verify()` accepts JSON, a dict or `SignedDocument`; strict mode raises on
+verification failures, otherwise inspect `valid` and `errors`.
 
-**Parameters:**
-- `config_path` (str): Path to the JACS configuration file
+See the [client source](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/python/jacs/client.py)
+for trust-store, attestation, media and A2A helpers.
 
-**Returns:** str - The status string `"Agent loaded"`; use `load_with_info()`
-for metadata or `export_agent()` for the loaded public identity.
+## Result types
 
-**Example:**
+| Type | Common attributes |
+| --- | --- |
+| `AgentInfo` | `agent_id`, `version`, `algorithm`, `config_path`, key paths |
+| `SignedDocument` | `document_id`, `version`, `signer_id`, `payload`, `raw_json` |
+| `VerificationResult` | `valid`, `signer_id`, `timestamp`, `errors` |
+
+`raw` aliases `raw_json`, `agent_id` aliases `signer_id`, and
+`timestamp` aliases `signed_at` on `SignedDocument`.
+Signer timestamps are claims; verification does not grant permission to act.
+
+## Low-level JacsAgent
+
+Every argument below without a default must be supplied, even when its value is
+`None`. Native operation errors normally raise `RuntimeError`; Python
+argument conversion can raise `TypeError`.
+
 ```python
 import json
-import jacs
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-print('Agent loaded:', json.loads(agent.export_agent())['jacsId'])
-```
-
----
-
-### agent.create_document(document_string, custom_schema=None, outputfilename=None, no_save=False, attachments=None, embed=False)
-
-Create and sign a new JACS document.
-
-**Parameters:**
-- `document_string` (str): JSON string of the document content
-- `custom_schema` (str, optional): Path to a custom JSON Schema for validation
-- `outputfilename` (str, optional): Filename to save the document
-- `no_save` (bool, optional): If True, don't save to storage (default: False)
-- `attachments` (str, optional): Path to file attachments
-- `embed` (bool, optional): If True, embed attachments in the document
-
-**Returns:** str - The signed document as a JSON string
-
-**Example:**
-```python
-# Basic document creation
-doc = agent.create_document(json.dumps({
-    'title': 'My Document',
-    'content': 'Hello, World!'
-}))
-
-# With custom schema
-validated_doc = agent.create_document(
-    json.dumps({'title': 'Validated', 'amount': 100}),
-    custom_schema='./schemas/invoice.schema.json'
-)
-
-# Without saving
-temp_doc = agent.create_document(
-    json.dumps({'data': 'temporary'}),
-    no_save=True
-)
-
-# With attachments
-doc_with_file = agent.create_document(
-    json.dumps({'report': 'Monthly Report'}),
-    attachments='./report.pdf',
-    embed=True
-)
-```
-
----
-
-### agent.verify_document(document_string)
-
-Verify a document's signature and hash integrity.
-
-**Parameters:**
-- `document_string` (str): The signed document JSON string
-
-**Returns:** bool - True if the document is valid
-
-**Example:**
-```python
-is_valid = agent.verify_document(signed_document_json)
-if is_valid:
-    print('Document signature verified')
-else:
-    print('Document verification failed')
-```
-
----
-
-### agent.verify_signature(document_string, signature_field=None)
-
-Verify a document's signature with an optional custom signature field.
-
-**Parameters:**
-- `document_string` (str): The signed document JSON string
-- `signature_field` (str, optional): Name of the signature field (default: 'jacsSignature')
-
-**Returns:** bool - True if the signature is valid
-
-**Example:**
-```python
-# Verify default signature field
-is_valid = agent.verify_signature(doc_json)
-
-# Verify custom signature field
-is_valid_custom = agent.verify_signature(doc_json, 'customSignature')
-```
-
----
-
-### agent.update_document(document_key, new_document_string, attachments=None, embed=False)
-
-Update an existing document, creating a new version.
-
-**Parameters:**
-- `document_key` (str): The document key in format `"id:version"`
-- `new_document_string` (str): The modified document as JSON string
-- `attachments` (list, optional): List of attachment file paths
-- `embed` (bool, optional): If True, embed attachments
-
-**Returns:** str - The updated document as a JSON string
-
-**Example:**
-```python
-# Parse existing document to get key
-doc = json.loads(signed_doc)
-document_key = f"{doc['jacsId']}:{doc['jacsVersion']}"
-
-# Update the document
-updated_doc = agent.update_document(
-    document_key,
-    json.dumps({
-        **doc,
-        'title': 'Updated Title',
-        'content': 'Modified content'
-    })
-)
-```
-
----
-
-### agent.create_agreement(document_string, agent_ids, question=None, context=None, agreement_field_name=None)
-
-Legacy sidecar API. Use Agreement v2 for new standalone consent workflows.
-
-Add an agreement requiring multiple agent signatures to a document.
-
-**Parameters:**
-- `document_string` (str): The document JSON string
-- `agent_ids` (list): List of agent IDs required to sign
-- `question` (str, optional): The agreement question
-- `context` (str, optional): Additional context for the agreement
-- `agreement_field_name` (str, optional): Field name for the agreement (default: 'jacsAgreement')
-
-**Returns:** str - The document with agreement as a JSON string
-
-**Example:**
-```python
-doc_with_agreement = agent.create_agreement(
-    signed_document_json,
-    ['agent-1-uuid', 'agent-2-uuid', 'agent-3-uuid'],
-    question='Do you agree to these terms?',
-    context='Q1 2024 Service Agreement',
-    agreement_field_name='jacsAgreement'
-)
-```
-
----
-
-### agent.sign_agreement(document_string, agreement_field_name=None)
-
-Sign an agreement as the current agent.
-
-**Parameters:**
-- `document_string` (str): The document with agreement JSON string
-- `agreement_field_name` (str, optional): Field name of the agreement (default: 'jacsAgreement')
-
-**Returns:** str - The document with this agent's signature added
-
-**Example:**
-```python
-signed_agreement = agent.sign_agreement(
-    doc_with_agreement_json,
-    'jacsAgreement'
-)
-```
-
----
-
-### agent.check_agreement(document_string, agreement_field_name=None)
-
-Check the status of an agreement (which agents have signed).
-
-**Parameters:**
-- `document_string` (str): The document with agreement JSON string
-- `agreement_field_name` (str, optional): Field name of the agreement (default: 'jacsAgreement')
-
-**Returns:** str - JSON string with agreement status
-
-**Example:**
-```python
-status_json = agent.check_agreement(signed_agreement_json)
-status = json.loads(status_json)
-
-print('Required signers:', status['required'])
-print('Signatures received:', status['signed'])
-print('Complete:', status['complete'])
-```
-
----
-
-### agent.sign_artifact(artifact_json, artifact_type, parent_signatures_json=None)
-
-Sign an A2A artifact with JACS provenance. This is the canonical method name.
-
-**Parameters:**
-- `artifact_json` (str): JSON string of the artifact to sign
-- `artifact_type` (str): Type of artifact (e.g., `"artifact"`, `"result"`)
-- `parent_signatures_json` (str, optional): JSON string of parent signatures for chain of custody
-
-**Returns:** str - The signed, wrapped artifact as a JSON string
-
-**Example:**
-```python
-signed = agent.sign_artifact(
-    json.dumps({"action": "classify", "input": "hello"}),
-    "artifact"
-)
-```
-
----
-
-### agent.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json=None)
-
-> **Deprecated since 0.9.0.** Use `sign_artifact()` instead. This method will be removed in 1.0.0.
->
-> Set `JACS_SHOW_DEPRECATIONS=1` to see runtime warnings when deprecated methods are called.
-
-Wraps an A2A artifact with JACS provenance signature. Identical behavior to `sign_artifact()`.
-
-**Parameters:** Same as `sign_artifact()`.
-
----
-
-### agent.sign_string(data)
-
-Sign arbitrary string data with the agent's private key.
-
-**Parameters:**
-- `data` (str): The data to sign
-
-**Returns:** str - Base64-encoded signature
-
-**Example:**
-```python
-signature = agent.sign_string('Important message')
-print('Signature:', signature)
-```
-
----
-
-### agent.verify_string(data, signature_base64, public_key, public_key_enc_type)
-
-Verify a signature on arbitrary string data.
-
-**Parameters:**
-- `data` (str): The original data
-- `signature_base64` (str): The base64-encoded signature
-- `public_key` (bytes): The public key as bytes
-- `public_key_enc_type` (str): The key algorithm (e.g., 'ring-Ed25519')
-
-**Returns:** bool - True if the signature is valid
-
-**Example:**
-```python
-is_valid = agent.verify_string(
-    'Important message',
-    signature_base64,
-    public_key_bytes,
-    'ring-Ed25519'
-)
-```
-
----
-
-### agent.sign_request(params)
-
-Sign a request payload, wrapping it in a JACS document.
-
-This is a generic document wrapper, not an HTTP authorization credential: it
-does not bind the actual method, absolute URL, query, body bytes, or audience.
-Use `SimpleAgent.build_request_auth_header(method, url, body, audience)` for HTTP.
-
-**Parameters:**
-- `params` (any): The request payload (will be JSON serialized)
-
-**Returns:** str - JACS-signed request as a JSON string
-
-**Example:**
-```python
-signed_request = agent.sign_request({
-    'method': 'GET',
-    'path': '/api/data',
-    'timestamp': datetime.now().isoformat(),
-    'body': {'query': 'value'}
-})
-```
-
----
-
-### agent.verify_response(document_string)
-
-Verify a JACS-signed response and extract the payload.
-
-This verifies the legacy generic document shape. It is not the strict
-`jacs-response-v2` event contract. New event consumers use
-`SimpleAgent.unwrap_signed_event(event_json, server_keys_json)`, which rejects
-plain events, unknown signers, legacy envelopes, and mutations without
-releasing data.
-
-**Parameters:**
-- `document_string` (str): The JACS-signed response
-
-**Returns:** The verified JSON payload as its corresponding Python value.
-
-**Example:**
-```python
-payload = agent.verify_response(jacs_response_string)
-print('Verified payload:', payload)
-```
-
----
-
-### agent.verify_response_with_agent_id(document_string)
-
-Verify a response and return both the payload and signer's agent ID.
-
-**Parameters:**
-- `document_string` (str): The JACS-signed response
-
-**Returns:** tuple - `(agent_id, payload)`
-
-**Example:**
-```python
-agent_id, payload = agent.verify_response_with_agent_id(jacs_response_string)
-print('Payload:', payload)
-print('Signed by agent:', agent_id)
-```
-
----
-
-### agent.verify_agent(agent_file=None)
-
-Verify the agent's own signature and hash, or verify another agent file.
-
-**Parameters:**
-- `agent_file` (str, optional): Path to an agent file to verify
-
-**Returns:** bool - True if the agent is valid
-
-**Example:**
-```python
-# Verify the loaded agent
-is_valid = agent.verify_agent()
-
-# Verify another agent file
-is_other_valid = agent.verify_agent('./other-agent.json')
-```
-
----
-
-### agent.update_agent(new_agent_string)
-
-Update the agent document with new data.
-
-**Parameters:**
-- `new_agent_string` (str): The modified agent document as JSON string
-
-**Returns:** str - The updated agent document
-
-**Example:**
-```python
-current_agent = json.loads(agent.load('./jacs.config.json'))
-updated_agent = agent.update_agent(json.dumps({
-    **current_agent,
-    'description': 'Updated description'
-}))
-```
-
----
-
-### agent.sign_agent(agent_string, public_key, public_key_enc_type)
-
-Sign another agent's document with a registration signature.
-
-**Parameters:**
-- `agent_string` (str): The agent document to sign
-- `public_key` (bytes): The public key as bytes
-- `public_key_enc_type` (str): The key algorithm
-
-**Returns:** str - The signed agent document
-
-**Example:**
-```python
-signed_agent = agent.sign_agent(
-    external_agent_json,
-    public_key_bytes,
-    'ring-Ed25519'
-)
-```
-
----
-
-## Module-level functions
-
-The old top-level `jacs.load`, `jacs.sign_request` and related functions are
-deprecated and do not provide a usable persistent global signing session.
-Several raise `RuntimeError`; do not use them in new code. Use `jacs.simple`
-for the supported module-level session, or `JacsClient` / `SimpleAgent` for
-independent instances.
-
-For request-bound HTTP authentication use
-`SimpleAgent.build_request_auth_header(method, url, body, audience)`.
-`build_auth_header()` is the legacy unbound credential. For signed events use
-`SimpleAgent.sign_response(payload_json)` and
-`SimpleAgent.unwrap_signed_event(event_json, server_keys_json)` with independently
-trusted server keys and application replay policy.
-
-## MCP Module
-
-```python
-from jacs.mcp import JACSMCPServer, JACSMCPClient, create_jacs_mcp_server, jacs_call
-```
-
-Canonical MCP documentation lives at [Python MCP Integration](mcp.md). This API section lists the MCP entry points only:
-
-- `JACSMCPServer(..., allowed_peer_agent_ids=[...])` - Wrap a FastMCP HTTP server with allowlisted JACS request verification and response signing.
-- `JACSMCPClient(..., expected_peer_agent_id="...")` - Create a FastMCP SSE client pinned to the expected server signer.
-- `create_jacs_mcp_server(..., allowed_peer_agent_ids=[...])` - One-line authenticated HTTP server factory.
-- `jacs_call(..., expected_peer_agent_id="...")` - One-shot authenticated local MCP call.
-
-The wrappers reject `stdio`, require portable-v2 signed carriers for every
-POST, randomize request IDs per session, and cap buffered JSON messages. See
-the canonical MCP page for the dangerous compatibility flags and key-hash pin.
-
-For examples, strict-mode behavior, and security guidance, see [Python MCP Integration](mcp.md).
-
----
-
-## Configuration
-
-### Configuration File Format
-
-Create a `jacs.config.json` file:
-
-```json
-{
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_agent_id_and_version": "your-agent-id:version",
-  "jacs_agent_key_algorithm": "ring-Ed25519",
-  "jacs_agent_private_key_filename": "private.pem",
-  "jacs_agent_public_key_filename": "public.pem",
-  "jacs_data_directory": "./jacs_data",
-  "jacs_default_storage": "fs",
-  "jacs_key_directory": "./jacs_keys"
-}
-```
-
-### Configuration Options
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `jacs_agent_id_and_version` | string | Agent ID and version in format `"id:version"` |
-| `jacs_agent_key_algorithm` | string | Signing algorithm: `"ring-Ed25519"` or `"pq2025"`. |
-| `jacs_agent_private_key_filename` | string | Private key filename |
-| `jacs_agent_public_key_filename` | string | Public key filename |
-| `jacs_data_directory` | string | Directory for data storage |
-| `jacs_key_directory` | string | Directory for key storage |
-| `jacs_default_storage` | string | Storage backend: `"fs"`, `"s3"`, `"memory"` |
-
----
-
-## Error Handling
-
-All methods may raise exceptions. Use try/except for error handling:
-
-```python
-try:
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-    doc = agent.create_document(json.dumps({'data': 'test'}))
-except FileNotFoundError as e:
-    print(f'Configuration file not found: {e}')
-except ValueError as e:
-    print(f'Invalid configuration: {e}')
-except Exception as e:
-    print(f'JACS error: {e}')
-```
-
-### Common Exceptions
-
-| Exception | Description |
-|-----------|-------------|
-| `FileNotFoundError` | Configuration file or key file not found |
-| `ValueError` | Invalid configuration or document format |
-| `RuntimeError` | Agent not loaded or cryptographic operation failed |
-
----
-
-## Type Hints
-
-The package supports type hints for better IDE integration:
-
-```python
-from jacs import JacsAgent
-import json
-
-def process_document(agent: JacsAgent, data: dict) -> str:
-    """Create and return a signed document."""
-    doc_string = json.dumps(data)
-    return agent.create_document(doc_string)
-
-def verify_and_extract(agent: JacsAgent, doc: str) -> dict:
-    """Verify document and extract content."""
-    if agent.verify_document(doc):
-        return json.loads(doc)
-    raise ValueError("Document verification failed")
-```
-
----
-
-## Thread Safety
-
-`JacsAgent` instances use internal locking and are thread-safe. You can safely use the same agent instance across multiple threads:
-
-```python
-import threading
 from jacs import JacsAgent
 
 agent = JacsAgent()
-agent.load('./jacs.config.json')
-
-def worker(data):
-    # Safe to call from multiple threads
-    doc = agent.create_document(json.dumps(data))
-    return doc
-
-threads = [
-    threading.Thread(target=worker, args=({'id': i},))
-    for i in range(10)
-]
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
+agent.load("./jacs.config.json")
+document = agent.create_document(
+    json.dumps({"jacsDocument": {"type": "message", "content": {"answer": 42}}}),
+    None,   # custom_schema
+    None,   # outputfilename
+    True,   # no_save
+    None,   # attachments
+    None,   # embed
+)
+assert agent.verify_document(document)
+assert agent.verify_agent(None)
 ```
 
----
+| Native method | Return |
+| --- | --- |
+| `load(config_path)` | JSON string |
+| `create_document(document_string, custom_schema, outputfilename, no_save, attachments, embed)` | Signed JSON string |
+| `verify_document(document_string)` | Boolean |
+| `verify_signature(document_string, signature_field)` | Boolean; `None` selects default field |
+| `verify_agent(agentfile)` | Boolean; `None` selects loaded agent |
+| `update_document(document_key, new_document_string, attachments, embed)` | Updated JSON string |
+| `update_agent(new_agent_string)` | Updated agent JSON string |
+| `export_agent()` / `get_public_key_pem()` | Agent JSON / public PEM string |
+| `create_agreement(document_string, agentids, question, context, agreement_fieldname)` | Agreement JSON |
+| `sign_agreement(document_string, agreement_fieldname)` | Countersigned JSON |
+| `check_agreement(document_string, agreement_fieldname)` | Inspection report JSON |
 
-## See Also
+`create_document.attachments` accepts an optional string through the native
+attachment parser; `update_document.attachments` accepts an optional list of
+paths. Use `sign_file()` for the common single-file workflow.
 
-- [Installation](installation.md) - Getting started
-- [Basic Usage](basic-usage.md) - Common usage patterns
-- [MCP Integration](mcp.md) - Model Context Protocol
-- [Examples](../examples/python.md) - More complex examples
+Document updates require the original to be available in the agent's document
+store. Parse the complete document, derive `jacsId:jacsVersion`, modify its
+application fields, and submit the complete replacement. `no_save` controls
+file export; it does not mean the document is absent from the in-memory store.
+
+Legacy agreement parameters are exactly `agentids` and
+`agreement_fieldname` on `JacsAgent`. `JacsClient.create_agreement()` uses
+`agent_ids` and `field_name` instead. Inspection reports include
+`verified_signature_count`, `pending`, and `mathematical_checks_valid`;
+`complete` and `policy_accepted` remain false. Never infer consent from them.
+
+### Configuration helper
+
+`jacs.create_config()` returns configuration JSON and does not create keys.
+All nine arguments are required, though each accepts `None`:
+
+```text
+create_config(jacs_use_security, jacs_data_directory, jacs_key_directory,
+              jacs_agent_private_key_filename, jacs_agent_public_key_filename,
+              jacs_agent_key_algorithm, jacs_private_key_password,
+              jacs_agent_id_and_version, jacs_default_storage)
+```
+
+Prefer `JacsClient.quickstart()` for setup. Keep passwords in host secret
+handling rather than examples, logs or persisted config.
+
+## Native SimpleAgent
+
+`SimpleAgent` provides instance-based Agreement v2, request authentication,
+signed events and public human-approval verification. See the
+[simplified API guide](simple-api.md) and
+[native binding source](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/src/lib.rs).
+Do not assume methods on one native class exist on the other.
+
+See [MCP](mcp.md), [Framework Adapters](adapters.md), and
+[Python examples](../examples/python.md).

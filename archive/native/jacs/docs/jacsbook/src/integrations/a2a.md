@@ -19,7 +19,9 @@ Use A2A when your agent needs to be discoverable and verifiable by another servi
 
 ## The Core Flow
 
-### 1. Export An Agent Card
+### 1. Create An Unsigned Card Model
+
+These convenience methods return unsigned models. For signed discovery use the serving APIs below or the [A2A how-to](https://humanassisted.github.io/JACS/a2a.html).
 
 Python:
 
@@ -228,10 +230,10 @@ JWKS key by itself can never establish the claimed JACS identity.
 
 ## Example Paths In This Repo
 
-- `jacspy/tests/test_a2a_server.py`
-- `jacsnpm/src/a2a-server.js`
-- `jacsnpm/examples/a2a-agent-example.js`
-- `jacs/tests/a2a_cross_language_tests.rs`
+- `archive/native/jacspy/tests/test_a2a_server.py`
+- `archive/native/jacsnpm/src/a2a-server.js`
+- `archive/native/jacsnpm/examples/a2a-agent-example.js`
+- `archive/native/jacs/tests/a2a_cross_language_tests.rs`
 
 
 ## Opt-in A2A 1.0 peer example
@@ -245,8 +247,9 @@ identity/version for the supported profile. See the
 [source library guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md#library-entry-points).
 
 `export_agent_card_es256` is the explicit compatibility alternative. The
-pinned official-SDK example below selects this ES256 path; it does not prove
-that the peer implements ML-DSA-87. `verify_card_binding` remains the
+retained native-fixture/Python vector harness selects ES256. The current
+JavaScript SDK smoke instead tests direct ML-DSA-87; the current Python SDK
+smoke uses explicit ES256 plus a separately verified native-root binding. `verify_card_binding` remains the
 compatibility binding check, and its caller must additionally verify the JWS.
 
 

@@ -1,472 +1,88 @@
-# Basic Usage
+# Python Basic Usage
 
-This chapter covers fundamental JACS operations in Python. For quick signing and verification, start with the **[Simplified API](simple-api.md)** (`jacs.simple`) or **JacsClient**; the sections below use the `JacsAgent` class directly for fine-grained control.
+Use `JacsClient` for independent agents, or [`jacs.simple`](simple-api.md)
+for one process-wide session.
 
-## Initializing an Agent
-
-### Create and Load Agent
-
-```python
-import jacs
-
-# Create a new agent instance
-agent = jacs.JacsAgent()
-
-# Load configuration from file
-agent.load('./jacs.config.json')
-```
-
-### Configuration File
-
-Create `jacs.config.json`:
-
-```json
-{
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys",
-  "jacs_default_storage": "fs",
-  "jacs_agent_key_algorithm": "ring-Ed25519",
-  "jacs_agent_id_and_version": "agent-uuid:version-uuid"
-}
-```
-
-## Creating Documents
-
-### Basic Document Creation
+## Sign and verify
 
 ```python
-import jacs
-import json
+from jacs.client import JacsClient
 
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-
-# Create a document from JSON
-document_data = {
-    "title": "Project Proposal",
-    "content": "Quarterly development plan",
-    "budget": 50000
-}
-
-signed_document = agent.create_document(json.dumps(document_data))
-print('Signed document:', signed_document)
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
+signed = client.sign_message({"event": "tool-result", "answer": 42})
+result = client.verify(signed.raw)
+if not result.valid:
+    raise ValueError(result.errors)
+print(result.signer_id, signed.payload)
 ```
 
-### With Custom Schema
-
-Validate against a custom JSON Schema:
+Quickstart loads an existing config or creates encrypted keys with `pq2025`.
+See [password bootstrap](../getting-started/quick-start.md#native-password-bootstrap)
+for preserving access across process restarts. To load explicitly:
 
 ```python
-signed_document = agent.create_document(
-    json.dumps(document_data),
-    './schemas/proposal.schema.json'  # custom schema path
+client = JacsClient(config_path="./jacs.config.json", strict=True)
+```
+
+With `strict=True`, verification failures raise `VerificationError`; with
+strict mode disabled, inspect `result.valid` and `result.errors`.
+Configuration and signing errors still raise.
+
+Verification authenticates bytes under the resolved key. Separately require
+the expected signer, trusted identity binding, allowed action and freshness
+before executing an operation.
+
+## Save and exchange signed JSON
+
+```python
+from pathlib import Path
+
+Path("signed.json").write_text(signed.raw, encoding="utf-8")
+received = Path("signed.json").read_text(encoding="utf-8")
+result = client.verify(received)
+if not result.valid:
+    raise ValueError(result.errors)
+```
+
+Send the complete `signed.raw`, including signature and metadata. To verify
+another agent, configure its public key under your trust policy. A key embedded
+in a submission or fetched from a URL is not an identity endorsement.
+
+## Files and public identity
+
+```python
+signed_file = client.sign_file("report.pdf", embed=True)
+assert client.verify(signed_file.raw).valid
+agent_json = client.export_agent()
+public_key_pem = client.get_public_key()
+```
+
+The file must already exist. Embedding carries its bytes; `embed=False`
+records a reference/hash. Apply an external-file verification policy when
+receiving referenced files. Share public identity material through an
+authenticated channel.
+
+## Independent agents
+
+```python
+alice = JacsClient.quickstart(
+    name="alice", domain="alice.example.com", config_path="./alice/jacs.config.json"
+)
+bob = JacsClient.quickstart(
+    name="bob", domain="bob.example.com", config_path="./bob/jacs.config.json"
 )
 ```
 
-### With Output File
-
-```python
-signed_document = agent.create_document(
-    json.dumps(document_data),
-    None,                     # no custom schema
-    './output/proposal.json'  # output filename
-)
-```
-
-### Without Saving
-
-```python
-signed_document = agent.create_document(
-    json.dumps(document_data),
-    None,   # no custom schema
-    None,   # no output filename
-    True    # no_save = True
-)
-```
-
-### With Attachments
-
-```python
-signed_document = agent.create_document(
-    json.dumps(document_data),
-    None,                        # no custom schema
-    None,                        # no output filename
-    False,                       # save the document
-    './attachments/report.pdf',  # attachment path
-    True                         # embed files
-)
-```
-
-## Verifying Documents
-
-### Verify Document Signature
-
-```python
-# Verify a document's signature and hash
-is_valid = agent.verify_document(signed_document_json)
-print('Document valid:', is_valid)
-```
-
-### Verify Specific Signature Field
-
-```python
-# Verify with a custom signature field
-is_valid = agent.verify_signature(
-    signed_document_json,
-    'jacsSignature'  # signature field name
-)
-```
-
-## Updating Documents
-
-### Update Existing Document
-
-```python
-# Original document key format: "id:version"
-document_key = 'doc-uuid:version-uuid'
-
-# Modified document content (must include jacsId and jacsVersion)
-updated_data = {
-    "jacsId": "doc-uuid",
-    "jacsVersion": "version-uuid",
-    "title": "Updated Proposal",
-    "content": "Revised quarterly plan",
-    "budget": 75000
-}
-
-updated_document = agent.update_document(
-    document_key,
-    json.dumps(updated_data)
-)
-
-print('Updated document:', updated_document)
-```
-
-### Update with New Attachments
-
-```python
-updated_document = agent.update_document(
-    document_key,
-    json.dumps(updated_data),
-    ['./new-report.pdf'],  # new attachments
-    True                   # embed files
-)
-```
-
-## Signing and Verification
-
-### Sign Arbitrary Data
-
-```python
-# Sign any string data
-signature = agent.sign_string('Important message to sign')
-print('Signature:', signature)
-```
-
-### Verify Arbitrary Data
-
-```python
-# Verify a signature on string data
-is_valid = agent.verify_string(
-    'Important message to sign',  # original data
-    signature_base64,             # base64 signature
-    public_key_bytes,             # public key as bytes
-    'ring-Ed25519'                # algorithm
-)
-```
-
-## Working with Agreements
-
-The methods in this section use the legacy `jacsAgreement` sidecar on an existing signed document. For new standalone consent workflows, prefer Agreement v2 through `SimpleAgent.create_agreement_v2()`, `sign_agreement_v2()`, and `verify_agreement_v2()`.
-
-### Create an Agreement
-
-```python
-# Add agreement requiring multiple agent signatures
-document_with_agreement = agent.create_agreement(
-    signed_document_json,
-    ['agent1-uuid', 'agent2-uuid'],           # required signers
-    'Do you agree to these terms?',            # question
-    'Q1 2024 service contract',                # context
-    'jacsAgreement'                            # field name
-)
-```
-
-### Sign an Agreement
-
-```python
-# Sign the agreement as the current agent
-signed_agreement = agent.sign_agreement(
-    document_with_agreement_json,
-    'jacsAgreement'  # agreement field name
-)
-```
-
-### Check Agreement Status
-
-```python
-# Check which agents have signed
-status = agent.check_agreement(
-    document_with_agreement_json,
-    'jacsAgreement'
-)
-
-print('Agreement status:', json.loads(status))
-```
-
-## Agent Operations
-
-### Verify Agent
-
-```python
-# Verify the loaded agent's signature
-is_valid = agent.verify_agent()
-print('Agent valid:', is_valid)
-
-# Verify a specific agent file
-is_valid_other = agent.verify_agent('./other-agent.json')
-```
-
-### Update Agent
-
-```python
-# Update agent document
-updated_agent_json = agent.update_agent(json.dumps({
-    "jacsId": "agent-uuid",
-    "jacsVersion": "version-uuid",
-    "name": "Updated Agent Name",
-    "description": "Updated description"
-}))
-```
-
-### Sign External Agent
-
-```python
-# Sign another agent's document with registration signature
-signed_agent_json = agent.sign_agent(
-    external_agent_json,
-    public_key_bytes,
-    'ring-Ed25519'
-)
-```
-
-## Generic Request/Response Documents
-
-> **Not HTTP authentication:** `JacsAgent.sign_request()` and
-> `verify_response()` wrap and verify a generic signed JACS document. They do
-> not bind the HTTP method, absolute URL, query, exact body bytes, or audience.
-> For an authorization credential use
-> `SimpleAgent.build_request_auth_header(method, url, body, audience)`. For v2 response
-> envelopes use `SimpleAgent.sign_response()` and fail-closed
-> `SimpleAgent.unwrap_signed_event()` with pinned server keys. See
-> [Security](../advanced/security.md#request-bound-http-authorization).
-
-### Sign a Request
-
-```python
-# Sign request-like data as a durable JACS document (not an HTTP credential)
-signed_request = agent.sign_request({
-    "method": "GET",
-    "path": "/api/resource",
-    "timestamp": datetime.now().isoformat(),
-    "body": {"query": "data"}
-})
-```
-
-### Verify a Response
-
-```python
-# Verify a generic signed document (not a jacs-response-v2 event)
-result = agent.verify_response(signed_response_json)
-print('Response valid:', result)
-
-# Verify and get signer's agent ID
-result_with_id = agent.verify_response_with_agent_id(signed_response_json)
-print('Signer ID:', result_with_id)
-```
-
-## Utility Functions
-
-### Hash String
-
-```python
-import jacs
-
-# SHA-256 hash of a string
-hash_value = jacs.hash_string('data to hash')
-print('Hash:', hash_value)
-```
-
-### Create Configuration
-
-```python
-import jacs
-
-# Programmatically create a config JSON string
-config_json = jacs.create_config(
-    jacs_data_directory='./jacs_data',
-    jacs_key_directory='./jacs_keys',
-    jacs_agent_key_algorithm='ring-Ed25519',
-    jacs_default_storage='fs'
-)
-
-print('Config:', config_json)
-```
-
-## Error Handling
-
-```python
-import jacs
-
-agent = jacs.JacsAgent()
-
-try:
-    agent.load('./jacs.config.json')
-except Exception as error:
-    print(f'Failed to load agent: {error}')
-
-try:
-    doc = agent.create_document(json.dumps({'data': 'test'}))
-    print('Document created')
-except Exception as error:
-    print(f'Failed to create document: {error}')
-
-try:
-    is_valid = agent.verify_document(invalid_json)
-except Exception as error:
-    print(f'Verification failed: {error}')
-```
-
-## Complete Example
-
-```python
-import jacs
-import json
-
-def main():
-    # Initialize agent
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-
-    # Create a generic proposal document
-    proposal = {
-        "title": "Project Proposal",
-        "description": "Q1 development plan",
-        "budget": 50000
-    }
-
-    signed_proposal = agent.create_document(json.dumps(proposal))
-    print('Document created')
-
-    # Verify the document
-    if agent.verify_document(signed_proposal):
-        print('Document signature valid')
-
-    # Create agreement for proposal approval
-    proposal_with_agreement = agent.create_agreement(
-        signed_proposal,
-        ['manager-uuid', 'developer-uuid'],
-        'Do you approve this proposal?'
-    )
-
-    # Sign the agreement
-    signed_agreement = agent.sign_agreement(proposal_with_agreement)
-    print('Agreement signed')
-
-    # Check agreement status
-    status = agent.check_agreement(signed_agreement)
-    print('Status:', status)
-
-    # Hash some data for reference
-    proposal_hash = jacs.hash_string(signed_proposal)
-    print('Document hash:', proposal_hash)
-
-if __name__ == "__main__":
-    main()
-```
-
-## Working with Document Data
-
-### Parse Signed Documents
-
-```python
-import json
-
-# Create and sign a document
-doc_data = {"title": "My Document", "content": "Hello, World!"}
-signed_doc = agent.create_document(json.dumps(doc_data))
-
-# Parse the signed document to access JACS fields
-parsed = json.loads(signed_doc)
-print('Document ID:', parsed.get('jacsId'))
-print('Document Version:', parsed.get('jacsVersion'))
-print('Signature:', parsed.get('jacsSignature'))
-```
-
-### Document Key Format
-
-```python
-# Document keys combine ID and version
-doc_id = parsed['jacsId']
-doc_version = parsed['jacsVersion']
-document_key = f"{doc_id}:{doc_version}"
-
-# Use the key for updates
-updated_doc = agent.update_document(document_key, json.dumps({
-    **parsed,
-    "content": "Updated content"
-}))
-```
-
-## Configuration Management
-
-### Load from File
-
-```python
-import jacs
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-```
-
-### Environment Variables
-
-JACS reads environment variables that override configuration file settings:
-
-```bash
-export JACS_DATA_DIRECTORY="./production_data"
-export JACS_KEY_DIRECTORY="./production_keys"
-export JACS_AGENT_KEY_ALGORITHM="ring-Ed25519"
-export JACS_DEFAULT_STORAGE="fs"
-```
-
-### Programmatic Configuration
-
-```python
-import jacs
-import json
-import os
-
-# Create config programmatically
-config_json = jacs.create_config(
-    jacs_data_directory='./jacs_data',
-    jacs_key_directory='./jacs_keys',
-    jacs_agent_key_algorithm='ring-Ed25519',
-    jacs_default_storage='fs'
-)
-
-# Write to file
-with open('jacs.config.json', 'w') as f:
-    f.write(config_json)
-
-# Then load it
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-```
-
-## Next Steps
-
-- [MCP Integration](mcp.md) - Model Context Protocol support
-- [FastMCP Integration](mcp.md) - Build advanced MCP servers
-- [API Reference](api.md) - Complete API documentation
+For short-lived tests, `JacsClient.ephemeral()` keeps its identity in memory.
+Do not assume separate ephemeral agents can resolve one another's public keys.
+
+## Agreements and integrations
+
+Legacy `create_agreement()`, `sign_agreement()` and `check_agreement()`
+inspect sidecar evidence; inspection cannot establish application consent.
+Agreement v2 is available on `jacs.simple` and native `SimpleAgent`; its
+`valid` and `policyAccepted` remain false even when
+`mathematicalChecksValid` is true.
+
+See [MCP](mcp.md), [Framework Adapters](adapters.md), and the
+[API reference](api.md) for direct native calls.

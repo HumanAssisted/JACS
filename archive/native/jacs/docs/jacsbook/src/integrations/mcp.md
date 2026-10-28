@@ -22,7 +22,11 @@ JACS offers three MCP integration surfaces:
 
 ## Important Constraints
 
-- **Python MCP wrappers are local-only.** `JACSMCPClient`, `JACSMCPServer`, and `jacs_call()` enforce loopback URLs.
+- **Signed transport wrappers are local-only.** Python uses loopback SSE;
+  Node allows stdio or loopback transports and rejects `localOnly: false`.
+- **Wrap both ends.** Signed carriers need matching JACS wrappers and independently
+  selected peer IDs/keys; a stock MCP client cannot authenticate them unaided.
+  Ordinary Rust tool servers and tool registration can use standard MCP clients.
 - **Unsigned fallback is off by default.** Both Python and Node fail closed unless you explicitly allow unsigned fallback.
 - **Node has two factories.** `createJACSTransportProxy()` takes a loaded `JacsClient` or `JacsAgent`; `createJACSTransportProxyAsync()` is the config-path variant.
 - **The native server's profiles do not configure the Python or Node adapters.**
@@ -171,7 +175,9 @@ const client = await JacsClient.quickstart({
 });
 
 const transport = new StdioServerTransport();
-const secureTransport = createJACSTransportProxy(transport, client, 'server');
+const secureTransport = createJACSTransportProxy(transport, client, 'server', {
+  allowedPeerAgentIds: ['CLIENT_AGENT_ID'], // Independently selected peer.
+});
 ```
 
 If you only have a config path:
@@ -183,6 +189,7 @@ const secureTransport = await createJACSTransportProxyAsync(
   transport,
   './jacs.config.json',
   'server',
+  { allowedPeerAgentIds: ['CLIENT_AGENT_ID'] },
 );
 ```
 
@@ -247,12 +254,12 @@ same surface as the [`sign-text`](../guides/inline-text-signing.md) and
 - `jacs_verify_image` — verify the embedded image signature (permissive default; `strict` opt-in).
 - `jacs_extract_media_signature` — read out the embedded signature payload (decoded JSON by default; `raw_payload` opt-in for the base64url wire form).
 
-## Example Paths In This Repo
+## Examples
 
-- `jacspy/examples/mcp/server.py`
-- `jacspy/examples/mcp/client.py`
-- `jacsnpm/examples/mcp.stdio.server.js`
-- `jacsnpm/examples/mcp.stdio.client.js`
+Use the complete [Python MCP guide](../python/mcp.md) or
+[Node MCP guide](../nodejs/mcp.md) for matched peers and host-held secrets.
+The repository's historical example scripts are not a replacement for those
+current authentication requirements.
 
 ## Related Guides
 

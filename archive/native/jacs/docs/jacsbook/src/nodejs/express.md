@@ -4,7 +4,7 @@
 
 **Sign it. Prove it.** -- in your Express app.
 
-JACS provides `jacsMiddleware` for Express v4/v5 that verifies incoming signed request bodies and optionally auto-signs JSON responses. No body-parser gymnastics, no monkey-patching.
+JACS provides `jacsMiddleware` for Express v4/v5 that verifies incoming signed request bodies and optionally auto-signs JSON responses. Response signing intercepts `res.json()` when enabled.
 
 ## 5-Minute Quickstart
 
@@ -72,19 +72,19 @@ app.listen(3000);
 ## Options
 
 ```typescript
-jacsMiddleware({
+interface JacsMiddlewareOptions {
   client?: JacsClient;      // Pre-initialized client (preferred)
   configPath?: string;       // Path to jacs.config.json (if no client)
   sign?: boolean;            // Auto-sign res.json() responses (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
-  optional?: boolean;        // Allow unsigned requests through (default: false)
-  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+  optional?: boolean;        // Allow unsigned/invalid bodies through (default: false)
+  authReplay?: boolean | {   // Signed-body freshness/deduplication (default: false)
     enabled?: boolean;
     maxAgeSeconds?: number;    // default: 30
     clockSkewSeconds?: number; // default: 5
     cacheTtlSeconds?: number;  // default: maxAge + skew
   };
-})
+}
 ```
 
 If neither `client` nor `configPath` is provided, the middleware initializes a client with `JacsClient.quickstart({ name: 'jacs-express', domain: 'localhost' })` on first request.
@@ -93,7 +93,7 @@ If neither `client` nor `configPath` is provided, the middleware initializes a c
 
 **Every request** gets `req.jacsClient` -- a `JacsClient` instance you can use for manual signing/verification in route handlers.
 
-**POST/PUT/PATCH with `verify: true`** (default): The string body is verified as a JACS document. On success, `req.jacsPayload` contains the extracted payload. On failure, a 401 is returned (unless `optional: true`).
+**POST/PUT/PATCH with `verify: true`** (default): A supplied body is verified as a JACS document. On success, `req.jacsPayload` contains the extracted payload. On failure, a 401 is returned (unless `optional: true`).
 
 **With `sign: true`**: `res.json()` is intercepted to auto-sign the response body before sending.
 
@@ -129,9 +129,9 @@ app.post('/api/mixed', (req, res) => {
 });
 ```
 
-## Auth Replay Protection (Auth Endpoints)
+## Signed-body replay checks
 
-Enable replay protection when signed JACS bodies are used as authentication artifacts:
+This option adds freshness and deduplication to signed bodies. It does not authorize a route or bind the HTTP method, URL, body bytes, and audience. Use [request-bound authorization](http.md) and a configured signer policy for that boundary:
 
 ```typescript
 app.use(
@@ -152,6 +152,11 @@ Notes:
 
 - Keep this mode scoped to auth-style endpoints.
 - Cache is in-memory per process; use a shared cache for multi-instance deployments.
+
+Response signing fails closed by default: errors withhold the unsigned body.
+The explicit `allowUnsignedOutput: true` compatibility option relaxes this;
+`strict: true` overrides that option. Routes requiring a signed body should
+also reject a missing payload, since body verification is not route authorization.
 
 ## Auto-Sign Responses
 
@@ -193,7 +198,7 @@ const jacs = jacsMiddleware({ client });
 // Public routes -- no JACS
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// Protected routes
+// Routes requiring signed document bodies
 app.use('/api', express.text({ type: 'application/json' }), jacs);
 
 app.post('/api/secure', (req, res) => {
@@ -203,18 +208,20 @@ app.post('/api/secure', (req, res) => {
 
 ## Multiple Agents
 
-Use different `JacsClient` instances per route group:
+Use different `JacsClient` instances and separate config directories per route group. Quickstart loads an existing config before creating an identity; changing `name` alone does not create another agent:
 
 ```typescript
 const adminClient = await JacsClient.quickstart({
   name: 'admin-agent',
   domain: 'admin.example.com',
+  configPath: './admin/jacs.config.json',
   algorithm: 'pq2025',
 });
 const userClient = await JacsClient.quickstart({
   name: 'user-agent',
   domain: 'user.example.com',
-  algorithm: 'ring-Ed25519',
+  configPath: './user/jacs.config.json',
+  algorithm: 'pq2025',
 });
 
 app.use('/admin', express.text({ type: 'application/json' }));
@@ -226,7 +233,7 @@ app.use('/user', jacsMiddleware({ client: userClient }));
 
 ## Migration from JACSExpressMiddleware
 
-The legacy `JACSExpressMiddleware` from `@hai.ai/jacs/http` still works but is deprecated. To migrate:
+The legacy `@hai.ai/jacs/http` adapter calls removed root-module helpers. Migrate to the maintained adapter:
 
 | Old | New |
 |-----|-----|

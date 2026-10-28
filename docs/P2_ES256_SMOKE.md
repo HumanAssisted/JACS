@@ -1,5 +1,7 @@
 # P2 Native-Root Targeted Export Smoke Checklist
 
+> **Historical acceptance plan.** This document records an earlier ES256 transition proposal, not current behavior or test results. Its automatic algorithm-selection criteria and pre-move commands are superseded by the [current identity guide](identity-standards.md) and [official SDK smoke tests](../archive/native/examples/a2a_v1_sdk/README.md). Current rotation preserves the existing algorithm unless explicitly upgraded; ES256 is explicit compatibility.
+
 This checklist matches the P2 plan after targeted ecosystem content exports were brought into scope.
 
 The smoke goal is narrow:
