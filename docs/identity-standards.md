@@ -136,7 +136,7 @@ a peer needing compatibility. A classical-root CLI agent likewise requires
 [Current official SDK smokes](../archive/native/examples/a2a_v1_sdk/README.md)
 use public JACS APIs, actual SDK servers/clients, and independent SDK signature
 verification. The JavaScript SDK 1.3.0 works with direct ML-DSA-87 through
-`jose` 6.2.3 on Node 24.7+ with ML-DSA WebCrypto. The Python SDK 1.3.0 uses
+`jose` 6.2.13 on Node 24.7+ with ML-DSA WebCrypto. The Python SDK 1.3.0 uses
 explicit ES256 because its PyJWT backend lacks ML-DSA verification. Maintained
 JACS Python source requires Python 3.11+. The native root remains PQ in both
 examples, and the Python path additionally verifies its scoped native binding.

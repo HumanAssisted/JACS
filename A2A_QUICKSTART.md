@@ -88,7 +88,7 @@ exercise actual discovery, signature verification and JSON-RPC report exchange:
 
 | Peer | Card signature | Runtime |
 | --- | --- | --- |
-| `@a2a-js/sdk` 1.3.0 | ML-DSA-87 using the stock SDK and `jose` 6.2.3 | Node 24.7+ with ML-DSA WebCrypto |
+| `@a2a-js/sdk` 1.3.0 | ML-DSA-87 using the stock SDK and `jose` 6.2.13 | Node 24.7+ with ML-DSA WebCrypto |
 | `a2a-sdk` 1.3.0 | Explicit ES256, with a PQ-root-signed compatibility binding | Python 3.11+ |
 
 SDK version `1.3.0` and wire protocol version `1.0` are different numbers.

@@ -32,7 +32,7 @@ struct Request<'a> {
     id: &'a str,
     version: &'a str,
     hash: &'a str,
-    algorithm: &'a str,
+    algorithm: Option<&'a str>,
     domain: Option<&'a str>,
     dns_strict: Option<bool>,
     explicit_domain_only: bool,
@@ -52,7 +52,21 @@ impl<'a> Request<'a> {
             id: field("agentID")?,
             version: field("agentVersion")?,
             hash: field("publicKeyHash")?,
-            algorithm: field("signingAlgorithm")?,
+            // Missing algorithms are permitted only for genuine legacy-v1
+            // content under BOTH existing compatibility switches. Null/empty
+            // values and any explicit content-version marker remain errors.
+            algorithm: if signature.get("signingAlgorithm").is_none()
+                && signature.get("signatureContentVersion").is_none()
+                && crate::agent::legacy_signature_content_allowed()
+                && crate::storage::jenv::get_env_var("JACS_ALLOW_LEGACY_ALGORITHM_DETECTION", false)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("true") || value == "1")
+            {
+                None
+            } else {
+                Some(field("signingAlgorithm")?)
+            },
             dns_strict: None,
             explicit_domain_only: false,
             // Unauthenticated routing hint until the complete v2 signature is
@@ -70,13 +84,13 @@ impl<'a> Request<'a> {
                 "Invalid signed publicKeyHash".into(),
             ));
         }
-        crate::verification::matching_algorithm(Some(request.algorithm), None)?;
+        crate::verification::matching_algorithm(request.algorithm, None)?;
         Ok(request)
     }
 
     fn validate(&self, key: ResolvedVerificationKey) -> Result<ResolvedVerificationKey, JacsError> {
         let algorithm =
-            crate::verification::matching_algorithm(Some(self.algorithm), Some(&key.algorithm))?
+            crate::verification::matching_algorithm(self.algorithm, Some(&key.algorithm))?
                 .ok_or_else(|| JacsError::ValidationError("Missing key algorithm".into()))?;
         jacs_core::identity::canonical_key_id(&algorithm, &key.public_key)?;
         if !document_key_matches(self.document, &key.public_key) {
@@ -129,9 +143,13 @@ pub fn resolve_document_key_local(
 fn enrolled_candidate(request: &Request<'_>) -> Result<ResolvedVerificationKey, JacsError> {
     let public_key =
         crate::trust::get_trusted_public_key(&format!("{}:{}", request.id, request.version))?;
+    let algorithm = match request.algorithm {
+        Some(algorithm) => algorithm.to_owned(),
+        None => crate::crypt::detect_algorithm_from_public_key(&public_key)?.to_string(),
+    };
     request.validate(ResolvedVerificationKey {
         public_key,
-        algorithm: request.algorithm.into(),
+        algorithm,
     })
 }
 
@@ -245,13 +263,19 @@ fn resolve_with_transport(
             algorithm: agent
                 .get_key_algorithm()
                 .cloned()
-                .unwrap_or_else(|| request.algorithm.into()),
+                .or_else(|| request.algorithm.map(str::to_owned))
+                .ok_or_else(|| JacsError::ValidationError("Missing local key algorithm".into()))?,
         });
     }
     let mut last_error = JacsError::KeyNotFound {
         path: "No configured key source resolved the exact signer".into(),
     };
     for source in sources {
+        // Legacy inference never creates DNS/registry traffic from mutable v1
+        // identity metadata. Only existing local key material may supply it.
+        if request.algorithm.is_none() && *source != KeyResolutionSource::Local {
+            continue;
+        }
         let result = match source {
             KeyResolutionSource::Local => {
                 agent
@@ -302,6 +326,12 @@ fn resolve_dns(
     request: &Request<'_>,
     transport: &dyn DiscoveryTransport,
 ) -> Result<ResolvedVerificationKey, JacsError> {
+    if request.algorithm.is_none() {
+        return Err(JacsError::ValidationError(
+            "Legacy algorithm inference is restricted to existing local keys".into(),
+        ));
+    }
+
     let strict = request
         .dns_strict
         .unwrap_or(agent.key_discovery_dns_strict());
@@ -826,6 +856,122 @@ mod tests {
         );
         assert_eq!(transport.registry_calls.get(), 0);
         assert!(transport.requests.borrow().is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env)]
+    fn legacy_missing_algorithm_requires_both_gates_and_never_calls_network() {
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                for (name, value) in &self.0 {
+                    unsafe {
+                        match value {
+                            Some(value) => std::env::set_var(name, value),
+                            None => std::env::remove_var(name),
+                        }
+                    }
+                }
+            }
+        }
+        struct NoNetwork;
+        impl DiscoveryTransport for NoNetwork {
+            fn registry(&self, _: &str, _: &str) -> Result<ResolvedVerificationKey, JacsError> {
+                panic!("legacy inference must not query registry")
+            }
+            fn dns(&self, _: &str, _: &str, _: bool) -> Result<Vec<AgentTxtFields>, JacsError> {
+                panic!("legacy inference must not query DNS")
+            }
+            fn json(&self, _: &str) -> Result<Value, JacsError> {
+                panic!("legacy inference must not fetch keys")
+            }
+        }
+        let variables = [
+            "JACS_ALLOW_LEGACY_SIGNATURE_CONTENT",
+            "JACS_ALLOW_LEGACY_ALGORITHM_DETECTION",
+            "JACS_REJECT_LEGACY_SIGNATURE_CONTENT",
+        ];
+        let _restore = Restore(
+            variables
+                .iter()
+                .map(|name| (*name, std::env::var_os(name)))
+                .collect(),
+        );
+        unsafe {
+            for name in variables {
+                std::env::remove_var(name);
+            }
+        }
+        let mut legacy = document(false);
+        let signature = legacy["jacsSignature"].as_object_mut().unwrap();
+        signature.remove("signatureContentVersion");
+        signature.remove("signingAlgorithm");
+        assert!(Request::new(&legacy).is_err());
+        unsafe {
+            std::env::set_var(variables[0], "true");
+        }
+        assert!(Request::new(&legacy).is_err());
+        unsafe {
+            std::env::set_var(variables[1], "true");
+        }
+        let request = Request::new(&legacy).unwrap();
+        assert!(request.algorithm.is_none());
+        let agent = Agent::ephemeral("pq2025").unwrap();
+        let sources = [
+            KeyResolutionSource::Registry,
+            KeyResolutionSource::Dns,
+            KeyResolutionSource::Local,
+        ];
+        assert!(resolve_with_transport(&agent, &request, &sources, &NoNetwork).is_err());
+        assert!(resolve_dns(&agent, &request, &NoNetwork).is_err());
+        agent
+            .fs_save_remote_public_key(request.hash, &key(), b"pq2025")
+            .unwrap();
+        let resolved = resolve_with_transport(&agent, &request, &sources, &NoNetwork).unwrap();
+        assert_eq!(resolved.algorithm, "pq2025");
+        assert_eq!(resolved.public_key, key());
+        agent
+            .fs_save_remote_public_key(request.hash, &[1; 2592], b"pq2025")
+            .unwrap();
+        assert!(resolve_with_transport(&agent, &request, &sources, &NoNetwork).is_err());
+        agent
+            .fs_save_remote_public_key(request.hash, &key(), b"ring-Ed25519")
+            .unwrap();
+        assert!(resolve_with_transport(&agent, &request, &sources, &NoNetwork).is_err());
+        for version in [
+            Value::Null,
+            serde_json::json!("jacs-signature-v1"),
+            serde_json::json!("jacs-signature-v2"),
+            serde_json::json!("unknown"),
+        ] {
+            let mut invalid = legacy.clone();
+            invalid["jacsSignature"]["signatureContentVersion"] = version;
+            assert!(Request::new(&invalid).is_err());
+        }
+        for algorithm in [
+            Value::Null,
+            serde_json::json!(""),
+            serde_json::json!("unknown"),
+        ] {
+            let mut invalid = legacy.clone();
+            invalid["jacsSignature"]["signingAlgorithm"] = algorithm;
+            assert!(Request::new(&invalid).is_err());
+        }
+        unsafe {
+            std::env::set_var(variables[2], "true");
+        }
+        assert!(
+            Request::new(&legacy).is_err(),
+            "explicit legacy rejection wins"
+        );
+        unsafe {
+            std::env::remove_var(variables[2]);
+            std::env::remove_var(variables[0]);
+        }
+        assert!(
+            Request::new(&legacy).is_err(),
+            "algorithm opt-in alone is insufficient"
+        );
     }
 
     #[test]

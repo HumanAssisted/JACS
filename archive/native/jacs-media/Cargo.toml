@@ -15,7 +15,7 @@ readme = "README.md"
 png = "0.18"
 img-parts = "0.3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-base64 = "0.22"
+base64 = "0.23.1"
 sha2 = "0.10"
 thiserror = "2"
 
