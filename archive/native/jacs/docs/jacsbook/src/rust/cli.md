@@ -11,27 +11,27 @@ The JACS CLI provides a command-line interface for managing agents, documents, a
 jacs --help
 
 # Command-specific help
-jacs agent --help
-jacs document --help
+jacs-compat agent --help
+jacs-compat document --help
 ```
 
 ## Commands Overview
 
 | Command | Description |
 |---------|-------------|
-| `jacs init` | Initialize JACS (create config and agent with keys) |
-| `jacs version` | Print version information |
-| `jacs config` | Manage configuration |
-| `jacs agent` | Manage agents |
-| `jacs document` | Manage documents |
-| `jacs mcp` | Start the built-in MCP server (stdio transport) |
+| `jacs-compat init` | Initialize JACS (create config and agent with keys) |
+| `jacs-compat --version` | Print version information |
+| `jacs-compat config` | Manage configuration |
+| `jacs-compat agent` | Manage agents |
+| `jacs-compat document` | Manage documents |
+| `jacs-compat mcp` | Start the built-in MCP server (stdio transport) |
 
 ## Initialization
 
 ### Quick Start
 ```bash
 # Initialize everything in one step
-jacs init
+jacs-compat init
 ```
 
 This command:
@@ -41,24 +41,24 @@ This command:
 
 ## MCP Server
 
-The MCP server is built into the `jacs` binary. No separate install step needed.
+The MCP server is built into the `jacs-compat` binary. No separate install step needed.
 
 ```bash
 # Start the MCP server (stdio transport)
-JACS_CONFIG="$PWD/jacs.config.json" jacs mcp
+JACS_CONFIG="$PWD/jacs.config.json" jacs-compat mcp
 ```
 
 ## Configuration Commands
 
 ### Create Configuration
 ```bash
-jacs config create
+jacs-compat config create
 ```
 Creates a new `jacs.config.json` file in the current directory with default settings.
 
 ### Read Configuration
 ```bash
-jacs config read
+jacs-compat config read
 ```
 Displays the current configuration, including values from both the config file and environment variables.
 
@@ -66,13 +66,13 @@ Displays the current configuration, including values from both the config file a
 
 ### Create Agent
 ```bash
-jacs agent create --create-keys true
+jacs-compat agent create --create-keys true
 
 # With a custom agent definition file
-jacs agent create --create-keys true -f my-agent.json
+jacs-compat agent create --create-keys true -f my-agent.json
 
 # Without creating new keys (use existing)
-jacs agent create --create-keys false -f my-agent.json
+jacs-compat agent create --create-keys false -f my-agent.json
 ```
 
 **Options:**
@@ -84,16 +84,16 @@ jacs agent create --create-keys false -f my-agent.json
 ### Verify Agent
 ```bash
 # Verify agent from config
-jacs agent verify
+jacs-compat agent verify
 
 # Verify specific agent file
-jacs agent verify -a ./path/to/agent.json
+jacs-compat agent verify -a ./path/to/agent.json
 
 # With DNS validation options
-jacs agent verify --require-dns
-jacs agent verify --require-strict-dns
-jacs agent verify --no-dns
-jacs agent verify --ignore-dns
+jacs-compat agent verify --require-dns
+jacs-compat agent verify --require-strict-dns
+jacs-compat agent verify --no-dns
+jacs-compat agent verify --ignore-dns
 ```
 
 **Options:**
@@ -108,14 +108,14 @@ jacs agent verify --ignore-dns
 ### DNS Commands
 ```bash
 # Generate DNS TXT record commands for agent publishing
-jacs agent dns --domain example.com --agent-id [uuid]
+jacs-compat agent dns --domain example.com --agent-id [uuid]
 
 # With different output formats
-jacs agent dns --domain example.com --encoding hex
-jacs agent dns --domain example.com --provider aws
+jacs-compat agent dns --domain example.com --encoding hex
+jacs-compat agent dns --domain example.com --provider aws
 
 # With custom TTL
-jacs agent dns --domain example.com --ttl 7200
+jacs-compat agent dns --domain example.com --ttl 7200
 ```
 
 **Options:**
@@ -130,13 +130,13 @@ jacs agent dns --domain example.com --ttl 7200
 ### Lookup Agent
 ```bash
 # Look up another agent's public key from their domain
-jacs agent lookup agent.example.com
+jacs-compat agent lookup agent.example.com
 
 # With strict DNSSEC validation
-jacs agent lookup agent.example.com --strict
+jacs-compat agent lookup agent.example.com --strict
 
 # Skip DNS lookup
-jacs agent lookup agent.example.com --no-dns
+jacs-compat agent lookup agent.example.com --no-dns
 ```
 
 ## Document Commands
@@ -144,25 +144,25 @@ jacs agent lookup agent.example.com --no-dns
 ### Create Document
 ```bash
 # Create from a JSON file
-jacs document create -f ./document.json
+jacs-compat document create -f ./document.json
 
 # Create from a directory of files
-jacs document create -d ./documents/
+jacs-compat document create -d ./documents/
 
 # With custom schema
-jacs document create -f ./document.json -s ./custom-schema.json
+jacs-compat document create -f ./document.json -s ./custom-schema.json
 
 # With file attachments
-jacs document create -f ./document.json --attach ./attachment.pdf
+jacs-compat document create -f ./document.json --attach ./attachment.pdf
 
 # Embed attachments in document
-jacs document create -f ./document.json --attach ./files/ --embed true
+jacs-compat document create -f ./document.json --attach ./files/ --embed true
 
 # Output to specific file
-jacs document create -f ./document.json -o ./output.json
+jacs-compat document create -f ./document.json -o ./output.json
 
 # Print to stdout instead of saving
-jacs document create -f ./document.json --no-save
+jacs-compat document create -f ./document.json --no-save
 ```
 
 **Options:**
@@ -181,13 +181,13 @@ jacs document create -f ./document.json --no-save
 ### Update Document
 ```bash
 # Update an existing document with new content
-jacs document update -f ./original.json -n ./updated.json
+jacs-compat document update -f ./original.json -n ./updated.json
 
 # With output file
-jacs document update -f ./original.json -n ./updated.json -o ./result.json
+jacs-compat document update -f ./original.json -n ./updated.json -o ./result.json
 
 # With file attachments
-jacs document update -f ./original.json -n ./updated.json --attach ./new-file.pdf
+jacs-compat document update -f ./original.json -n ./updated.json --attach ./new-file.pdf
 ```
 
 **Options:**
@@ -202,16 +202,16 @@ jacs document update -f ./original.json -n ./updated.json --attach ./new-file.pd
 ### Verify Document
 ```bash
 # Verify a document
-jacs document verify -f ./document.json
+jacs-compat document verify -f ./document.json
 
 # Verify all documents in a directory
-jacs document verify -d ./documents/
+jacs-compat document verify -d ./documents/
 
 # With custom schema
-jacs document verify -f ./document.json -s ./schema.json
+jacs-compat document verify -f ./document.json -s ./schema.json
 
 # Verbose output
-jacs document verify -f ./document.json -v
+jacs-compat document verify -f ./document.json -v
 ```
 
 **Options:**
@@ -226,22 +226,22 @@ jacs document verify -f ./document.json -v
 ### Extract Embedded Content
 ```bash
 # Extract embedded content from a document
-jacs document extract -f ./document.json
+jacs-compat document extract -f ./document.json
 
 # Extract from all documents in directory
-jacs document extract -d ./documents/
+jacs-compat document extract -d ./documents/
 ```
 
 ### Agreement Commands
 ```bash
 # Create an agreement requiring signatures from specified agents
-jacs document create-agreement -f ./document.json -i agent1-uuid,agent2-uuid
+jacs-compat document create-agreement -f ./document.json -i agent1-uuid,agent2-uuid
 
 # Check agreement status
-jacs document check-agreement -f ./document.json
+jacs-compat document check-agreement -f ./document.json
 
 # Sign an agreement
-jacs document sign-agreement -f ./document.json
+jacs-compat document sign-agreement -f ./document.json
 ```
 
 **Create Agreement Options:**
@@ -258,11 +258,11 @@ The CLI respects the following environment variables:
 
 ```bash
 # Use a specific configuration file
-JACS_CONFIG_PATH=./custom-config.json jacs agent verify
+JACS_CONFIG_PATH=./custom-config.json jacs-compat agent verify
 
 # Override settings
-JACS_DATA_DIRECTORY=./data jacs document create -f ./doc.json
-JACS_KEY_DIRECTORY=./keys jacs agent create --create-keys true
+JACS_DATA_DIRECTORY=./data jacs-compat document create -f ./doc.json
+JACS_KEY_DIRECTORY=./keys jacs-compat agent create --create-keys true
 ```
 
 ## Common Workflows
@@ -270,37 +270,37 @@ JACS_KEY_DIRECTORY=./keys jacs agent create --create-keys true
 ### Create and Sign a Document
 ```bash
 # 1. Initialize (if not done)
-jacs init
+jacs-compat init
 
 # 2. Create document
-jacs document create -f ./my-document.json
+jacs-compat document create -f ./my-document.json
 
 # 3. Verify the signed document
-jacs document verify -f ./jacs_data/[document-id].json
+jacs-compat document verify -f ./jacs_data/[document-id].json
 ```
 
 ### Multi-Agent Agreement
 ```bash
 # 1. Create agreement on a document
-jacs document create-agreement -f ./document.json -i agent1-id,agent2-id
+jacs-compat document create-agreement -f ./document.json -i agent1-id,agent2-id
 
 # 2. First agent signs
-jacs document sign-agreement -f ./document.json
+jacs-compat document sign-agreement -f ./document.json
 
 # 3. Second agent signs (using their config)
-JACS_CONFIG_PATH=./agent2.config.json jacs document sign-agreement -f ./document.json
+JACS_CONFIG_PATH=./agent2.config.json jacs-compat document sign-agreement -f ./document.json
 
 # 4. Check agreement is complete
-jacs document check-agreement -f ./document.json
+jacs-compat document check-agreement -f ./document.json
 ```
 
 ### Verify Another Agent
 ```bash
 # Look up agent by domain
-jacs agent lookup other-agent.example.com
+jacs-compat agent lookup other-agent.example.com
 
 # Verify with strict DNS
-jacs agent verify -a ./other-agent.json --require-strict-dns
+jacs-compat agent verify -a ./other-agent.json --require-strict-dns
 ```
 
 ## Exit Codes

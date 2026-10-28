@@ -2,15 +2,15 @@
 
 ## Why this matters
 
-You have an image — a photo, an AI-generated render, a chart — and you want a downstream consumer to verify *who* produced it and *when* (claimed time) before trusting the asset. With `jacs sign-image` the signed-document JSON sits inside the image itself in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP); no sidecar file, no AGPL dependency, no external service. The signature proves *who* signed *which canonical bytes* at the agent's *claimed* time — it does not prove first creation or legal ownership.
+You have an image — a photo, an AI-generated render, a chart — and you want a downstream consumer to verify *who* produced it and *when* (claimed time) before trusting the asset. With `jacs-compat sign-image` the signed-document JSON sits inside the image itself in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP); no sidecar file, no AGPL dependency, no external service. The signature proves *who* signed *which canonical bytes* at the agent's *claimed* time — it does not prove first creation or legal ownership.
 
 ## At a glance
 
 | Action | CLI verb | Python | Node | Go | Rust |
 |--------|----------|--------|------|-----|------|
-| Sign | `jacs sign-image <in> --out <out>` | `jacs.sign_image(path, out=...)` | `jacs.signImage(in, out)` | `jacs.SignImage(in, out, nil)` | `jacs::media::sign_image(&agent, in, out, opts)` |
-| Verify | `jacs verify-image <file>` | `jacs.verify_image(path)` | `jacs.verifyImage(path)` | `jacs.VerifyImage(path, nil)` | `jacs::media::verify_image(&agent, path, opts)` |
-| Extract | `jacs extract-media-signature <file>` | `jacs.extract_media_signature(path)` | `jacs.extractMediaSignature(path)` | `jacs.ExtractMediaSignature(path, nil)` | `jacs::media::extract_signature(path, opts)` |
+| Sign | `jacs-compat sign-image <in> --out <out>` | `jacs.sign_image(input_path, output_path)` | `jacs.signImage(in, out)` | `jacs.SignImage(in, out, nil)` | `jacs::simple::advanced::sign_image(&agent, in, out, opts)` |
+| Verify | `jacs-compat verify-image <file>` | `jacs.verify_image(path)` | `jacs.verifyImage(path)` | `jacs.VerifyImage(path, nil)` | `jacs::simple::advanced::verify_image(&agent, path, opts)` |
+| Extract | `jacs-compat extract-media-signature <file>` | `jacs.extract_media_signature(path)` | `jacs.extractMediaSignature(path)` | `jacs.ExtractMediaSignature(path, nil)` | `jacs::simple::advanced::extract_media_signature_with_options(path, opts)` |
 
 ## Per-format embedding
 
@@ -61,15 +61,15 @@ Robust mode is OFF by default because LSB embedding mutates pixel values (imperc
 
 ```bash
 # Default — decoded JSON (ready to read or pipe to jq)
-jacs extract-media-signature signed.png
+jacs-compat extract-media-signature signed.png
 # {"mediaSignatureVersion": 1, "format": "png", ...}
 
 # Wire form — raw base64url payload (useful for re-embedding or transport)
-jacs extract-media-signature signed.png --raw-payload
+jacs-compat extract-media-signature signed.png --raw-payload
 # eyJtZWRpYVNpZ25hdHVyZVZlcnNpb24iOjEsImZvcm1hdC...
 
 # Pipeline-friendly — extract the signer's claimed timestamp
-jacs extract-media-signature signed.png | jq -r .signedAt
+jacs-compat extract-media-signature signed.png | jq -r .signedAt
 # 2026-04-24T18:00:00Z
 ```
 
@@ -81,10 +81,10 @@ Images are single-signer: re-running `sign-image` overwrites the embedded signat
 
 ```bash
 # Default: overwrite if already signed
-jacs sign-image photo.png --out signed.png
+jacs-compat sign-image photo.png --out signed.png
 
 # Refuse to overwrite — exit non-zero if already signed
-jacs sign-image photo.png --out signed.png --refuse-overwrite
+jacs-compat sign-image photo.png --out signed.png --refuse-overwrite
 ```
 
 This is intentionally narrower than inline text: text is reviewed and counter-signed by humans / agents; images are typically signed once at the point of capture or generation. If you need a multi-signer flow over images, stage the signatures off-image (e.g. as a JACS agreement that references `contentHash`).
@@ -104,7 +104,7 @@ When `sign-image` overwrites an existing file, it writes a `.bak` next to the ou
 Same semantics as inline text — directory of `<signer_id>.public.pem` files, used when the trust store does not have the signer's key:
 
 ```bash
-jacs verify-image signed.png --key-dir ./trusted-keys/
+jacs-compat verify-image signed.png --key-dir ./trusted-keys/
 ```
 
 ## Caps and rejected inputs

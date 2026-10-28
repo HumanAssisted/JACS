@@ -26,7 +26,7 @@ The primary attachment-mode APIs are:
 From a source checkout, run:
 
 ```bash
-JACS_KEYCHAIN_BACKEND=disabled JACS_ALLOW_NETWORK=false cargo run --locked -p jacs --no-default-features --example email_signing
+JACS_KEYCHAIN_BACKEND=disabled JACS_ALLOW_NETWORK=false cargo run --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --example email_signing
 ```
 
 The example creates two disposable `SimpleAgent::ephemeral` instances and a

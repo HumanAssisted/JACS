@@ -28,7 +28,7 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 ```
 
 ```bash
-jacs quickstart --name config-agent --domain config.example.com
+jacs-compat quickstart --name config-agent --domain config.example.com
 ```
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}
@@ -366,7 +366,7 @@ For remote destinations (OTLP, Prometheus), you can specify authentication heade
 
 ## Environment Variable Integration
 
-The observability configuration works alongside JACS's core configuration system. 
+The observability configuration works alongside JACS's core configuration system.
 
 ### Required Environment Variable
 
@@ -408,7 +408,7 @@ You can also override via environment variable:
 export JACS_KEYCHAIN_BACKEND=disabled  # skip keychain in CI
 ```
 
-When not set to `"disabled"`, password resolution checks: env var first, then OS keychain, then error. See the [CLI keychain commands](cli-commands.md#jacs-keychain) for storing and managing passwords.
+When not set to `"disabled"`, password resolution checks: env var first, then OS keychain, then error. See the [CLI keychain commands](cli-commands.md#jacs-compat-keychain) for storing and managing passwords.
 
 These can be overridden by environment variables if needed, but they are primarily configured through the `jacs.config.json` file.
 

@@ -4,14 +4,16 @@
 
 The JACS Node.js package (`@hai.ai/jacs`) provides JavaScript/TypeScript
 bindings to the JACS Rust library for servers and other Node.js projects. It is
-a native `.node` package and does not run in a browser; see the source-built
-WASM package for browser applications.
+a native `.node` package and does not run in a browser; see the published
+[`@hai.ai/jacs-wasm`](../wasm/building.md) package for browser applications.
 
 ## Requirements
 
 - **Node.js**: Version 20.0 or higher
 - **npm** or **yarn**: For package management
-- **Operating System**: macOS, Linux, or Windows with WSL
+- **Native addons**: macOS x64/arm64; Linux x64/arm64 for glibc and musl.
+  No Windows addon is published; use a matching Linux environment under WSL.
+- **Source builds**: NAPI-RS CLI 3 requires Node `^20.17.0`, `^22.13.0` or `>=23.5.0`.
 
 ## Installation
 
@@ -35,7 +37,7 @@ pnpm add @hai.ai/jacs
 Create a simple test to verify everything is working:
 
 ```javascript
-// test.js
+// test.mjs
 import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
@@ -52,7 +54,7 @@ try {
 
 Run the test:
 ```bash
-node test.js
+node test.mjs
 ```
 
 ## Package Structure
@@ -122,7 +124,7 @@ const config = {
   jacs_key_directory: "./jacs_keys",       // Where keys are stored
   jacs_default_storage: "fs",              // Storage backend
   jacs_agent_key_algorithm: "ring-Ed25519",     // Signing algorithm
-  
+
   // Optional fields
   jacs_agent_id_and_version: null,         // Existing agent to load
   jacs_agent_private_key_filename: "private.pem",
@@ -250,12 +252,12 @@ my-jacs-project/
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@hai.ai/jacs": "^0.6.0",
+    "@hai.ai/jacs": "0.15.0",
     "express": "^4.18.0"
   },
   "scripts": {
     "start": "node src/app.js",
-    "test": "node test/test.js",
+    "test": "node test/test.mjs",
     "dev": "nodemon src/app.js"
   }
 }
@@ -354,4 +356,4 @@ Check out the complete examples in the [examples directory](../examples/nodejs.m
 - Basic agent creation and task management
 - Express.js middleware integration
 - MCP server implementation
- 
+

@@ -26,7 +26,7 @@ This sets up:
 For more control, use custom configuration:
 
 ```rust
-use jacs::{init_custom_observability, ObservabilityConfig, LogConfig, MetricsConfig, 
+use jacs::{init_custom_observability, ObservabilityConfig, LogConfig, MetricsConfig,
            TracingConfig, SamplingConfig, LogDestination, MetricsDestination, TracingDestination};
 use std::collections::HashMap;
 
@@ -188,12 +188,12 @@ WASM builds:
 LogDestination::Stderr
 
 // File-based logging with daily rotation
-LogDestination::File { 
-    path: "./logs".to_string() 
+LogDestination::File {
+    path: "./logs".to_string()
 }
 
 // OpenTelemetry Protocol (OTLP) with optional headers (requires feature `otlp-logs`)
-LogDestination::Otlp { 
+LogDestination::Otlp {
     endpoint: "http://collector:4318".to_string(),
     headers: Some({
         let mut h = HashMap::new();
@@ -213,12 +213,12 @@ LogDestination::Null
 MetricsDestination::Stdout
 
 // File export
-MetricsDestination::File { 
-    path: "./metrics.txt".to_string() 
+MetricsDestination::File {
+    path: "./metrics.txt".to_string()
 }
 
 // OpenTelemetry Protocol (OTLP) (requires feature `otlp-metrics`)
-MetricsDestination::Otlp { 
+MetricsDestination::Otlp {
     endpoint: "http://collector:4318".to_string(),
     headers: None,
 }
@@ -247,7 +247,7 @@ JACS provides convenience functions for common operations:
 ```rust
 use jacs::observability::convenience::{
     record_agent_operation,
-    record_document_validation, 
+    record_document_validation,
     record_signature_verification,
 };
 
@@ -371,4 +371,4 @@ Add observability to your `jacs.config.json`:
 cargo run --example observability_demo
 ```
 
-This will create log files in `./logs/`. Enable OTLP features and configure endpoints to export remotely. 
+This will create log files in `./logs/`. Enable OTLP features and configure endpoints to export remotely.

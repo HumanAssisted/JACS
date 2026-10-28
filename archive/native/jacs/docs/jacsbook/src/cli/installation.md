@@ -1,11 +1,11 @@
 ## setting up
 
-Once you've installed the jacs CLI with `cargo install jacs-cli` 
+Once you've installed the jacs CLI with `cargo install jacs-cli-compat --locked`
 
 First, create your configuration which can also be loaded loaded as environment variables.
 
-For an explanation see [the schema for the config.](./schemas/jacs.config.schema.json)
-Create a `jacs.config.json` from [the example](./jacs.config.example.json) or use `jacs config create` which will give you this dialog:
+For an explanation see [the schema for the config.](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/schemas/jacs.config.schema.json)
+Create a `jacs.config.json` from [the example](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/jacs.config.example.json) or use `jacs-compat config create` which will give you this dialog:
 
 ```
 Please enter the data directory path:
@@ -20,11 +20,11 @@ Please enter the private key password:
 Please enter the agent ID and version:
 ```
 
-You can use `jacs config read` to check the configs. 
+You can use `jacs-compat config read` to check the configs.
 
-You need to create an agent first.  Go to [cli/agent](./cli/agent)
+You need to create an agent first.  Go to [cli/agent](agent.md)
 
-Note: Do not use `jacs_private_key_password` in production config files. Instead, use the environment variable `JACS_PRIVATE_KEY_PASSWORD` or the OS keychain (`jacs keychain set`) to provide the password securely. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
+Note: Do not use `jacs_private_key_password` in production config files. Instead, use the environment variable `JACS_PRIVATE_KEY_PASSWORD` or the OS keychain (`jacs-compat keychain set`) to provide the password securely. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
 
 
 
@@ -37,7 +37,7 @@ See pre-commit
  - install `jq` e.g. `brew install jq` or use your package manager (e.g., `apt install jq` for Debian/Ubuntu)
  - for documentation    `npm install -g @adobe/jsonschema2md`
  - cargo install mdbook
- 
+
 
 Otherwise, it's a standard Rust project.
 

@@ -5,7 +5,7 @@ DuckDB in-process storage backend for JACS documents.
 ## Install
 
 ```sh
-cargo add jacs-duckdb
+cargo add jacs-duckdb jacs
 ```
 
 ## Quick Start
@@ -32,4 +32,4 @@ storage.run_migrations().expect("create tables");
 
 ## More Info
 
-See the [JACS README](https://github.com/nickthecook/JACS#readme) for the full storage backend overview.
+See the [JACS README](https://humanassisted.github.io/JACS/native/advanced/storage.html) for the full storage backend overview.

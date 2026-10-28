@@ -1,7 +1,7 @@
 # Deployment Compatibility
 
-JACS has several distribution surfaces, and they do not currently ship at the
-same version or for the same targets. This page distinguishes four different
+JACS has several distribution surfaces, with a coordinated version and
+different target coverage. This page distinguishes four different
 claims:
 
 - **Source-compilable:** the repository has a build path for the target. The
@@ -14,23 +14,10 @@ claims:
 - **Runtime-smoked:** CI executed or imported the packaged artifact on that
   target. This is narrower than full feature testing.
 
-The shipped rows below come from `release/shipped-artifacts.json`, observed
-2026-09-10 against source `0.13.0` at `743df757`. Registry contents can change;
-run `python3 scripts/check-release-matrix.py --online` or inspect the registry
-before choosing a deployment target.
-
-## What users could install at the review baseline
-
-<!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->
-| Surface | Shipped version/status | Prebuilt targets | CI/runtime evidence and limits |
-|---|---|---|---|
-| Rust library (`jacs`) | crates.io `0.13.0`; published | source only; no prebuilt library artifact | Full source suites run on Ubuntu and macOS release runners; other Rust targets are not implied. The four storage crates (jacs-duckdb, jacs-redb, jacs-postgresql 0.1.20; jacs-surrealdb 0.1.21) are published against jacs 0.13.0. |
-| CLI (`jacs-cli`) | crates.io and GitHub Releases `0.13.0`; published | macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc; Windows x86_64 | Release jobs build each listed target, run a launch smoke, and install the staged archive through the Python and Node CLI installers (sign/verify smoke on Unix only: the trust model refuses to create key files on Windows). cargo install remains a source build. |
-| Python (`jacs`) | PyPI `0.13.0`; published | macOS arm64; macOS x86_64; Linux x86_64 manylinux_2_28; Linux arm64 manylinux_2_28; Linux x86_64 musllinux | glibc wheels are built inside the pinned manylinux_2_28 images; release candidate smokes install and sign/verify on Ubuntu x86_64 and arm64, macOS x86_64 and arm64, and Alpine x86_64. No Windows or arm64 musllinux wheel is recorded. |
-| Node (`@hai.ai/jacs`) | npm `0.10.1`; published behind source | macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux x86_64 musl; Linux arm64 glibc | Source CI runtime-smokes Node 20 on Ubuntu x86_64. Other listed native binaries are not runtime-smoked here. |
-| Browser (`@jacs/wasm`) | npm unpublished; source only not published | browser source build; release package unavailable | Source CI builds wasm32 and runs Firefox plus Chromium/Playwright tests; Safari and Windows-hosted browsers are unverified. |
-| Go (`github.com/HumanAssisted/JACS/jacsgo`) | Go module proxy `v0.13.0`; published | macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc | Release publishes libjacsgo for each listed target with SHA-256 digests and GitHub attestations; consumer smokes passed on Ubuntu x86_64 and arm64 and macOS x86_64. The macOS arm64 consumer smoke failed only because its Go 1.21 toolchain cannot run on macOS 26 (fixed for the next release). |
-<!-- END GENERATED SHIPPED ARTIFACT MATRIX -->
+The current [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+records verified 0.15.0 artifacts across all 17 Rust crates, CLI, native npm,
+PyPI, Go and browser npm. It links exact checksums, provenance and consumer
+checks. Later source changes require separate release evidence.
 
 ## Declared toolchain baselines
 
@@ -38,7 +25,7 @@ before choosing a deployment target.
 |---|---|
 | Rust library, CLI, and WASM source | Rust 1.97; Edition 2024 |
 | Python | Python 3.11–3.14 is declared by `pyproject.toml`; the source release workflow smoke-tests the exact wheel candidate on each version before publication. |
-| Node | npm `0.10.1` does not declare an `engines.node` constraint. Current source and release workflows use Node 20, so the previous generic “Node 18+” statement was not a tested support guarantee. |
+| Node | Installed native addon: Node 20+. Building with NAPI-RS CLI 3 requires Node `^20.17.0`, `^22.13.0` or `>=23.5.0`. |
 | Go | `go.mod` declares Go 1.21; CGo and a platform C toolchain are also required |
 
 ## Platform decisions
@@ -46,8 +33,8 @@ before choosing a deployment target.
 ### Windows
 
 The observed Windows prebuilt is the x86_64 CLI only. Do not infer Windows
-Python or Node support from the CLI artifact: PyPI `0.13.0` has no Windows
-wheel, npm `0.10.1` has no Windows `.node` binary, and the Go bindings have no
+Python or Node support from the CLI artifact: PyPI `0.15.0` has no Windows
+wheel, npm `0.15.0` has no Windows `.node` binary, and the Go bindings have no
 Windows CGo linker directive or native asset. The browser/WASM source may be
 portable at the WebAssembly level, but no Windows browser runtime lane was
 recorded.
@@ -59,9 +46,8 @@ recorded.
 - Python glibc wheels are tagged `manylinux_2_28`; systems with glibc older
   than 2.28 cannot use those wheels. The observed musllinux wheel is x86_64
   only.
-- Node `0.10.1` ships x86_64 glibc and musl binaries, plus an arm64 glibc
-  binary. It does not ship arm64 musl.
-- CLI `0.13.0` ships glibc Linux x86_64 and arm64 archives. No musl CLI archive
+- Node `0.15.0` ships x86_64 and arm64 binaries for both glibc and musl.
+- CLI `0.15.0` ships glibc Linux x86_64 and arm64 archives. No musl CLI archive
   is recorded in the shipped inventory.
 - A source build is a separate claim. It may work on additional targets when
   the required compiler, linker, libc headers, Rust dependencies, and system
@@ -79,7 +65,7 @@ silently falling back to an undocumented source build:
 
 ```dockerfile
 FROM --platform=linux/amd64 python:3.12-alpine
-RUN python -m pip install --only-binary=:all: "jacs==0.13.0"
+RUN python -m pip install --only-binary=:all: "jacs==0.15.0"
 ENV JACS_KEYCHAIN_BACKEND=disabled
 WORKDIR /app
 COPY . /app
@@ -90,8 +76,7 @@ AWS Lambda, Vercel, Cloudflare Workers, Deno, and Bun do not have dedicated
 runtime-smoke lanes in the recorded matrix. Treat them as unverified. For
 Lambda or another native serverless runtime, build and test a layer against
 the exact runtime image and architecture; do not assume a generic Linux
-artifact is ABI-compatible. Browser-only runtimes require the WASM package,
-which was not published at the observation date.
+artifact is ABI-compatible. Browser-only runtimes require the published `@hai.ai/jacs-wasm` package.
 
 For headless native environments, set `JACS_KEYCHAIN_BACKEND=disabled` and
 supply key passwords through the deployment platform's secret mechanism. Do
@@ -99,7 +84,8 @@ not bake passwords or private keys into an image.
 
 ## Browser/WASM capability limits
 
-The source-built WASM surface can create both Ed25519 and `pq2025` identities,
+The WASM surface defaults to `pq2025` identities, with explicit Ed25519 and
+ES256 compatibility, and can
 sign and verify JSON, and use encrypted browser persistence. It does not expose
 native filesystem storage, DNS resolution, MCP, or the native CLI. Browser
 WebAssembly memory is JavaScript-visible; source compatibility is not a claim
@@ -117,13 +103,13 @@ cd JACS
 
 # Python development build
 python -m pip install maturin
-(cd jacspy && maturin develop --release)
+make build-jacspy
 
 # Node development build
-(cd jacsnpm && npm ci && npm run build)
+make build-jacsnpm
 
 # Go native library + module
-make -C jacsgo build
+make build-jacsgo
 
 # Browser package
 make build-wasm

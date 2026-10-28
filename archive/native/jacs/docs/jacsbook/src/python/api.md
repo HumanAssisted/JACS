@@ -46,25 +46,26 @@ Load and initialize the agent from a configuration file.
 **Parameters:**
 - `config_path` (str): Path to the JACS configuration file
 
-**Returns:** str - The loaded agent's JSON
+**Returns:** str - The status string `"Agent loaded"`; use `load_with_info()`
+for metadata or `export_agent()` for the loaded public identity.
 
 **Example:**
 ```python
 agent = jacs.JacsAgent()
-agent_json = agent.load('./jacs.config.json')
-print('Agent loaded:', json.loads(agent_json)['jacsId'])
+agent.load('./jacs.config.json')
+print('Agent loaded:', json.loads(agent.export_agent())['jacsId'])
 ```
 
 ---
 
-### agent.create_document(document_string, custom_schema=None, output_filename=None, no_save=False, attachments=None, embed=False)
+### agent.create_document(document_string, custom_schema=None, outputfilename=None, no_save=False, attachments=None, embed=False)
 
 Create and sign a new JACS document.
 
 **Parameters:**
 - `document_string` (str): JSON string of the document content
 - `custom_schema` (str, optional): Path to a custom JSON Schema for validation
-- `output_filename` (str, optional): Filename to save the document
+- `outputfilename` (str, optional): Filename to save the document
 - `no_save` (bool, optional): If True, don't save to storage (default: False)
 - `attachments` (str, optional): Path to file attachments
 - `embed` (bool, optional): If True, embed attachments in the document
@@ -355,12 +356,11 @@ releasing data.
 **Parameters:**
 - `document_string` (str): The JACS-signed response
 
-**Returns:** dict - Dictionary containing the verified payload
+**Returns:** The verified JSON payload as its corresponding Python value.
 
 **Example:**
 ```python
-result = agent.verify_response(jacs_response_string)
-payload = result.get('payload')
+payload = agent.verify_response(jacs_response_string)
 print('Verified payload:', payload)
 ```
 
@@ -373,13 +373,13 @@ Verify a response and return both the payload and signer's agent ID.
 **Parameters:**
 - `document_string` (str): The JACS-signed response
 
-**Returns:** dict - Dictionary with payload and agent ID
+**Returns:** tuple - `(agent_id, payload)`
 
 **Example:**
 ```python
-result = agent.verify_response_with_agent_id(jacs_response_string)
-print('Payload:', result['payload'])
-print('Signed by agent:', result['agentId'])
+agent_id, payload = agent.verify_response_with_agent_id(jacs_response_string)
+print('Payload:', payload)
+print('Signed by agent:', agent_id)
 ```
 
 ---
@@ -446,64 +446,20 @@ signed_agent = agent.sign_agent(
 
 ---
 
-## Module-Level Functions
+## Module-level functions
 
-These functions operate on a global agent singleton and are maintained for backwards compatibility. **New code should use the `JacsAgent` class instead.**
+The old top-level `jacs.load`, `jacs.sign_request` and related functions are
+deprecated and do not provide a usable persistent global signing session.
+Several raise `RuntimeError`; do not use them in new code. Use `jacs.simple`
+for the supported module-level session, or `JacsClient` / `SimpleAgent` for
+independent instances.
 
-### jacs.load(config_path)
-
-Load the global agent from a configuration file.
-
-```python
-import jacs
-jacs.load('./jacs.config.json')
-```
-
-### jacs.sign_request(data)
-
-Sign a request using the global agent.
-
-This deprecated helper signs request-like data only; it does not authenticate
-HTTP context. Use instance-based `SimpleAgent.build_auth_header(...)` for a
-request-bound v2 credential.
-
-```python
-signed = jacs.sign_request({'method': 'tools/call', 'params': {...}})
-```
-
-### jacs.verify_request(data)
-
-Verify an incoming request using the global agent.
-
-```python
-payload = jacs.verify_request(incoming_request_string)
-```
-
-### jacs.sign_response(data)
-
-Sign a response using the global agent.
-
-This deprecated global helper is not the fully bound response-envelope API.
-Use `SimpleAgent.sign_response(payload_json)` for `jacs-response-v2`.
-
-```python
-signed = jacs.sign_response({'result': 'success'})
-```
-
-### jacs.verify_response(data)
-
-Verify an incoming response using the global agent.
-
-This deprecated global helper is not strict signed-event unwrapping. Use
-`SimpleAgent.unwrap_signed_event(event_json, server_keys_json)` and treat every
-error as untrusted input.
-
-```python
-result = jacs.verify_response(response_string)
-payload = result.get('payload')
-```
-
----
+For request-bound HTTP authentication use
+`SimpleAgent.build_request_auth_header(method, url, body, audience)`.
+`build_auth_header()` is the legacy unbound credential. For signed events use
+`SimpleAgent.sign_response(payload_json)` and
+`SimpleAgent.unwrap_signed_event(event_json, server_keys_json)` with independently
+trusted server keys and application replay policy.
 
 ## MCP Module
 

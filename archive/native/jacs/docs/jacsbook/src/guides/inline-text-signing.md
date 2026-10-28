@@ -2,14 +2,14 @@
 
 ## Why this matters
 
-You have a shared README that five agents review and counter-sign before a release; today that workflow requires a separate JACS JSON next to the markdown, which is easy to misplace and impossible to read on GitHub alongside the file. With `jacs sign-text` the signature sits at the end of the markdown in a YAML-bodied block; the file still renders as markdown on GitHub; every signer's identity and timestamp are attached to the exact canonical bytes. The signature proves *who* signed *what bytes* at the agent's *claimed* time — it does not prove first creation or legal ownership.
+You have a shared README that five agents review and counter-sign before a release; today that workflow requires a separate JACS JSON next to the markdown, which is easy to misplace and impossible to read on GitHub alongside the file. With `jacs-compat sign-text` the signature sits at the end of the markdown in a YAML-bodied block; the file still renders as markdown on GitHub; every signer's identity and timestamp are attached to the exact canonical bytes. The signature proves *who* signed *what bytes* at the agent's *claimed* time — it does not prove first creation or legal ownership.
 
 ## At a glance
 
 | Action | CLI verb | Python | Node | Go | Rust |
 |--------|----------|--------|------|-----|------|
-| Sign | `jacs sign-text <file>` | `jacs.sign_text(path)` | `jacs.signText(path)` | `jacs.SignText(path, nil)` | `jacs::text::sign_text_file(&agent, path)` |
-| Verify | `jacs verify-text <file>` | `jacs.verify_text(path)` | `jacs.verifyText(path)` | `jacs.VerifyText(path, nil)` | `jacs::text::verify_text_file(&agent, path, opts)` |
+| Sign | `jacs-compat sign-text <file>` | `jacs.sign_text(path)` | `jacs.signText(path)` | `jacs.SignText(path, nil)` | `jacs::simple::advanced::sign_text_file(&agent, path, opts)` |
+| Verify | `jacs-compat verify-text <file>` | `jacs.verify_text(path)` | `jacs.verifyText(path)` | `jacs.VerifyText(path, nil)` | `jacs::simple::advanced::verify_text_file(&agent, path, opts)` |
 
 All bindings are async-first on Node (returns `Promise`); CLI is synchronous; Python and Rust are synchronous; Go is synchronous.
 
@@ -61,7 +61,7 @@ Multi-signer files contain multiple back-to-back blocks. The signers are unorder
 The body is valid YAML 1.2; any YAML 1.2 parser can read it, and JACS converts it back through the same `yaml_to_jacs` path used by email YAML signing. Legacy v0.10.0 mini-blocks still verify, but new writes use the full JACS footer. A file may contain at most 256 signature blocks.
 
 Generic document verification also recognizes inline-signed markdown/text: when
-the body has a signature footer, `jacs verify <file>` and
+the body has a signature footer, `jacs-compat verify <file>` and
 `SimpleAgent::verify()` dispatch to the inline verifier instead of treating the
 input as JSON. When the MIME type is known, callers should pass
 `text/markdown` or `text/plain` and use the same inline verification path.
@@ -94,13 +94,13 @@ Initial state: `README.md` is one paragraph, unsigned.
 
 ```bash
 # Agent A signs
-JACS_CONFIG=./agent-a.config.json jacs sign-text README.md
+JACS_CONFIG=./agent-a.config.json jacs-compat sign-text README.md
 
 # Agent B counter-signs
-JACS_CONFIG=./agent-b.config.json jacs sign-text README.md
+JACS_CONFIG=./agent-b.config.json jacs-compat sign-text README.md
 
 # Anyone verifies
-jacs verify-text README.md
+jacs-compat verify-text README.md
 # - agent-a (ed25519)   valid
 # - agent-b (pq2025)    valid
 ```
@@ -125,14 +125,14 @@ jacsSignature:
 -----END JACS SIGNATURE-----
 ```
 
-You can swap the order of the two blocks on disk and `jacs verify-text` still reports both as valid — multi-signer is unordered.
+You can swap the order of the two blocks on disk and `jacs-compat verify-text` still reports both as valid — multi-signer is unordered.
 
 ## `--key-dir` override
 
 When verifying a file from someone whose key is not in your local trust store, point at a directory of `<signer_id>.public.pem` files:
 
 ```bash
-jacs verify-text README.md --key-dir ./trusted-keys/
+jacs-compat verify-text README.md --key-dir ./trusted-keys/
 ```
 
 Resolution order: self → `--key-dir` (when provided) → local trust store → DNS (deferred). When `--key-dir` is supplied, a matching `<signer_id>.public.pem` wins for that specific signer; signers absent from the directory fall through to the trust store.

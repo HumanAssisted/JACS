@@ -12,7 +12,7 @@ signed identity transition.
 
 ## Quick setup
 
-Install the CLI and start the local MCP server:
+Install the CLI with Rust 1.97 or newer and start the local MCP server:
 
 ```sh
 cargo install jacs-cli --locked

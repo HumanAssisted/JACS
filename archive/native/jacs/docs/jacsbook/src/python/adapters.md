@@ -57,7 +57,7 @@ from jacs.adapters.langchain import signed_tool
 signed_search = signed_tool(search_tool, client=client)
 ```
 
-The executable example to start from in this repo is `jacspy/examples/langchain/signing_callback.py`.
+The executable example to start from in this repo is `archive/native/jacspy/examples/langchain/signing_callback.py`.
 
 ## FastAPI / Starlette
 

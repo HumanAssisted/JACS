@@ -5,11 +5,11 @@ This chapter provides practical examples of using the JACS CLI for common workfl
 ## Quick Reference
 
 ```bash
-jacs init                  # Initialize JACS (config + agent + keys)
-jacs agent create          # Create a new agent
-jacs document create       # Create a signed document
-jacs document verify       # Verify a document signature
-jacs document sign-agreement  # Sign an agreement
+jacs-compat init                  # Initialize JACS (config + agent + keys)
+jacs-compat agent create          # Create a new agent
+jacs-compat document create       # Create a signed document
+jacs-compat document verify       # Verify a document signature
+jacs-compat document sign-agreement  # Sign an agreement
 ```
 
 ## Getting Started
@@ -24,7 +24,7 @@ mkdir my-jacs-project
 cd my-jacs-project
 
 # Initialize JACS
-jacs init
+jacs-compat init
 
 # This creates:
 # - jacs.config.json (configuration)
@@ -37,10 +37,10 @@ jacs init
 
 ```bash
 # Check the configuration
-jacs config read
+jacs-compat config read
 
 # Verify your agent
-jacs agent verify
+jacs-compat agent verify
 
 # Expected output:
 # Agent verification successful
@@ -69,7 +69,7 @@ cat > invoice.json << 'EOF'
 EOF
 
 # Create signed document
-jacs document create -f invoice.json
+jacs-compat document create -f invoice.json
 
 # Output shows the exact saved document path, for example:
 # Saved signed document: jacs_data/<uuid>:<version>
@@ -79,33 +79,33 @@ jacs document create -f invoice.json
 
 ```bash
 # Specify output filename
-jacs document create -f invoice.json -o signed-invoice.json
+jacs-compat document create -f invoice.json -o signed-invoice.json
 
 # Machine-readable document key and path
-jacs document create -f invoice.json --json
+jacs-compat document create -f invoice.json --json
 
 # Print to stdout (don't save)
-jacs document create -f invoice.json --no-save
+jacs-compat document create -f invoice.json --no-save
 ```
 
 **Create with file attachments:**
 
 ```bash
 # Create document with PDF attachment
-jacs document create -f contract.json --attach ./contract.pdf
+jacs-compat document create -f contract.json --attach ./contract.pdf
 
 # Embed attachment content in document
-jacs document create -f contract.json --attach ./contract.pdf --embed true
+jacs-compat document create -f contract.json --attach ./contract.pdf --embed true
 
 # Attach entire directory
-jacs document create -f report.json --attach ./attachments/
+jacs-compat document create -f report.json --attach ./attachments/
 ```
 
 **Create with custom schema:**
 
 ```bash
 # Use a custom schema for validation
-jacs document create -f order.json -s ./schemas/order.schema.json
+jacs-compat document create -f order.json -s ./schemas/order.schema.json
 ```
 
 ### Verifying Documents
@@ -114,7 +114,7 @@ jacs document create -f order.json -s ./schemas/order.schema.json
 
 ```bash
 # Verify a document
-jacs document verify -f ./signed-invoice.json
+jacs-compat document verify -f ./signed-invoice.json
 
 # Expected output:
 # Document verified successfully
@@ -126,7 +126,7 @@ jacs document verify -f ./signed-invoice.json
 
 ```bash
 # Get detailed verification info
-jacs document verify -f ./signed-invoice.json -v
+jacs-compat document verify -f ./signed-invoice.json -v
 
 # Output includes:
 # - Document ID and version
@@ -140,10 +140,10 @@ jacs document verify -f ./signed-invoice.json -v
 
 ```bash
 # Verify all documents in a directory
-jacs document verify -d ./documents/
+jacs-compat document verify -d ./documents/
 
 # With custom schema
-jacs document verify -d ./invoices/ -s ./schemas/invoice.schema.json
+jacs-compat document verify -d ./invoices/ -s ./schemas/invoice.schema.json
 ```
 
 ### Updating Documents
@@ -160,7 +160,7 @@ cat > original.json << 'EOF'
 }
 EOF
 
-jacs document create -f original.json -o project-v1.json
+jacs-compat document create -f original.json -o project-v1.json
 
 # Updated content
 cat > updated.json << 'EOF'
@@ -172,27 +172,27 @@ cat > updated.json << 'EOF'
 EOF
 
 # Create new version (maintains version history)
-jacs document update -f project-v1.json -n updated.json -o project-v2.json
+jacs-compat document update -f project-v1.json -n updated.json -o project-v2.json
 
 # Verify the updated document
-jacs document verify -f project-v2.json -v
+jacs-compat document verify -f project-v2.json -v
 ```
 
 ### Extracting Embedded Content
 
 ```bash
 # Extract embedded files from a document
-jacs document extract -f ./document-with-attachments.json
+jacs-compat document extract -f ./document-with-attachments.json
 
 # Extracts to: jacs_data/extracted/[document-id]/
 
 # Extract from multiple documents
-jacs document extract -d ./documents/
+jacs-compat document extract -d ./documents/
 ```
 
 ## Agreement Workflows
 
-This section shows the legacy `jacsAgreement` sidecar commands for simple approval of an existing signed document. For new standalone consent workflows, prefer `jacs agreement-v2`; see [Agreement v2 Developer Guide](../guides/agreement-v2.md).
+This section shows the legacy `jacsAgreement` sidecar commands for legacy signature inspection of an existing signed document. Native `jacs-compat agreement-v2` also provides mathematical inspection without consent-policy acceptance; see [Agreement v2 Developer Guide](../guides/agreement-v2.md). New portable consent uses [Agreement v3](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html).
 
 ### Creating an Agreement
 
@@ -210,11 +210,11 @@ cat > service-agreement.json << 'EOF'
 }
 EOF
 
-jacs document create -f service-agreement.json -o agreement.json
+jacs-compat document create -f service-agreement.json -o agreement.json
 
 # Create agreement requiring signatures from two agents
 # (Use actual agent UUIDs)
-jacs document create-agreement \
+jacs-compat document create-agreement \
   -f agreement.json \
   -i "agent1-uuid-here,agent2-uuid-here" \
   -o agreement-pending.json
@@ -229,10 +229,10 @@ jacs document create-agreement \
 
 ```bash
 # First agent signs
-jacs document sign-agreement -f agreement-pending.json -o agreement-signed-1.json
+jacs-compat document sign-agreement -f agreement-pending.json -o agreement-signed-1.json
 
 # Check status
-jacs document check-agreement -f agreement-signed-1.json
+jacs-compat document check-agreement -f agreement-signed-1.json
 # Output:
 # Agreement status: pending
 # Signatures: 1/2
@@ -240,12 +240,12 @@ jacs document check-agreement -f agreement-signed-1.json
 
 # Second agent signs (using their configuration)
 JACS_CONFIG_PATH=./agent2.config.json \
-  jacs document sign-agreement -f agreement-signed-1.json -o agreement-complete.json
+  jacs-compat document sign-agreement -f agreement-signed-1.json -o agreement-complete.json
 
 # Verify completion
-jacs document check-agreement -f agreement-complete.json
+jacs-compat document check-agreement -f agreement-complete.json
 # Output:
-# Agreement status: complete
+# Inspect mathematical signatures; claimed completion is not policy acceptance.
 # Signatures: 2/2
 ```
 
@@ -269,40 +269,40 @@ cat > contract.json << 'EOF'
 EOF
 
 echo "Creating contract document..."
-jacs document create -f contract.json -o contract-signed.json
+jacs-compat document create -f contract.json -o contract-signed.json
 
 # Step 2: Get agent IDs
-SELLER_AGENT=$(jacs config read | grep agent_id | cut -d: -f2 | tr -d ' ')
+SELLER_AGENT=$(jacs-compat config read | grep agent_id | cut -d: -f2 | tr -d ' ')
 BUYER_AGENT="buyer-agent-uuid-here"  # Replace with actual ID
 
 # Step 3: Create agreement
 echo "Creating agreement..."
-jacs document create-agreement \
+jacs-compat document create-agreement \
   -f contract-signed.json \
   -i "$SELLER_AGENT,$BUYER_AGENT" \
   -o contract-agreement.json
 
 # Step 4: Seller signs
 echo "Seller signing..."
-jacs document sign-agreement \
+jacs-compat document sign-agreement \
   -f contract-agreement.json \
   -o contract-seller-signed.json
 
 # Step 5: Check intermediate status
 echo "Checking status..."
-jacs document check-agreement -f contract-seller-signed.json
+jacs-compat document check-agreement -f contract-seller-signed.json
 
 # Step 6: Buyer signs
 echo "Buyer signing..."
 JACS_CONFIG_PATH=./buyer.config.json \
-  jacs document sign-agreement \
+  jacs-compat document sign-agreement \
   -f contract-seller-signed.json \
   -o contract-complete.json
 
 # Step 7: Verify complete agreement
 echo "Final verification..."
-jacs document verify -f contract-complete.json -v
-jacs document check-agreement -f contract-complete.json
+jacs-compat document verify -f contract-complete.json -v
+jacs-compat document check-agreement -f contract-complete.json
 
 echo "Agreement workflow complete!"
 ```
@@ -331,10 +331,10 @@ cat > my-agent.json << 'EOF'
 EOF
 
 # Create agent with new keys
-jacs agent create --create-keys true -f my-agent.json
+jacs-compat agent create --create-keys true -f my-agent.json
 
 # Create agent using existing keys
-jacs agent create --create-keys false -f my-agent.json
+jacs-compat agent create --create-keys false -f my-agent.json
 ```
 
 ### DNS-Based Identity
@@ -343,48 +343,48 @@ jacs agent create --create-keys false -f my-agent.json
 
 ```bash
 # Generate TXT record for your domain
-jacs agent dns --domain myagent.example.com
+jacs-compat agent dns --domain myagent.example.com
 
 # Output (example):
 # Add the following DNS TXT record:
 # _v1.agent.jacs.myagent.example.com TXT "pk=<base64-public-key-hash>"
 
 # Different providers
-jacs agent dns --domain myagent.example.com --provider aws
-jacs agent dns --domain myagent.example.com --provider cloudflare
-jacs agent dns --domain myagent.example.com --provider azure
+jacs-compat agent dns --domain myagent.example.com --provider aws
+jacs-compat agent dns --domain myagent.example.com --provider cloudflare
+jacs-compat agent dns --domain myagent.example.com --provider azure
 
 # Custom TTL
-jacs agent dns --domain myagent.example.com --ttl 7200
+jacs-compat agent dns --domain myagent.example.com --ttl 7200
 ```
 
 **Verify DNS-published agent:**
 
 ```bash
 # Look up agent by domain
-jacs agent lookup partner.example.com
+jacs-compat agent lookup partner.example.com
 
 # Require strict DNSSEC validation
-jacs agent lookup partner.example.com --strict
+jacs-compat agent lookup partner.example.com --strict
 
 # Verify local agent file against DNS
-jacs agent verify -a ./partner-agent.json --require-strict-dns
+jacs-compat agent verify -a ./partner-agent.json --require-strict-dns
 ```
 
 ### Agent Verification
 
 ```bash
 # Basic verification
-jacs agent verify
+jacs-compat agent verify
 
 # Verify another agent's file
-jacs agent verify -a ./other-agent.json
+jacs-compat agent verify -a ./other-agent.json
 
 # With DNS requirements
-jacs agent verify --require-dns          # Require DNS (not strict)
-jacs agent verify --require-strict-dns   # Require DNSSEC
-jacs agent verify --no-dns              # Skip DNS entirely
-jacs agent verify --ignore-dns          # Ignore DNS validation failures
+jacs-compat agent verify --require-dns          # Require DNS (not strict)
+jacs-compat agent verify --require-strict-dns   # Require DNSSEC
+jacs-compat agent verify --no-dns              # Skip DNS entirely
+jacs-compat agent verify --ignore-dns          # Ignore DNS validation failures
 ```
 
 ## Scripting Examples
@@ -404,7 +404,7 @@ for file in "$INPUT_DIR"/*.json; do
   filename=$(basename "$file")
   echo "Signing: $filename"
 
-  jacs document create -f "$file" -o "$OUTPUT_DIR/$filename"
+  jacs-compat document create -f "$file" -o "$OUTPUT_DIR/$filename"
 
   if [ $? -eq 0 ]; then
     echo "  ✓ Signed successfully"
@@ -436,7 +436,7 @@ failed=0
 for file in "$DOC_DIR"/*.json; do
   filename=$(basename "$file")
 
-  if jacs document verify -f "$file" > /dev/null 2>&1; then
+  if jacs-compat document verify -f "$file" > /dev/null 2>&1; then
     echo "✓ PASS: $filename" >> $REPORT
     ((passed++))
   else
@@ -466,7 +466,7 @@ inotifywait -m "$WATCH_DIR" -e create -e moved_to |
     if [[ "$file" == *.json ]]; then
       echo "New document: $file"
 
-      if jacs document verify -f "$WATCH_DIR/$file"; then
+      if jacs-compat document verify -f "$WATCH_DIR/$file"; then
         mv "$WATCH_DIR/$file" "./verified/"
         echo "  Moved to verified/"
       else
@@ -484,31 +484,31 @@ inotifywait -m "$WATCH_DIR" -e create -e moved_to |
 ```bash
 # Use a specific config file
 export JACS_CONFIG_PATH=./production.config.json
-jacs document create -f invoice.json
+jacs-compat document create -f invoice.json
 
 # Override specific settings
 export JACS_DATA_DIRECTORY=./custom-data
 export JACS_KEY_DIRECTORY=./secure-keys
-jacs agent create --create-keys true
+jacs-compat agent create --create-keys true
 
 # One-time override
-JACS_CONFIG_PATH=./test.config.json jacs document verify -f test-doc.json
+JACS_CONFIG_PATH=./test.config.json jacs-compat document verify -f test-doc.json
 ```
 
 ### Multiple Configurations
 
 ```bash
 # Development
-alias jacs-dev='JACS_CONFIG_PATH=./dev.config.json jacs'
+alias jacs-dev='JACS_CONFIG_PATH=./dev.config.json jacs-compat'
 jacs-dev document create -f test.json
 
 # Production
-alias jacs-prod='JACS_CONFIG_PATH=./prod.config.json jacs'
+alias jacs-prod='JACS_CONFIG_PATH=./prod.config.json jacs-compat'
 jacs-prod document verify -f important.json
 
 # Different agents
-alias jacs-alice='JACS_CONFIG_PATH=./alice.config.json jacs'
-alias jacs-bob='JACS_CONFIG_PATH=./bob.config.json jacs'
+alias jacs-alice='JACS_CONFIG_PATH=./alice.config.json jacs-compat'
+alias jacs-bob='JACS_CONFIG_PATH=./bob.config.json jacs-compat'
 ```
 
 ## Error Handling
@@ -516,7 +516,7 @@ alias jacs-bob='JACS_CONFIG_PATH=./bob.config.json jacs'
 ### Understanding Exit Codes
 
 ```bash
-jacs document verify -f document.json
+jacs-compat document verify -f document.json
 exit_code=$?
 
 case $exit_code in
@@ -540,12 +540,12 @@ sign_document() {
   local input=$1
   local output=$2
 
-  if ! jacs document create -f "$input" -o "$output" 2>/dev/null; then
+  if ! jacs-compat document create -f "$input" -o "$output" 2>/dev/null; then
     echo "Error: Failed to sign $input" >&2
     return 1
   fi
 
-  if ! jacs document verify -f "$output" 2>/dev/null; then
+  if ! jacs-compat document verify -f "$output" 2>/dev/null; then
     echo "Error: Verification failed for $output" >&2
     rm -f "$output"
     return 1

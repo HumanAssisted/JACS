@@ -11,7 +11,7 @@ The [A2A quickstart](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKST
 covers local discovery, source versus release behavior, and explicit ES256
 compatibility. Legacy discovery retains its `0.4.0` model and compact JWS
 representation. The separate typed A2A 1.0 API signs its bounded profile with
-the native ML-DSA-87 root and standard detached signature fields. Explicit
+the native ML-DSA-87 root and standard detached signature fields.
 Public Node/Python APIs accept explicit v1 options with the caller's skills,
 modes and messaging URL. Current official SDK examples verify direct PQ with
 JavaScript SDK 1.3.0 on Node 24.7+, and explicit ES256 compatibility with Python

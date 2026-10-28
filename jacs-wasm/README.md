@@ -2,13 +2,13 @@
 
 **JACS sign + verify in the browser. No backend required.**
 
-> **Distribution status:** This checkout contains an unreleased source-built
-> package; see [release status](../docs/release-status.md). The API below is available from a source build and becomes
-> an install contract only after the release workflow publishes and smoke-tests
-> the package.
+> **Published 0.15.0:** npm artifacts, provenance and installed-browser checks
+> are recorded in [release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md). This README also
+> describes the current source API; later changes in this checkout are not
+> evidence of a new published release.
 
 `@hai.ai/jacs-wasm` is the WebAssembly bindings for [JACS](https://github.com/HumanAssisted/JACS).
-From a source-built package, await one init call and you can create JACS
+Await one init call and you can create JACS
 agents, sign messages, verify signed documents, and run multi-party agreements
 entirely client-side.
 
@@ -18,7 +18,13 @@ the main-thread and worker APIs. Use `createEphemeral()` or
 Ed25519 and ES256 remain explicit compatibility choices for existing identities
 or platform integrations. Imports retain and verify their declared algorithm.
 
-## Build and install today
+## Install
+
+```sh
+npm install --save-exact @hai.ai/jacs-wasm@0.15.0
+```
+
+For the current source API, build locally instead:
 
 ```sh
 git clone https://github.com/HumanAssisted/JACS.git
@@ -28,10 +34,6 @@ bash scripts/finalize-pkg.sh
 # From your consuming project:
 npm install /absolute/path/to/JACS/jacs-wasm/pkg
 ```
-
-After the first registry publication, the consumer command becomes
-`npm install @hai.ai/jacs-wasm`. Do not use that registry command until an npm version
-exists.
 
 ## Quick start
 
@@ -159,10 +161,11 @@ Rust can wipe its own secret buffers, not the host's string copies.
 
 ### Error codes
 
-Every fallible call throws a `JacsWasmError` whose `message` is a
+Main-thread WASM calls throw a `JacsWasmError` whose `message` is a
 JSON-shaped `{ code, message, details? }` payload. The `code` field is
 the stable wire identifier — match on that, not on the human-readable
-message:
+message. Worker calls instead reject with a structured `{ code, message, details? }`
+object; read its `code` directly, without parsing `message` as JSON.
 
 | Code | Meaning |
 |------|---------|
@@ -232,9 +235,9 @@ the page's JS.
   origin share `localStorage`. Set short-lived passwords + force
   re-unlock between tab visits if you need stronger separation.
 
-The active [core guide](../jacs-core/README.md) describes compile-target and
+The active [core guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-core/README.md) describes compile-target and
 forbidden-dependency checks. Platform biometric custody is provided by the
-[mobile boundary](../jacs-mobile/README.md); browser passkey/PRF integration
+[mobile boundary](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md); browser passkey/PRF integration
 still belongs to the consuming application.
 
 ## `localStore` (browser persistence)
@@ -285,24 +288,24 @@ hundreds of milliseconds. The worker subpath lets you push them
 off-thread:
 
 ```ts
-import { createEphemeralInWorker, signMessageInWorker } from "@hai.ai/jacs-wasm/worker";
+import { createEphemeralInWorker } from "@hai.ai/jacs-wasm/worker";
 
 const agent = await createEphemeralInWorker(); // pq2025; keeps key generation off the UI thread
-const signed = await signMessageInWorker(agent, JSON.stringify({ hello: "world" }));
+const signed = await agent.signMessage(JSON.stringify({ hello: "world" }));
 ```
 
 ## Native compatibility
 
-The old `@hai.ai/jacs` napi-rs package is a Node-only compatibility binding.
-Its source is preserved in [`archive/native/jacsnpm`](../archive/native/jacsnpm),
-outside the active publication set. It cannot supply browser or Hermes key
-custody. Browser consumers use this source-built WASM package; React Native
-consumers use the [mobile bindings and native vaults](../jacs-mobile/README.md).
+The supported `@hai.ai/jacs` napi-rs package is a Node-only binding, published
+from the separate [`archive/native/jacsnpm`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm) workspace.
+It cannot supply browser or Hermes key custody. Browser consumers use this WASM
+package; React Native
+consumers use the [mobile bindings and native vaults](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md).
 The active CLI and MCP are thin Rust consumers of `jacs-core`.
 
 ## License
 
-Apache-2.0. See [`LICENSE-APACHE`](../LICENSE-APACHE).
+Apache-2.0. See [`LICENSE-APACHE`](https://github.com/HumanAssisted/JACS/blob/main/LICENSE-APACHE).
 
 ### Human creation and generated-code recovery
 
@@ -366,5 +369,5 @@ must retain both encrypted copies until promotion is durable. Discard only an
 authoritatively unaccepted stage; never regenerate/delete after a timeout without
 reconciliation. The main-thread WASM handle provides the same methods.
 Candidate public-key PEM can be obtained through the existing verification-only
-`createVerifier(candidate.public_key, candidate.algorithm).getPublicKeyPem()`;
+`(await createVerifier(candidate.public_key, candidate.algorithm)).getPublicKeyPem()`;
 this needs no candidate private-key handle.

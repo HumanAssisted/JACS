@@ -7,7 +7,7 @@ Choose the smallest supported integration that matches the boundary you need to 
 | If you need... | Start here | Why |
 |---|---|---|
 | Sign and verify JSON, files, or one-off artifacts | [Quick Start](quick-start.md) | Establish the agent identity and trust model first. |
-| A ready-made local MCP server for Claude, Codex, or another MCP client | [MCP Overview](../integrations/mcp.md) and `jacs mcp` | Fastest full server path; stdio only, no HTTP port. |
+| A ready-made local MCP server for Claude, Codex, or another MCP client | [MCP Overview](../integrations/mcp.md) and `jacs-compat mcp` | Fastest full server path; stdio only, no HTTP port. |
 | Signed tool outputs inside LangChain / LangGraph on Python | [Python Framework Adapters](../python/adapters.md) | Add provenance without changing the rest of the app. |
 | Signed tool outputs inside LangChain.js / LangGraph on Node | [Node.js LangChain.js](../nodejs/langchain.md) | Same pattern for TypeScript. |
 | Secure existing MCP server/client code | [Python MCP](../python/mcp.md) or [Node.js MCP](../nodejs/mcp.md) | Wrap the transport or register JACS tools. |

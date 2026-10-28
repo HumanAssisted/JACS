@@ -321,7 +321,7 @@ through purpose-built, schema-pinned paths — there is no generic
   public key; that proves possession of the compatibility key, not the
   agent's native identity. Tracing the export to that root additionally
   requires verifying the native-root-signed compatibility key
-  binding (`jacs agent export-compat-binding`).
+  binding (`jacs-compat agent export-compat-binding`).
 - **Native documents are never mutated.** Exports are derived views;
   the native `jacsSignature` keeps the agent's selected algorithm and the source document's
   bytes and verification are unchanged after every export. These are
@@ -354,10 +354,10 @@ Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-
 export JACS_PRIVATE_KEY_PASSWORD="secure-password"
 
 # Option 2: OS keychain (recommended for developer workstations)
-jacs keychain set --agent-id <YOUR_AGENT_UUID>
+jacs-compat keychain set --agent-id <YOUR_AGENT_UUID>
 ```
 
-> **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable or use the OS keychain.
+> **Important**: The CLI can prompt for the password during `jacs-compat init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable or use the OS keychain.
 
 **OS Keychain Integration**:
 
@@ -366,7 +366,7 @@ On macOS and Linux desktops, JACS can store and retrieve the private key passwor
 - **macOS**: Uses Security.framework (Keychain Access)
 - **Linux**: Uses the freedesktop.org D-Bus Secret Service API (GNOME Keyring, KDE Wallet, KeePassXC)
 
-Each password is keyed by agent ID, so multiple agents can coexist on the same machine without overwriting each other. Store your password once with `jacs keychain set --agent-id <ID>`, and all subsequent JACS operations will find it automatically. The password resolution order is:
+Each password is keyed by agent ID, so multiple agents can coexist on the same machine without overwriting each other. Store your password once with `jacs-compat keychain set --agent-id <ID>`, and all subsequent JACS operations will find it automatically. The password resolution order is:
 
 1. `JACS_PRIVATE_KEY_PASSWORD` env var (highest priority -- explicit always wins)
 2. `JACS_PASSWORD_FILE` / legacy `.jacs_password` file
@@ -421,11 +421,11 @@ Update agent version to rotate keys:
 3. Sign new version with old key
 4. Update configuration to use new keys
 
-Every rotation resolves to `pq2025`, including rotation of an
-Ed25519 agent — rotation is the designated
-Ed25519 → post-quantum migration path. Rotation also supersedes the
+Native rotation preserves the current algorithm unless explicitly overridden.
+Use `jacs-compat agent rotate-keys --algorithm pq2025` to upgrade Ed25519;
+a PQ identity cannot downgrade to Ed25519. Rotation also supersedes the
 ES256 compatibility key binding: re-issue it under the new native root
-(`jacs agent issue-compat-binding`) before the next ecosystem export.
+(`jacs-compat agent issue-compat-binding`) before the next ecosystem export.
 
 ## TLS Certificate Validation
 
@@ -584,22 +584,17 @@ JACS supports DNSSEC-validated identity verification:
 
 ### Configuration
 
-```json
-{
-  "jacs_agent_domain": "myagent.example.com",
-  "jacs_dns_validate": true,
-  "jacs_dns_strict": true
-}
+Select strict validation explicitly:
+
+```bash
+jacs-compat agent verify --require-strict-dns
 ```
 
-### Security Levels
-
-| Mode | Description |
-|------|-------------|
-| `jacs_dns_validate: false` | No DNS verification |
-| `jacs_dns_validate: true` | Attempt DNS verification, allow fallback |
-| `jacs_dns_strict: true` | Require DNSSEC validation |
-| `jacs_dns_required: true` | Fail if domain not present |
+For Rust, configure `AgentBuilder::dns_strict(true)` together with required
+DNS validation. Do not rely on a `jacs_dns_strict` JSON field being applied by
+the native loader. Persisted validate/required settings and domain presence
+control the ordinary defaults; verified claims force strict, required checks.
+See [DNS trust anchoring](dns-trust.md) for the full flag matrix.
 
 ## Trust Store Management
 
@@ -698,14 +693,15 @@ host's responsibility.
 
 | Algorithm | Type | Role |
 |-----------|------|------|
-| `pq2025` | Post-Quantum (FIPS-204 ML-DSA-87) | Default native root; every rotation resolves to it |
+| `pq2025` | Post-Quantum (FIPS-204 ML-DSA-87) | Default native root; cannot rotate down to Ed25519 |
 | `ring-Ed25519` | Elliptic Curve | Supported native creation, signing, and verification; user-facing input alias: `ed25519` |
 | ES256 | Elliptic Curve (P-256) | Compatibility key for targeted ecosystem exports only — never a valid native `jacsSignature` algorithm |
 
 ### Algorithm Selection
 
 Native JACS signing defaults to `pq2025`; explicit Ed25519 creation is
-supported without substitution. Rotation always converges to `pq2025`.
+supported without substitution. Routine rotation preserves the algorithm;
+an Ed25519-to-PQ upgrade is explicit.
 
 An ES256 content signature does **not** create native JACS trust:
 classical verification proves possession of the compatibility key only.
@@ -732,7 +728,7 @@ chmod 600 ./jacs_keys/private.pem
 export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
 
 # Option B: Use OS keychain (developer workstations)
-jacs keychain set --agent-id <AGENT_UUID>  # stores password securely in OS credential store
+jacs-compat keychain set --agent-id <AGENT_UUID>  # stores password securely in OS credential store
 
 # Option C: Disable keychain for headless/CI environments
 export JACS_KEYCHAIN_BACKEND=disabled
@@ -877,7 +873,7 @@ Enable observability for security auditing:
 
 ```bash
 # Create a new agent instead
-jacs quickstart --name replacement-agent --domain replacement.example.com
+jacs-compat quickstart --name replacement-agent --domain replacement.example.com
 ```
 
 #### "DNS fingerprint mismatch"
@@ -887,7 +883,7 @@ jacs quickstart --name replacement-agent --domain replacement.example.com
 **Solution**:
 1. Regenerate the DNS record with your current keys:
    ```bash
-   jacs dns-record
+   jacs-compat agent dns --domain example.com --provider plain
    ```
 2. Update your DNS TXT record with the new value
 3. Wait for DNS propagation (can take up to 48 hours)
@@ -899,7 +895,7 @@ jacs quickstart --name replacement-agent --domain replacement.example.com
 **Solution**:
 1. Enable DNSSEC with your domain registrar
 2. Publish DS records at the parent zone
-3. Or use `verified` with non-strict DNS (development only)
+3. Verified claims require strict DNSSEC; fix DNSSEC before verifying them.
 
 ### Claim Level Reference
 
@@ -920,18 +916,18 @@ jacs quickstart --name replacement-agent --domain replacement.example.com
 
 ```bash
 # Check your agent's current claim
-jacs info | grep jacsVerificationClaim
+jacs-compat agent verify
 
 # Verify DNS record is correct
-jacs dns-check
+jacs-compat agent verify --require-strict-dns
 
 # Test verification
-jacs verify --agent your-agent-id:version
+jacs-compat agent verify
 ```
 
 ## See Also
 
 - [Cryptographic Algorithms](crypto.md) - Algorithm details
-- [DNS Verification](../dns.md) - DNS-based identity
+- [DNS Verification](../rust/dns.md) - DNS-based identity
 - [Configuration](../schemas/configuration.md) - Security configuration
 - [Agreements](../rust/agreements.md) - Multi-party agreements

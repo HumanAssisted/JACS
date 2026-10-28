@@ -6,7 +6,7 @@ Use MCP when the boundary is model-to-tool inside an application or local workst
 
 JACS offers three MCP integration surfaces:
 
-1. **Run `jacs mcp`** for local document verification without signing keys.
+1. **Run `jacs-compat mcp`** for local document verification without signing keys.
    Select `--profile local-sign` with an existing signed config to let the
    local client sign as that agent.
 2. **Wrap an existing MCP transport** when you already have an MCP server or client and want signed JSON-RPC.
@@ -16,7 +16,7 @@ JACS offers three MCP integration surfaces:
 
 | Runtime | Best starting point | What it gives you |
 |---|---|---|
-| Rust CLI | `jacs mcp` | Verification by default; explicit local signing of documents and Agreement-v2 artifacts, with optional scoped text/image tools |
+| Rust CLI | `jacs-compat mcp` | Verification by default; explicit local signing of documents and Agreement-v2 artifacts, with optional scoped text/image tools |
 | Python | `jacs.mcp` or `jacs.adapters.mcp` | Local SSE transport security or FastMCP tool registration |
 | Node.js | `@hai.ai/jacs/mcp` | Transport proxy or MCP tool registration for existing SDK-based servers |
 
@@ -33,14 +33,14 @@ JACS offers three MCP integration surfaces:
   checks integrity; it does not establish truth, identity, authorization,
   publication permission or Agreement policy acceptance.
 
-## 1. Ready-Made Server: `jacs mcp`
+## 1. Ready-Made Server: `jacs-compat mcp`
 
 Install the unified binary and start a verification-only server. No identity
 creation or private-key password is required:
 
 ```bash
-cargo install jacs-cli
-jacs mcp
+cargo install jacs-cli-compat --locked
+jacs-compat mcp
 ```
 
 Configure a compatible MCP client with:
@@ -49,7 +49,7 @@ Configure a compatible MCP client with:
 {
   "mcpServers": {
     "jacs": {
-      "command": "jacs",
+      "command": "jacs-compat",
       "args": ["mcp"]
     }
   }
@@ -60,12 +60,12 @@ The default `verify-only` profile exposes only `jacs_verify_document`; callers
 supply the public key and algorithm. An explicitly supplied `--config` or
 `JACS_CONFIG` loads public-only configuration without unlocking private keys.
 
-To sign, reuse an existing signed config, or run `jacs init` once in the
+To sign, reuse an existing signed config, or run `jacs-compat init` once in the
 directory where you want to keep the agent identity. Keep using its normal
 keychain/password source and select it explicitly:
 
 ```bash
-jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+jacs-compat mcp --profile local-sign --config /absolute/path/to/jacs.config.json
 ```
 
 Use those same arguments in the MCP client:
@@ -74,7 +74,7 @@ Use those same arguments in the MCP client:
 {
   "mcpServers": {
     "jacs": {
-      "command": "jacs",
+      "command": "jacs-compat",
       "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
     }
   }
@@ -92,7 +92,7 @@ compiled. To add exactly five text/image tools, grant an existing content
 directory explicitly at process startup:
 
 ```bash
-JACS_MCP_BASE_DIR=/absolute/path/to/content jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+JACS_MCP_BASE_DIR=/absolute/path/to/content jacs-compat mcp --profile local-sign --config /absolute/path/to/jacs.config.json
 ```
 
 There is no implicit working-directory grant. File tools reject traversal and
@@ -114,7 +114,7 @@ The native server uses stdio only: stdout carries MCP JSON-RPC and diagnostics
 go to stderr. It uses RMCP 3.3.0, supporting date-versioned MCP `2026-07-28`
 and legacy `2025-11-25` initialization; these are distinct from SDK major
 versions such as the TypeScript SDK v2. See the
-[crate MCP README](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md)
+[crate MCP README](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md)
 for the complete local-signing and response-error contract.
 
 ## 2. Transport Security Around Your Existing MCP Code
@@ -230,7 +230,7 @@ const client = await JacsClient.quickstart({
 registerJacsTools(server, client);
 ```
 
-Choose the native `jacs mcp` server for its explicit local-signing boundary.
+Choose the native `jacs-compat mcp` server for its explicit local-signing boundary.
 Tool registration in an existing Node or Python server is a separate
 integration; review that server's exposed operations and authorization.
 

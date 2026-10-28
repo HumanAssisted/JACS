@@ -223,7 +223,7 @@ typed error.
 
 1. **Rotate Keys**
    ```bash
-   jacs agent rotate-keys
+   jacs-compat agent rotate-keys
    ```
 
 2. **Re-issue the Compatibility Key Binding (if present)**
@@ -232,7 +232,7 @@ typed error.
    rotation supersedes it. Ecosystem exports fail with a "re-issue"
    error until a new binding is signed by the current native root:
    ```bash
-   jacs agent issue-compat-binding
+   jacs-compat agent issue-compat-binding
    ```
 
 3. **Maintain Backward Compatibility**
@@ -275,4 +275,4 @@ If a private key is compromised:
 
 - [Security Model](security.md) - Overall security architecture
 - [Configuration](../schemas/configuration.md) - Algorithm configuration
-- [DNS Verification](../dns.md) - Public key fingerprint verification
+- [DNS Verification](../rust/dns.md) - Public key fingerprint verification

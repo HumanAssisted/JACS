@@ -4,9 +4,10 @@ The JACS Python package (`jacs`) provides Python bindings to the JACS Rust libra
 
 ## Requirements
 
-- **Python**: Version 3.11–3.14
+- **Python**: Published 0.15.0 wheels: 3.10–3.14; current source: 3.11–3.14
 - **pip**: For package management
-- **Operating System**: Linux, macOS, or Windows with WSL
+- **Wheels**: macOS arm64/x86_64; Linux glibc 2.28+ arm64/x86_64;
+  Linux musl x86_64. No Windows wheel is published; WSL needs a matching Linux wheel.
 - **Architecture**: x86_64 or ARM64
 
 ## Installation
@@ -18,9 +19,12 @@ pip install jacs
 
 For framework adapters (LangChain, FastAPI, Anthropic, etc.) use optional extras, e.g. `pip install jacs[langchain]`, `jacs[fastapi]`, or `jacs[all]`. Optional: `jacs[langgraph]`, `jacs[ws]`. See [Framework Adapters](adapters.md) and the package `pyproject.toml`.
 
-### Using conda
+### Inside a conda environment
+
+Create or activate your Python environment, then install the PyPI package:
+
 ```bash
-conda install -c conda-forge jacs
+python -m pip install jacs==0.15.0
 ```
 
 ### Using poetry
@@ -32,7 +36,7 @@ poetry add jacs
 ```bash
 # Clone the repository
 git clone https://github.com/HumanAssisted/JACS
-cd JACS/jacspy
+cd JACS/archive/native/jacspy
 
 # Create virtual environment
 python -m venv .venv
@@ -55,7 +59,7 @@ print('JACS Python bindings loaded successfully!')
 from jacs.client import JacsClient
 client = JacsClient.ephemeral()
 signed = client.sign_message({"hello": "jacs"})
-result = client.verify(signed.raw_json)
+result = client.verify(signed.raw)
 print('Sign & verify OK:', result.valid)
 ```
 
@@ -90,7 +94,7 @@ hash_value = jacs.hash_string("data to hash")
 config_json = jacs.create_config(
     jacs_data_directory="./data",
     jacs_key_directory="./keys",
-    jacs_agent_key_algorithm="ring-Ed25519"
+    jacs_agent_key_algorithm="pq2025"
 )
 ```
 
@@ -122,7 +126,7 @@ Create a `jacs.config.json` file:
   "jacs_data_directory": "./jacs_data",
   "jacs_key_directory": "./jacs_keys",
   "jacs_default_storage": "fs",
-  "jacs_agent_key_algorithm": "ring-Ed25519",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_agent_id_and_version": "agent-uuid:version-uuid"
 }
 ```
@@ -146,7 +150,7 @@ import jacs
 config_json = jacs.create_config(
     jacs_data_directory="./jacs_data",
     jacs_key_directory="./jacs_keys",
-    jacs_agent_key_algorithm="ring-Ed25519",
+    jacs_agent_key_algorithm="pq2025",
     jacs_default_storage="fs"
 )
 ```
@@ -158,7 +162,7 @@ JACS reads environment variables that override configuration file settings:
 ```bash
 export JACS_DATA_DIRECTORY="./production_data"
 export JACS_KEY_DIRECTORY="./production_keys"
-export JACS_AGENT_KEY_ALGORITHM="ring-Ed25519"
+export JACS_AGENT_KEY_ALGORITHM="pq2025"
 export JACS_DEFAULT_STORAGE="fs"
 ```
 
@@ -200,27 +204,13 @@ AWS credentials are read from standard AWS environment variables.
 }
 ```
 
-## Cryptographic Algorithms
+## Cryptographic algorithms
 
-### ring-Ed25519 (Recommended)
-```json
-{
-  "jacs_agent_key_algorithm": "ring-Ed25519"
-}
-```
-
-**Pros**: Fast, secure, small signatures
-**Cons**: Requires elliptic curve support
-
-### pq2025 (Post-Quantum)
-```json
-{
-  "jacs_agent_key_algorithm": "pq2025"
-}
-```
-
-**Pros**: FIPS-204 ML-DSA-87 post-quantum signatures
-**Cons**: Larger signatures than Ed25519
+New identities default to `pq2025` (FIPS-204 ML-DSA-87), with no automatic
+classical fallback. Use `ed25519` explicitly only when compatibility requires
+it; the native wire/config label is `ring-Ed25519`. PQ signatures and keys are
+larger. Existing Ed25519 identities remain usable and can explicitly upgrade
+through native rotation.
 
 ## Development Setup
 
@@ -246,7 +236,7 @@ my-jacs-project/
 
 ### Requirements.txt Setup
 ```
-jacs>=0.9.0
+jacs==0.15.0
 fastapi>=0.100.0  # For FastMCP integration
 uvicorn>=0.23.0   # For ASGI server
 pydantic>=2.0.0   # For data validation
@@ -381,7 +371,7 @@ If you get permission errors accessing files:
 ls -la jacs_data/ jacs_keys/
 
 # Fix permissions
-chmod 755 jacs_data/ jacs_keys/
+chmod 700 jacs_data/ jacs_keys/
 chmod 600 jacs_keys/*.pem
 ```
 
@@ -395,14 +385,12 @@ pip uninstall jacs
 pip install jacs --no-cache-dir
 ```
 
-### Windows Issues
-On Windows, you may need Visual C++ Build Tools:
+### Windows
 
-```bash
-# Install Visual C++ Build Tools
-# Or use conda-forge
-conda install -c conda-forge jacs
-```
+No native Windows wheel is recorded for 0.15.0. Use a supported Linux environment
+under WSL or validate a custom source build with its native dependencies.
+Windows CLI archives are a separate distribution and do not establish Python
+wheel support.
 
 ## Type Hints and IDE Support
 
@@ -476,4 +464,4 @@ Check out the complete examples in the [examples directory](../examples/python.m
 - Basic agent creation and task management
 - Jupyter notebook workflows
 - FastMCP server implementation
-- AI/ML pipeline integration 
+- AI/ML pipeline integration

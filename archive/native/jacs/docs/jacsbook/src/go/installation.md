@@ -2,30 +2,29 @@
 
 `jacsgo` provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.
 
-> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For the full MCP surface, install `jacs-cli` and run `jacs mcp`; the Go MCP examples in the repo are demo code.
+> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For the full MCP surface, install `jacs-cli-compat` and run `jacs-compat mcp`; the Go MCP examples in the repo are demo code.
 
 ## Install
 
-At the 2026-07-09 distribution baseline, the Go module had only a
-pseudo-version and no matching native library. `go get` alone therefore cannot
-produce a linkable consumer. Build the full repository today:
+Version 0.15.0 publishes the Go module and matching macOS/Linux native
+libraries. `go get` alone does not provide the CGo library. In a module that
+imports `github.com/HumanAssisted/JACS/jacsgo`:
 
 ```bash
-git clone https://github.com/HumanAssisted/JACS.git
-cd JACS
-# For reproducible use, pin a reviewed source commit before building.
-make -C jacsgo build-rust
-cd jacsgo
-go test ./...
+go get github.com/HumanAssisted/JACS/jacsgo@v0.15.0
+go mod vendor
+go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.15.0 -version v0.15.0
 ```
 
-After a semantic `jacsgo/vX.Y.Z` release and its checksum manifest actually
-exist, use the version-matched installer documented in the
-[jacsgo README](https://github.com/HumanAssisted/JACS/tree/main/jacsgo).
+The installer writes a checksum-verified library into the vendored package's
+`build/` directory. See the [Go package guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsgo/README.md)
+for platform coverage, provenance and source builds. From the full repository,
+`make build-jacsgo` builds the current native library. Published artifacts do
+not imply that later source APIs have been released.
 
 ## Minimal Sign + Verify
 
-Create an agent first (CLI: `jacs quickstart --name my-agent --domain
+Create an agent first (CLI: `jacs-compat quickstart --name my-agent --domain
 my-agent.example.com`, or programmatically with `jacs.Create()` and
 `JACS_PRIVATE_KEY_PASSWORD`). Then:
 
@@ -42,7 +41,7 @@ import (
 func main() {
 	// Load agent: nil = default ./jacs.config.json
 	if err := jacs.Load(nil); err != nil {
-            log.Fatal("create an agent first: jacs quickstart --name my-agent --domain my-agent.example.com")
+            log.Fatal("create an agent first: jacs-compat quickstart --name my-agent --domain my-agent.example.com")
 	}
 
 	signed, err := jacs.SignMessage(map[string]interface{}{

@@ -40,7 +40,11 @@ The route handlers are unchanged. Signing is invisible to the developer writing 
 
 ## Protocol-level: A2A agent cards
 
-When JACS publishes an A2A agent card, the card includes the agent's public key and supported algorithms. Any other A2A-compatible agent can verify signatures without prior arrangement -- the trust bootstrapping is built into the protocol.
+When JACS publishes an A2A agent card, the card includes the agent's public key and supported algorithms. Peers must support the selected signing algorithm (including ML-DSA-87 for
+direct PQ exports, or the explicit ES256 compatibility path) and select trusted
+keys independently. Discovery and a valid self-signature do not establish
+identity, consent or permission. See the
+[current identity guide](https://humanassisted.github.io/JACS/identity.html).
 
 ## Why this matters
 

@@ -20,7 +20,7 @@ First, create a json document that follows the schema for an agent, and use it i
 
 An id, version etc, will be created  when you load the file from the command line
 
-    jacs agent create ./examples/raw/mysecondagent.new.json --create-keys true
+    jacs-compat agent create ./examples/raw/mysecondagent.new.json --create-keys true
 
 Your agent will look something like this and you will have also created keys. The agent is self-signed and all the fields are hashed.
 There is also a public and private key created in the directory set with `jacs_key_directory`. DO NOT use the keys included in the repo.
@@ -64,11 +64,11 @@ There is also a public and private key created in the directory set with `jacs_k
 
 You can verify you are set up with this command:
 
-    jacs agent verify  -a ./examples/agent/fe00bb15-8c7f-43ac-9413-5a7bd5bb039d\:1f639f69-b3a7-45d5-b814-bc7b91fb3b97.json
+    jacs-compat agent verify  -a ./examples/agent/fe00bb15-8c7f-43ac-9413-5a7bd5bb039d\:1f639f69-b3a7-45d5-b814-bc7b91fb3b97.json
 
 To make it easier to use, add `jacs_agent_id_and_version` to your config and you can just run
 
-    jacs agent verify
+    jacs-compat agent verify
 
 
 ## Role-based keyring and the ecosystem compatibility key
@@ -82,7 +82,7 @@ Every new agent holds two key roles:
   documents, A2A agent cards, and targeted content exports). It never signs
   native JACS documents.
 
-New agents (`jacs init`, `jacs quickstart`, `jacs agent create`) mint the
+New agents (`jacs-compat init`, `jacs-compat quickstart`, `jacs-compat agent create`) mint the
 compatibility key eagerly. Roles are recorded in
 `jacs_keys/jacs.keyring.json` (metadata only, no secrets); the ES256
 private key is encrypted at rest with the same AES-256-GCM + Argon2id
@@ -90,12 +90,12 @@ envelope and 0600 permissions as the native root key.
 
 Opt out for minimal or air-gapped agents:
 
-    jacs init --no-compat-key
-    jacs agent create --create-keys true --no-compat-key
+    jacs-compat init --no-compat-key
+    jacs-compat agent create --create-keys true --no-compat-key
 
 Existing agents never gain key material on load. Migrate explicitly:
 
-    jacs agent add-compat-key
+    jacs-compat agent add-compat-key
 
 Running it twice is a typed error — there is no silent re-mint, and ES256
 key rotation is out of scope for P2.
@@ -113,22 +113,22 @@ _v1.agent.jacs.<domain>.
 TXT value:
 
 ```
-"v=hai.ai; jacs_agent_id=<GUID>; alg=SHA-256; enc=base64; jac_public_key_hash=<digest>"
+"v=jacs; jacs_agent_id=<GUID>; alg=SHA-256; enc=base64; jac_public_key_hash=<digest>"
 ```
 
 Emit commands (strict DNS by default):
 
 ```bash
-jacs agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com>
+jacs-compat agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com>
 ```
 
 During DNS propagation (allow embedded fallback):
 
 ```bash
-jacs agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com> \
+jacs-compat agent dns --agent-file ./jacs/agent/<ID:VERSION>.json --domain <example.com> \
   --provider cloudflare --encoding base64 --no-dns
 
-jacs agent verify -a ./jacs/agent/<ID:VERSION>.json --no-dns
+jacs-compat agent verify -a ./jacs/agent/<ID:VERSION>.json --no-dns
 ```
 
 Troubleshooting (DNSSEC):

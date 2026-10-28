@@ -8,7 +8,7 @@ Three focused mini-guides to get your JACS agent working with A2A.
 | **[2. Discover & Trust](a2a-discover.md)** | Find remote agents and assess their trustworthiness | 2 min |
 | **[3. Exchange](a2a-exchange.md)** | Sign and verify A2A artifacts with chain of custody | 3 min |
 
-> **Single-page version:** See the [A2A Quick Start](../../../../A2A_QUICKSTART.md) at the repo root for a 10-line journey.
+> **Single-page version:** See the [A2A Quick Start](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md) at the repo root for a 10-line journey.
 
 ---
 
