@@ -48,15 +48,23 @@ are architectural possibilities, not exports provided here. JACS does not
 implement a general DID resolver. DID Core conformance does not establish
 method-specific interoperability or a trusted relationship to a domain.
 
-The JWK `kid` is derived from the public key's RFC 7638/RFC 9964 thumbprint;
-repeated exports preserve it. JWS signs its exact protected-header/payload
+For ML-DSA-87, the JWK `kid` is the RFC 7638/RFC 9964 thumbprint;
+repeated exports preserve it. The Ed25519 DID export retains its existing
+verification-method URL and uses that URL's fragment as `kid`. Thumbprint
+identifiers are a recommended CID practice, not a universal DID requirement.
+JWS signs its exact protected-header/payload
 signing input using pure ML-DSA and an empty context. JACS document envelopes
 and JWS are different signed formats; their signature bytes are not interchangeable.
+The JACS public AKP profile accepts only `kty`, `alg`, `pub`, `kid`, `use` and
+`key_ops`; optional `use` must be `sig`, `key_ops` must be `["verify"]`, and
+`kid` must match the thumbprint. This profile is stricter than general JOSE.
 
 Check a received key against trusted identity evidence before accepting it.
 Select the expected algorithm and relevant DID verification relationship,
 apply current authorization and revocation policy, and reject unsupported
-algorithms. A peer that lacks ML-DSA support needs a deliberately selected
+algorithms. [Key discovery and verification](key-discovery.md) explains native
+DNS/HTTPS lookup, exact-version resolution and explicit-key portable boundaries.
+A peer that lacks ML-DSA support needs a deliberately selected
 compatibility integration; a PQ verification error never triggers a downgrade.
 
 ## Library entry points
@@ -93,7 +101,11 @@ jacs::a2a::v1::verify_root_card(
 Here `public_jwk` is the root's AKP JWK; `expected_id`, `expected_version` and
 `trusted_root` come from independent trusted evidence. `verify_root_card`
 checks the detached signature, supported card profile and exact root attribution.
-It is stateless and does not establish revocation or rollback history.
+It accepts multiple detached signatures, selecting the entry with the expected
+root `kid` regardless of order. Duplicate `kid` values and invalid entry/header
+shapes are rejected. Other signatures receive no authority and are not
+cryptographically verified by this helper. It is stateless and does not
+establish revocation or rollback history.
 `key_directory` remains in the exporter signature for source compatibility;
 the PQ path uses the loaded root and creates no compatibility key.
 
@@ -137,7 +149,13 @@ expected identity/version and protected algorithm, and rejects unexpected key
 URLs. Official SDK canonicalization drops fields outside its A2A schema; do
 not treat those fields as authenticated application claims. Fetching a card or
 JWKS alone establishes none of that trust. Legacy
-`verified`/`strict` discovery policy helpers are not v1 policy parsers.
+`verified`/`strict` discovery policy helpers are not v1 policy parsers. Legacy
+PQ verification checks identity/version/root-key metadata consistency before
+TOFU pinning. Its key fingerprint now hashes raw public-key bytes. A PQ TOFU
+pin created by an earlier unpublished direct-PQ build may use the old lossy
+fingerprint and will fail closed: independently verify the actual identity
+and key before deliberately replacing that pin. There is no automatic pin
+reset or migration; ES256 pins and explicit trusted-root checks are unchanged.
 
 ## Standards boundaries
 
@@ -148,7 +166,14 @@ claim of a standardized ML-DSA-87 Data Integrity cryptosuite. Existing VC and
 Data Integrity exports retain their explicit ES256 compatibility behavior.
 
 The native `JacsW3cRequestProof` / `DIDWba` request-proof JSON is JACS-specific;
-it is not ANP HTTP Message Signatures. A2A's current 1.0 specification also has
+it is not ANP HTTP Message Signatures. Its verifier can infer ML-DSA-87 or
+Ed25519 from a standard public JWK; an optional `jacsSigningAlgorithm` must
+agree. DID document method IDs and `authentication` references may be absolute
+local DID URLs or `#fragment` references, with matching controller and no
+ambiguous IDs. The proof itself must name an absolute local DID URL. ES256
+compatibility methods are not supported by this request-proof protocol.
+
+A2A's current 1.0 specification also has
 a different Agent Card wire shape from the legacy discovery model here. PQ
 signatures alone do not make DID resolution, TLS, or an entire A2A deployment
 post-quantum secure.

@@ -32,6 +32,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
 use crate::agent::document::DocumentTraits;
+#[cfg(test)]
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::normalize_public_key_pem;
 use crate::error::JacsError;
@@ -131,6 +132,12 @@ pub enum InlineVerifyError {
 /// module never does I/O. Wave 2 supplies a concrete implementation.
 pub trait KeyResolver {
     fn resolve(&self, signer_id: &str) -> Option<ResolvedKey>;
+
+    /// Full signed context preserves the immutable version, algorithm and key
+    /// reference for opt-in discovery. Existing local resolvers remain compatible.
+    fn resolve_document(&self, document: &Value) -> Option<ResolvedKey> {
+        self.resolve(document.pointer("/jacsSignature/agentID")?.as_str()?)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -884,7 +891,7 @@ fn verify_full_jacs_block(
         };
     }
 
-    let resolved = match resolver.resolve(&signer_id) {
+    let resolved = match resolver.resolve_document(&value) {
         Some(r) => r,
         None => {
             return SignatureEntry {
@@ -900,7 +907,9 @@ fn verify_full_jacs_block(
         .pointer("/jacsSignature/publicKeyHash")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    if !claimed_pkh.is_empty() && hash_public_key(&resolved.public_key_pem) != claimed_pkh {
+    if !claimed_pkh.is_empty()
+        && !crate::key_resolution::document_key_matches(&value, &resolved.public_key_pem)
+    {
         return SignatureEntry {
             signer_id,
             algorithm,

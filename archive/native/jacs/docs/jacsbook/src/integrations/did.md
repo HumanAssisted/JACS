@@ -65,6 +65,17 @@ match. A supplied DID document is not, by itself, trusted identity evidence or
 permission to act. Apply trusted resolution and current authorization policy at
 the receiving application boundary.
 
+The request-proof verifier infers ML-DSA-87 or Ed25519 from a standard public
+JWK. An optional `jacsSigningAlgorithm` must agree with that key. DID document
+method IDs and authentication references may use absolute local DID URLs or
+`#fragment` references, with matching controller and no ambiguous IDs. The
+proof itself must name an absolute local DID URL. Scoped ES256 entries are not
+supported by this JACS-specific request-proof protocol.
+
+JACS's ML-DSA-87 public AKP profile uses a thumbprint `kid`; Ed25519 DID exports
+retain the existing method URL and use its fragment as `kid`. CID thumbprint
+naming is recommended, not a requirement to rename every existing method.
+
 ## Where to Combine With Other Standards
 
 - [A2A Interoperability](a2a.md): cross-organization agent discovery and artifact exchange

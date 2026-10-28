@@ -1,14 +1,9 @@
 //! Provenance wrapping for A2A artifacts (v0.4.0)
 
 use crate::a2a::{A2AArtifact, A2AMessage};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::agent::loaders::fetch_remote_public_key;
 use crate::agent::{
     AGENT_SIGNATURE_FIELDNAME, Agent, boilerplate::BoilerPlate, document::DocumentTraits,
-    loaders::FileLoader,
 };
-use crate::config::{KeyResolutionSource, get_key_resolution_order};
-use crate::crypt::hash::hash_public_key;
 use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
@@ -53,79 +48,11 @@ impl VerificationStatus {
 
 fn resolve_foreign_public_key(
     agent: &Agent,
-    signer_id: &str,
-    signer_version: &str,
-    public_key_hash: &str,
+    document: &Value,
 ) -> Result<(Vec<u8>, String), String> {
-    if public_key_hash.is_empty() {
-        return Err("Missing publicKeyHash in signature".to_string());
-    }
-
-    let resolution_order = get_key_resolution_order();
-    let mut last_error = "No key source attempted".to_string();
-
-    for source in &resolution_order {
-        match source {
-            KeyResolutionSource::Local => match agent.fs_load_public_key(public_key_hash) {
-                Ok(public_key) => match agent.fs_load_public_key_type(public_key_hash) {
-                    Ok(enc_type) => {
-                        return Ok((public_key, enc_type.trim().to_string()));
-                    }
-                    Err(e) => {
-                        last_error = format!("Local key type lookup failed: {}", e);
-                    }
-                },
-                Err(e) => {
-                    last_error = format!("Local key lookup failed: {}", e);
-                }
-            },
-            KeyResolutionSource::Dns => {
-                // DNS can validate identity but does not return key material.
-                last_error = "DNS source does not provide public key bytes".to_string();
-            }
-            KeyResolutionSource::Registry => {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if signer_id.is_empty() || signer_version.is_empty() {
-                        last_error =
-                            "Registry lookup requires signer agent ID and version UUID".to_string();
-                        continue;
-                    }
-
-                    match fetch_remote_public_key(signer_id, signer_version) {
-                        Ok(key_info) => {
-                            if !key_info.hash.is_empty() && key_info.hash != public_key_hash {
-                                last_error = format!(
-                                    "Registry key hash mismatch: expected {}..., got {}...",
-                                    &public_key_hash[..public_key_hash.len().min(16)],
-                                    &key_info.hash[..key_info.hash.len().min(16)]
-                                );
-                                continue;
-                            }
-                            return Ok((key_info.public_key, key_info.algorithm));
-                        }
-                        Err(e) => {
-                            last_error = format!("Registry key lookup failed: {}", e);
-                        }
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let _ = signer_id;
-                    let _ = signer_version;
-                    last_error = "Registry lookup is not available on wasm32 targets in this build"
-                        .to_string();
-                }
-            }
-        }
-    }
-
-    Err(format!(
-        "Could not resolve signer key {}... using sources {:?}. Last error: {}",
-        &public_key_hash[..public_key_hash.len().min(16)],
-        resolution_order,
-        last_error
-    ))
+    crate::key_resolution::resolve_document_key(agent, document)
+        .map(|key| (key.public_key, key.algorithm))
+        .map_err(|error| error.to_string())
 }
 
 fn verify_with_resolved_key(
@@ -138,17 +65,8 @@ fn verify_with_resolved_key(
     let signature = signature_info
         .get_str("signature")
         .ok_or_else(|| "No signature found in jacsSignature".to_string())?;
-    let signature_hash = signature_info
-        .get_str("publicKeyHash")
-        .ok_or_else(|| "No publicKeyHash found in jacsSignature".to_string())?;
-
-    let computed_hash = hash_public_key(&public_key);
-    if computed_hash != signature_hash {
-        return Err(format!(
-            "Resolved public key hash mismatch: expected {}..., got {}...",
-            &signature_hash[..signature_hash.len().min(16)],
-            &computed_hash[..computed_hash.len().min(16)]
-        ));
+    if !crate::key_resolution::document_key_matches(wrapped_artifact, &public_key) {
+        return Err("Resolved public key does not match the signed reference".into());
     }
 
     let explicit_alg = if public_key_enc_type.is_empty() {
@@ -243,8 +161,8 @@ pub fn wrap_a2a_message_with_provenance(
 ///
 /// For foreign agents (agents other than the current agent), the public key
 /// is resolved via configured key resolution order (`local`, `dns`, `registry`).
-/// DNS can validate identity but does not provide key bytes; practical signature
-/// verification requires local key material or remote registry key retrieval.
+/// DNS discovery fetches an HTTPS key pinned to the raw DNS digest. Discovery
+/// supplies integrity candidates and does not enroll or authorize an identity.
 pub fn verify_wrapped_artifact(
     agent: &Agent,
     wrapped_artifact: &Value,
@@ -282,60 +200,37 @@ pub fn verify_wrapped_artifact(
     let agent_version = signature_info
         .get_str("agentVersion")
         .ok_or("No agent version in signature")?;
-    let public_key_hash = signature_info.get_str_or("publicKeyHash", "");
 
     // Check if this is a self-signed document
     let current_agent_id = agent.get_id().ok();
-    let is_self_signed = current_agent_id
-        .as_ref()
-        .map(|id| id == &agent_id)
-        .unwrap_or(false);
-
-    // Determine verification status
-    let (status, valid) = if is_self_signed {
-        // Self-signed: we can verify with our own key
-        let public_key = agent.get_public_key()?;
-        match agent.signature_verification_procedure(
-            wrapped_artifact,
-            None,
-            AGENT_SIGNATURE_FIELDNAME,
-            public_key,
-            agent.get_key_algorithm().cloned(),
-            None,
-            None,
-        ) {
-            Ok(_) => (VerificationStatus::SelfSigned, true),
-            Err(e) => (
-                VerificationStatus::Invalid {
-                    reason: format!("Signature verification failed: {}", e),
-                },
-                false,
-            ),
-        }
-    } else {
-        match resolve_foreign_public_key(agent, &agent_id, &agent_version, &public_key_hash) {
-            Ok((public_key, public_key_enc_type)) => match verify_with_resolved_key(
+    let (status, valid) = match resolve_foreign_public_key(agent, wrapped_artifact) {
+        Ok((public_key, algorithm)) => {
+            let is_self_signed = current_agent_id.as_deref() == Some(agent_id.as_str())
+                && agent.get_public_key().ok().as_ref() == Some(&public_key);
+            match verify_with_resolved_key(
                 agent,
                 wrapped_artifact,
                 signature_info,
                 public_key,
-                public_key_enc_type,
+                algorithm,
             ) {
-                Ok(_) => (VerificationStatus::Verified, true),
-                Err(e) => (
-                    VerificationStatus::Invalid {
-                        reason: format!("Foreign signature verification failed: {}", e),
+                Ok(()) => (
+                    if is_self_signed {
+                        VerificationStatus::SelfSigned
+                    } else {
+                        VerificationStatus::Verified
                     },
-                    false,
+                    true,
                 ),
-            },
-            Err(reason) => {
-                warn!(
-                    "Could not resolve foreign signature key for agent {}: {}",
-                    agent_id, reason
-                );
-                (VerificationStatus::Unverified { reason }, false)
+                Err(reason) => (VerificationStatus::Invalid { reason }, false),
             }
+        }
+        Err(reason) => {
+            warn!(
+                "Could not resolve signature key for agent {}: {}",
+                agent_id, reason
+            );
+            (VerificationStatus::Unverified { reason }, false)
         }
     };
 

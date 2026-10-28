@@ -141,6 +141,13 @@ The current policy meanings are:
 `verified` means the card signature and a durable same-origin key pin verified.
 It proves origin/key continuity, not that the self-asserted `jacsId` is a
 real-world or explicitly trusted identity. `strict` is the identity-bound mode.
+Direct-PQ verification checks the version/root-key metadata before TOFU pinning
+and now uses raw-key SHA-256 fingerprints. Pins from an earlier unpublished
+direct-PQ build may use a lossy fingerprint; they fail closed and are not
+automatically reset. Independently verify the identity and exact root before
+deliberately replacing such a pin. ES256 pins and explicit trusted-root checks
+are unchanged. Native artifact-envelope [key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+is a separate verification path, not an automatic A2A policy upgrade.
 
 ### Python
 
@@ -241,7 +248,11 @@ loaded ML-DSA-87 root. It uses the A2A 1.0 `supportedInterfaces` model and
 standard detached `signatures[].protected` / `signature` fields, with typed
 protobuf presence handling and RFC 8785 canonicalization. Its
 `verify_root_card` verifies the signature, exact trusted root and expected
-identity/version for the supported profile. See the
+identity/version for the supported profile. Multiple signatures are accepted:
+the helper selects the expected root `kid` regardless of order, rejects
+duplicate kids or invalid entry/header shapes, and grants no authority to the
+other signatures. It does not cryptographically verify those other entries or
+fetch keys over the network. See the
 [source library guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md#library-entry-points).
 
 `export_agent_card_es256` is the explicit compatibility alternative. The

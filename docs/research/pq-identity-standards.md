@@ -8,6 +8,12 @@ JACS can retain its persistent final-FIPS-204 ML-DSA-87 key and export a standar
 
 [RFC 9964](https://www.rfc-editor.org/rfc/rfc9964.html), published May 2026 on the IETF Standards Track, defines ML-DSA-44/65/87 for JOSE and COSE. Its public JWK is `{ "kty": "AKP", "alg": "ML-DSA-87", "pub": "<base64url(raw-public-key)>" }`. The public key is 2592 bytes and signature 4627 bytes. A public export must omit private information. Private JWK `priv` is exclusively a 32-byte seed, not the 4896-byte expanded secret.
 
+JACS's public-key profile requires a supplied `kid` to equal its thumbprint;
+general JOSE does not impose that choice. CID's thumbprint naming guidance is
+a recommendation, not a requirement to rename every existing verification
+method. Relative fragment references in DID documents are allowed when resolved
+against the document identifier.
+
 AKP thumbprints use exactly `alg`, `kty`, and `pub`, in that lexicographic order; `kid` is not included. Signing uses pure ML-DSA (FIPS 204 Algorithm 2), empty context, and raw signature bytes encoded base64url for JWS. HashML-DSA is not the registered JOSE algorithm. See RFC 9964 sections 3–7. JOSE implementation support is optional. Appendix A.1, Figure 5 supplies an ML-DSA-87 public JWK and signed JOSE example suitable for known-vector verification.
 
 ## W3C identity and VC boundaries
@@ -71,3 +77,19 @@ The managed environment has OpenSSL **3.5.7** and advertises `ML-DSA-87` in `ope
 Wrap the raw public key in SubjectPublicKeyInfo using ML-DSA-87 OID `2.16.840.1.101.3.4.3.19` and no algorithm parameters. For a 2592-byte key, the DER prefix is hex `30820a32300b060960864801650304031303820a2100`, followed by the raw key. [OpenSSL ML-DSA documentation](https://docs.openssl.org/3.5/man7/EVP_SIGNATURE-ML-DSA/); [RFC 9881 key encoding](https://www.rfc-editor.org/rfc/rfc9881.html).
 
 Bind accepted keys to a trusted DID/provider; a self-supplied JWK proves possession, not external identity. Check algorithm/key consistency, lengths, relevant verification relationship, revocation, and unsupported critical headers. Do not silently downgrade after PQ errors. Arbitrary `jku` retrieval requires a trusted-source policy. PQ signatures do not make HTTPS, DID resolution, or the complete A2A channel post-quantum.
+
+## DNS discovery is a separate trust layer
+
+Publish the raw public-key SHA-256 fingerprint and an optional HTTPS discovery
+pointer, then verify the fetched key and the complete signed document. Neither
+a self-declared domain nor a registry response enrolls a trusted identity.
+[The implementation guide](../key-discovery.md) distinguishes DNS digests,
+frozen signed document references and transport hashes.
+
+[RFC 9715](https://www.rfc-editor.org/rfc/rfc9715.html) discusses DNS/UDP
+fragmentation avoidance; 1232 bytes is not an absolute DNS TXT or message size
+limit. Fingerprint-plus-HTTPS discovery avoids unnecessarily large DNS answers.
+[RFC 7583](https://www.rfc-editor.org/rfc/rfc7583.html) analyzes DNSSEC key
+rollovers, not a universal JACS application-key overlap of twice the TTL.
+Rotation must account for the deployment's caches, retained signed documents,
+revocation policy and historical-key availability.

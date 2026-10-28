@@ -3594,10 +3594,13 @@ pub fn handle_config_create() -> BindingResult<()> {
 /// Re-export DNS verification result for bindings.
 pub use jacs::dns::bootstrap::DnsVerificationResult;
 
-/// Verify an agent's DNS TXT record matches its public key hash.
+/// Verify v2 document integrity and a DNS publisher's raw public-key fingerprint.
 ///
-/// Parses the agent JSON and looks up `_v1.agent.jacs.{domain}` to compare hashes.
-/// Returns a structured result — never errors for DNS failures (those are `verified: false`).
+/// Resolves the exact-version key, verifies the document signature and its existing
+/// key reference, then separately checks the raw SHA-256 digest in the DNS record.
+/// Network access remains opt-in and configured DNSSEC strictness applies. Success
+/// does not establish independent identity authorization. DNS failures are returned
+/// as `verified: false`; malformed input can return an error.
 pub fn verify_agent_dns(agent_json: &str, domain: &str) -> BindingResult<DnsVerificationResult> {
     jacs::dns::bootstrap::verify_agent_dns(agent_json, domain).map_err(|e| {
         BindingCoreError::invalid_argument(format!("DNS verification setup failed: {}", e))
