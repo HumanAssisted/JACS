@@ -24,16 +24,8 @@ or platform integrations. Imports retain and verify their declared algorithm.
 npm install --save-exact @hai.ai/jacs-wasm@0.15.0
 ```
 
-For the current source API, build locally instead:
-
-```sh
-git clone https://github.com/HumanAssisted/JACS.git
-cd JACS/jacs-wasm
-wasm-pack build --target web --release . --locked
-bash scripts/finalize-pkg.sh
-# From your consuming project:
-npm install /absolute/path/to/JACS/jacs-wasm/pkg
-```
+For the current source API, follow the
+[local build guide](https://humanassisted.github.io/JACS/native/wasm/building.html#local-build-and-chromium-smoke-test).
 
 ## Quick start
 
@@ -52,8 +44,8 @@ console.log(result.valid); // true
 
 ### Lifecycle
 
-- `initJacsWasm(): Promise<void>` — wire up the panic hook. Idempotent.
-  Safe to call multiple times.
+- `initJacsWasm(): Promise<void>` — load WASM and install the panic hook;
+  safe to call multiple times.
 
 ### Constructors
 
@@ -94,8 +86,7 @@ console.log(result.valid); // true
   algorithm + key. Returns a JSON `VerificationOutcome`
   (`{ valid, signer_id, timestamp, data, errors }`).
 - `verifyWithKeyJson(signed, publicKeyBase64, algorithm): string` —
-  static verify path. Useful when the verifier doesn't hold any private
-  key (e.g. dashboard pages).
+  verify using the supplied key without unlocking this handle.
 - `exportAgent(): string` — JSON string of the public agent document. It does
   not contain private-key material and cannot be used to restore a signing
   handle.
@@ -198,47 +189,16 @@ try {
 
 ## Security caveats — read this section
 
-**Browser WebAssembly memory is JavaScript-visible by design.** Any code
-running on the page — including third-party libraries, advertising
-scripts, or browser extensions injected via Manifest V3 — can read the
-WebAssembly module's linear memory through JS `Memory.buffer`. There is
-no isolation boundary between the private key bytes that
-`createEphemeral` or `importEncryptedAgent` materializes and the rest of
-the page's JS.
-
-### What this means in practice
-
-- **`@hai.ai/jacs-wasm` is not a replacement for a hardware-backed signing
-  service.** If the threat model includes XSS, malicious extensions, or
-  hostile third-party JS on the same origin, the keys are reachable from
-  that JS. Use a hardware key, a secure-enclave-backed
-  WebCrypto `CryptoKey`, or a server-side signing endpoint instead.
-- **Persist nothing plaintext.** `localStore` (below) refuses payloads
-  containing PEM `BEGIN PRIVATE KEY` blocks or any object key named
-  `password` / `passphrase` / `secret` (case-insensitive, walked
-  recursively). On `saveEncryptedAgent`, the payload must also parse
-  as an `AgentMaterial` JSON object whose `encrypted_private_key` is
-  either a V2 envelope (`jacsEncryptedPrivateKeyVersion: 2`) or a
-  long-enough PBKDF2 byte-blob (≥ 44 bytes after base64 decode) —
-  bare raw 32-byte private keys are refused before anything touches
-  `localStorage`.
-- **Treat `clearSecrets()` as a "logout" primitive.** Call it as soon as
-  the user is done signing. It zeroes the in-memory private key;
-  subsequent sign calls throw `{ code: "Locked" }`. Verification
-  continues to work.
-- **JavaScript password strings cannot be wiped by WebAssembly.**
-  `exportEncryptedAgent(password)` zeroizes its owned Rust/WASM password
-  copy and plaintext private-key export buffer, but the original string
-  remains managed by the JavaScript engine. Avoid retaining it in
-  application state longer than necessary.
-- **Tab isolation is not a security boundary.** Two tabs on the same
-  origin share `localStorage`. Set short-lived passwords + force
-  re-unlock between tab visits if you need stronger separation.
-
-The active [core guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-core/README.md) describes compile-target and
-forbidden-dependency checks. Platform biometric custody is provided by the
-[mobile boundary](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md); browser passkey/PRF integration
-still belongs to the consuming application.
+- **Unlocked keys are visible to same-page JavaScript.** WASM is not a key
+  isolation boundary against XSS, malicious dependencies or injected scripts.
+  Use a separate trusted signing boundary when those threats must be isolated.
+- **Persist encrypted `AgentMaterial` only.** `localStore` validates the envelope
+  shape and rejects obvious plaintext secrets; it is not a general secret scanner.
+- **Clear handles after signing.** `clearSecrets()` wipes Rust-owned key material
+  and locks signing while preserving verification. It cannot erase JavaScript
+  copies of passwords or other strings.
+- **Same-origin tabs share storage.** Re-unlock deliberately and limit secret
+  lifetime. Passkey/PRF enrollment and recovery belong to the host application.
 
 ## `localStore` (browser persistence)
 
@@ -262,24 +222,9 @@ localStore.clearAll();                                       // only removes `ja
 
 ## Observability (`metrics()` + `JACS_WASM_DEBUG`)
 
-The browser has no stdout, no log files, no `/metrics` endpoint —
-`@hai.ai/jacs-wasm` does not pretend otherwise. What it does give you:
-
-- **Per-handle metrics.** Every `CoreAgentHandle` keeps in-memory
-  counters and last-call durations. Call `agent.metrics()` to get a
-  JSON snapshot:
-  ```ts
-  JSON.parse(agent.metrics());
-  // { signCount: 3, verifyCount: 7,
-  //   lastSignDurationMs: 1.42, lastVerifyDurationMs: 0.13 }
-  ```
-  Pipe the numbers wherever you already send analytics. Counters are
-  per-handle — independent handles do not share state.
-- **Debug logging via `globalThis.JACS_WASM_DEBUG`.** Set
-  `globalThis.JACS_WASM_DEBUG = true` *before* a sign / verify /
-  clearSecrets call to emit a `console.debug` line bracketing the
-  operation. Off by default — no spam in production. The flag is
-  read every call, so flipping it at runtime takes immediate effect.
+`JSON.parse(agent.metrics())` returns per-handle signing/verification counts and
+last-call timings. Set `globalThis.JACS_WASM_DEBUG = true` for `console.debug`
+events around sign, verify and lock operations; logging is off by default.
 
 ## Workers (`@hai.ai/jacs-wasm/worker`)
 
@@ -296,18 +241,10 @@ const signed = await agent.signMessage(JSON.stringify({ hello: "world" }));
 
 ## Native compatibility
 
-The supported `@hai.ai/jacs` napi-rs package is a Node-only binding, published
-from the separate [`archive/native/jacsnpm`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm) workspace.
-It cannot supply browser or Hermes key custody. Browser consumers use this WASM
-package; React Native
-consumers use the [mobile bindings and native vaults](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md).
-The active CLI and MCP are thin Rust consumers of `jacs-core`.
+For Node.js use [`@hai.ai/jacs`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md);
+for React Native use the [mobile bindings and vaults](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md).
 
-## License
-
-Apache-2.0. See [`LICENSE-APACHE`](https://github.com/HumanAssisted/JACS/blob/main/LICENSE-APACHE).
-
-### Human creation and generated-code recovery
+## Human creation and generated-code recovery
 
 Use `await createHuman()` or `await createHumanInWorker()` for a first-version,
 self-signed human identity (ML-DSA-87 only). Existing `createEphemeral` behavior
@@ -348,7 +285,7 @@ the signature value and derived checksum change; no IDs or timestamps are
 regenerated. The host must independently bind the prepared document to the
 reviewed action. This method does not turn content JSON into a new document.
 
-### Staged rotation in the worker
+## Staged rotation in the worker
 
 `handle.prepareKeyRotation(storagePassword)` returns encrypted candidate
 `AgentMaterial` JSON and leaves the current handle active. Persist it beside the
@@ -371,3 +308,7 @@ reconciliation. The main-thread WASM handle provides the same methods.
 Candidate public-key PEM can be obtained through the existing verification-only
 `(await createVerifier(candidate.public_key, candidate.algorithm)).getPublicKeyPem()`;
 this needs no candidate private-key handle.
+
+## License
+
+Apache-2.0. See [LICENSE-APACHE](https://github.com/HumanAssisted/JACS/blob/main/LICENSE-APACHE).

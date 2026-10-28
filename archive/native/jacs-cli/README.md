@@ -34,13 +34,6 @@ policy acceptance.
 
 ## Provenance commands
 
-### JSON and files
-
-```bash
-jacs-compat document create -f mydata.json --output signed-document.json
-jacs-compat verify jacs_data/signed-document.json
-```
-
 ### Markdown and text
 
 ```bash
@@ -79,66 +72,23 @@ jacs-compat extract-media-signature signed.png --raw-payload
 
 JACS proves that an agent signed specific canonical bytes at its claimed time. It does not prove first creation or legal ownership.
 
-### W3C DID interop
+### DID and A2A discovery
 
 ```bash
-# Export a did:wba identifier while keeping jacsId as the canonical JACS ID.
 jacs-compat w3c did --origin https://agent.example.com
-
-# Generate the DID document, agent description, and discovery collection.
-jacs-compat w3c did-document --origin https://agent.example.com
-jacs-compat w3c agent-description --origin https://agent.example.com
 jacs-compat w3c well-known --origin https://agent.example.com --out ./public
-
-# Local demo server for the generated discovery documents.
-jacs-compat w3c serve --origin https://agent.example.com --port 8081
-
-# Request-bound DID auth proof demo.
-jacs-compat w3c sign-request --method POST --url https://api.example.com/tasks --body '{"ok":true}'
-jacs-compat w3c verify-request --method POST --url https://api.example.com/tasks --proof proof.json --did-document did.json --body '{"ok":true}'
-```
-
-The W3C view is additive: `jacsId` remains the canonical JACS document identity, and DID documents are generated from the same agent key material.
-
-For an executable end-to-end example that exports discovery artifacts, signs a request-bound DID proof, and verifies both success and failure cases, run the source-matched compatibility binary from the repository root:
-
-```bash
-JACS_BIN=/absolute/path/to/source-built/jacs-compat bash archive/native/examples/w3c_did_interop.sh
-```
-
-### A2A discovery server
-
-```bash
-# Local development: the exact listener origin is signed into the Agent Card.
 jacs-compat a2a serve --host 127.0.0.1 --port 8080
-
-# Production: bind behind a TLS reverse proxy and sign its public origin.
-jacs-compat a2a serve \
-  --host 127.0.0.1 \
-  --port 8080 \
-  --origin https://agent.example.com
-
-# Explicit classical compatibility for a newly created Ed25519 root.
-jacs-compat a2a quickstart --name my-agent --domain example.com \
-  --algorithm ed25519 --a2a-algorithm ES256
-
-# Serve an existing identity with its authorized ES256 compatibility key.
-jacs-compat a2a serve --a2a-algorithm ES256
 ```
 
-`--a2a-algorithm` defaults to `ML-DSA-87`, which requires a `pq2025` root.
-`--algorithm` on quickstart selects the root algorithm separately; selecting
-`ed25519` does not enable compatibility automatically. An existing classical
-root requires explicit `--a2a-algorithm ES256` on every serving invocation.
-Failures never trigger a fallback. These compatibility CLI commands serve
-legacy A2A 0.4 discovery documents, not an A2A messaging endpoint.
+Current source defaults to direct ML-DSA-87 discovery with a `pq2025` root.
+Classical roots require explicit `--a2a-algorithm ES256` and an authorized
+compatibility key; failures never trigger fallback. The CLI serves legacy
+A2A 0.4 discovery, not an A2A messaging endpoint.
 
-The Agent Card's signed `supportedInterfaces[0].url` determines where verifiers
-resolve `/.well-known/jwks.json` and, for explicit ES256 compatibility,
-`/.well-known/jacs-compat-binding.json`. Without `--origin`, the built-in
-plaintext server advertises only an exact loopback `http://HOST:PORT` origin.
-Non-loopback listeners fail closed unless an explicit HTTPS origin is supplied;
-use that form when TLS terminates at a reverse proxy.
+The signed origin must match the advertised service. For a non-loopback
+listener behind a TLS proxy, supply `--origin https://agent.example.com`.
+See the [identity guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
+for commands, request-proof boundaries and the source/release distinction.
 
 ## MCP server
 
@@ -162,35 +112,19 @@ Configure in your MCP client:
 }
 ```
 
-The default `verify-only` profile exposes only exact-byte document integrity
-verification with a caller-supplied public key and algorithm. An explicitly
-supplied config is public-only and never loads/decrypts a signing key. The closed profile names are `verify-only`,
-`local-sign`, `trust-admin`, and compatibility-only `legacy-core`. When
-`--profile` is absent, `JACS_MCP_PROFILE` is consulted before falling back to
-`verify-only`; explicit CLI selection wins, and unknown values fail startup.
-A profile name alone does not load a signer. Use the existing signed config
-and normal keychain/password source explicitly:
+Verification uses the caller's explicit public key and algorithm. To sign as
+an existing local agent, select its signed config and host password source:
 
 ```bash
 jacs-compat mcp --profile local-sign --config ./jacs.config.json
 ```
 
-`JACS_CONFIG` can supply the path instead. This grants only offline local-agent
-JSON/Agreement signing, with documents persisted below the config directory.
-It is not per-action human approval. File text/image and administrative tools
-are not granted by that command. Selecting `JACS_MCP_BASE_DIR` at startup adds
-only the five scoped text/image tools, using the same loaded signer; it does
-not enable administration. File signing can keep plaintext `.bak` copies; see
-the [MCP scope](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md#explicit-local-signing).
-
-For headless/server environments:
-
-```bash
-export JACS_CONFIG=/srv/my-project/jacs.config.json
-export JACS_PASSWORD_FILE=/run/secrets/jacs-password
-export JACS_KEYCHAIN_BACKEND=disabled
-jacs-compat mcp --profile local-sign
-```
+This grants offline JSON/Agreement operations, not human approval or
+administration. File tools require an explicit `JACS_MCP_BASE_DIR` and can keep
+plaintext backups. See the [MCP scope and configuration](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md#explicit-local-signing)
+for profiles and file policy; the
+[native development guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md#password-requirements)
+covers headless password setup.
 
 ## Links
 

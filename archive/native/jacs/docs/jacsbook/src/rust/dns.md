@@ -1,25 +1,8 @@
 # DNS-Based Agent Verification
 
-JACS supports DNS-based agent verification using DNS TXT records and DNSSEC. This allows agents to publish their identity in a decentralized, verifiable way that doesn't require a central authority.
-
-## Overview
-
-DNS verification in JACS works by:
-1. Publishing an agent's public key fingerprint as a DNS TXT record
-2. Using DNSSEC to cryptographically verify the DNS response
-3. Comparing the fingerprint from DNS with the agent's actual public key
-
-This provides a secure, decentralized way to verify agent identity across the internet.
-
-## Why DNS Verification?
-
-- **Decentralized**: No central authority required
-- **Existing Infrastructure**: Uses established DNS infrastructure
-- **DNSSEC Security**: Cryptographic verification of DNS responses
-- **Human-Readable**: Agents can be identified by domain names
-- **Widely Supported**: Works with any DNS provider
-
-DNS verification is also a practical bridge for DID-style deployments: you can publish DID metadata for discovery while using DNS TXT + JACS signature verification as the operational trust anchor. No blockchain is required for this model.
+JACS compares an agent's public-key fingerprint with a TXT record at
+`_v1.agent.jacs.<domain>`. Strict mode also validates DNSSEC. Domain control,
+cryptographic integrity and application trust are separate decisions.
 
 ## Publishing Agent Identity
 

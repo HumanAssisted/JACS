@@ -127,13 +127,9 @@ fn verify_signature(doc: &Document) -> Result<()> {
 
 ### Key Lookup Priority
 
-The verification system tries multiple sources:
-
-1. **Local cache by hash** - Fastest, key already stored locally
-2. **Trust store by version** - Most accurate for known agents
-3. **Trust store by hash** - Fallback for legacy entries
-4. **DNS lookup** - External verification, authoritative
-5. **Fail** - Key not found, verification impossible
+Native external-document verification uses the configured `JACS_KEY_RESOLUTION`
+sources (default `local,registry`). DNS authenticates a published fingerprint;
+it does not supply historical public keys.
 
 ## Key Rotation Process
 
@@ -144,19 +140,6 @@ The verification system tries multiple sources:
 3. **Sign new version with old key** (transition signature)
 4. **Update DNS records** to include new key fingerprint
 5. **Store old public key** for future verifications
-
-### Transition Signature
-
-The transition signature proves the key rotation was authorized by the holder of the old key:
-
-```
-JACS_KEY_ROTATION:{agent_id}:{old_key_hash}:{new_key_hash}:{timestamp}
-```
-
-This signed message:
-- Proves continuity of ownership
-- Provides an audit trail
-- Binds old and new keys together cryptographically
 
 ### CLI Commands
 
@@ -173,8 +156,6 @@ jacs-compat agent keys-list
 # Repair config after a crash during rotation
 jacs-compat agent repair
 
-# Revoke a compromised key (Coming Soon)
-jacs-compat agent keys revoke <key-hash>
 ```
 
 ### Transition Signature
@@ -220,8 +201,8 @@ For manual recovery: `jacs-compat agent repair`
 
 ### Cross-Algorithm Rotation
 
-Rotation is a one-way migration to `pq2025`, not an arbitrary algorithm
-selector. An Ed25519 root can migrate to post-quantum signing:
+An Ed25519 root can explicitly upgrade to `pq2025`. Rotation without an
+override preserves the current algorithm; PQ-to-Ed25519 downgrade is rejected:
 
 ```bash
 # Rotate from Ed25519 to post-quantum
@@ -275,74 +256,9 @@ Time T4: Agent signs document D2
 
 ## Trust Store with Version History
 
-The trust store maintains a history of all public keys for each trusted agent.
-
-### TrustedAgent Structure
-
-```json
-{
-  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Example Agent",
-  "trusted_at": "2024-01-15T10:00:00Z",
-  "current_key_hash": "abc123...",
-  "domain": "agent.example.com",
-  "key_history": [
-    {
-      "public_key_hash": "xyz789...",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
-      "signing_algorithm": "ring-Ed25519",
-      "trusted_at": "2024-01-01T00:00:00Z",
-      "first_version": "11111111-1111-1111-1111-111111111111",
-      "last_version": "22222222-2222-2222-2222-222222222222",
-      "status": "rotated"
-    },
-    {
-      "public_key_hash": "abc123...",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
-      "signing_algorithm": "ring-Ed25519",
-      "trusted_at": "2024-01-15T10:00:00Z",
-      "first_version": "33333333-3333-3333-3333-333333333333",
-      "last_version": null,
-      "status": "active"
-    }
-  ]
-}
-```
-
-### Key Status Values
-
-| Status | Description |
-|--------|-------------|
-| `active` | Currently in use for signing |
-| `rotated` | Superseded by newer key, still valid for old signatures |
-| `revoked` | Compromised, signatures should not be trusted |
-| `expired` | Past validity period |
-
-### Looking Up Keys
-
-```rust
-impl TrustedAgent {
-    /// Get the public key that was active for a specific agent version
-    fn get_key_for_version(&self, version: &str) -> Option<&KeyEntry> {
-        self.key_history.iter().find(|entry| {
-            match (&entry.first_version, &entry.last_version) {
-                (Some(first), Some(last)) => {
-                    version >= first && version <= last
-                }
-                (Some(first), None) => {
-                    version >= first  // Current key
-                }
-                _ => false
-            }
-        })
-    }
-
-    /// Get the public key by its hash
-    fn get_key_by_hash(&self, hash: &str) -> Option<&KeyEntry> {
-        self.key_history.iter().find(|e| e.public_key_hash == hash)
-    }
-}
-```
+Retain independently trusted public keys for each exact `agent_id:version`.
+UUID versions are identifiers, not ordered ranges; do not infer key validity
+from UUID comparison.
 
 ## DNS and key versions
 
@@ -369,14 +285,6 @@ When a key is compromised:
 2. **Update DNS** to the trusted replacement key; DNS has no per-key revocation field
 3. **Enforce revocation policy** in the relying application; mathematical validity alone does not establish current trust
 4. **Notify trusted peers** if possible
-
-### Overlap Period
-
-During rotation, both old and new keys may be valid:
-
-- New documents should be signed with the new key
-- Old documents remain verifiable with the old key
-- DNS may advertise both keys during transition
 
 ### Secure Deletion
 

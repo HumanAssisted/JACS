@@ -15,29 +15,11 @@ Prebuilt native bindings are included. A normal install does not require compili
 
 ### Install-time CLI download
 
-The npm `postinstall` script makes an optional network request to the matching
-`cli/vX.Y.Z` GitHub Release. It validates `sha256sums.txt` (with a validated
-per-asset checksum fallback) before downloading the archive, bounds redirects,
-time, bytes, members, and extraction expansion, and installs only a regular
-executable. Remote HTTPS downloads cannot redirect into local HTTP services.
-
-The executable is cached by the exact package version and release platform at
-`$XDG_CACHE_HOME/jacs/bin/<version>/<platform>/` (or the platform cache-home
-equivalent), not inside `node_modules`. Shared package stores therefore cannot
-silently reuse a macOS, Windows, Linux, or older-version binary. Linux musl is
-rejected because no musl CLI asset is published. Unsafe cache symlinks,
-permissions, and pre-existing executable paths fail closed. Library APIs remain
-usable if the platform or network is unsupported; the warning is written to
-stderr.
-
-Use `npm install --ignore-scripts` when install-time network access is not
-allowed. In that mode no CLI is downloaded. Check the optional binary with:
-
-```bash
-npx jacs-cli --diagnose
-```
-
-For a standalone CLI, use `cargo install jacs-cli`.
+Installation optionally downloads a checksummed CLI from the matching GitHub
+release into a cache keyed by version and platform. Use
+`npm install --ignore-scripts` to skip it; library APIs remain available if the
+download fails. No musl CLI asset is published. Run `npx jacs-cli --diagnose`
+to inspect the optional CLI, or install it with `cargo install jacs-cli`.
 
 > **Building for the browser?** Use the published
 > [`@hai.ai/jacs-wasm`](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) package, also at 0.15.0.
@@ -75,26 +57,17 @@ async; selected operations also have a `Sync` variant, such as
 | `verifyStandalone(doc, opts)` | Verify without loading an agent |
 | `createAgreementV2(input)` | Create a standalone Agreement v2 document |
 | `signAgreementV2(doc, role)` | Sign as `signer`, `witness`, or `notary` |
-| `verifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
+| `verifyAgreementV2(doc)` | Inspect Agreement v2 hashes, signatures and claimed status |
 | `audit()` | Run a security audit |
 
 ## Public human-approved document verification
 
-Building from source uses NAPI-RS CLI 3 and requires Node.js `^20.17.0`,
-`^22.13.0` or `>=23.5.0`; the installed addon continues to support Node.js
-20 or newer through Node-API 4. The recorded 0.15.0 release is published;
-subsequent source changes need separate installed-artifact verification.
-
-`npm run build` and the native release profile enable `human-approval-vendored`:
-the existing WebAuthn verifier with OpenSSL compiled into the native module,
-without a separate OpenSSL installation. This configures new builds; it does
-not claim that an older published package has the method. Release gates check
-the installed artifact and reject external OpenSSL linkage. Browser WASM does
-not provide this verifier.
-
-Rust defaults remain unchanged. `npm run build:slim` (and `build:debug`) retains
-the feature-off custom build. `human-approval` alone remains available for
-custom builds intentionally using a system OpenSSL installation.
+`verifyHumanApprovedDocument` requires a native `human-approval` build.
+`npm run build` enables vendored OpenSSL; `build:slim` and `build:debug` omit it.
+The installed addon supports Node 20+; see
+[source build requirements](https://humanassisted.github.io/JACS/native/nodejs/installation.html#requirements).
+This build configuration does not establish availability in older releases.
+Browser WASM does not provide this verifier.
 
 ```javascript
 const { JacsSimpleAgent } = require('@hai.ai/jacs');
@@ -114,8 +87,7 @@ key pins from your application's trusted state, not from the bundle. The
 complete report is returned as JSON. Success confirms retained proof and
 document integrity, **not** permission to execute now: `current` remains
 `not_evaluated`. Live authorization, revocation and one-use checks stay with
-the relying application. Feature-enabled tests require
-`JACS_TEST_HUMAN_APPROVAL=1 npx mocha test/human-approved-document.test.js`.
+the relying application.
 
 ## Request authentication and signed events
 
@@ -207,7 +179,9 @@ import { verifyStandalone } from '@hai.ai/jacs/simple';
 const result = verifyStandalone(signedJson, { keyDirectory: './keys/' });
 ```
 
-Cross-language interop is tested on every commit. Documents signed in Rust or Python verify in Node.js, and Node-signed documents verify in the other bindings.
+JACS uses a shared signed-document format across bindings. See the
+[release evidence](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+for installed-consumer checks and their limits.
 
 ## Agreement v2
 
@@ -241,106 +215,27 @@ The older `createAgreement()` / `signAgreement()` / `checkAgreement()` methods r
 
 ## Framework adapters
 
-Adapters for Vercel AI SDK, Express, Koa, LangChain.js, and MCP are available. Framework dependencies are optional peer dependencies.
+Adapters are available for [Express](https://humanassisted.github.io/JACS/native/nodejs/express.html),
+[Koa](https://humanassisted.github.io/JACS/native/nodejs/koa.html),
+[LangChain.js](https://humanassisted.github.io/JACS/native/nodejs/langchain.html),
+[Vercel AI SDK](https://humanassisted.github.io/JACS/native/nodejs/vercel-ai.html)
+and [MCP](https://humanassisted.github.io/JACS/native/nodejs/mcp.html).
+Framework dependencies are optional peers. Signing fails closed: unsigned
+output is withheld unless an explicit compatibility escape hatch permits it.
+Do not enable those options when signed output is required.
 
-Signing adapters fail closed: if signing is enabled and the signer fails or
-returns no portable `raw` document, the original output is withheld. Express
-and Koa sign JSON scalar responses as well as objects. LangChain rejects
-unexpected tool-output shapes instead of silently returning them. The MCP
-transport signs JSON-RPC error responses as well as successful responses.
+MCP transport verification must also identify the intended peer. Configure
+`expectedPeerAgentId` or `allowedPeerAgentIds`, optionally with an independently
+obtained public-key-hash pin. Signature validity alone is not endpoint
+authentication; see the MCP guide for transport setup and replay handling.
 
-Vercel AI generation provenance includes `signedDocument`, the full portable
-JACS document binding `{ output, metadata }`. Streaming output is buffered up
-to 1 MiB by default and is released only after signing succeeds; configure
-`maxBufferedStreamBytes` (maximum 16 MiB) for a different bounded limit.
-With `a2a: true`, `providerMetadata.jacs.a2a.signedDocument` separately binds
-the exact emitted `agentCard`, and is constructed before buffered output is
-released. That card is the signer's cryptographic self-assertion; configured
-trust and real-world identity still require independent verification.
-
-The escape hatches `allowUnsignedOutput: true`, MCP's
-`allowUnsignedFallback: true`, and Vercel's `allowPostHocStreaming: true` are
-dangerous compatibility options. They must be literal booleans; `strict: true`
-overrides unsigned-output opt-ins, and post-hoc streaming additionally requires
-`allowUnsignedOutput: true`.
-MCP transports normally deliver parsed JSON-RPC objects. Signed traffic therefore
-uses the schema-valid reserved `notifications/jacs/signed` carrier (wire version
-`1`) whose `params.envelope` contains the portable JACS document. The receiver
-strictly validates the carrier, verifies the envelope, and schema-validates the
-recovered JSON-RPC payload before dispatch. Ordinary parsed objects fail closed
-unless `allowUnsignedFallback: true` is explicitly enabled.
-
-MCP signature validity alone proves possession of some resolvable signing key;
-it does not identify the intended endpoint. Configure the peer's exact stable
-`jacsSignature.agentID` on both sides. An optional public-key-hash pin binds one
-key version more tightly:
-
-```typescript
-import { JacsAgent } from '@hai.ai/jacs';
-import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
-
-const localAgent = new JacsAgent();
-await localAgent.load('./jacs.config.json');
-const secureTransport = createJACSTransportProxy(
-  baseTransport,
-  localAgent,
-  'client',
-  {
-    expectedPeerAgentId: '4d177fb9-84e0-421c-a52f-e33dca51e720',
-    expectedPeerPublicKeyHash: '<exact hash obtained out of band>',
-  },
-);
-```
-
-Use `allowedPeerAgentIds: [...]` for an intentional multi-peer transport. With
-neither option, authenticated input is rejected before `onmessage`.
-`dangerouslyAllowAnyValidSigner: true` is a literal-only migration escape hatch:
-it accepts any cryptographically valid signer known to JACS and therefore
-provides proof of key possession, not MCP endpoint authentication. It cannot be
-combined with an identity policy. Signed-carrier failures never fall through to
-the unsigned compatibility path.
-
-Every outbound JSON-RPC request is assigned a cryptographically random wire ID.
-The proxy restores the caller's local ID only for the matching response and
-consumes the mapping once; unknown, expired, replayed, or cross-session response
-IDs fail closed. Pending correlations are bounded and cleared when the transport
-closes.
-
-`JACSA2AIntegration.quickstart({ skills })` retains its source-compatible type
-but non-empty wrapper-supplied skills now fail immediately. Agent Card skills
-are identity-bearing signed data; persist them through the native agent/card
-configuration before generating or serving discovery documents.
-
-Current source `jacsA2AMiddleware()` caches five direct-root discovery documents,
-or six for explicit ES256 compatibility. It refreshes on the first request
-after six days, measured from local generation for direct-root signatures or
-the binding's signed `issuedAt` for ES256. Failed refreshes retry at most once
-per minute. Cached documents remain usable for at most seven days or an
-earlier explicit binding expiry; unavailable discovery returns a non-cacheable
-503. The direct-root deadline is a serving-cache limit, not delegated identity
-authorization. These source changes are not evidence of a new published release.
-
-HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
-awaiting renewal use `no-store`. Explicit ES256 binding expiry is never
-extended automatically: renew authorization and remount to serve a new grant.
-Separate resource requests can straddle renewal even though publication is
-atomic within the process. Verify the card/JWKS and, for ES256, its root-signed
-binding together; refetch on mismatch. These endpoints are not a transactional
-bundle and discovery does not establish independent trust.
-
-`signArtifact()` uses the native canonical A2A signer and returns the direct
-`a2a-*` document; it never wraps the result in a generic `jacs_payload` header
-or falls back to `signRequest()`. It rejects incomplete or legacy-v1 signature
-metadata and requires the returned parent chain to exactly match the caller's
-ordered input; when no parents were requested, only an absent or empty chain is
-accepted. `verifyWrappedArtifact(artifact)` proves the
-artifact signature and parent chain. Pass the real identity-bound Agent Card as
-the second argument when trust-policy assessment is also required; JACS never
-synthesizes an Agent Card from unauthenticated artifact claims. Affirmative A2A
-verification requires the native `verifyA2aArtifactSync()` contract. The
-generic `verifyResponse()` method is never used as an A2A fallback: even a
-literal `true` yields a stable invalid result with blank provenance and cannot
-elevate trust.
+Current-source [A2A discovery](https://humanassisted.github.io/JACS/native/guides/a2a-serve.html)
+serves five direct-root documents, or six for explicit ES256 compatibility.
+Verify the card/JWKS and any root-signed compatibility binding against your
+trust policy; discovery and cache freshness do not establish identity or
+authority. New source behavior is not evidence of a new published release.
+See the [A2A guide](https://humanassisted.github.io/JACS/native/integrations/a2a.html)
+for signed artifacts, parent chains and trust assessment.
 
 ## Instance-based API
 
@@ -353,7 +248,8 @@ const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'example.
 const signed = await client.signMessage({ action: 'approve' });
 ```
 
-See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage, framework adapter examples, and testing utilities.
+See the [API reference](https://humanassisted.github.io/JACS/native/nodejs/api.html)
+and [native development guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md).
 
 ## Links
 

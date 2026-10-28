@@ -15,23 +15,18 @@ when building this checkout.
 python -m pip install jacs==0.15.0
 ```
 
-Prebuilt native bindings are distributed via maturin. A normal install does not require compiling Rust.
+Supported wheels need no Rust toolchain.
 
 ### First use of the `jacs` command
 
-Installing the Python library does not download a CLI. The first invocation of
-the `jacs` command downloads the matching `cli/vX.Y.Z` GitHub Release into an
-exact-version and platform-specific user cache. It fetches `sha256sums.txt`
-first (with a validated per-asset checksum fallback), verifies SHA-256, rejects
-unsafe archive paths, and then executes the cached binary. Linux musl is not a
-published CLI target, so musl systems fail clearly instead of downloading the
-glibc build. Unsupported platforms or failed verification exit nonzero with the
-fallback command `cargo install jacs-cli`. In an active virtual environment the
-Python shim may remain first on `PATH`; invoke Cargo's installed binary directly
-as `~/.cargo/bin/jacs` (or `.cargo\\bin\\jacs.exe` under your Windows user
-profile). If `CARGO_HOME` is set, use its `bin/jacs` executable instead.
+The first `jacs` command downloads the matching CLI release, verifies SHA-256,
+and caches it by version and platform. Importing or using the library downloads
+nothing. No musl CLI archive is published; unsupported platforms or verification
+failures exit nonzero. The fallback is `cargo install jacs-cli`.
 
-Importing or using the Python library performs no CLI download.
+If the Python shim shadows Cargo's binary, invoke `~/.cargo/bin/jacs` directly
+(or `%USERPROFILE%\.cargo\bin\jacs.exe` on Windows). With `CARGO_HOME` set, use
+its `bin` directory instead.
 
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
@@ -64,7 +59,7 @@ password is otherwise retained only in-process. See the
 | `verify_standalone()` | Verify without loading an agent |
 | `create_agreement_v2()` | Create a standalone Agreement v2 document |
 | `sign_agreement_v2()` | Sign as `signer`, `witness`, or `notary` |
-| `verify_agreement_v2()` | Verify Agreement v2 hash, policy, transcript, and status |
+| `verify_agreement_v2()` | Inspect Agreement v2 hashes, signatures and claimed status |
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
@@ -76,11 +71,6 @@ OpenSSL installation. `maturin develop` uses this same profile. This configures
 new builds; it does not claim that an older published wheel has the method.
 Release gates check the installed artifact and reject external OpenSSL linkage.
 Browser WASM does not provide this verifier.
-
-Rust defaults remain unchanged. A minimal custom extension can omit the feature
-using `cargo build -p jacspy --features extension-module,a2a,agreements,attestation`;
-it does not expose this method. `human-approval` alone remains available for
-custom builds intentionally using a system OpenSSL installation.
 
 ```python
 from jacs import SimpleAgent
@@ -97,8 +87,7 @@ key pins from your application's trusted state, not from the bundle. The
 complete report is a dict. Success confirms retained proof and document
 integrity, **not** permission to execute now: `current` remains
 `not_evaluated`. Live authorization, revocation and one-use checks stay with
-the relying application. Feature-enabled tests require
-`JACS_TEST_HUMAN_APPROVAL=1 pytest tests/test_human_approved_document.py`.
+the relying application.
 
 ## Request authentication and signed events
 
@@ -135,28 +124,13 @@ envelope whose `jacs-response-v2` signature covers both payload and metadata.
 `unwrap_signed_event()` is fail-closed: plain events, legacy payload-only
 envelopes, unknown signers, and mutations raise instead of returning data.
 
-Multi-replica consumers should release signed-event payloads through their own
-shared atomic replay store:
-
-```python
-from jacs import unwrap_signed_event_with_replay_store
-
-# store.scope must be "shared". consume(key, ttl_seconds) returns True only
-# for the first atomic consumer and False for a duplicate.
-verified = await unwrap_signed_event_with_replay_store(
-    agent,
-    envelope,
-    server_keys,
-    store,
-)
-```
-
-Native verification and freshness checks run before the store is called and
-return no payload. The helper validates the exact-input digest, consumes the
-native replay key once, rechecks expiry, and only then returns `data` with its
-authenticated signer, timestamp, algorithm, and document ID. Store failures,
-timeouts, invalid results, process-local stores, duplicates, and expiry all fail
-closed with a stable `ReplayError.code`.
+For multi-replica consumers,
+`await unwrap_signed_event_with_replay_store(agent, envelope, server_keys, store)`
+requires an application-owned shared atomic replay store implementing the
+[Python store protocol](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/python/jacs/replay.py). It fails closed on
+duplicates, expiry or store failure. See [replay-store deployment](https://humanassisted.github.io/JACS/native/advanced/security.html#replay-store-deployment)
+and the [signed-event contract](https://humanassisted.github.io/JACS/native/advanced/security.html#signed-response-and-event-contract)
+before releasing verified payloads.
 
 The `server_keys` object is a trust decision, not discovery: each key must be
 pinned or resolved under the application's configured policy. Successful
@@ -206,7 +180,9 @@ The same methods are available on the instance-based `JacsClient` for multi-agen
 result = jacs.verify_standalone(signed_json, key_directory="./keys")
 ```
 
-Cross-language interop is tested on every commit. Documents signed in Rust or Node.js verify in Python, and Python-signed documents verify in the other bindings.
+JACS uses a shared signed-document format across bindings. See the
+[release evidence](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+for installed-consumer checks and their limits.
 
 ## Agreement v2
 
@@ -239,29 +215,7 @@ Agreement v2 inspection checks signatures and claimed status; `valid` and
 `policyAccepted` remain false because this is not application consent-policy
 acceptance. Do not authorize an action from these mathematical checks alone.
 
-The same operations are available as module-level functions once an agent is loaded (`quickstart()` / `create()` / `load()`), matching Node's `@hai.ai/jacs/simple` surface:
-
-```python
-import jacs.simple as jacs
-
-jacs.quickstart(name="my-agent", domain="agent.example.com")
-agent_id = jacs.get_agent_info().agent_id
-
-agreement = jacs.create_agreement_v2({
-    "title": "Refund approval",
-    "description": "Approval for a bounded refund.",
-    "terms": "Refund up to $25 for order 123.",
-    "status": "proposed",
-    "parties": [{"agentId": agent_id, "agentType": "ai", "role": "signer"}],
-    "signaturePolicy": {"partyQuorum": "all", "witnessRequired": 0, "notaryRequired": 0},
-    "controllers": [agent_id],
-})
-
-signed = jacs.sign_agreement_v2(agreement, "signer")
-report = jacs.verify_agreement_v2(signed)
-assert report["mathematicalChecksValid"]
-assert report["policyAccepted"] is False
-```
+The same methods are available on `jacs.simple` after `quickstart()` or `load()`.
 
 Verifying another agent's agreement signature requires that agent's public key, so distinct agents must share a `data_directory` or exchange public keys; ephemeral agents verify only their own signatures.
 
@@ -277,22 +231,11 @@ pip install jacs[a2a]          # A2A protocol
 pip install jacs[all]          # Everything
 ```
 
-Current source `jacs.a2a_server.jacs_a2a_routes()` caches five direct-root discovery documents,
-or six for explicit ES256 compatibility. It refreshes on the first request
-after six days, measured from local generation for direct-root signatures or
-the binding's signed `issuedAt` for ES256. Failed refreshes retry at most once
-per minute. Cached documents remain usable for at most seven days or an
-earlier explicit binding expiry; unavailable discovery returns a non-cacheable
-503. The direct-root deadline is a serving-cache limit, not delegated identity
-authorization. These source changes are not evidence of a new published release.
-
-HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
-awaiting renewal use `no-store`. Explicit ES256 binding expiry is never
-extended automatically: renew authorization and remount to serve a new grant.
-Separate resource requests can straddle renewal even though publication is
-atomic within the process. Verify the card/JWKS and, for ES256, its root-signed
-binding together; refetch on mismatch. These endpoints are not a transactional
-bundle and discovery does not establish independent trust.
+Current-source [A2A routes](https://humanassisted.github.io/JACS/native/guides/a2a-serve.html)
+serve five direct-root discovery documents, or six for explicit ES256.
+Verify the card/JWKS and any root-signed compatibility binding under your trust
+policy; discovery and cache freshness do not establish authority. The guide
+covers renewal and expiry. New source behavior is not publication evidence.
 
 ## Instance-based API
 

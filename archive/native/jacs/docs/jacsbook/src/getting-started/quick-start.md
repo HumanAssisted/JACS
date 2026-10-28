@@ -111,22 +111,13 @@ JACS embeds the signature in PNG, JPEG, or WebP metadata. See [Image and Media S
 
 ## Native password bootstrap
 
-The compatibility CLI needs a password source before it can sign:
+Choose one explicit password source for `jacs-compat`: the host-provided
+`JACS_PRIVATE_KEY_PASSWORD`, or `JACS_PASSWORD_FILE` pointing to a protected
+secret file. Setting both is an error. When neither is set, the native CLI can
+use the OS keychain; see [password and keychain setup](../reference/cli-commands.md#jacs-compat-keychain).
 
-```bash
-# CI/server
-export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
-
-# Developer workstation
-jacs-compat keychain set --agent-id <YOUR_AGENT_UUID>
-
-# File-based secret
-export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
-```
-
-If both `JACS_PRIVATE_KEY_PASSWORD` and `JACS_PASSWORD_FILE` are set, the CLI fails fast to avoid ambiguity. The OS keychain is only consulted when neither environment source is set.
-
-Python and Node quickstart can auto-generate a secure password if `JACS_PRIVATE_KEY_PASSWORD` is unset. In production, set `JACS_PRIVATE_KEY_PASSWORD` explicitly.
+Python and Node quickstart can generate a password in-process. Retain it through
+your host secret source for later processes; see the language quickstart guide.
 
 ## Algorithm
 

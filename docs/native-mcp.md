@@ -1,10 +1,8 @@
 # Extended CLI and MCP profiles
 
 The primary entry point is `jacs mcp`, from `cargo install jacs-cli`.
-Both JACS command-line programs are written in Rust. The focused `jacs` binary
-provides portable signing, verification, encrypted keys and MCP. The extended
-`jacs-compat` binary provides the broader integration commands, including
-agreements, A2A, text/media, attestations and trust operations:
+The extended `jacs-compat` binary adds native integration commands for
+agreements, A2A, text/media, attestations and trust:
 
 ```sh
 cargo install jacs-cli-compat --locked
@@ -16,15 +14,11 @@ jacs-compat mcp
 | `jacs-cli` | `jacs` | Portable document/key operations and focused MCP |
 | `jacs-cli-compat` | `jacs-compat` | Extended integration commands and its separately scoped MCP server |
 
-The 0.15 package split isolates the portable dependency graph from the broader
-integration dependencies. It does not make either program a different
-language, and it does not deprecate the direct libraries. Email signing is
-available through the Rust library; there is no dedicated email CLI command.
+Email signing is Rust-library only; there is no dedicated email CLI command.
 
 From this checkout, `make build-jacs-compat` builds that binary and
 `make mcp-compat` starts it without writing Make output to protocol stdout.
-It uses the separate `archive/native` workspace; the portable dependency graph
-is unchanged.
+These commands select the separate native workspace.
 
 | Server/profile | Runtime tools | Required host configuration |
 |---|---|---|
@@ -54,13 +48,8 @@ content directory; config and key directories cannot be used as content roots.
 The selected process can sign as this agent; it does not provide per-call human
 approval. Ordinary HAI photo policy remains an application decision.
 
-The 42-name native contract is a compiled inventory. A2A, attestation, trust
-administration, W3C signing and key administration are not all enabled by
-`local-sign`. `trust-admin` and `legacy-core` still refuse startup because the
-capability/status/approval broker they require is absent. Preparing a broader
-profile means implementing that authority boundary and testing advertisement,
-dispatch, revocation and expiry together. Adding names to an allowlist would
-bypass that requirement.
+Only the selected profile's tools are callable. The 42-name compiled contract
+includes unavailable tools; `trust-admin` and `legacy-core` refuse startup.
 
 See the [extended MCP protocol and authorization details](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md).
 `make test-jacs-mcp-compat` exercises the native profiles and contract with

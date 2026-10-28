@@ -1,6 +1,7 @@
 # Agreements
 
-Agreement v2 is the recommended CLI workflow for agreement documents. It creates standalone `jacsType: "agreement"` artifacts with terms, parties, signature policy, transcript references, notary support, and verifiable status.
+The native CLI retains Agreement v2 for creating and inspecting standalone
+`jacsType: "agreement"` documents. Its checks do not accept consent policy.
 
 ## Agreement v2
 
@@ -18,13 +19,16 @@ jacs-compat agreement-v2 sign --agreement signed-by-a.json --role signer > signe
 jacs-compat agreement-v2 sign --agreement signed-by-b.json --role notary > final.json
 ```
 
-Verify before acting on status:
+Inspect signatures and claimed status:
 
 ```bash
 jacs-compat agreement-v2 verify --agreement final.json
 ```
 
-The verifier recomputes the agreement hash, transcript hash, role counts, quorum, witness/notary requirements, and header/controller invariants.
+The verifier inspects hashes, transcript and claimed party/status metadata.
+It always reports `valid=false` and `policyAccepted=false`, so the CLI
+verification command exits nonzero. Do not authorize an action from claimed
+status or signature counts.
 
 ## Mutations
 
@@ -76,7 +80,10 @@ jacs-compat document sign-agreement -f ./document-with-agreement.json
 jacs-compat document check-agreement -f ./document-with-agreement.json
 ```
 
-These commands manage a `jacsAgreement` sidecar on an arbitrary document. Use them for simple countersignature metadata. Use `agreement-v2` for new product workflows.
+These commands inspect `jacsAgreement` countersignatures. Neither v1 nor v2
+authenticates the complete consent policy. New portable
+consent uses [Agreement v3](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html);
+this is not a CLI command.
 
 ## Exporting as a Verifiable Credential
 

@@ -4,40 +4,12 @@ Complete API documentation for the `jacs` Python package.
 
 For most use cases, the **[Simplified API](simple-api.md)** (`jacs.simple`) and **[JacsClient](simple-api.md)** (instance-based, multiple agents) are recommended. This page documents the lower-level `JacsAgent` class and module-level functions.
 
-## Installation
-
-```bash
-pip install jacs
-```
-
-## Core Module
-
-```python
-import jacs
-from jacs import JacsAgent
-```
-
----
+See [installation](installation.md) for package and platform requirements.
 
 ## JacsAgent Class
 
-The `JacsAgent` class is the primary interface for JACS operations. Each instance maintains its own state and can be used independently, allowing multiple agents in the same process.
-
-### Constructor
-
-```python
-JacsAgent()
-```
-
-Creates a new empty JacsAgent instance. Call `load()` to initialize with a configuration.
-
-**Example:**
-```python
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')
-```
-
----
+`JacsAgent()` creates an independent empty instance. Call `load()` with an
+existing configuration before document operations.
 
 ### agent.load(config_path)
 
@@ -51,6 +23,9 @@ for metadata or `export_agent()` for the loaded public identity.
 
 **Example:**
 ```python
+import json
+import jacs
+
 agent = jacs.JacsAgent()
 agent.load('./jacs.config.json')
 print('Agent loaded:', json.loads(agent.export_agent())['jacsId'])

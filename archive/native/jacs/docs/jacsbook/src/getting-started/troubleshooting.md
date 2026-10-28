@@ -40,7 +40,7 @@ cp jacs.config.example.json jacs.config.json
 
 ### Private key decryption failed
 
-Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may also set `JACS_PASSWORD_FILE` to a file that contains only the password, or use `jacs-compat keychain set` to store the password in the OS keychain. Set exactly one explicit source; if both env var and password file are set, CLI fails by design. The OS keychain is only consulted when neither env var nor password file is present.
+Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For `jacs-compat`, you may also set `JACS_PASSWORD_FILE` to a file that contains only the password, or use `jacs-compat keychain set` to store the password in the OS keychain. Set exactly one explicit source; if both env var and password file are set, CLI fails by design. The OS keychain is only consulted when neither env var nor password file is present.
 
 ### Algorithm detection failed
 

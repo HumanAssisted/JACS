@@ -99,7 +99,7 @@ fields. Plain events, unknown signers, legacy payload-only envelopes, and any
 mutation are errors. Verification proves control of the key pinned for that
 signer ID; real-world identity still depends on the caller's trust policy.
 
-The no-argument `protocol::build_auth_header` remains available for source
+The legacy request-unbound `protocol::build_auth_header` remains available for source
 compatibility and logs every use at WARN. Strict deployments can reject it with
 `JACS_REJECT_UNBOUND_AUTH_HEADER=true`.
 

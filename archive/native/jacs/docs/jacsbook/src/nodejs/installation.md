@@ -2,358 +2,85 @@
 
 {{#include ../_snippets/node-registry-status.md}}
 
-The JACS Node.js package (`@hai.ai/jacs`) provides JavaScript/TypeScript
-bindings to the JACS Rust library for servers and other Node.js projects. It is
-a native `.node` package and does not run in a browser; see the published
-[`@hai.ai/jacs-wasm`](../wasm/building.md) package for browser applications.
+`@hai.ai/jacs` is a native Node.js package. Browser applications use
+[`@hai.ai/jacs-wasm`](../wasm/building.md).
 
 ## Requirements
 
-- **Node.js**: Version 20.0 or higher
-- **npm** or **yarn**: For package management
-- **Native addons**: macOS x64/arm64; Linux x64/arm64 for glibc and musl.
-  No Windows addon is published; use a matching Linux environment under WSL.
-- **Source builds**: NAPI-RS CLI 3 requires Node `^20.17.0`, `^22.13.0` or `>=23.5.0`.
+- Node.js 20 or newer.
+- Published addons: macOS x64/arm64 and Linux x64/arm64 for glibc and musl.
+  No native Windows addon is published; WSL needs a matching Linux build.
+- Source builds with NAPI-RS CLI 3: Node `^20.17.0`, `^22.13.0` or `>=23.5.0`,
+  plus Rust 1.97 and a platform C toolchain.
 
 ## Installation
 
-### Using npm
 ```bash
-npm install @hai.ai/jacs
+npm install --save-exact @hai.ai/jacs@0.15.0
 ```
 
-### Using yarn
-```bash
-yarn add @hai.ai/jacs
-```
-
-### Using pnpm
-```bash
-pnpm add @hai.ai/jacs
-```
+The package includes prebuilt bindings. Its optional install script downloads a
+checksummed portable CLI; `npm install --ignore-scripts` skips that download.
+The library remains usable without the CLI. See the
+[package README](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md#install-time-cli-download)
+for details.
 
 ## Verify Installation
 
-Create a simple test to verify everything is working:
+Save as `test.mjs` and run `node test.mjs`:
 
 ```javascript
-// test.mjs
-import { JacsAgent } from '@hai.ai/jacs';
+import * as jacs from '@hai.ai/jacs/simple';
 
-console.log('JACS Node.js bindings loaded successfully!');
-
-// Test basic functionality (async API)
-try {
-  const agent = new JacsAgent();
-  await agent.load('./jacs.config.json');
-  console.log('Agent loaded successfully!');
-} catch (error) {
-  console.error('Error loading agent:', error);
-}
+await jacs.quickstart({ name: 'my-agent', domain: 'my-agent.example.com' });
+const signed = await jacs.signMessage({ hello: 'world' });
+const result = await jacs.verify(signed.raw);
+if (!result.valid) throw new Error('signature verification failed');
+console.log('Verified signer:', result.signerId);
 ```
 
-Run the test:
-```bash
-node test.mjs
-```
+{{#include ../_snippets/quickstart-persistent-agent.md}}
+
+New identities default to `pq2025` (ML-DSA-87), without classical fallback.
+Ed25519 is an explicit compatibility choice.
 
 ## Package Structure
 
-The `@hai.ai/jacs` package exposes these entry points:
+TypeScript declarations are included. Choose the API for your application:
 
-### Core and simple API
-```javascript
-import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
-import * as jacs from '@hai.ai/jacs/simple';  // quickstart, load, signMessage, verify, etc.
-```
+| Import | Use |
+| --- | --- |
+| `@hai.ai/jacs/simple` | One process-wide signing session |
+| `@hai.ai/jacs/client` | Independent `JacsClient` instances |
+| `@hai.ai/jacs` | Lower-level `JacsAgent` and `JacsSimpleAgent` APIs |
+| `@hai.ai/jacs/mcp` | Signed MCP transports and tool registration |
+| `@hai.ai/jacs/express`, `@hai.ai/jacs/koa` | HTTP framework middleware |
 
-### Instance-based client (recommended for new code)
-```javascript
-import { JacsClient } from '@hai.ai/jacs/client';
-```
+See the [simple API](simple-api.md), [instance usage](basic-usage.md) and
+[API reference](api.md) for method signatures and async/sync variants.
 
-### MCP (`@hai.ai/jacs/mcp`)
-```javascript
-import { createJACSTransportProxy, createJACSTransportProxyAsync, registerJacsTools } from '@hai.ai/jacs/mcp';
-```
+## Configuration and storage
 
-### HTTP / framework adapters
-```javascript
-import { jacsMiddleware } from '@hai.ai/jacs/express';
-import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
-import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';  // legacy
-```
+Use `quickstart()` to create a persistent identity, or `load(configPath)` for
+an existing one. See [configuration](../reference/configuration.md) for paths,
+password sources and environment settings, and [storage](../advanced/storage.md)
+for backends. Selecting a backend in config does not add a missing build feature;
+AWS/S3 requires a custom source build with the Rust `s3` feature enabled.
 
-## TypeScript Support
+## Troubleshooting
 
-The package includes full TypeScript definitions:
-
-```typescript
-import { JacsAgent, createConfig, hashString } from '@hai.ai/jacs';
-
-// Create an agent instance
-const agent: JacsAgent = new JacsAgent();
-
-// Load configuration from file (async)
-await agent.load('./jacs.config.json');
-
-// Use utility functions
-const hash: string = hashString('some data');
-
-// Create a configuration string
-const configJson: string = createConfig(
-  undefined,           // jacs_use_security
-  './jacs_data',       // jacs_data_directory
-  './jacs_keys',       // jacs_key_directory
-  undefined,           // jacs_agent_private_key_filename
-  undefined,           // jacs_agent_public_key_filename
-  'ring-Ed25519',      // jacs_agent_key_algorithm
-  undefined,           // jacs_private_key_password
-  undefined,           // jacs_agent_id_and_version
-  'fs'                 // jacs_default_storage
-);
-```
-
-## Configuration
-
-### Basic Configuration
-```javascript
-const config = {
-  // Required fields
-  jacs_data_directory: "./jacs_data",      // Where documents are stored
-  jacs_key_directory: "./jacs_keys",       // Where keys are stored
-  jacs_default_storage: "fs",              // Storage backend
-  jacs_agent_key_algorithm: "ring-Ed25519",     // Signing algorithm
-
-  // Optional fields
-  jacs_agent_id_and_version: null,         // Existing agent to load
-  jacs_agent_private_key_filename: "private.pem",
-  jacs_agent_public_key_filename: "public.pem"
-};
-```
-
-### Configuration File
-
-Create a `jacs.config.json` file:
-
-```json
-{
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-  "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys",
-  "jacs_default_storage": "fs",
-  "jacs_agent_key_algorithm": "ring-Ed25519"
-}
-```
-
-Load the configuration:
-```javascript
-import { JacsAgent } from '@hai.ai/jacs';
-
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
-```
-
-### Environment Variables
-
-JACS reads environment variables that override configuration file settings:
-
-```bash
-export JACS_DATA_DIRECTORY="./production_data"
-export JACS_KEY_DIRECTORY="./production_keys"
-export JACS_AGENT_KEY_ALGORITHM="ring-Ed25519"
-export JACS_DEFAULT_STORAGE="fs"
-```
-
-## Storage Backends
-
-Configure storage in `jacs.config.json`:
-
-### File System (Default)
-```json
-{
-  "jacs_default_storage": "fs",
-  "jacs_data_directory": "./jacs_data",
-  "jacs_key_directory": "./jacs_keys"
-}
-```
-
-### Local Indexed SQLite
-```json
-{
-  "jacs_default_storage": "rusqlite"
-}
-```
-
-Use `rusqlite` when you want local full-text search and the upgraded `DocumentService` behavior in bindings and MCP.
-
-### AWS Storage
-```json
-{
-  "jacs_default_storage": "aws"
-}
-```
-
-AWS credentials are read from standard AWS environment variables.
-
-### Memory Storage (Testing)
-```json
-{
-  "jacs_default_storage": "memory"
-}
-```
-
-## Cryptographic Algorithms
-
-### ring-Ed25519 (Recommended)
-```json
-{
-  "jacs_agent_key_algorithm": "ring-Ed25519"
-}
-```
-
-**Pros**: Fast, secure, small signatures
-**Cons**: Requires elliptic curve support
-
-### pq2025 (Post-Quantum)
-```json
-{
-  "jacs_agent_key_algorithm": "pq2025"
-}
-```
-
-**Pros**: FIPS-204 ML-DSA-87 post-quantum signatures
-**Cons**: Larger signatures than Ed25519
-
-## Development Setup
-
-### Project Structure
-```
-my-jacs-project/
-├── package.json
-├── jacs.config.json
-├── src/
-│   ├── agent.js
-│   ├── tasks.js
-│   └── agreements.js
-├── jacs_data/
-│   ├── agents/
-│   ├── tasks/
-│   └── documents/
-└── jacs_keys/
-    ├── private.pem
-    └── public.pem
-```
-
-### Package.json Setup
-```json
-{
-  "name": "my-jacs-app",
-  "version": "1.0.0",
-  "type": "module",
-  "dependencies": {
-    "@hai.ai/jacs": "0.15.0",
-    "express": "^4.18.0"
-  },
-  "scripts": {
-    "start": "node src/app.js",
-    "test": "node test/test.mjs",
-    "dev": "nodemon src/app.js"
-  }
-}
-```
-
-### Basic Application
-```javascript
-// src/app.js
-import { JacsAgent } from '@hai.ai/jacs';
-
-async function main() {
-  const agent = new JacsAgent();
-  await agent.load('./jacs.config.json');
-
-  const documentJson = JSON.stringify({
-    title: "My First Document",
-    content: "Hello from Node.js!"
-  });
-
-  const signedDoc = await agent.createDocument(documentJson);
-  console.log('Document created:', signedDoc);
-
-  const isValid = await agent.verifyDocument(signedDoc);
-  console.log('Document valid:', isValid);
-  console.log('JACS agent ready!');
-}
-main().catch(console.error);
-```
-
-## Common Issues
-
-### Module Not Found
-If you get `Module not found` errors:
-
-```bash
-# Check Node.js version
-node --version  # Should be 20+
-
-# Clear node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Permission Errors
-If you get permission errors accessing files:
-
-```bash
-# Check directory permissions
-ls -la jacs_data/ jacs_keys/
-
-# Fix permissions
-chmod 755 jacs_data/ jacs_keys/
-chmod 600 jacs_keys/*.pem
-```
-
-### Binary Compatibility
-If you get binary compatibility errors:
-
-```bash
-# Rebuild native modules
-npm rebuild
-
-# Or reinstall
-npm uninstall @hai.ai/jacs
-npm install @hai.ai/jacs
-```
-
-### TypeScript Issues
-If TypeScript can't find definitions:
-
-```json
-// tsconfig.json
-{
-  "compilerOptions": {
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
-  }
-}
-```
+- Check `node --version` and match the addon's OS, architecture and libc.
+  `npm rebuild` cannot supply an unpublished target. For a custom build, use
+  `make build-jacsnpm` from the repository root; see the
+  [native development guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md).
+- Keep config and key directories private and writable by the signing user.
+  For decryption errors, check the password source before replacing keys.
+- Use `.mjs` or `"type": "module"` for examples with `import` and top-level
+  `await`. Type declarations ship with the package; use a module-resolution
+  mode compatible with your Node/TypeScript toolchain.
 
 ## Next Steps
 
-Now that you have JACS installed:
-
-1. **[Basic Usage](basic-usage.md)** - Learn core JACS operations
-2. **[MCP Integration](mcp.md)** - Add Model Context Protocol support
-3. **[HTTP Server](http.md)** - Create JACS HTTP APIs
-4. **[Express Middleware](express.md)** - Integrate with Express.js
-5. **[API Reference](api.md)** - Complete API documentation
-
-## Examples
-
-Check out the complete examples in the [examples directory](../examples/nodejs.md):
-
-- Basic agent creation and task management
-- Express.js middleware integration
-- MCP server implementation
-
+- [MCP integration](mcp.md)
+- [Express](express.md), [Koa](koa.md), [LangChain.js](langchain.md) and [Vercel AI SDK](vercel-ai.md)
+- [Examples](../examples/nodejs.md)

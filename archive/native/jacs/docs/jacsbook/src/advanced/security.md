@@ -1,11 +1,12 @@
 # Security Model
 
-JACS implements a comprehensive security model designed to ensure authenticity, integrity, and non-repudiation for all agent communications and documents.
+JACS verifies signed data under selected keys. Applications establish identity,
+trust and authorization around that cryptographic evidence.
 
 ## Security Model (v0.6.0+)
 
 - **Passwords**: The private key password can be provided via `JACS_PRIVATE_KEY_PASSWORD` environment variable, `JACS_PASSWORD_FILE`, or the OS keychain (macOS Keychain / Linux Secret Service). It is never stored in config files.
-- **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.
+- **Keys**: New private-key envelopes use AES-256-GCM with Argon2id. Legacy PBKDF2 envelopes remain readable; public keys and config may be stored on disk.
 - **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, `.`, `..`, null bytes, and Windows drive-prefixed paths.
 - **Trust ID canonicalization**: Trust-store operations normalize canonical agent docs (`jacsId` + `jacsVersion`) into a safe `UUID:VERSION_UUID` identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.
 - **Filesystem schema policy**: Local schema loading is disabled by default and requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`. When enabled, schema paths must remain within configured roots (`JACS_DATA_DIRECTORY` and/or `JACS_SCHEMA_DIRECTORY`) after normalized/canonical path checks.
@@ -45,19 +46,9 @@ Ed25519 can explicitly upgrade to `pq2025`, while PQ-to-Ed25519 downgrade is rej
 
 ### 2. Document Integrity
 
-All documents include cryptographic guarantees:
-
-- **Signature**: Cryptographic signature over specified fields
-- **Hash**: SHA-256 hash of document contents
-- **Version Tracking**: Immutable version history
-
-### 3. Non-Repudiation
-
-Signatures provide proof of origin:
-
-- Agents cannot deny signing a document
-- Timestamps record when signatures were made
-- Public keys enable independent verification
+Signatures and hashes protect the signed bytes under the selected public key.
+Version IDs do not establish a complete history, and signer-supplied timestamps
+do not prove an independent signing time or real-world authorship.
 
 ## Security Audit (`audit()`)
 
@@ -347,7 +338,8 @@ jacs_keys/
 
 **Encryption at Rest**:
 
-Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-SHA256 (600,000 iterations). Never store the password in config files.
+New keys use the V2 AES-256-GCM/Argon2id envelope; PBKDF2 envelopes are read-only
+compatibility. Never store the password in config files.
 
 ```bash
 # Option 1: Environment variable (recommended for CI/servers)
@@ -646,33 +638,12 @@ except AgentNotTrusted as e:
 
 ## Agreement Security
 
-Multi-party agreements provide additional security:
-
-### Agreement Structure
-
-```json
-{
-  "jacsAgreement": {
-    "agentIDs": ["agent-1", "agent-2", "agent-3"],
-    "signatures": [
-      {
-        "agentID": "agent-1",
-        "signature": "...",
-        "responseType": "agree",
-        "date": "2024-01-15T10:00:00Z"
-      }
-    ]
-  },
-  "jacsAgreementHash": "hash-at-agreement-time"
-}
-```
-
-### Agreement Guarantees
-
-1. **Content Lock**: `jacsAgreementHash` ensures all parties agreed to same content
-2. **Individual Consent**: Each signature records explicit agreement
-3. **Response Types**: Support for agree, disagree, or reject
-4. **Timestamp**: Records when each party signed
+Legacy v1 sidecars inspect present payload signatures without authenticating
+participant, role, quorum, question or context policy. Native Agreement v2 also
+reports inspection only; mathematical validity is not consent-policy acceptance.
+See the [Agreement v2 boundary](../guides/agreement-v2.md). New portable consent
+uses [Agreement v3](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html),
+followed by application authorization.
 
 ## Request/Response Security
 

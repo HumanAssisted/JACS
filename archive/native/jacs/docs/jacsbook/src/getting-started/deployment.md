@@ -1,23 +1,9 @@
 # Deployment Compatibility
 
-JACS has several distribution surfaces, with a coordinated version and
-different target coverage. This page distinguishes four different
-claims:
-
-- **Source-compilable:** the repository has a build path for the target. The
-  consumer may still need Rust, a C toolchain, system headers, and network
-  access to dependency registries.
-- **Prebuilt:** the public registry or GitHub release contained a native
-  artifact for the target at the observation date.
-- **CI-tested:** project CI compiled or tested source on that runner. A
-  cross-compiled binary is only a build result, not a runtime test.
-- **Runtime-smoked:** CI executed or imported the packaged artifact on that
-  target. This is narrower than full feature testing.
-
-The current [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-records verified 0.15.0 artifacts across all 17 Rust crates, CLI, native npm,
-PyPI, Go and browser npm. It links exact checksums, provenance and consumer
-checks. Later source changes require separate release evidence.
+The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+records verified 0.15.0 packages, platforms, checksums and provenance. Prebuilt,
+CI-tested and runtime-tested coverage differ; source compilation alone does not
+establish them. Later source changes need separate release evidence.
 
 ## Declared toolchain baselines
 

@@ -32,7 +32,6 @@ does not independently establish a person's identity or authority.
 the defaults. Strict mode must be selected explicitly, except that verified
 claims force strict, required validation.
 
-**Verified claims override**: Agents with `jacsVerificationClaim` set to a verified level automatically use `validate=true, strict=true, required=true` regardless of flags.
 
 ## Security Model Assumptions
 

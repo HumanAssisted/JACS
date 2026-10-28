@@ -109,7 +109,7 @@ interface ProvenanceOptions {
   client: JacsClient;                  // Required: initialized JacsClient
   signText?: boolean;                  // Sign generated text (default: true)
   signToolResults?: boolean;           // Sign tool call results (default: true)
-  strict?: boolean;                    // Throw on signing failure (default: false)
+  strict?: boolean;                    // Enforce signing; override unsigned-output opt-ins
   metadata?: Record<string, unknown>;  // Extra metadata in provenance records
 }
 ```
@@ -185,7 +185,9 @@ const toolProvenance = providerMetadata?.jacs?.toolResults;
 
 ## Strict Mode
 
-By default, signing failures are logged but do not throw. Enable `strict` to throw on failure:
+Signing fails closed by default: a failed signature withholds the output.
+`strict: true` also overrides explicit unsigned-output compatibility opt-ins.
+Do not enable unsigned or post-hoc streaming options when signed output is required:
 
 ```typescript
 const model = withProvenance(openai('gpt-4'), {

@@ -1,10 +1,10 @@
 # Simplified API
 
-The simplified API (`jacs.simple`) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.
+`jacs.simple` provides one process-wide session for signing and verification.
 
 ## Quick Start
 
-Zero-config -- one call to start signing:
+Create or load a persistent agent:
 
 ```python
 import jacs.simple as jacs
@@ -28,20 +28,15 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 
 ## When to Use the Simplified API
 
-| Simplified API | JacsAgent Class |
-|----------------|-----------------|
-| Quick prototyping | Multiple agents in one process |
-| Scripts and CLI tools | Complex multi-document workflows |
-| MCP tool implementations | Fine-grained control |
-| Single-agent applications | Custom error handling |
-
----
+Use `jacs.simple` for one agent per process, `JacsClient` for independent agents,
+and lower-level `JacsAgent` when you need direct document/config control.
 
 ## API Reference
 
 ### quickstart(name, domain, description=None, algorithm=None, config_path=None)
 
-Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is unset, Python quickstart auto-generates a secure password in-process (`JACS_SAVE_PASSWORD_FILE=true` persists it to `./jacs_keys/.jacs_password`). Call this once before `sign_message()` or `verify()`.
+Create or load a persistent agent. See the Quick Start above for password
+handling; call this before signing or verifying.
 
 **Parameters:**
 - `name` (str, required): Agent name used for first-time creation.
@@ -521,66 +516,18 @@ print(pem)
 
 ## Type Definitions
 
-All types are Python dataclasses for convenient access:
+These result types provide attributes for common operations:
 
-### AgentInfo
+| Type | Key attributes |
+| --- | --- |
+| `AgentInfo` | `agent_id`, `version`, `config_path`, `public_key_path` |
+| `SignedDocument` | `document_id`, `version`, `signer_id`, `payload`, `raw_json`; `raw` aliases `raw_json` |
+| `VerificationResult` | `valid`, `signer_id`, `timestamp`, `errors`, `attachments` |
+| `Attachment` | `filename`, `mime_type`, `content_hash`, optional `content`, `size_bytes` |
 
-```python
-@dataclass
-class AgentInfo:
-    agent_id: str       # Agent's UUID
-    config_path: str    # Path to loaded config
-    public_key_path: Optional[str] = None  # Path to public key file
-```
-
-### SignedDocument
-
-```python
-@dataclass
-class SignedDocument:
-    raw: str            # Full JSON document with signature
-    document_id: str    # Document's UUID (jacsId)
-    agent_id: str       # Signing agent's ID
-    timestamp: str      # ISO 8601 timestamp
-```
-
-### VerificationResult
-
-```python
-@dataclass
-class VerificationResult:
-    valid: bool                  # True if signature verified
-    signer_id: Optional[str]     # Agent who signed
-    timestamp: Optional[str]     # When it was signed
-    attachments: List[Attachment]  # File attachments
-    errors: List[str]            # Error messages if invalid
-```
-
-### Attachment
-
-```python
-@dataclass
-class Attachment:
-    filename: str       # Original filename
-    mime_type: str      # MIME type
-    content_hash: str   # SHA-256 hash of file content
-    content: Optional[str] = None  # Base64-encoded content (if embedded)
-    size_bytes: int = 0 # Size of the original file
-```
-
-### Exceptions
-
-```python
-class JacsError(Exception):
-    """Base exception for JACS errors."""
-    pass
-
-class AgentNotLoadedError(JacsError):
-    """Raised when an operation requires a loaded agent."""
-    pass
-```
-
----
+See the [type definitions](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/python/jacs/types.py)
+for constructors, defaults and aliases, and [error handling](#error-handling)
+for exceptions. Signer timestamps are claims, not an independent time authority.
 
 ## Complete Example
 
