@@ -147,10 +147,10 @@ client session.
 
 ## Example Paths In This Repo
 
-- `jacspy/examples/mcp/server.py`
-- `jacspy/examples/mcp/client.py`
-- `jacspy/examples/mcp_server.py`
-- `jacspy/tests/test_adapters_mcp.py`
+- `archive/native/jacspy/examples/mcp/server.py`
+- `archive/native/jacspy/examples/mcp/client.py`
+- `archive/native/jacspy/examples/mcp_server.py`
+- `archive/native/jacspy/tests/test_adapters_mcp.py`
 
 ## When To Use Adapters Instead
 

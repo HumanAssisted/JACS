@@ -20,7 +20,7 @@ Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existi
 
 | Domain | New surface |
 |--------|------------|
-| CLI | `jacs sign-text`, `jacs verify-text`, `jacs sign-image`, `jacs verify-image`, `jacs extract-media-signature` |
+| CLI | `jacs-compat sign-text`, `jacs-compat verify-text`, `jacs-compat sign-image`, `jacs-compat verify-image`, `jacs-compat extract-media-signature` |
 | Python (`jacs.simple` / `JacsClient`) | `sign_text`, `verify_text`, `sign_image`, `verify_image`, `extract_media_signature` |
 | Node (`@hai.ai/jacs/simple` / `JacsClient`) | `signText`, `verifyText`, `signImage`, `verifyImage`, `extractMediaSignature` |
 | Go (`jacsgo`) | `SignText`, `VerifyText`, `SignImage`, `VerifyImage`, `ExtractMediaSignature` |
@@ -58,7 +58,7 @@ Python / Node / Go bindings are unaffected — their error types are not exhaust
 
 `verify-text` and `verify-image` are **new commands** in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); `--strict` opts in to error-on-missing.
 
-No existing command (`jacs verify`, `jacs document verify`, etc.) changes its exit codes or its return shape.
+No existing command (`jacs-compat verify`, `jacs-compat document verify`, etc.) changes its exit codes or its return shape.
 
 ## Migrating Node.js from 0.6.x to 0.7.0
 
@@ -283,7 +283,7 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 3. **Verify Existing Documents:**
    ```bash
-   jacs document verify -d ./jacs_data/documents/
+   jacs-compat document verify -d ./jacs_data/documents/
    ```
 
 ## Migrating Storage Backends
@@ -318,7 +318,7 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 5. **Verify Migration:**
    ```bash
-   jacs document verify -d s3://my-jacs-bucket/data/documents/
+   jacs-compat document verify -d s3://my-jacs-bucket/data/documents/
    ```
 
 ### AWS S3 to Filesystem
@@ -338,7 +338,7 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 3. **Verify Documents:**
    ```bash
-   jacs document verify -d ./jacs_data/documents/
+   jacs-compat document verify -d ./jacs_data/documents/
    ```
 
 ## Migrating Cryptographic Algorithms
@@ -356,7 +356,7 @@ Rotating to any other algorithm is a typed error.
 
 1. **Rotate Keys:**
    ```bash
-   jacs agent rotate-keys
+   jacs-compat agent rotate-keys
    ```
 
 2. **Re-issue the Compatibility Key Binding (if present):**
@@ -365,7 +365,7 @@ Rotating to any other algorithm is a typed error.
    rotation supersedes it. Ecosystem exports fail with a "re-issue"
    error until a new binding is signed by the current native root:
    ```bash
-   jacs agent issue-compat-binding
+   jacs-compat agent issue-compat-binding
    ```
 
 3. **Re-sign Critical Documents (Optional):**
@@ -659,23 +659,23 @@ After any migration:
 
 1. **Verify Configuration:**
    ```bash
-   jacs config read
+   jacs-compat config read
    ```
 
 2. **Verify Agent:**
    ```bash
-   jacs agent verify
+   jacs-compat agent verify
    ```
 
 3. **Verify Sample Document:**
    ```bash
-   jacs document verify -f ./sample-doc.json
+   jacs-compat document verify -f ./sample-doc.json
    ```
 
 4. **Test Document Creation:**
    ```bash
    echo '{"test": true}' > test.json
-   jacs document create -f test.json
+   jacs-compat document create -f test.json
    ```
 
 5. **Verify Version:**
@@ -708,8 +708,8 @@ If migration fails:
 
 4. **Verify Rollback:**
    ```bash
-   jacs agent verify
-   jacs document verify -d ./jacs_data/documents/
+   jacs-compat agent verify
+   jacs-compat document verify -d ./jacs_data/documents/
    ```
 
 ## See Also

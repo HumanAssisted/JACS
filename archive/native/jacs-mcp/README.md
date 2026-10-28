@@ -1,4 +1,4 @@
-# JACS MCP Server
+# JACS native MCP server (`jacs-mcp-compat`)
 
 MCP server for JACS verification and explicitly configured local agent signing.
 
@@ -8,7 +8,7 @@ in the default `verify-only` profile; private keys are never unlocked there.
 Local JSON/Agreement signing requires an existing signed agent config; it needs
 no server, extra policy file, or new key format.
 
-The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
+The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/contract/jacs-mcp-contract.json).
 
 ### Protocol compatibility
 
@@ -24,18 +24,23 @@ with a five-minute public cache hint for modern clients.
 RMCP defaults are disabled. Production selects only `server`, `transport-io`
 and `macros`, with their implied schema/async-I/O features; client and child
 process support are test dependencies. No RMCP HTTP, SSE or OAuth transport
-is enabled. See [upgrade evidence](../docs/RMCP_3_UPGRADE_SPIKE.md).
+is enabled. See [upgrade evidence](https://github.com/HumanAssisted/JACS/blob/main/docs/RMCP_3_UPGRADE_SPIKE.md).
 
-Ecosystem compatibility exports include ES256 JWKS, native-root signatures over ES256 bindings, A2A agent cards, AP2 mandates, and Agreement-v2 Verifiable Credentials. These are CLI and language-binding surfaces only; no MCP tools expose them.
+Current-source DID/JWK and Agent Card exports use the native ML-DSA-87 key by
+default, with an explicit native-root-bound ES256 compatibility path. AP2 and
+Agreement-v2 credential exports retain that explicit compatibility path. See the
+[identity guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md); these additions are source
+work, not evidence of a new registry release. Discovery entries appear in the
+compiled inventory but are unavailable in current authorized MCP profiles.
 
 ### Local MCP → MIME → separate recipient example
 
-[`examples/mcp_mime_demo.py`](../examples/mcp_mime_demo.py) is a Python 3.10+
+[`examples/mcp_mime_demo.py`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/examples/mcp_mime_demo.py) is a Python 3.10+
 standard-library demo for POSIX hosts, using an explicitly selected,
-source-matched `jacs` executable:
+source-matched `jacs-compat` executable:
 
 ```bash
-python3 examples/mcp_mime_demo.py --jacs-bin /absolute/path/to/source-built/jacs --json
+python3 archive/native/examples/mcp_mime_demo.py --jacs-bin /absolute/path/to/source-built/jacs-compat --json
 ```
 
 It creates disposable encrypted Ed25519 identities with the public CLI, signs
@@ -71,7 +76,7 @@ The CLI regression `mcp_mime_demo` supplies Cargo's actual built binary and runs
 this complete journey. This is process/protocol interoperability using the same
 JACS implementation, not independent crypto, browser/A2A peer interoperability,
 published-wheel verification or evidence of mail delivery. Native
-[`email_signing.rs`](../jacs/examples/email_signing.rs) demonstrates the separate
+[`email_signing.rs`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/examples/email_signing.rs) demonstrates the separate
 `sign_email` API and its canonicalized email-hash envelope; this example does
 not call that API or add an email MCP tool.
 
@@ -87,11 +92,11 @@ process. `trust-admin` and `legacy-core` remain unavailable.
 
 ### Explicit local signing
 
-After `jacs init`, start with your existing config and normal keychain/password
+After `jacs-compat init`, start with your existing config and normal keychain/password
 source (never send a password as tool input):
 
 ```bash
-jacs mcp --profile local-sign --config ./jacs.config.json
+jacs-compat mcp --profile local-sign --config ./jacs.config.json
 ```
 
 `JACS_CONFIG` can supply the same path instead of `--config`. There is no
@@ -159,7 +164,7 @@ To also work with local text and images, explicitly select an existing content
 directory at startup:
 
 ```bash
-JACS_MCP_BASE_DIR=/path/to/content jacs mcp --profile local-sign --config ./jacs.config.json
+JACS_MCP_BASE_DIR=/path/to/content jacs-compat mcp --profile local-sign --config ./jacs.config.json
 ```
 
 This adds exactly five existing tools: `jacs_sign_text`, `jacs_verify_text`,
@@ -205,7 +210,7 @@ actual process surface.
 | Tool | Description |
 |------|-------------|
 | `jacs_export_agent_card` | Export the local agent's A2A Agent Card |
-| `jacs_generate_well_known` | Generate the six stable ES256/native-root-bound A2A `.well-known` documents |
+| `jacs_generate_well_known` | Generate five native-root `.well-known` documents; explicit ES256 adds a sixth binding document |
 | `jacs_export_agent` | Export the local agent's full JACS JSON document |
 | `jacs_wrap_a2a_artifact` | Wrap an A2A artifact with JACS provenance |
 | `jacs_verify_a2a_artifact` | Verify a JACS-wrapped A2A artifact |
@@ -226,7 +231,7 @@ The request helpers use the experimental `JacsW3cRequestProof` JSON format with
 `scheme: "DIDWba"`. They do not emit the ANP HTTP Message Signatures wire format.
 For actual-request verification, supply the expected method, URL and body and
 apply trusted identity and authorization policy; see the
-[DID request-proof boundary](../jacs/docs/jacsbook/src/integrations/did.md#jacs-specific-request-proofs).
+[DID request-proof boundary](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/docs/jacsbook/src/integrations/did.md#jacs-specific-request-proofs).
 
 ### Trust Store
 
@@ -263,16 +268,16 @@ apply trusted identity and authorization policy; see the
 ### Install JACS CLI
 
 ```bash
-cargo install jacs-cli
+cargo install jacs-cli-compat --locked
 ```
 
 ### Verify documents without creating keys
 
 The default server verifies a document with the public key and algorithm
-supplied by its caller. It does not need `jacs init`:
+supplied by its caller. It does not need `jacs-compat init`:
 
 ```bash
-jacs mcp
+jacs-compat mcp
 ```
 
 Configure your MCP client with:
@@ -281,7 +286,7 @@ Configure your MCP client with:
 {
   "mcpServers": {
     "jacs": {
-      "command": "jacs",
+      "command": "jacs-compat",
       "args": ["mcp"]
     }
   }
@@ -290,11 +295,11 @@ Configure your MCP client with:
 
 ### Let your local agent sign documents
 
-Reuse an existing signed config, or run `jacs init` once in the directory where
+Reuse an existing signed config, or run `jacs-compat init` once in the directory where
 you want to keep the agent identity. Then start the explicitly authorized signer:
 
 ```bash
-jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+jacs-compat mcp --profile local-sign --config /absolute/path/to/jacs.config.json
 ```
 
 Use the same arguments in your MCP client. Replace the absolute path with your
@@ -305,7 +310,7 @@ the password as a tool argument.
 {
   "mcpServers": {
     "jacs": {
-      "command": "jacs",
+      "command": "jacs-compat",
       "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
     }
   }

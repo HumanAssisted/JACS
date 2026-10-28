@@ -3,10 +3,12 @@
 Cryptographic identity, signing, and verification for AI agents from Python.
 
 This source version requires Python 3.11–3.14, including optional integrations.
+Published 0.15.0 wheels support Python 3.10–3.14; use the source requirement
+when building this checkout.
 
 > **Published 0.15.0:** `jacs` remains a supported native Python library.
 > Wheel platforms, installed-package checks and provenance are recorded in the
-> [release inventory](../../../docs/release-status.md). Its separate native
+> [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md). Its separate native
 > workspace remains buildable through the root Makefile and CI.
 
 ```bash
@@ -44,7 +46,11 @@ result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `jacs.config.json` exists, it loads it; otherwise it creates a new agent.
+`quickstart()` creates a persistent agent with encrypted keys on disk. If
+`jacs.config.json` exists, it loads it. Preserve the password through your host
+secret source or keychain for later processes; an automatically generated
+password is otherwise retained only in-process. See the
+[password guide](https://humanassisted.github.io/JACS/native/getting-started/quick-start.html#native-password-bootstrap).
 
 ## Core operations
 
@@ -185,7 +191,7 @@ except MissingSignatureError:
 jacs.verify_text("README.md", key_dir="./trusted-keys/")
 
 # Images: embed and verify a signature in PNG, JPEG, or WebP metadata.
-jacs.sign_image("photo.png", out="signed.png")
+jacs.sign_image("photo.png", "signed.png")
 image = jacs.verify_image("signed.png")
 print(image.status)  # 'valid'
 
@@ -204,7 +210,7 @@ Cross-language interop is tested on every commit. Documents signed in Rust or No
 
 ## Agreement v2
 
-Use Agreement v2 for new multi-agent consent workflows:
+Use Agreement v2 to inspect native compatibility agreement documents:
 
 ```python
 from jacs import SimpleAgent
@@ -223,8 +229,15 @@ agreement = agent.create_agreement_v2({
 })
 
 signed = agent.sign_agreement_v2(agreement, "signer")
-assert agent.verify_agreement_v2(signed)["valid"]
+report = agent.verify_agreement_v2(signed)
+assert report["mathematicalChecksValid"]
+assert report["status"] == "final"
+assert report["policyAccepted"] is False
 ```
+
+Agreement v2 inspection checks signatures and claimed status; `valid` and
+`policyAccepted` remain false because this is not application consent-policy
+acceptance. Do not authorize an action from these mathematical checks alone.
 
 The same operations are available as module-level functions once an agent is loaded (`quickstart()` / `create()` / `load()`), matching Node's `@hai.ai/jacs/simple` surface:
 
@@ -245,7 +258,9 @@ agreement = jacs.create_agreement_v2({
 })
 
 signed = jacs.sign_agreement_v2(agreement, "signer")
-assert jacs.verify_agreement_v2(signed)["valid"]
+report = jacs.verify_agreement_v2(signed)
+assert report["mathematicalChecksValid"]
+assert report["policyAccepted"] is False
 ```
 
 Verifying another agent's agreement signature requires that agent's public key, so distinct agents must share a `data_directory` or exchange public keys; ephemeral agents verify only their own signatures.
@@ -255,25 +270,29 @@ The older `create_agreement()` / `sign_agreement()` / `check_agreement()` method
 ## Framework adapters
 
 ```bash
-pip install jacs[langchain]    # LangChain / LangGraph
+pip install "jacs[langchain,langgraph]"  # LangChain / LangGraph
 pip install jacs[fastapi]      # FastAPI / Starlette
 pip install jacs[anthropic]    # Anthropic / Claude SDK
 pip install jacs[a2a]          # A2A protocol
 pip install jacs[all]          # Everything
 ```
 
-`jacs.a2a_server.jacs_a2a_routes()` caches all six discovery documents together
-and refreshes them on the first request at six days after the binding's signed
-`issuedAt`. Concurrent FastAPI handlers share one locked refresh. Failed
-refreshes retry at most once per minute; the old snapshot is served only within
-its seven-day Strict lifetime and any earlier `expiresAt`. Unavailable discovery
-returns a non-cacheable 503. HTTP freshness ends by the six-day renewal boundary
-or earlier expiry. Still-valid snapshots awaiting renewal use `no-store`.
-Finite expiry is never extended: renew authorization and
-remount the router to serve a newly authorized binding after expiry.
+Current source `jacs.a2a_server.jacs_a2a_routes()` caches five direct-root discovery documents,
+or six for explicit ES256 compatibility. It refreshes on the first request
+after six days, measured from local generation for direct-root signatures or
+the binding's signed `issuedAt` for ES256. Failed refreshes retry at most once
+per minute. Cached documents remain usable for at most seven days or an
+earlier explicit binding expiry; unavailable discovery returns a non-cacheable
+503. The direct-root deadline is a serving-cache limit, not delegated identity
+authorization. These source changes are not evidence of a new published release.
+
+HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
+awaiting renewal use `no-store`. Explicit ES256 binding expiry is never
+extended automatically: renew authorization and remount to serve a new grant.
 Separate resource requests can straddle renewal even though publication is
-atomic within the process. Clients must verify the card/JWKS/binding together
-and refetch on a mismatch; these endpoints are not a transactional bundle.
+atomic within the process. Verify the card/JWKS and, for ES256, its root-signed
+binding together; refetch on mismatch. These endpoints are not a transactional
+bundle and discovery does not establish independent trust.
 
 ## Instance-based API
 
@@ -286,7 +305,9 @@ client = JacsClient.quickstart(name="my-agent", domain="example.com")
 signed = client.sign_message({"action": "approve"})
 ```
 
-See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage, framework adapter examples, and testing utilities.
+See the [API reference](https://humanassisted.github.io/JACS/native/python/api.html),
+[framework adapters](https://humanassisted.github.io/JACS/native/python/adapters.html),
+and [native development guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md).
 
 ## Links
 
@@ -294,4 +315,4 @@ See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT
 - [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html)
 - [Framework Adapters](https://humanassisted.github.io/JACS/python/adapters.html)
 - [Source](https://github.com/HumanAssisted/JACS)
-- [Examples](./examples/)
+- [Examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/examples)

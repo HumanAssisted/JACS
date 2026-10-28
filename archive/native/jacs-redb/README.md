@@ -5,7 +5,7 @@ Redb embedded key-value storage backend for JACS documents.
 ## Install
 
 ```sh
-cargo add jacs-redb
+cargo add jacs-redb jacs
 ```
 
 ## Quick Start
@@ -34,4 +34,4 @@ storage.run_migrations().expect("run migrations");
 
 ## More Info
 
-See the [JACS README](https://github.com/nickthecook/JACS#readme) for the full storage backend overview.
+See the [JACS README](https://humanassisted.github.io/JACS/native/advanced/storage.html) for the full storage backend overview.

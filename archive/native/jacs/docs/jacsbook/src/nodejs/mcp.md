@@ -7,7 +7,7 @@ Node has two MCP stories:
 1. **Wrap an MCP transport** with signing and verification
 2. **Register JACS operations as MCP tools** on an existing server
 
-If you want a full out-of-the-box server instead, install `jacs-cli` and run the built-in `jacs mcp` server.
+If you want a full out-of-the-box server instead, install `jacs-cli-compat` and run the built-in `jacs-compat mcp` server.
 
 ## Install
 

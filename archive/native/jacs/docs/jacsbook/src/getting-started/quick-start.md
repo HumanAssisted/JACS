@@ -2,84 +2,59 @@
 
 Get a persistent agent identity, sign data, and verify it.
 
-## Let your agent sign documents with MCP
+## Start with MCP
 
-The unified `jacs` binary includes a stdio-only MCP server. After installing
-it and creating an identity with the [CLI setup](#cli), or selecting an
-existing signed config, explicitly enable local signing:
+Install the portable CLI and start its default verification-only MCP server:
 
 ```bash
-jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+cargo install jacs-cli --locked
+jacs mcp
 ```
-
-Configure your MCP client with the same arguments:
 
 ```json
 {
   "mcpServers": {
-    "jacs": {
-      "command": "jacs",
-      "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
-    }
+    "jacs": { "command": "jacs", "args": ["mcp"] }
   }
 }
 ```
 
-Local signing uses the selected config's persistent encrypted keys and its
-[keychain or password source](#password-bootstrap). It grants agent signing
-authority; a signature does not establish a person's approval of the content.
-Key and trust administration are not enabled by this profile.
+Verification requires independently trusted public evidence. A valid signature
+proves integrity under that key; your application decides identity and authority.
 
-To verify documents without creating an identity or unlocking private keys,
-use the default verification-only configuration instead:
+## Portable CLI
 
-```json
-{
-  "mcpServers": {
-    "jacs": {
-      "command": "jacs",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-The default `verify-only` profile stays verification-only when a config or
-password is available; selecting `local-sign` is explicit. Set
-`JACS_MCP_BASE_DIR` only when you intend to add scoped text/image
-file tools to `local-sign`; no content directory is granted implicitly. See the
-[canonical MCP guide](../integrations/mcp.md#1-ready-made-server-jacs-mcp) for
-file scope, overwrite behavior and the actual tool inventory.
-
-## CLI
-
-Install the unified CLI/MCP binary:
+Create an encrypted identity, sign JSON and verify with the exported public identity:
 
 ```bash
-cargo install jacs-cli
+mkdir -m 700 .jacs
+jacs create --output .jacs/agent.json > public-identity.json
+printf '%s' '{"message":"hello"}' | jacs sign --agent .jacs/agent.json --input - > signed.json
+jacs verify --public-identity public-identity.json --input signed.json
 ```
 
-Create or load an agent, then sign and verify a JSON file:
+The terminal prompts for the password. For an MCP client that can provide the
+host's configured secret source, explicitly enable signing with
+`jacs mcp --profile local-sign --agent /absolute/path/to/.jacs/agent.json`.
+Use the same arguments in its `mcpServers` configuration. See the
+[current MCP guide](https://humanassisted.github.io/JACS/mcp-quickstart.html)
+for secret handling and the available tools.
+
+The remaining native examples use a separate installation:
 
 ```bash
-export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
-
-jacs quickstart --name my-agent --domain my-agent.example.com
-jacs document create -f mydata.json --output signed-document.json
-jacs verify jacs_data/signed-document.json
+cargo install jacs-cli-compat --locked
+jacs-compat quickstart --name my-agent --domain my-agent.example.com
 ```
 
-Homebrew is also supported:
-
-```bash
-brew tap HumanAssisted/homebrew-jacs
-brew install jacs
-```
+This creates `jacs.config.json` and persistent native keys for direct libraries
+and extended text/image commands. The native MCP profiles use `jacs-compat mcp`;
+see [extended profiles](https://humanassisted.github.io/JACS/native-mcp.html).
 
 ## Python
 
 ```bash
-pip install jacs
+python -m pip install jacs==0.15.0
 ```
 
 ```python
@@ -96,11 +71,11 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 {{#include ../_snippets/node-registry-status.md}}
 
 ```bash
-npm install @hai.ai/jacs
+npm install --save-exact @hai.ai/jacs@0.15.0
 ```
 
 ```javascript
-const jacs = require('@hai.ai/jacs/simple');
+import * as jacs from '@hai.ai/jacs/simple';
 
 await jacs.quickstart({
   name: 'my-agent',
@@ -115,9 +90,9 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ## Sign Markdown or text
 
 ```bash
-jacs sign-text README.md
-jacs verify-text README.md
-jacs verify-text --strict README.md
+jacs-compat sign-text README.md
+jacs-compat verify-text README.md
+jacs-compat verify-text --strict README.md
 ```
 
 `sign-text` appends a `-----BEGIN JACS SIGNATURE-----` block at the end of the file. The original content remains readable and can be counter-signed by another agent.
@@ -127,23 +102,23 @@ See [Inline Text Signatures](../guides/inline-text-signing.md) for multi-signer 
 ## Sign images
 
 ```bash
-jacs sign-image photo.png --out signed.png
-jacs verify-image signed.png
-jacs extract-media-signature signed.png
+jacs-compat sign-image photo.png --out signed.png
+jacs-compat verify-image signed.png
+jacs-compat extract-media-signature signed.png
 ```
 
 JACS embeds the signature in PNG, JPEG, or WebP metadata. See [Image and Media Signatures](../guides/media-signing.md) for overwrite policy, robust mode, and verification details.
 
-## Password bootstrap
+## Native password bootstrap
 
-The Rust CLI needs a password source before it can sign:
+The compatibility CLI needs a password source before it can sign:
 
 ```bash
 # CI/server
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
 # Developer workstation
-jacs keychain set --agent-id <YOUR_AGENT_UUID>
+jacs-compat keychain set --agent-id <YOUR_AGENT_UUID>
 
 # File-based secret
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
@@ -160,7 +135,7 @@ user-facing `ed25519` choice if you need a smaller classical signature. JACS
 stores and emits the canonical Ed25519 wire label as `ring-Ed25519`:
 
 ```bash
-jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ed25519
+jacs-compat quickstart --name my-agent --domain my-agent.example.com --algorithm ed25519
 ```
 
 ## Next steps

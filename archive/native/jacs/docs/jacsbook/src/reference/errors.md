@@ -24,10 +24,10 @@ This reference documents error codes and messages you may encounter when using J
 **Solution:**
 ```bash
 # Initialize JACS to create configuration
-jacs init
+jacs-compat init
 
 # Or specify a custom config path
-JACS_CONFIG_PATH=./custom.config.json jacs agent verify
+JACS_CONFIG_PATH=./custom.config.json jacs-compat agent verify
 ```
 
 ### Invalid Configuration
@@ -58,7 +58,7 @@ JACS_CONFIG_PATH=./custom.config.json jacs agent verify
 mkdir -p ./jacs_keys
 
 # Or run init to create everything
-jacs init
+jacs-compat init
 ```
 
 ## Cryptographic Errors
@@ -72,7 +72,7 @@ jacs init
 **Solution:**
 ```bash
 # Generate new keys
-jacs agent create --create-keys true
+jacs-compat agent create --create-keys true
 ```
 
 ### Invalid Key Format
@@ -82,7 +82,7 @@ jacs agent create --create-keys true
 **Cause:** The key file is corrupted or in wrong format.
 
 **Solution:**
-- Regenerate keys with `jacs agent create --create-keys true`
+- Regenerate keys with `jacs-compat agent create --create-keys true`
 - Ensure the key file is not corrupted
 
 ### Key Password Required
@@ -94,7 +94,7 @@ jacs agent create --create-keys true
 **Solution:**
 ```bash
 export JACS_PRIVATE_KEY_PASSWORD="your-password"
-jacs document create -f doc.json
+jacs-compat document create -f doc.json
 ```
 
 ### Algorithm Mismatch
@@ -128,7 +128,7 @@ jacs document create -f doc.json
 **Solution:**
 ```bash
 # Create a signed document
-jacs document create -f unsigned-doc.json
+jacs-compat document create -f unsigned-doc.json
 ```
 
 ### Missing Signature (v0.10.0)
@@ -143,7 +143,7 @@ jacs document create -f unsigned-doc.json
 | Python (`jacs.simple` / `JacsClient`) | Returns result with `status == "missing_signature"` | Raises `MissingSignatureError` |
 | Node (`@hai.ai/jacs/simple` / `JacsClient`) | Returns result with `status === "missing_signature"` | Promise rejects with error message containing `MissingSignature` |
 | Go (`jacsgo`) | Returns result with `Status == "missing_signature"` | Returns error matching `errors.Is(err, jacs.ErrMissingSignature)` |
-| Rust (`jacs::text` / `jacs::media`) | `Ok(VerifyResult { status: Status::MissingSignature, .. })` | `Err(JacsError::new(ErrorKind::MissingSignature, ..))` |
+| Rust (`jacs::simple::advanced`) | Successful result with a missing-signature variant/status | `Err(JacsError::MissingSignature)` |
 
 **When to pick strict.** Pick strict when a missing signature is genuinely a failure (release-gate, post-merge audit, CI on a branch that should always be signed). Pick permissive when verification runs against files that may legitimately be unsigned (the first PR introducing a signature).
 
@@ -206,7 +206,7 @@ jacs document create -f unsigned-doc.json
 - Publish the TXT record, or
 - Run with `--no-dns` during initial setup:
   ```bash
-  jacs agent verify --no-dns
+  jacs-compat agent verify --no-dns
   ```
 
 ### DNS Lookup Timeout
@@ -277,7 +277,7 @@ cat schema.json | jq '.required'
 **Solution:**
 ```bash
 # Create an agreement first
-jacs document create-agreement -f doc.json -i agent1-id,agent2-id
+jacs-compat document create-agreement -f doc.json -i agent1-id,agent2-id
 ```
 
 ### Already Signed
@@ -383,7 +383,7 @@ app.use('/api', JACSExpressMiddleware({
 
 ```bash
 # CLI verbose mode
-jacs document verify -f doc.json -v
+jacs-compat document verify -f doc.json -v
 
 # Environment variable
 export JACS_DEBUG=true
@@ -393,14 +393,14 @@ export JACS_DEBUG=true
 
 ```bash
 # Display current configuration
-jacs config read
+jacs-compat config read
 ```
 
 ### Verify Agent
 
 ```bash
 # Verify agent is properly configured
-jacs agent verify -v
+jacs-compat agent verify -v
 ```
 
 ### Test Signing
@@ -408,7 +408,7 @@ jacs agent verify -v
 ```bash
 # Create a test document
 echo '{"test": true}' > test.json
-jacs document create -f test.json -v
+jacs-compat document create -f test.json -v
 ```
 
 ## See Also

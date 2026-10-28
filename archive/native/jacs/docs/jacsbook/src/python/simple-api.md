@@ -271,9 +271,9 @@ Append a YAML-bodied JACS signature block to the end of a markdown or text file.
 
 **Parameters:** `path` (str): file to sign in place
 
-**Returns:** `None`
+**Returns:** `SignTextResult`
 
-**Raises:** `MarkerCollisionError` if the file contains a column-zero `-----BEGIN JACS SIGNATURE-----` outside a valid block — see the [inline-text-signing guide](../guides/inline-text-signing.md) for documented workarounds.
+**Raises:** `RuntimeError` if the file contains a column-zero `-----BEGIN JACS SIGNATURE-----` outside a valid block — see the [inline-text-signing guide](../guides/inline-text-signing.md) for documented workarounds.
 
 ```python
 jacs.sign_text("README.md")
@@ -290,7 +290,7 @@ Verify all signature blocks in a text file. Permissive by default — missing si
 - `strict` (bool, keyword-only): when `True`, raises `MissingSignatureError` if the file is unsigned. Default `False`.
 - `key_dir` (str, keyword-only): directory of `<signer_id>.public.pem` files used in addition to the local trust store.
 
-**Returns:** `VerifyTextResult` — `.status` is `'signed' | 'missing_signature' | 'malformed'`; `.signers` lists per-signer outcomes.
+**Returns:** `VerifyTextResult` — `.status` is `'signed' | 'missing_signature' | 'malformed'`; `.signatures` lists per-signer outcomes.
 
 ```python
 result = jacs.verify_text("README.md")
@@ -307,20 +307,20 @@ See the [inline text signing guide](../guides/inline-text-signing.md) for the fu
 
 ---
 
-### sign_image(path, *, out=None, robust=False, refuse_overwrite=False)
+### sign_image(input_path, output_path, *, robust=False, refuse_overwrite=False)
 
 Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).
 
 **Parameters:**
-- `path` (str): input image
-- `out` (str, keyword-only): output path. If omitted, signs in place.
+- `input_path` (str): input image
+- `output_path` (str): required output path.
 - `robust` (bool, keyword-only): opt-in LSB embedding fallback for PNG/JPEG (off by default; WebP deferred).
-- `refuse_overwrite` (bool, keyword-only): raise `AlreadySignedError` if the input already carries a signature.
+- `refuse_overwrite` (bool, keyword-only): raise an error if the input already carries a signature.
 
-**Returns:** `None`
+**Returns:** `SignImageResult`
 
 ```python
-jacs.sign_image("photo.png", out="signed.png")
+jacs.sign_image("photo.png", "signed.png")
 ```
 
 ---
@@ -331,7 +331,9 @@ Verify the embedded signature on an image. Same permissive / strict model as `ve
 
 **Parameters:** as for `verify_text`.
 
-**Returns:** `VerifyImageResult` — `.status` is `'valid' | 'invalid' | 'missing_signature'`; `.signer_id`, `.signed_at`, `.algorithm` populated when valid.
+**Returns:** `VerifyImageResult` with `.status`, optional `.signer_id` and
+`.format`. Status values include `valid`, `invalid_signature`, `hash_mismatch`,
+`missing_signature`, `key_not_found`, `unsupported_format` and `malformed`.
 
 ```python
 v = jacs.verify_image("signed.png")
@@ -350,11 +352,15 @@ Extract the embedded signature payload **without verifying** it.
 - `path` (str)
 - `raw_payload` (bool, keyword-only): emit the base64url wire form instead of decoded JSON. Default `False`.
 
-**Returns:** `dict` (decoded JSON) or `str` (base64url wire form when `raw_payload=True`).
+**Returns:** `Optional[str]`: a JSON string, or the base64url wire form when
+`raw_payload=True`; `None` if no signature is present.
 
 ```python
+import json
+
 payload = jacs.extract_media_signature("signed.png")
-print(payload["signedAt"])
+if payload is not None:
+    print(json.loads(payload))  # Extraction alone does not verify the payload.
 ```
 
 ---
@@ -445,19 +451,17 @@ Update an existing document with new data and re-sign it.
 
 ```python
 import json
+import jacs as native
 
-# Create a document (must be saved to disk)
-original = jacs.sign_message({"status": "pending", "amount": 100})
-
-# Later, update it
-doc = json.loads(original.raw)
-doc["content"]["status"] = "approved"
-
-updated = jacs.update_document(original.document_id, doc)
-new_doc = json.loads(updated.raw)
-
-print(f"New version: {new_doc['jacsVersion']}")
-print(f"Previous: {new_doc['jacsPreviousVersion']}")
+# Use a native stored document and its full id:version lookup key.
+agent = native.JacsAgent()
+agent.load("./jacs.config.json")
+original = json.loads(agent.create_document(json.dumps({"content": {"status": "pending"}})))
+document_key = f"{original['jacsId']}:{original['jacsVersion']}"
+original["content"]["status"] = "approved"
+updated = json.loads(agent.update_document(document_key, json.dumps(original), None, None))
+print(f"New version: {updated['jacsVersion']}")
+print(f"Previous: {updated['jacsPreviousVersion']}")
 ```
 
 ---
@@ -483,7 +487,7 @@ print(f"Agent type: {agent['jacsAgentType']}")
 
 ### get_dns_record(domain, ttl=3600)
 
-Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: `_v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; ..."`.
+Return the DNS TXT record line for the loaded agent (for DNS-based discovery). Format: `_v1.agent.jacs.{domain}. TTL IN TXT "v=jacs; ..."`.
 
 **Returns:** str
 
@@ -611,9 +615,8 @@ print(f"Transaction signed: {signed.document_id}")
 verification = jacs.verify(signed.raw)
 
 if verification.valid:
-    doc = json.loads(signed.raw)
     print(f"Payment verified from: {verification.signer_id}")
-    print(f"Amount: {doc['content']['amount']} {doc['content']['currency']}")
+    print(json.loads(signed.raw))  # Inspect the document only after verification.
 else:
     print(f"Verification failed: {', '.join(verification.errors)}")
 
@@ -694,7 +697,8 @@ try:
 except JacsError as e:
     print(f"File not found: {e}")
 
-# Verification doesn't throw - check result.valid
+# With an agent loaded and strict mode disabled, inspect result.valid.
+# An unloaded agent raises AgentNotLoadedError; strict mode raises VerificationError.
 result = jacs.verify("invalid json")
 if not result.valid:
     print(f"Verification errors: {result.errors}")

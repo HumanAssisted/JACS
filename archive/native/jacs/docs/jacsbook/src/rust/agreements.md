@@ -1,8 +1,12 @@
 # Creating and Using Agreements
 
-Agreement v2 is the preferred JACS agreement model. It is a standalone `jacsType: "agreement"` document that captures terms, parties, transcript references, signature policy, consent signatures, and version lineage.
+Agreement v2 is the native compatibility agreement model. It is a standalone `jacsType: "agreement"` document that captures terms, parties, transcript references, signature policy, consent signatures, and version lineage.
 
-Use Agreement v2 when the product question is: "did these agents consent to these terms, under this policy, with this process record?"
+Use Agreement v2 to inspect existing native agreement signatures and claimed
+status. The report always keeps `valid=false` and `policyAccepted=false`: party
+proofs do not authenticate the complete role, quorum, lineage or finalization
+policy. New portable consent uses
+[Agreement v3](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html).
 
 ## Agreement v2 Model
 
@@ -82,17 +86,17 @@ Use mutations for successor versions instead of editing JSON by hand. The helper
 ## CLI
 
 ```bash
-jacs agreement-v2 create --input agreement-input.json > agreement.json
-jacs agreement-v2 sign --agreement agreement.json --role signer > signed.json
-jacs agreement-v2 verify --agreement signed.json
+jacs-compat agreement-v2 create --input agreement-input.json > agreement.json
+jacs-compat agreement-v2 sign --agreement agreement.json --role signer > signed.json
+jacs-compat agreement-v2 verify --agreement signed.json
 ```
 
 Branch handling is also in core and exposed through the CLI:
 
 ```bash
-jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
-jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
-jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+jacs-compat agreement-v2 detect-conflict --base base.json --left left.json --right right.json
+jacs-compat agreement-v2 merge-transcript --base base.json --left left.json --right right.json
+jacs-compat agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
 ```
 
 Transcript-only branches can auto-merge. Terms conflicts require an explicit successor mutation.
@@ -104,12 +108,12 @@ Transcript-only branches can auto-merge. Terms conflicts require an explicit suc
 The older `jacsAgreement` field on arbitrary signed documents remains available for simple countersignature workflows:
 
 ```bash
-jacs document create-agreement -f ./document.json -i agent1-uuid,agent2-uuid
-jacs document sign-agreement -f ./document-with-agreement.json
-jacs document check-agreement -f ./document-with-agreement.json
+jacs-compat document create-agreement -f ./document.json -i agent1-uuid,agent2-uuid
+jacs-compat document sign-agreement -f ./document-with-agreement.json
+jacs-compat document check-agreement -f ./document-with-agreement.json
 ```
 
-Use the legacy sidecar only when you need "these agents approved this existing payload." Use Agreement v2 when you need standalone terms, lifecycle, transcript evidence, notary signatures, branch handling, or portable SDK parity.
+Use the legacy sidecar only when you need "these keys signed this existing payload (without authenticated consent policy)." Use Agreement v2 when you need standalone terms, lifecycle, transcript evidence, notary signatures, branch handling, or portable SDK parity.
 
 ## Exporting as a Verifiable Credential
 
@@ -123,5 +127,5 @@ scopes are never auto-issued — and never mutates the native agreement. See the
 ## See Also
 
 - [Agreement v2 Developer Guide](../guides/agreement-v2.md)
-- [CLI Agreements](../cli/agreements.md)
+- [CLI Agreements](cli.md)
 - [Working with Documents](documents.md)

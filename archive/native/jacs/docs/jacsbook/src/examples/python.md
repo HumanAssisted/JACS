@@ -708,82 +708,32 @@ if __name__ == "__main__":
 
 ```python
 # tests/test_jacs.py
-import pytest
-import jacs
 import json
-import tempfile
-import shutil
-from pathlib import Path
+import pytest
+from jacs.client import JacsClient
 
 @pytest.fixture
-def jacs_agent():
-    """Create a test JACS agent with temporary directories"""
-    temp_dir = tempfile.mkdtemp()
-    data_dir = Path(temp_dir) / 'data'
-    key_dir = Path(temp_dir) / 'keys'
+def client():
+    # PQ identity entirely in memory; no config or password files required.
+    return JacsClient.ephemeral()
 
-    data_dir.mkdir()
-    key_dir.mkdir()
+def test_sign_and_verify(client):
+    signed = client.sign_message({"title": "Test Document", "value": 42})
+    document = json.loads(signed.raw)
+    assert "jacsId" in document
+    assert "jacsSignature" in document
+    assert client.verify(signed.raw).valid
 
-    config = {
-        'jacs_data_directory': str(data_dir),
-        'jacs_key_directory': str(key_dir),
-        'jacs_agent_key_algorithm': 'ring-Ed25519',
-        'jacs_default_storage': 'fs'
-    }
+def test_detect_tampering(client):
+    signed = client.sign_message({"title": "Tamper Test"})
+    document = json.loads(signed.raw)
+    document["jacsId"] = "00000000-0000-4000-8000-000000000000"
+    assert not client.verify(json.dumps(document)).valid
 
-    config_path = Path(temp_dir) / 'jacs.config.json'
-    with open(config_path, 'w') as f:
-        json.dump(config, f)
-
-    agent = jacs.JacsAgent()
-    agent.load(str(config_path))
-
-    yield agent
-
-    shutil.rmtree(temp_dir)
-
-class TestDocumentOperations:
-    def test_create_document(self, jacs_agent):
-        content = {'title': 'Test Document', 'value': 42}
-        signed_doc = jacs_agent.create_document(json.dumps(content))
-        doc = json.loads(signed_doc)
-
-        assert 'jacsId' in doc
-        assert 'jacsVersion' in doc
-        assert 'jacsSignature' in doc
-        assert doc['title'] == 'Test Document'
-
-    def test_verify_valid_document(self, jacs_agent):
-        content = {'title': 'Verify Test'}
-        signed_doc = jacs_agent.create_document(json.dumps(content))
-
-        is_valid = jacs_agent.verify_document(signed_doc)
-        assert is_valid is True
-
-    def test_detect_tampered_document(self, jacs_agent):
-        content = {'title': 'Tamper Test'}
-        signed_doc = jacs_agent.create_document(json.dumps(content))
-
-        # Tamper with document
-        doc = json.loads(signed_doc)
-        doc['title'] = 'Modified Title'
-        tampered_doc = json.dumps(doc)
-
-        is_valid = jacs_agent.verify_document(tampered_doc)
-        assert is_valid is False
-
-    def test_different_content_different_signatures(self, jacs_agent):
-        doc1 = jacs_agent.create_document(json.dumps({'a': 1}))
-        doc2 = jacs_agent.create_document(json.dumps({'a': 2}))
-
-        parsed1 = json.loads(doc1)
-        parsed2 = json.loads(doc2)
-
-        sig1 = parsed1['jacsSignature']['signature']
-        sig2 = parsed2['jacsSignature']['signature']
-
-        assert sig1 != sig2
+def test_distinct_messages(client):
+    first = json.loads(client.sign_message({"a": 1}).raw)
+    second = json.loads(client.sign_message({"a": 2}).raw)
+    assert first["jacsSignature"]["signature"] != second["jacsSignature"]["signature"]
 ```
 
 ## Error Handling

@@ -5,7 +5,8 @@ PostgreSQL storage backend for JACS documents.
 ## Install
 
 ```sh
-cargo add jacs-postgresql
+cargo add jacs-postgresql jacs
+cargo add tokio --features rt-multi-thread,macros
 ```
 
 ## Quick Start
@@ -15,8 +16,13 @@ use jacs_postgresql::PostgresStorage;
 use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 
-let storage = PostgresStorage::new(&database_url, None, None, None)?;
-storage.run_migrations()?;
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let database_url = std::env::var("DATABASE_URL")?;
+    let storage = PostgresStorage::new(&database_url, None, None, None)?;
+    storage.run_migrations()?;
+    Ok(())
+}
 ```
 
 ## Design
@@ -32,4 +38,4 @@ Pass a standard PostgreSQL connection string (`postgres://user:pass@host/db`). T
 
 ## More Info
 
-See the [JACS README](https://github.com/nickthecook/JACS#readme) for the full storage backend overview.
+See the [JACS README](https://humanassisted.github.io/JACS/native/advanced/storage.html) for the full storage backend overview.

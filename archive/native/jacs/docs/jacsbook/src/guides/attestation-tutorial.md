@@ -33,7 +33,7 @@ console.log(`Agent ID: ${client.agentId}`);
 {{#tab name="CLI" }}
 ```bash
 export JACS_PRIVATE_KEY_PASSWORD="YourP@ssw0rd"
-jacs quickstart --algorithm ed25519
+jacs-compat quickstart --algorithm ed25519
 ```
 {{#endtab }}
 {{#endtabs }}

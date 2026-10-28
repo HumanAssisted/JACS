@@ -59,7 +59,7 @@ cargo test -p jacs-mobile --test portable -- --nocapture
 bash jacs-mobile/scripts/generate-bindings.sh
 ```
 
-The generator is pinned with the runtime to UniFFI 0.31.2. Host generation
+The generator is pinned with the runtime to UniFFI 0.32.2. Host generation
 produces `generated/swift/JacsMobile.swift`, its C header/modulemap, and Kotlin
 under `generated/kotlin/ai/hai/jacs`. Include these files in the consuming app.
 Generated files are build outputs, not hand-maintained source.
@@ -135,7 +135,9 @@ and [configuration reference](https://jhugman.github.io/uniffi-bindgen-react-nat
 
 For the binding files alone, without an app scaffold, run
 `bash jacs-mobile/scripts/generate-rn-bindings.sh` from the repository root.
-This pinned generation path has been exercised against this crate and produces
+The script still pins UBRN 0.31.0-5. Its earlier generation check does not
+qualify compatibility with the current UniFFI 0.32.2 runtime; regenerate and
+validate a consuming app before relying on it. Expected outputs are
 `generated/typescript/jacs_mobile.ts` and `generated/cpp`. Install
 `@ubjs/core@0.31.0-5` in the consuming package. The generated `MobileAgentLike`
 uses `ArrayBuffer` for byte fields and the `MobileAlgorithm` enum; application

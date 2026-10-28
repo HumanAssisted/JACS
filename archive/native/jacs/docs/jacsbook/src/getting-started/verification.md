@@ -1,8 +1,8 @@
 # Verifying Signed Documents
 
-Verify a JACS-signed document in under 2 minutes. Verification confirms two things: the document was signed by the claimed agent, and the content has not been modified since signing.
+Verify a JACS-signed document in under 2 minutes. Verification checks that the document has not changed and was signed by the key selected under your trust policy. A signature alone does not establish a real-world identity or permission to act.
 
-**Verification does NOT require creating an agent.** You only need the signed document (and optionally access to the signer's public key).
+**Verification does NOT require creating an agent.** You need the signed document and independently trusted public evidence for its signer.
 
 Raw JSON is decoded strictly before signing, canonicalization, or verification.
 Duplicate object names are rejected at every nesting level, including names
@@ -17,33 +17,46 @@ ordinary JSON and remain supported.
 
 | Surface | Permissive (default) | Strict (`--strict` / `strict=True` / `{ strict: true }` / `Strict: true`) |
 |---------|---------------------|---------------------------------------------------------------------------|
-| `jacs verify-text` (CLI) | Exit `0` valid · `2` missing-sig · `1` invalid | Exit `0` valid · `1` missing OR invalid (stderr: `no JACS signature found`) |
-| `jacs verify-image` (CLI) | Same as above | Same as above |
+| `jacs-compat verify-text` (CLI) | Exit `0` valid · `2` missing-sig · `1` invalid | Exit `0` valid · `1` missing OR invalid (stderr: `no JACS signature found`) |
+| `jacs-compat verify-image` (CLI) | Same as above | Same as above |
 | Python (`jacs.verify_text`, `jacs.verify_image`) | Returns result with `status == "missing_signature"` | Raises `MissingSignatureError` |
 | Node (`jacs.verifyText`, `jacs.verifyImage`) | Returns result with `status === "missing_signature"` | Promise rejects with `MissingSignature`-bearing message |
 | Go (`jacs.VerifyText`, `jacs.VerifyImage`) | Returns `Status == "missing_signature"` | Returns error matching `errors.Is(err, jacs.ErrMissingSignature)` |
-| Rust (`jacs::text`, `jacs::media`) | `Ok(Status::MissingSignature)` | `Err(ErrorKind::MissingSignature)` |
+| Rust (`jacs::simple::advanced`) | Successful result with a missing-signature variant/status | `Err(JacsError::MissingSignature)` |
 
-Pre-existing verify surfaces (`jacs verify`, `jacs document verify`, `jacs.verify`) are unaffected — they keep their existing exit codes and return shapes.
+Pre-existing verify surfaces (`jacs-compat verify`, `jacs-compat document verify`, `jacs.verify`) are unaffected — they keep their existing exit codes and return shapes.
 
 For hands-on examples see [Inline Text Signatures](../guides/inline-text-signing.md) and [Image and Media Signatures](../guides/media-signing.md).
 
-## CLI: `jacs verify`
+## Portable CLI
+
+```bash
+cargo install jacs-cli --locked
+jacs verify --public-identity trusted-public-identity.json --input signed-document.json
+```
+
+Obtain `trusted-public-identity.json` independently of the untrusted document.
+The portable CLI uses explicit `--input` and `--public-identity` arguments;
+it does not use the native config or remote/key-directory options below.
+
+Install `cargo install jacs-cli-compat --locked` for the extended native commands.
+
+## CLI: `jacs-compat verify`
 
 The fastest way to verify a document from the command line. No config file, no agent setup.
 
 ```bash
 # Verify a local file
-jacs verify signed-document.json
+jacs-compat verify signed-document.json
 
 # Verify with JSON output (for scripting)
-jacs verify signed-document.json --json
+jacs-compat verify signed-document.json --json
 
 # Verify a remote document by URL
-jacs verify --remote https://example.com/signed-doc.json
+jacs-compat verify --remote https://example.com/signed-doc.json
 
 # Specify a directory containing public keys
-jacs verify signed-document.json --key-dir ./trusted-keys/
+jacs-compat verify signed-document.json --key-dir ./trusted-keys/
 ```
 
 Output on success:
@@ -67,7 +80,7 @@ JSON output (`--json`):
 The exit code is `0` for valid, `1` for invalid or error. Use this in CI/CD pipelines:
 
 ```bash
-if jacs verify artifact.json --json; then
+if jacs-compat verify artifact.json --json; then
   echo "Artifact is authentic"
 else
   echo "Verification failed" >&2
@@ -154,7 +167,7 @@ DNS verification checks that an agent's public key hash matches a DNS TXT record
 ### Publishing a DNS record
 
 ```bash
-jacs agent dns --domain example.com --provider plain
+jacs-compat agent dns --domain example.com --provider plain
 ```
 
 This outputs the TXT record to add to your DNS zone. Provider options: `plain`, `aws`, `azure`, `cloudflare`.
@@ -162,7 +175,7 @@ This outputs the TXT record to add to your DNS zone. Provider options: `plain`, 
 ### Looking up an agent by domain
 
 ```bash
-jacs agent lookup example.com
+jacs-compat agent lookup example.com
 ```
 
 This fetches the agent's public key from `https://example.com/.well-known/jacs-pubkey.json` and checks the DNS TXT record at `_v1.agent.jacs.example.com`.
@@ -171,10 +184,10 @@ This fetches the agent's public key from `https://example.com/.well-known/jacs-p
 
 ```bash
 # Require DNS validation (fail if no DNS record)
-jacs agent verify --require-dns
+jacs-compat agent verify --require-dns
 
 # Require strict DNSSEC validation
-jacs agent verify --require-strict-dns
+jacs-compat agent verify --require-strict-dns
 ```
 
 For full DNS setup instructions, see [DNS-Based Verification](../rust/dns.md) and [DNS Trust Anchoring](../advanced/dns-trust.md).

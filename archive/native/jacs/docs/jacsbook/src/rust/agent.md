@@ -16,7 +16,7 @@ Capabilities for A2A interoperability live in A2A Agent Cards. The JACS agent do
 ## Creating Your First Agent
 
 ```bash
-jacs init
+jacs-compat init
 ```
 
 This creates:
@@ -28,8 +28,8 @@ This creates:
 ## Manual Creation
 
 ```bash
-jacs config create
-jacs agent create --create-keys true
+jacs-compat config create
+jacs-compat agent create --create-keys true
 ```
 
 ## Custom Agent Definition
@@ -49,7 +49,7 @@ Create an agent definition file:
 Then create the agent:
 
 ```bash
-jacs agent create --create-keys true -f my-agent.json
+jacs-compat agent create --create-keys true -f my-agent.json
 ```
 
 ## Agent Types
@@ -89,10 +89,10 @@ permissions as the native root.
 ## Verifying Agents
 
 ```bash
-jacs agent verify
-jacs agent verify -a ./path/to/agent.json
-jacs agent verify --require-dns
-jacs agent verify --require-strict-dns
+jacs-compat agent verify
+jacs-compat agent verify -a ./path/to/agent.json
+jacs-compat agent verify --require-dns
+jacs-compat agent verify --require-strict-dns
 ```
 
 ## HTTP protocol helpers

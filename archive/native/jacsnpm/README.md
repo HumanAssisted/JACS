@@ -4,7 +4,7 @@ Cryptographic identity, signing, and verification for AI agents from Node.js.
 
 > **Published 0.15.0:** `@hai.ai/jacs` remains a supported native Node.js library.
 > Installed-package checks and provenance are recorded in the
-> [release inventory](../../../docs/release-status.md). Its source lives in the
+> [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md). Its source lives in the
 > separate native workspace; MCP remains the primary integration guide.
 
 ```bash
@@ -40,7 +40,7 @@ npx jacs-cli --diagnose
 For a standalone CLI, use `cargo install jacs-cli`.
 
 > **Building for the browser?** Use the published
-> [`@hai.ai/jacs-wasm`](../../../jacs-wasm/README.md) package, also at 0.15.0.
+> [`@hai.ai/jacs-wasm`](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) package, also at 0.15.0.
 > `@hai.ai/jacs` ships a `.node` native module that does not load in a browser.
 > Browser WASM provides the portable crypto and encrypted-storage surface;
 > it does not expose every native integration.
@@ -50,7 +50,7 @@ For a standalone CLI, use `cargo install jacs-cli`.
 ## Quick start
 
 ```javascript
-const jacs = require('@hai.ai/jacs/simple');
+import * as jacs from '@hai.ai/jacs/simple';
 
 await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
@@ -58,7 +58,10 @@ const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-All operations are async by default. Sync variants are available with a `Sync` suffix, for example `signMessageSync`.
+Run this example as an ES module (`.mjs`). Simple signing and I/O methods are
+async; selected operations also have a `Sync` variant, such as
+`signMessageSync`. `verifyStandalone`, trust helpers and the low-level
+`JacsSimpleAgent` transport helpers shown below are synchronous.
 
 ## Core operations
 
@@ -79,7 +82,8 @@ All operations are async by default. Sync variants are available with a `Sync` s
 
 Building from source uses NAPI-RS CLI 3 and requires Node.js `^20.17.0`,
 `^22.13.0` or `>=23.5.0`; the installed addon continues to support Node.js
-20 or newer through Node-API 4. The source version remains a release candidate.
+20 or newer through Node-API 4. The recorded 0.15.0 release is published;
+subsequent source changes need separate installed-artifact verification.
 
 `npm run build` and the native release profile enable `human-approval-vendored`:
 the existing WebAuthn verifier with OpenSSL compiled into the native module,
@@ -207,7 +211,7 @@ Cross-language interop is tested on every commit. Documents signed in Rust or Py
 
 ## Agreement v2
 
-Use Agreement v2 for new multi-agent consent workflows:
+Use Agreement v2 to inspect native compatibility agreement documents:
 
 ```typescript
 import { JacsSimpleAgent } from '@hai.ai/jacs';
@@ -228,6 +232,10 @@ const agreement = await agent.createAgreementV2(JSON.stringify({
 const signed = await agent.signAgreementV2(agreement, 'signer');
 const report = await agent.verifyAgreementV2(signed);
 ```
+
+Agreement v2 inspection checks mathematical signatures and claimed status;
+`valid` and `policyAccepted` remain false. Application policy acceptance and
+permission to execute are separate decisions.
 
 The older `createAgreement()` / `signAgreement()` / `checkAgreement()` methods remain for simple `jacsAgreement` sidecars on existing documents.
 
@@ -303,17 +311,22 @@ but non-empty wrapper-supplied skills now fail immediately. Agent Card skills
 are identity-bearing signed data; persist them through the native agent/card
 configuration before generating or serving discovery documents.
 
-`jacsA2AMiddleware()` caches all six discovery documents together and refreshes
-them on the first request at six days after the binding's signed `issuedAt`.
-Failed refreshes retry at most once per minute. The old snapshot is served only
-within its seven-day Strict lifetime and any earlier `expiresAt`; otherwise
-the routes return a non-cacheable 503. HTTP freshness ends by the six-day renewal
-boundary or earlier expiry. Still-valid snapshots awaiting renewal use
-`no-store`. Finite expiry is never extended: renew authorization and
-remount the middleware to serve a newly authorized binding after expiry.
-Publication is atomic within the process, but separate resource requests can
-straddle renewal. Clients must verify the card/JWKS/binding together and refetch
-on a mismatch; these endpoints are not a transactional bundle.
+Current source `jacsA2AMiddleware()` caches five direct-root discovery documents,
+or six for explicit ES256 compatibility. It refreshes on the first request
+after six days, measured from local generation for direct-root signatures or
+the binding's signed `issuedAt` for ES256. Failed refreshes retry at most once
+per minute. Cached documents remain usable for at most seven days or an
+earlier explicit binding expiry; unavailable discovery returns a non-cacheable
+503. The direct-root deadline is a serving-cache limit, not delegated identity
+authorization. These source changes are not evidence of a new published release.
+
+HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
+awaiting renewal use `no-store`. Explicit ES256 binding expiry is never
+extended automatically: renew authorization and remount to serve a new grant.
+Separate resource requests can straddle renewal even though publication is
+atomic within the process. Verify the card/JWKS and, for ES256, its root-signed
+binding together; refetch on mismatch. These endpoints are not a transactional
+bundle and discovery does not establish independent trust.
 
 `signArtifact()` uses the native canonical A2A signer and returns the direct
 `a2a-*` document; it never wraps the result in a generic `jacs_payload` header
@@ -347,4 +360,4 @@ See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT
 - [JACS Documentation](https://humanassisted.github.io/JACS/)
 - [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html)
 - [Source](https://github.com/HumanAssisted/JACS)
-- [Examples](./examples/)
+- [Examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/examples)

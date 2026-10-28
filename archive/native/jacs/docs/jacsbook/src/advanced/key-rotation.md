@@ -20,24 +20,22 @@ Cryptographic algorithms evolve. Key rotation enables:
 
 ### Migrating Ed25519 Agents to pq2025
 
-**Rotation always resolves to `pq2025`** — it is the designated migration path
-for Ed25519 agents:
+Native rotation without `--algorithm` preserves the current algorithm. Upgrade
+an Ed25519 identity explicitly:
 
 ```bash
-jacs agent rotate-keys
+jacs-compat agent rotate-keys --algorithm pq2025
 ```
 
-- An Ed25519 agent that rotates (with or without an `--algorithm`
-  argument) gets a `pq2025` root; the config is stamped `pq2025`; the
-  transition proof is signed by the old Ed25519 key, so the migration is
-  cryptographically authorized by the previous root.
-- Rotating **to** Ed25519 (or any non-PQ algorithm) is a typed error.
+- An Ed25519 identity can replace its key with Ed25519 or explicitly upgrade
+  to `pq2025`; the transition proof is signed by its previous key.
+- A `pq2025` identity cannot downgrade to Ed25519.
 - Until it rotates, an Ed25519 agent keeps signing normally with Ed25519.
 - Documents signed by the old Ed25519 key remain verifiable after migration
   (see Cross-Algorithm Verification in the Algorithm Selection Guide).
 - Rotation supersedes the ES256 **compatibility key binding**: the binding
   is signed by the native root, so after rotation ecosystem exports fail
-  with a "re-issue" error until `jacs agent issue-compat-binding` runs
+  with a "re-issue" error until `jacs-compat agent issue-compat-binding` runs
   under the new native root.
 - Rotation applies to the **native root** only — rotating the ES256
   compatibility key itself is out of scope in P2.
@@ -164,19 +162,19 @@ This signed message:
 
 ```bash
 # Rotate keys with default algorithm
-jacs agent rotate-keys
+jacs-compat agent rotate-keys
 
 # Rotate to post-quantum algorithm
-jacs agent rotate-keys --algorithm pq2025
+jacs-compat agent rotate-keys --algorithm pq2025
 
 # List key history (active and archived keys)
-jacs agent keys-list
+jacs-compat agent keys-list
 
 # Repair config after a crash during rotation
-jacs agent repair
+jacs-compat agent repair
 
 # Revoke a compromised key (Coming Soon)
-jacs agent keys revoke <key-hash>
+jacs-compat agent keys revoke <key-hash>
 ```
 
 ### Transition Signature
@@ -218,7 +216,7 @@ JACS uses a write-ahead journal to recover from crashes during key rotation. Bef
 
 If the process crashes mid-rotation, the next agent load detects the journal and automatically repairs the config by re-signing it with the current key. No manual intervention is required for the common case.
 
-For manual recovery: `jacs agent repair`
+For manual recovery: `jacs-compat agent repair`
 
 ### Cross-Algorithm Rotation
 
@@ -227,7 +225,7 @@ selector. An Ed25519 root can migrate to post-quantum signing:
 
 ```bash
 # Rotate from Ed25519 to post-quantum
-jacs agent rotate-keys --algorithm pq2025
+jacs-compat agent rotate-keys --algorithm pq2025
 ```
 
 ```rust
@@ -346,28 +344,20 @@ impl TrustedAgent {
 }
 ```
 
-## DNS Support for Key Versions
+## DNS and key versions
 
-DNS records can advertise multiple key versions for an agent.
-
-### Multi-Version DNS Records
-
-Each key version gets its own TXT record:
-
-```
-; Current key
-_v1.agent.jacs.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id={id}; ver=current; alg=SHA-256; hash={hash1}"
-
-; Previous key (still valid for old signatures)
-_v1.agent.jacs.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id={id}; ver=rotated; valid_until=2025-01-15; hash={hash2}"
-```
-
-### DNS Record Generation
+The native DNS discovery name supports exactly one JACS TXT record. Multiple
+matching records are rejected; there is no `--all-keys` option. Generate the
+current key's record using:
 
 ```bash
-# Generate DNS records for all active keys
-jacs agent dns --all-keys
+jacs-compat agent dns --domain example.com --provider plain
 ```
+
+Coordinate replacing the record with activation of the new key, allowing for
+TTL and propagation. Retain independently trusted historical keys and signed
+version transitions outside this single current-key DNS record. See
+[DNS trust anchoring](dns-trust.md).
 
 ## Security Considerations
 
@@ -376,8 +366,8 @@ jacs agent dns --all-keys
 When a key is compromised:
 
 1. **Mark as revoked** in the agent's key history
-2. **Update DNS** to include revocation status
-3. **Signatures fail verification** when made with revoked keys
+2. **Update DNS** to the trusted replacement key; DNS has no per-key revocation field
+3. **Enforce revocation policy** in the relying application; mathematical validity alone does not establish current trust
 4. **Notify trusted peers** if possible
 
 ### Overlap Period
@@ -418,7 +408,7 @@ After rotation:
 - [ ] Update DNS records
 - [ ] Securely delete old private key
 - [ ] Test signing with new key
-- [ ] Re-issue the compatibility key binding (`jacs agent issue-compat-binding`) if the agent has an ES256 compatibility key — ecosystem exports fail until the new native root signs a fresh binding
+- [ ] Re-issue the compatibility key binding (`jacs-compat agent issue-compat-binding`) if the agent has an ES256 compatibility key — ecosystem exports fail until the new native root signs a fresh binding
 
 ## See Also
 

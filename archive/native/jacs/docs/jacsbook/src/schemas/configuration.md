@@ -83,7 +83,7 @@ Password for encrypted private keys:
 }
 ```
 
-**Warning**: Do not store passwords in config files for production. Use the `JACS_PRIVATE_KEY_PASSWORD` environment variable or `jacs keychain set` (OS keychain) instead. See [OS Keychain Configuration](../reference/configuration.md#os-keychain-configuration).
+**Warning**: Do not store passwords in config files for production. Use the `JACS_PRIVATE_KEY_PASSWORD` environment variable or `jacs-compat keychain set` (OS keychain) instead. See [OS Keychain Configuration](../reference/configuration.md#os-keychain-configuration).
 
 ### Storage Configuration
 

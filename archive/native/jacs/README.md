@@ -2,7 +2,7 @@
 
 Cryptographic identity, signing, and verification for agent systems.
 
-This crate is the source implementation for portable JACS signatures: it canonicalizes and signs JSON documents, verifies schema-backed envelopes, and exposes the primitives that Python, Node.js, Go, CLI, and MCP integrations build on.
+This crate is the native JACS facade, backed by the portable `jacs-core` protocol crate: it canonicalizes and signs JSON documents, verifies schema-backed envelopes, and exposes the primitives that Python, Node.js, Go, CLI, and MCP integrations build on.
 
 **[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://docs.rs/jacs/latest/jacs/)**
 
@@ -16,15 +16,19 @@ For the CLI and MCP server:
 cargo install jacs-cli
 ```
 
+Version 0.15.0 has a recorded [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
+New DID/JWK and Agent Card behavior in this checkout is source work; see the
+[identity standards guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md) for that boundary.
+
 ## What it does
 
 | Capability | Rust API |
 |-----------|----------|
 | Agent identity and schema-backed signed JSON | `jacs::simple` |
-| Inline Markdown/text signatures | `jacs::text` |
-| PNG/JPEG/WebP provenance | `jacs::media` |
+| Inline Markdown/text signatures | `jacs::simple::advanced` |
+| PNG/JPEG/WebP provenance | `jacs::simple::advanced` |
 | RFC 5322 email signatures | `jacs::email` |
-| ES256 compatibility key and ecosystem exports (JWKS, key binding, A2A agent card, AP2 mandate, agreement VC) | `jacs::compatibility` |
+| Native PQ DID/JWK and Agent Card discovery (current source); explicit ES256 compatibility, AP2 mandates and agreement credentials | `jacs::w3c`, `jacs::a2a`, `jacs::compatibility` |
 | Standalone Agreement v2, storage, DNS, and trust | Core crate modules |
 
 ## Quick start
@@ -102,11 +106,12 @@ compatibility and logs every use at WARN. Strict deployments can reject it with
 ## Artifact provenance
 
 ```rust
-use jacs::media::{sign_image, verify_image, SignImageOptions};
-use jacs::text::{sign_text_file, verify_text_file, VerifyOptions};
+use jacs::simple::advanced::{sign_image, verify_image, sign_text_file, verify_text_file};
+use jacs::simple::{SignImageOptions, SignTextOptions, VerifyImageOptions};
+use jacs::inline::VerifyOptions;
 
 // Markdown/text: append an inline signature block.
-sign_text_file(&agent, "README.md")?;
+sign_text_file(&agent, "README.md", SignTextOptions::default())?;
 let text = verify_text_file(
     &agent,
     "README.md",
@@ -118,7 +123,7 @@ sign_image(&agent, "photo.png", "signed.png", SignImageOptions::default())?;
 let image = verify_image(
     &agent,
     "signed.png",
-    VerifyOptions { strict: false, key_dir: None },
+    VerifyImageOptions::default(),
 )?;
 ```
 
@@ -135,17 +140,26 @@ let result = verify_email(&signed_eml, &agent, &sender_public_key)?;
 assert!(result.valid);
 ```
 
-## CLI
+## Extended native CLI
+
+These native integration commands use the compatibility executable. The portable
+`jacs` CLI installed above has a separate create/sign/verify surface.
 
 ```bash
-jacs quickstart --name my-agent --domain example.com
-jacs document create -f mydata.json --output signed-document.json
-jacs verify jacs_data/signed-document.json
-jacs agreement-v2 verify --agreement agreement.json
-jacs mcp                # start MCP server (stdio only)
+cargo install jacs-cli-compat --locked
+jacs-compat quickstart --name my-agent --domain example.com
+jacs-compat document create -f mydata.json --output signed-document.json
+jacs-compat verify jacs_data/signed-document.json
+jacs-compat agreement-v2 verify --agreement agreement.json
+jacs-compat mcp         # verify-only by default; stdio only
 ```
 
-Agreement v2 is the preferred model for new multi-agent consent workflows. It creates standalone `jacsType: "agreement"` documents with terms, parties, transcript references, signer/witness/notary policy, branch handling, and portable verification. The older `jacsAgreement` sidecar remains for simple countersignature metadata on existing documents.
+Native Agreement v2 provides compatibility documents and mathematical signature
+inspection. Its report keeps `valid=false` and `policyAccepted=false`; claimed
+status is not consent-policy acceptance. New portable consent uses
+[`jacs-core::agreements::v3`](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html).
+The older `jacsAgreement` sidecar likewise inspects signatures without
+authenticating participant policy.
 
 ## Security
 
@@ -163,6 +177,6 @@ Report vulnerabilities to security@hai.ai.
 - [Documentation](https://humanassisted.github.io/JACS/)
 - [Rust API](https://docs.rs/jacs/latest/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
-- [Development Guide](../DEVELOPMENT.md)
+- [Development Guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md)
 
-**Version**: 0.13.0 | [Apache-2.0](../LICENSE-APACHE)
+**Source version**: 0.15.0 | [Apache-2.0](https://github.com/HumanAssisted/JACS/blob/main/archive/native/LICENSE-APACHE)

@@ -6,26 +6,33 @@ Common issues and solutions when installing or using JACS.
 
 ### pip install fails
 
-Check your Python version (3.10+ required). If no pre-built wheel exists for your platform, install the Rust toolchain and build from source:
+Published 0.15.0 wheels support Python 3.10–3.14; this source checkout requires
+Python 3.11–3.14. If no pre-built wheel exists for your platform, install the Rust toolchain and build from source:
 
 ```bash
 pip install maturin
-cd jacspy && maturin develop --release
+make build-jacspy  # from the repository root
 ```
 
 ### npm install fails
 
-Pre-built binaries are available for Linux/macOS/Windows x64 and ARM64 macOS. If no pre-built binary matches your platform, you need the Rust toolchain installed so the native addon can compile during `npm install`.
+Native npm binaries cover macOS x64/arm64 and Linux x64/arm64 for glibc and
+musl. There is no Windows addon; a Windows CLI archive is a separate artifact.
+For custom source builds, use `make build-jacsnpm` from the repository root
+with the documented Node and Rust toolchains.
 
 ### Alpine Linux / musl libc
 
-The default wheels and binaries target glibc. On Alpine or other musl-based systems, build from source with the Rust toolchain, or use a Debian-based container image instead.
+Published 0.15.0 includes a Python musllinux x86_64 wheel and npm musl
+x86_64/arm64 addons. CLI archives are glibc-only; the Python/npm CLI shims
+reject musl even when library APIs work. Match the artifact to architecture
+and libc; see [deployment compatibility](deployment.md).
 
 ## Configuration Issues
 
 ### Config not found
 
-Run `jacs quickstart --name my-agent --domain my-agent.example.com` to auto-create a config, or copy the example:
+Run `jacs-compat quickstart --name my-agent --domain my-agent.example.com` to auto-create a config, or copy the example:
 
 ```bash
 cp jacs.config.example.json jacs.config.json
@@ -33,7 +40,7 @@ cp jacs.config.example.json jacs.config.json
 
 ### Private key decryption failed
 
-Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may also set `JACS_PASSWORD_FILE` to a file that contains only the password, or use `jacs keychain set` to store the password in the OS keychain. Set exactly one explicit source; if both env var and password file are set, CLI fails by design. The OS keychain is only consulted when neither env var nor password file is present.
+Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may also set `JACS_PASSWORD_FILE` to a file that contains only the password, or use `jacs-compat keychain set` to store the password in the OS keychain. Set exactly one explicit source; if both env var and password file are set, CLI fails by design. The OS keychain is only consulted when neither env var nor password file is present.
 
 ### Algorithm detection failed
 
@@ -64,13 +71,13 @@ cd JACS
 
 # Rust core + CLI
 cargo build --release
-cargo install --path jacs --features cli
+cargo install --path jacs-cli --locked
 
 # Python binding
-cd jacspy && maturin develop --release
+make build-jacspy  # from the repository root
 
 # Node.js binding
-cd jacsnpm && npm run build
+make build-jacsnpm
 ```
 
 Requires Rust 1.97+ (install via [rustup](https://rustup.rs/)).
