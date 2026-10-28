@@ -1,61 +1,38 @@
-# DID Integration (No Blockchain Required)
+# DID integration
 
-This chapter describes an integration pattern. JACS ships a lightweight `did:wba` export surface (`jacs w3c did`, `jacs w3c did-document`, and the W3C MCP tools) but no general-purpose DID resolver or full DID method toolchain.
+JACS exports `did:wba` identifiers and public DID documents using the persisted
+native signing identity. It has no general-purpose DID resolver. See the
+[current identity guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
+for source installation, ML-DSA-87 JWK exports, checked standards and release
+boundaries. The extended CLI is named `jacs-compat`:
 
-The DID domain comes from `--domain` at agent creation (stamped into the config as `jacs_agent_domain`); override it per-export with `--origin`.
+```sh
+jacs-compat w3c did --origin https://agent.example.com
+jacs-compat w3c did-document --origin https://agent.example.com
+```
 
-You can still use JACS in DID-oriented architectures without requiring a blockchain or ledger.
+These commands load the existing native agent configuration. The DID is
+`did:wba:<host>:agent:<jacsId>` and its document is hosted at
+`/agent/<jacsId>/did.json`. The domain comes from configured `jacs_agent_domain`
+or an explicit `--origin`; publish under an origin you control. The exporter
+does not prove that control or deploy the document.
 
-## Core Position
+Current source represents the native `pq2025` root as a `JsonWebKey` verification
+method with an RFC 9964 ML-DSA-87 AKP `publicKeyJwk`. DID v1 and Controlled
+Identifiers v1 contexts describe that representation. Exporting a different
+format does not rotate the key or create another root identity. A valid
+signature must still be tied to independently trusted identity evidence and
+application authorization. No blockchain is required.
 
-- JACS already gives you signed, verifiable agent identity and artifact provenance
-- DID is an interoperability format you can layer on top when needed
-- Blockchain is optional infrastructure, not a dependency of JACS
+Generic `did:web` and `did:key` mappings are possible integration designs;
+they are not implemented exporters in this library.
 
-## How Identity Maps
+## ES256 compatibility entries
 
-JACS identity primitives:
-
-- `jacsId` (stable agent identity)
-- `agentVersion` (key/version lifecycle)
-- `publicKeyHash` (verification anchor)
-- Optional DNS domain for public verification
-
-Typical DID mappings:
-
-- `did:web:agent.example.com` for web-hosted identity metadata
-- `did:key:<multibase>` for direct key-based identity
-- Organization-specific DID methods for internal ecosystems
-
-## Practical Integration Pattern
-
-1. Keep JACS as the source of truth for signing and verification.
-2. Publish a DID representation that references the same public key material.
-3. Verify payload signatures with JACS runtime policy (`local`, `dns`, `registry`).
-4. Use DID resolution for discovery/routing metadata where useful.
-
-This avoids duplicate trust stacks while still supporting DID-based interoperability requirements.
-
-## Why Teams Choose This Model
-
-- No chain operations, gas costs, or ledger finality concerns
-- Works in private networks and regulated environments
-- Easier migration path from existing PKI/DNS systems
-- Clear separation: JACS for provenance, DID for interoperable identity documents
-
-## Example: `did:web` + JACS DNS
-
-- Serve DID metadata via `did:web`
-- Publish JACS public key fingerprint in DNS TXT
-- Accept external artifacts only when JACS verification succeeds under your trust policy
-
-This gives human-readable identity, standards-friendly discovery, and strong cryptographic verification without blockchain dependencies.
-
-## ES256 Compatibility Entries in DID Documents (P2)
 
 When the agent has an ES256 compatibility key **and** a valid
 native-root-signed compatibility key binding granting the `did` scope,
-generated DID documents (`jacs w3c did-document`) include two
+generated DID documents (`jacs-compat w3c did-document`) include two
 verification-method entries for that key:
 
 - a `JsonWebKey` entry (`publicKeyJwk`) for JOSE consumers, and
@@ -66,7 +43,7 @@ If the compatibility key is absent or the binding is missing, invalid, or
 lacks the `did` scope, the DID document is still exported — it simply
 omits the ES256 entries. The ES256 entries prove possession of the
 compatibility key only; native-root trust comes from the binding
-(`jacs agent export-compat-binding`) — see the
+(`jacs-compat agent export-compat-binding`) — see the
 [Security Model](../advanced/security.md#compatibility-key-binding-p2).
 
 ## JACS-Specific Request Proofs
@@ -87,6 +64,17 @@ body; inspecting only the proof's own method and URL does not establish that
 match. A supplied DID document is not, by itself, trusted identity evidence or
 permission to act. Apply trusted resolution and current authorization policy at
 the receiving application boundary.
+
+The request-proof verifier infers ML-DSA-87 or Ed25519 from a standard public
+JWK. An optional `jacsSigningAlgorithm` must agree with that key. DID document
+method IDs and authentication references may use absolute local DID URLs or
+`#fragment` references, with matching controller and no ambiguous IDs. The
+proof itself must name an absolute local DID URL. Scoped ES256 entries are not
+supported by this JACS-specific request-proof protocol.
+
+JACS's ML-DSA-87 public AKP profile uses a thumbprint `kid`; Ed25519 DID exports
+retain the existing method URL and use its fragment as `kid`. CID thumbprint
+naming is recommended, not a requirement to rename every existing method.
 
 ## Where to Combine With Other Standards
 

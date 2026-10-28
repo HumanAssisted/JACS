@@ -145,10 +145,10 @@ fn generated_card_signs_the_exact_canonical_serving_origin() {
     let card: jacs::a2a::AgentCard =
         serde_json::from_value(card_value).expect("decode signed card");
     let jwk: jacs::a2a::keys::Jwk =
-        serde_json::from_value(jwks["keys"][0].clone()).expect("decode ES256 JWK");
-    let public_pem = jacs::a2a::keys::es256_jwk_public_pem(&jwk).expect("convert JWK");
+        serde_json::from_value(jwks["keys"][0].clone()).expect("decode root JWK");
+    let public_key = jacs::a2a::keys::mldsa87_jwk_public_key(&jwk).expect("validate root JWK");
     assert!(
-        jacs::a2a::extension::verify_agent_card_jws(&card, public_pem.as_bytes(), "ES256")
+        jacs::a2a::extension::verify_agent_card_jws(&card, &public_key, "pq2025")
             .expect("verify signed Agent Card"),
         "the canonical interface URL must be inside the verified JWS payload"
     );

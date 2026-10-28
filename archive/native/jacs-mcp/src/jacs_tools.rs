@@ -1876,7 +1876,7 @@ impl JacsMcpServer {
     /// Generate the stable, identity-bound .well-known documents for A2A discovery.
     #[tool(
         name = "jacs_generate_well_known",
-        description = "Generate stable ES256-signed A2A discovery documents together with the native-root-signed compatibility binding."
+        description = "Generate A2A discovery signed directly by the stable ML-DSA-87 root, or explicitly select ES256 compatibility with its native-root-signed binding."
     )]
     pub async fn jacs_generate_well_known(
         &self,
@@ -1887,7 +1887,7 @@ impl JacsMcpServer {
         }
         match self
             .agent
-            .generate_well_known_documents(params.a2a_algorithm.as_deref())
+            .generate_well_known_documents(params.a2a_algorithm.as_deref(), None)
         {
             Ok(docs_json) => {
                 // Parse to count documents

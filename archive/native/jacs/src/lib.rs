@@ -69,6 +69,7 @@ pub mod health;
 pub mod human_approval;
 pub mod inline;
 pub mod keystore;
+pub mod key_resolution;
 pub mod media_signing;
 pub mod mime;
 pub mod observability;

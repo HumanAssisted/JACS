@@ -1,6 +1,8 @@
 # Potential Post-Quantum Cryptography Migration
 
-JACS currently uses the pure-Rust `fips203` 0.4.3 implementation for ML-KEM-768 and `fips204` 0.4.6 for ML-DSA-87; both implement the final NIST standards and remain the latest releases, but neither has a published independent security audit. There is no immediate migration trigger: the July 2026 Anthropic findings concern HAWK and reduced-round AES rather than ML-KEM or ML-DSA, and currently available Rust-native alternatives such as RustCrypto `ml-kem`/`ml-dsa` and libcrux also lack a published audit covering both algorithms. A future migration should therefore be driven by demonstrably stronger maintenance or implementation assurance—not package age alone—and must preserve JACS key, signature, document, WASM, and cross-language compatibility.
+Current source uses pure-Rust `fips204` **0.5.0** in portable core for ML-DSA-87. Native `pq2025` signing delegates to core; the unused native `fips204` 0.4.6 dependency was removed. The live native ML-KEM-768 implementation uses `fips203` **0.5.0**, updated from 0.4.3 for [upstream key-import and decompression correctness fixes](https://docs.rs/crate/fips203/0.5.0/source/CHANGELOG.md). Canonical JSON uses `serde_json_canonicalizer` **0.4.1**, including native tests. These source changes are not a statement about already published packages.
+
+Both cryptographic crates target the final NIST standards. Their version numbers alone do not establish security assurance. Future backend migrations should be based on current maintenance, vulnerability disclosures, independent audit evidence and compatibility testing. Preserve existing JACS keys, signatures, documents, WASM behavior and cross-language verification when evaluating alternatives.
 
 ## Plan
 

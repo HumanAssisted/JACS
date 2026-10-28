@@ -13,7 +13,6 @@ use crate::protocol::canonicalize_json_try;
 use crate::schema::utils::ValueExt;
 use crate::simple::SimpleAgent;
 use crate::simple::types::*;
-use base64::Engine as _;
 use serde_json::{Value, json};
 use std::path::Path;
 use tracing::{info, warn};
@@ -896,7 +895,7 @@ pub fn is_signer_id_safe(signer_id: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == ':' || c == '_' || c == '.' || c == '-')
 }
 
-/// Default key resolver composing self → key_dir → trust store → DNS (TODO).
+/// Local key lookup plus context-aware, opt-in shared DNS/registry discovery.
 ///
 /// Callers in this module wire one of these up around a `SimpleAgent` and an
 /// optional `--key-dir` path before calling `crate::inline::verify_inline`.
@@ -966,218 +965,32 @@ impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
             }
         }
 
-        // 4. DNS-published key resolution (soft-fail).
-        //
-        // Lets verifiers pick up signatures from strangers who publish their
-        // agent + public key under a domain they control. Two channels:
-        //   • DNS TXT  at `_v1.agent.jacs.<domain>` provides the agent_id +
-        //     `jac_public_key_hash` fingerprint (the integrity binding).
-        //   • HTTPS at `https://<domain>/.well-known/jacs/agents/<id>.public.pem`
-        //     provides the public-key bytes.
-        //
-        // Discovery domains come from the `JACS_DNS_KEY_DOMAINS` env var (CSV).
-        // Operators can leave it unset for an opt-in network model. Each lookup
-        // is best-effort: any DNS / HTTPS / hash-mismatch failure surfaces as
-        // `None` (caller emits `SignatureStatus::KeyNotFound`) — same soft-fail
-        // semantics as verification itself.
-        if let Some(resolved) = resolve_via_dns_and_https(signer_id) {
-            return Some(resolved);
-        }
-
+        // Legacy compact blocks have no immutable agentVersion. Keep their
+        // resolution local; never invent a registry "latest" lookup.
         None
     }
-}
 
-/// DNS + HTTPS .well-known key resolution.
-///
-/// Returns `None` on any failure (DNS lookup error, no matching TXT record,
-/// HTTPS fetch failure, hash mismatch, malformed key bytes). Hard errors
-/// surface as `KeyNotFound` from the inline verifier — never raised.
-///
-/// `JACS_DNS_KEY_DOMAINS` is a CSV of trusted publisher domains (e.g.
-/// `"agents.example.com,agents.acme.com"`). For each entry the resolver:
-///   1. Fetches `_v1.agent.jacs.<domain>` TXT (insecure resolver — DNSSEC
-///      validation is the operator's choice, gated upstream by the
-///      `dns-lookup` capability bit).
-///   2. Confirms `jacs_agent_id` matches the requested signer.
-///   3. Fetches `https://<domain>/.well-known/jacs/agents/<signer>.public.pem`.
-///   4. Hashes the fetched PEM (LF-normalised) and compares to the TXT-published
-///      `jac_public_key_hash` so the DNS record binds the HTTPS bytes.
-///   5. Returns the parsed key on the first successful match.
-#[cfg(not(target_arch = "wasm32"))]
-fn resolve_via_dns_and_https(signer_id: &str) -> Option<crate::inline::ResolvedKey> {
-    use crate::dns::bootstrap::{
-        find_jacs_txt_record, parse_agent_txt, record_owner, resolve_txt_insecure,
-    };
-
-    // Reject malicious signer IDs before we mint any URLs.
-    if !is_signer_id_safe(signer_id) {
-        return None;
-    }
-
-    let domains = std::env::var("JACS_DNS_KEY_DOMAINS").ok()?;
-    let domains: Vec<String> = domains
-        .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect();
-    if domains.is_empty() {
-        return None;
-    }
-
-    for domain in &domains {
-        let well_known_base = match validated_well_known_base(domain) {
-            Some(url) => url,
-            None => continue,
-        };
-        let dns_domain = match well_known_base.host_str() {
-            Some(host) => host,
-            None => continue,
-        };
-        let owner = record_owner(dns_domain);
-        let txt = match resolve_txt_insecure(&owner) {
-            Ok(t) => t,
-            Err(_) => {
-                // DNS lookup failed (network / NXDOMAIN / network capability
-                // disabled). Soft-fail: try the next domain.
-                continue;
-            }
-        };
-        // Defence-in-depth: even though resolve_txt_insecure already filters
-        // to v=jacs, re-confirm here.
-        let txt = match find_jacs_txt_record(vec![txt], &owner) {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-        let fields = match parse_agent_txt(&txt) {
-            Ok(f) => f,
-            Err(_) => continue,
-        };
-        if fields.jacs_agent_id != signer_id {
-            // This domain publishes a different agent; not our signer.
-            continue;
+    fn resolve_document(&self, document: &serde_json::Value) -> Option<crate::inline::ResolvedKey> {
+        crate::trust::verify_document_identity_binding(document).ok()?;
+        let signer = document.pointer("/jacsSignature/agentID")?.as_str()?;
+        if let Some(local) = self.resolve(signer)
+            && crate::key_resolution::document_key_matches(document, &local.public_key_pem)
+            && crate::verification::matching_algorithm(
+                document
+                    .pointer("/jacsSignature/signingAlgorithm")
+                    .and_then(serde_json::Value::as_str),
+                Some(&local.algorithm),
+            )
+            .is_ok()
+        {
+            return Some(local);
         }
-
-        // Fetch key bytes via .well-known/.
-        let pem_bytes = match fetch_well_known_pem(&well_known_base, signer_id) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        // Confirm the fetched key matches the DNS-published fingerprint.
-        // This binds the HTTPS bytes to the DNS record so a compromised HTTPS
-        // origin cannot serve an attacker-controlled key without also
-        // compromising DNS.
-        if !pem_matches_dns_digest(&pem_bytes, &fields.digest, &fields.enc) {
-            continue;
-        }
-
-        if let Some(resolved) = resolved_from_pem_or_raw(&pem_bytes) {
-            return Some(resolved);
-        }
-    }
-
-    None
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn validated_well_known_base(domain: &str) -> Option<url::Url> {
-    let domain = domain.trim();
-    if domain.is_empty() || domain.contains('/') {
-        return None;
-    }
-    let url = url::Url::parse(&format!("https://{domain}/")).ok()?;
-    if url.scheme() != "https"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.port().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || url.path() != "/"
-        || !matches!(url.host(), Some(url::Host::Domain(_)))
-    {
-        return None;
-    }
-    let parsed_host = url.host_str()?.trim_end_matches('.');
-    if !parsed_host.eq_ignore_ascii_case(domain.trim_end_matches('.')) {
-        return None;
-    }
-    Some(url)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn fetch_well_known_pem(base: &url::Url, signer_id: &str) -> Option<Vec<u8>> {
-    use crate::config::{NetworkCapability, ensure_network_access};
-
-    if ensure_network_access(NetworkCapability::RemoteKeyFetch).is_err() {
-        return None;
-    }
-
-    let mut url = base.clone();
-    url.path_segments_mut()
-        .ok()?
-        .extend([".well-known", "jacs", "agents"])
-        .push(&format!("{signer_id}.public.pem"));
-    let policy = crate::secure_fetch::SecureFetchPolicy::new(
-        "DNS well-known public key",
-        16 * 1024,
-        &["application/x-pem-file", "text/plain"],
-    )
-    .max_redirects(2)
-    .timeouts(
-        std::time::Duration::from_secs(10),
-        std::time::Duration::from_secs(3),
-        std::time::Duration::from_secs(2),
-    );
-    let response = crate::secure_fetch::secure_get(
-        url.as_str(),
-        "application/x-pem-file, text/plain",
-        &policy,
-    )
-    .ok()?;
-    if !response.status.is_success() {
-        return None;
-    }
-    Some(response.body)
-}
-
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod well_known_url_tests {
-    use super::validated_well_known_base;
-
-    #[test]
-    fn accepts_only_bare_dns_domains() {
-        assert_eq!(
-            validated_well_known_base("agents.example.com")
-                .unwrap()
-                .as_str(),
-            "https://agents.example.com/"
-        );
-        assert!(validated_well_known_base("user@agents.example.com").is_none());
-        assert!(validated_well_known_base("agents.example.com/path").is_none());
-        assert!(validated_well_known_base("agents.example.com?next=evil").is_none());
-        assert!(validated_well_known_base("127.0.0.1").is_none());
-        assert!(validated_well_known_base("[::1]").is_none());
-    }
-}
-
-/// Whether `pem_bytes` (the bytes fetched from `.well-known`) hashes to the
-/// digest published in the JACS TXT record. Accepts both base64 and hex
-/// encodings of the SHA-256 of the LF-normalised PEM.
-fn pem_matches_dns_digest(
-    pem_bytes: &[u8],
-    dns_digest: &str,
-    enc: &crate::dns::bootstrap::DigestEncoding,
-) -> bool {
-    use crate::dns::bootstrap::DigestEncoding;
-    let normalised = crate::crypt::normalize_public_key_pem(pem_bytes);
-    let raw = crate::crypt::hash::hash_bytes_raw(normalised.as_bytes());
-    match enc {
-        DigestEncoding::Base64 => {
-            base64::engine::general_purpose::STANDARD.encode(raw) == dns_digest
-        }
-        DigestEncoding::Hex => hex::encode(raw).eq_ignore_ascii_case(dns_digest),
+        let agent = self.agent.agent.lock().ok()?;
+        let key = crate::key_resolution::resolve_document_key(&agent, document).ok()?;
+        Some(crate::inline::ResolvedKey {
+            public_key_pem: key.public_key,
+            algorithm: inline_algorithm_tag(key.algorithm),
+        })
     }
 }
 
@@ -1726,13 +1539,13 @@ pub fn verify_image(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let algorithm = signed_doc_value
-        .pointer("/jacsSignature/signing_algorithm")
+        .pointer("/jacsSignature/signingAlgorithm")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
     // Resolve key based on signer identity.
     let resolver = DefaultKeyResolver::new(agent, opts.base.key_dir.as_deref());
-    let signer_id_str = match signer_id.as_ref() {
+    let _signer_id_str = match signer_id.as_ref() {
         Some(s) => s,
         None => {
             return Ok(MediaVerificationResult {
@@ -1747,7 +1560,8 @@ pub fn verify_image(
         }
     };
 
-    let resolved = match crate::inline::KeyResolver::resolve(&resolver, signer_id_str) {
+    let resolved = match crate::inline::KeyResolver::resolve_document(&resolver, &signed_doc_value)
+    {
         Some(r) => r,
         None => {
             // Per-block KeyNotFound never escalates to Err — see PRD §4.1.2
@@ -1781,21 +1595,10 @@ pub fn verify_image(
         });
     }
 
-    // Verify cryptographic signature. Same-agent path uses agent.verify;
-    // cross-agent path uses verify_with_key with the resolved key bytes.
-    //
-    // We pass `resolved.public_key_pem` directly because
-    // `verify_document_signature` re-hashes its `public_key` argument with
-    // `hash_public_key()` and compares to the embedded `jacsSignature.publicKeyHash`,
-    // which was computed at sign time over the same raw key form.
-    // Re-armoring through `normalize_public_key_pem` would silently break that
-    // comparison for ed25519/pq2025 cross-agent verification.
-    let my_id = agent.get_agent_id().ok();
-    let verify_result = if my_id.as_deref() == Some(signer_id_str) {
-        agent.verify(&payload)
-    } else {
-        agent.verify_with_key(&payload, resolved.public_key_pem.clone())
-    };
+    // Verify the exact resolved key for both current and historical identities.
+    // Re-entering self verification based on UUID alone would select a rotated
+    // current key and could repeat discovery unnecessarily.
+    let verify_result = agent.verify_with_key(&payload, resolved.public_key_pem.clone());
 
     let mut status = match verify_result {
         Ok(v) => {

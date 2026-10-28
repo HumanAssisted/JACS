@@ -27,6 +27,40 @@
 
 ## Unreleased
 
+### 2026-10-28 — Native PQ identity, key discovery and ecosystem integration
+
+- Reuse the persistent ML-DSA-87 identity for RFC 9964 public JWK/JWS exports,
+  `did:wba` documents and signed Agent Cards. Add direct PQ signing to typed
+  A2A 1.0 and public Node/Python discovery APIs with caller-supplied service
+  profiles. Default discovery retains its legacy 0.4.0 format; ES256 remains
+  an explicit compatibility option, with no downgrade after a PQ failure.
+  These exports do not claim a W3C ML-DSA-87 Data Integrity cryptosuite.
+- Add opt-in native DNS/HTTPS and exact-version key-service resolution across
+  supported document, text/image, A2A artifact and full-attestation verifiers.
+  DNS fingerprints hash raw public keys; existing signed key references remain
+  compatible. Discovery does not enroll trusted identities, and portable
+  CLI/MCP verification continues to require caller-supplied key material. See
+  the [key discovery guide](docs/key-discovery.md) for coverage and limits.
+- Improve DID verification-method interoperability and A2A signature/key
+  consistency, including selection of the expected root in multi-signature
+  cards. PQ TOFU pins from earlier unpublished builds may need deliberate
+  replacement after independently verifying the identity and exact root;
+  mismatches fail closed rather than resetting trust automatically.
+- Add runnable official A2A SDK 1.3.0 exchanges using JavaScript ML-DSA-87 and
+  explicit Python ES256 compatibility with a PQ root. The direct JavaScript
+  PQ flow requires Node 24.7+ with ML-DSA WebCrypto. Installed npm/wheel
+  consumers run these signature and tamper checks in Linux/macOS CI; temporary
+  path handling works with macOS symlinked paths while preserving custody
+  checks. Refresh MCP-first setup and DID/A2A developer guidance.
+- Update cryptographic, schema and SDK dependencies, including ML-KEM rounding
+  and key-import fixes and JSON Schema reference-cycle handling. Remove an
+  unused native ML-DSA dependency while retaining core's production backend;
+  align canonicalization and verify sampled cross-version ML-KEM compatibility.
+  Maintained Python packages now require Python 3.11 or newer.
+- Strengthen dependency audits, regression gates and release preflight. Existing
+  source-only dependency backports remain publication blockers; these changes
+  are for the next release, not additions to already published 0.15.0 artifacts.
+
 ### 2026-10-07 — Integrate compatible Rust dependency upgrades
 
 - Update portable schemas and UniFFI, native parsers, DNS, cryptography and

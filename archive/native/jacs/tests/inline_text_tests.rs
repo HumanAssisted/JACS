@@ -408,7 +408,7 @@ fn key_dir_rejects_signer_id_with_forward_slash() {
         signed_content_hash: content_hash,
         signature: "AAAA".to_string(),
     };
-    let body = serde_yaml_ng::to_string(&block).unwrap();
+    let body = serde_saphyr::to_string(&block).unwrap();
     let framed = format!("{}{}\n{}{}\n", content, BEGIN_MARKER, body, END_MARKER);
     fs::write(&path, framed).unwrap();
 
@@ -456,7 +456,7 @@ fn key_dir_rejects_signer_id_with_dotdot() {
         signed_content_hash: content_hash,
         signature: "AAAA".to_string(),
     };
-    let body = serde_yaml_ng::to_string(&block).unwrap();
+    let body = serde_saphyr::to_string(&block).unwrap();
     let framed = format!("{}{}\n{}{}\n", content, BEGIN_MARKER, body, END_MARKER);
     fs::write(&path, framed).unwrap();
 
@@ -518,7 +518,7 @@ fn assert_key_dir_safety_rejects(signer_id: &str) {
         signed_content_hash: content_hash,
         signature: "AAAA".to_string(),
     };
-    let body = serde_yaml_ng::to_string(&block).unwrap();
+    let body = serde_saphyr::to_string(&block).unwrap();
     let framed = format!("{}{}\n{}{}\n", content, BEGIN_MARKER, body, END_MARKER);
     fs::write(&path, framed).unwrap();
 
@@ -754,7 +754,7 @@ fn verify_ed25519_fixture_roundtrip() {
         signed_content_hash: content_hash_b64,
         signature: signature_b64,
     };
-    let body = serde_yaml_ng::to_string(&block).unwrap();
+    let body = serde_saphyr::to_string(&block).unwrap();
     let framed = format!("{}{}\n{}{}\n", content, BEGIN_MARKER, body, END_MARKER);
 
     struct FixtureResolver {

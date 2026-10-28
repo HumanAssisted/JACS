@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import subprocess
 import re
 import sys
 import tomllib
@@ -44,6 +46,21 @@ DOCUMENTED_EXCEPTIONS = BLOCKING_IGNORES | {
 }
 CARGO_DENY_IGNORES = {
     advisory for advisory in DOCUMENTED_EXCEPTIONS if advisory.startswith("RUSTSEC-")
+}
+
+
+SURREAL_BACKEND_SHA256 = "06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa"
+SURREAL_REVIEWED_CHAIN = {
+    ("rsa", "0.9.10"): {("jsonwebtoken", "10.4.0")},
+    ("jsonwebtoken", "10.4.0"): {("surrealdb-core", "3.3.4"), ("surrealdb-expr", "3.3.4")},
+    ("surrealdb-core", "3.3.4"): {("surrealdb-engine-local", "3.3.4")},
+    ("surrealdb-expr", "3.3.4"): {
+        ("surrealdb-catalog", "3.3.4"), ("surrealdb-core", "3.3.4"),
+        ("surrealdb-datastore", "3.3.4"), ("surrealdb-idx", "3.3.4"),
+        ("surrealdb-runtime", "3.3.4"),
+    },
+    ("surrealdb-engine-local", "3.3.4"): {("surrealdb", "3.3.4")},
+    ("surrealdb", "3.3.4"): {("jacs-surrealdb", "0.15.0")},
 }
 
 
@@ -148,6 +165,49 @@ def require_no_active_exceptions(policy: dict, reviewed: dict) -> None:
             raise ValueError(f"active portable graph must not contain {section}.{key}")
     if reviewed:
         raise ValueError("active portable graph must not contain reviewed license clarifications")
+
+
+def require_surreal_crypto_disposition(lock: dict, backend: bytes, native_graphs: dict[str, str]) -> None:
+    if hashlib.sha256(backend).hexdigest() != SURREAL_BACKEND_SHA256:
+        raise ValueError("SurrealDB reviewed backend source changed; renew crypto reachability review")
+    packages = lock["package"]
+    identities = {(p["name"], p["version"]) for p in packages}
+    for name, reviewed_versions in (
+        ("crypto-bigint", {"0.7.10"}), ("rsa", {"0.9.10"}),
+    ):
+        versions = {p["version"] for p in packages if p["name"] == name}
+        if versions != reviewed_versions:
+            raise ValueError(f"SurrealDB reviewed crypto version drift for {name}: {sorted(versions)}")
+    for identity, expected_parents in SURREAL_REVIEWED_CHAIN.items():
+        if identity not in identities:
+            raise ValueError(f"SurrealDB reviewed crypto version drift: {identity}")
+        name, version = identity
+        duplicate = sum(p["name"] == name for p in packages) > 1
+        reference = f"{name} {version}" if duplicate else name
+        actual = {
+            (p["name"], p["version"]) for p in packages
+            if reference in p.get("dependencies", [])
+        }
+        if actual != expected_parents:
+            raise ValueError(f"SurrealDB reviewed crypto parent drift for {identity}: {sorted(actual)}")
+    for target, graph in native_graphs.items():
+        if re.search(r"rsa v0\.9\.10", graph):
+            raise ValueError(f"SurrealDB reviewed crypto reached native target {target}")
+    if set(native_graphs) != {"x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"}:
+        raise ValueError("SurrealDB native target review coverage changed")
+
+
+def surreal_native_graphs() -> dict[str, str]:
+    result = {}
+    for target in ("x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"):
+        completed = subprocess.run(
+            ["cargo", "tree", "--locked", "--all-features", "--manifest-path",
+             "archive/native/jacs-surrealdb/Cargo.toml", "--target", target,
+             "--prefix", "none", "--format", "{p}"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        )
+        result[target] = completed.stdout
+    return result
 
 
 def require_archive_scoped_workflow_ignores(text: str) -> None:
@@ -404,7 +464,18 @@ def main() -> int:
         require_exact_parents(
             archive / "jacs-surrealdb/Cargo.lock", "bincode", {"surrealmx"}
         )
-    except (OSError, KeyError, tomllib.TOMLDecodeError, ValueError) as error:
+        with (archive / "jacs-surrealdb/Cargo.lock").open("rb") as handle:
+            surreal_lock = tomllib.load(handle)
+        require_surreal_crypto_disposition(
+            surreal_lock, (archive / "jacs-surrealdb/src/lib.rs").read_bytes(),
+            surreal_native_graphs(),
+        )
+        with (archive / "jacs-surrealdb/vendor/jsonwebtoken/Cargo.lock").open("rb") as handle:
+            jwt_lock = tomllib.load(handle)
+        if {p["version"] for p in jwt_lock["package"] if p["name"] == "rsa"} != {"0.9.10"}:
+            raise ValueError("JWT test lock RSA exception version drift")
+
+    except (OSError, KeyError, subprocess.CalledProcessError, tomllib.TOMLDecodeError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
 

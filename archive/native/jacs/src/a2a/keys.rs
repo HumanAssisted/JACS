@@ -31,6 +31,11 @@ pub struct Jwk {
     pub y: Option<String>, // ECDSA y coordinate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crv: Option<String>, // ECDSA curve
+    #[serde(rename = "pub", skip_serializing_if = "Option::is_none")]
+    pub pub_: Option<String>,
+    // Preserve restrictions/private members until algorithm-specific validation.
+    #[serde(flatten)]
+    pub additional: serde_json::Map<String, Value>,
 }
 
 /// Dual key pair for JACS and A2A
@@ -134,6 +139,8 @@ pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Jac
         x: Some(general_purpose::URL_SAFE_NO_PAD.encode(key_bytes)),
         y: None,
         crv: Some("Ed25519".to_string()),
+        pub_: None,
+        additional: Default::default(),
     })
 }
 
@@ -152,12 +159,19 @@ pub fn export_es256_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsE
         x: Some(x),
         y: Some(y),
         crv: Some("P-256".to_string()),
+        pub_: None,
+        additional: Default::default(),
     })
 }
 
 /// Export a public key as JWK based on algorithm
 pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result<Jwk, JacsError> {
     match algorithm {
+        "pq2025" | "ML-DSA-87" => {
+            let mut jwk = jacs_core::jose::mldsa87_public_jwk(public_key)?;
+            jwk["kid"] = json!(key_id);
+            Ok(serde_json::from_value(jwk)?)
+        }
         "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
         "ecdsa" | "es256" | "ES256" => export_es256_as_jwk(public_key, key_id),
         _ => Err(JacsError::CryptoError(format!(
@@ -165,6 +179,18 @@ pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result
             algorithm
         ))),
     }
+}
+
+/// Validate a public ML-DSA-87 AKP JWK and its RFC 7638 thumbprint key id.
+pub fn mldsa87_jwk_public_key(jwk: &Jwk) -> Result<Vec<u8>, JacsError> {
+    let value = serde_json::to_value(jwk)?;
+    let key = jacs_core::jose::mldsa87_public_key(&value)?;
+    if value["kid"] != jacs_core::jose::mldsa87_public_jwk(&key)?["kid"] {
+        return Err(JacsError::CryptoError(
+            "ML-DSA-87 JWK kid is not its RFC 7638 thumbprint".into(),
+        ));
+    }
+    Ok(key)
 }
 
 /// Convert a public ES256 JWK into SPKI PEM after validating its JOSE shape
@@ -241,6 +267,11 @@ pub fn sign_jws(
     algorithm: &str,
     key_id: &str,
 ) -> Result<String, JacsError> {
+    if matches!(algorithm, "pq2025" | "ML-DSA-87") {
+        crate::crypt::ensure_private_key_operation_allowed("pq2025", "A2A JWS signing")?;
+        let signer = jacs_core::Pq2025Signer::from_private_bytes(private_key)?;
+        return Ok(jacs_core::jose::sign_mldsa87_jws(payload, &signer, key_id)?);
+    }
     crate::crypt::ensure_private_key_operation_allowed(algorithm, "A2A JWS signing")?;
 
     // Create JWS header. The ES256 arms are a deliberate FR25 wall, not a
@@ -308,6 +339,9 @@ pub fn sign_jws(
 ///
 /// `Ok(payload_bytes)` if the signature is valid, or an error if verification fails.
 pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u8>, JacsError> {
+    if matches!(algorithm, "pq2025" | "ML-DSA-87") {
+        return Ok(jacs_core::jose::verify_mldsa87_jws(jws, public_key, None)?);
+    }
     let parts: Vec<&str> = jws.split('.').collect();
     if parts.len() != 3 {
         return Err(JacsError::CryptoError(format!(
@@ -420,6 +454,8 @@ mod tests {
             x: Some("test_x".to_string()),
             y: None,
             crv: Some("Ed25519".to_string()),
+            pub_: None,
+            additional: Default::default(),
         };
 
         let jwk_set = create_jwk_set(vec![jwk]);

@@ -162,24 +162,32 @@ pub fn verify_document_identity_binding(
         let pinned = crate::secure_io::read_to_string_no_follow(&pin_file)
             .map_err(|error| JacsError::TrustError(error.to_string()))?;
         let claimed_hash = signature.get_str_required("publicKeyHash")?;
-        if pinned.trim() != claimed_hash {
-            warn!(event = "verification_enrolled_key_conflict", agent_id = %identity,
-                "Document key does not match the independently enrolled identity");
-            return Err(JacsError::TrustError(
+        let same_reference = pinned.trim() == claimed_hash;
+        let key_conflict = || {
+            JacsError::TrustError(
                 "Document public key conflicts with the enrolled identity key".into(),
-            ));
-        }
+            )
+        };
+        // A different reference is not a discovery fallback. Only authenticated
+        // evidence for this exact enrolled version may establish a raw-key alias.
+        let unavailable = || {
+            if same_reference {
+                Ok(IdentityBindingStatus::Unavailable)
+            } else {
+                Err(key_conflict())
+            }
+        };
         let Some(metadata) = read_trusted_agent_metadata(&lookup)? else {
-            return Ok(IdentityBindingStatus::Unavailable);
+            return unavailable();
         };
         if !metadata.verified {
-            return Ok(IdentityBindingStatus::Unavailable);
+            return unavailable();
         }
         let enrolled = jacs_core::strict_json::parse_strict_json(&get_trusted_agent(&lookup)?)?;
         if enrolled[AGENT_SIGNATURE_FIELDNAME][SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str()
             != Some(SIGNATURE_CONTENT_VERSION_V2)
         {
-            return Ok(IdentityBindingStatus::Unavailable);
+            return unavailable();
         }
         let public_key = get_trusted_public_key(&lookup)?;
         // The legacy publicKeyHash normalizes text and is only a lookup hint.
@@ -202,6 +210,15 @@ pub fn verify_document_identity_binding(
         // both self-signature and submitted-signature checks.
         jacs_core::identity::canonical_key_id(&algorithm, &public_key)?;
         verify_agent_self_signature(&enrolled, &public_key, Some(&algorithm))?;
+        if !same_reference
+            && (pinned.trim() != hash_public_key(&public_key)
+                || claimed_hash != jacs_core::verify::sha256_hex(&public_key))
+        {
+            return Err(key_conflict());
+        }
+        // The v2 raw digest is an alternate reference to these exact retained
+        // bytes, not a replacement pin. Verify the submitted signature below;
+        // neither successful verification nor failure writes enrollment state.
         let algorithm = jacs_core::sign::SigningAlgorithm::from_wire_str(&algorithm)
             .ok_or_else(|| JacsError::TrustError("Unsupported enrollment algorithm".into()))?;
         let result = jacs_core::verify::verify_document(
@@ -1641,6 +1658,111 @@ mod tests {
             .unwrap();
         assert!(integrity.integrity_valid);
         assert!(!integrity.identity_bound);
+    }
+
+    #[test]
+    #[serial(home_env)]
+    fn enrolled_key_accepts_signed_raw_v2_reference_without_migrating_pin() {
+        use crate::crypt::KeyManager;
+        let _temp = setup_test_trust_dir();
+        let (agent, _) = crate::simple::SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+        let key = agent.get_public_key().unwrap();
+        let legacy_hash = hash_public_key(&key);
+        let raw_hash = jacs_core::verify::sha256_hex(&key);
+        assert_ne!(legacy_hash, raw_hash);
+        let enrolled_id = trust_agent_with_key(
+            &agent.export_agent().unwrap(),
+            Some(&agent.get_public_key_pem().unwrap()),
+        )
+        .unwrap();
+        let pin_file = identity_state_dir().join(format!("{}.pin", stable_identity(&enrolled_id)));
+        let metadata_file = trust_store_dir().join(format!("{enrolled_id}.meta.json"));
+        let enrollment_file = trust_store_dir().join(format!("{enrolled_id}.json"));
+        let original_pin = fs::read(&pin_file).unwrap();
+        let original_metadata = fs::read(&metadata_file).unwrap();
+        let original_enrollment = fs::read(&enrollment_file).unwrap();
+        let signed = agent
+            .sign_message(&serde_json::json!({"message": "portable raw reference"}))
+            .unwrap();
+        let mut document = jacs_core::strict_json::parse_strict_json(&signed.raw).unwrap();
+        let resign = |document: &mut Value| {
+            let fields = extract_signature_fields(document, AGENT_SIGNATURE_FIELDNAME)
+                .expect("signed document field list");
+            let input = build_signature_content_v2(
+                document,
+                fields,
+                AGENT_SIGNATURE_FIELDNAME,
+                &document[AGENT_SIGNATURE_FIELDNAME],
+            )
+            .unwrap();
+            let signature = agent.agent.lock().unwrap().sign_string(&input).unwrap();
+            document[AGENT_SIGNATURE_FIELDNAME]["signature"] = serde_json::json!(signature);
+        };
+        document[AGENT_SIGNATURE_FIELDNAME]["publicKeyHash"] = serde_json::json!(raw_hash);
+        // Merely replacing a signed fingerprint must still fail.
+        assert!(verify_document_identity_binding(&document).is_err());
+        resign(&mut document);
+        assert_eq!(
+            verify_document_identity_binding(&document).unwrap(),
+            IdentityBindingStatus::LocallyEnrolled
+        );
+
+        let mut unknown_version = document.clone();
+        unknown_version[AGENT_SIGNATURE_FIELDNAME]["agentVersion"] =
+            serde_json::json!(uuid::Uuid::new_v4().to_string());
+        resign(&mut unknown_version);
+        assert!(verify_document_identity_binding(&unknown_version).is_err());
+        let mut wrong_hash = document.clone();
+        wrong_hash[AGENT_SIGNATURE_FIELDNAME]["publicKeyHash"] = serde_json::json!("00".repeat(32));
+        resign(&mut wrong_hash);
+        assert!(verify_document_identity_binding(&wrong_hash).is_err());
+
+        // A bookmark cannot authorize the alias even when its bytes agree.
+        let mut metadata: Value = serde_json::from_slice(&original_metadata).unwrap();
+        metadata["verified"] = serde_json::json!(false);
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &metadata_file,
+            &serde_json::to_vec(&metadata).unwrap(),
+            0o600,
+            false,
+        )
+        .unwrap();
+        assert!(verify_document_identity_binding(&document).is_err());
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &metadata_file,
+            &original_metadata,
+            0o600,
+            false,
+        )
+        .unwrap();
+
+        // The retained enrollment self-signature is checked on every alias use.
+        let mut enrollment: Value = serde_json::from_slice(&original_enrollment).unwrap();
+        enrollment[AGENT_SIGNATURE_FIELDNAME]["signature"] = serde_json::json!("AA==");
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &enrollment_file,
+            &serde_json::to_vec(&enrollment).unwrap(),
+            0o600,
+            false,
+        )
+        .unwrap();
+        assert!(verify_document_identity_binding(&document).is_err());
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &enrollment_file,
+            &original_enrollment,
+            0o600,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            verify_document_identity_binding(&document).unwrap(),
+            IdentityBindingStatus::LocallyEnrolled
+        );
+        assert_eq!(fs::read(&pin_file).unwrap(), original_pin);
+        assert_eq!(fs::read(&metadata_file).unwrap(), original_metadata);
+        assert_eq!(fs::read(&enrollment_file).unwrap(), original_enrollment);
+        untrust_agent(&enrolled_id).unwrap();
+        assert!(verify_document_identity_binding(&document).is_err());
     }
 
     #[test]

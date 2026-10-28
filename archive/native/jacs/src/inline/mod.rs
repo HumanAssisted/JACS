@@ -32,6 +32,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
 use crate::agent::document::DocumentTraits;
+#[cfg(test)]
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::normalize_public_key_pem;
 use crate::error::JacsError;
@@ -131,6 +132,12 @@ pub enum InlineVerifyError {
 /// module never does I/O. Wave 2 supplies a concrete implementation.
 pub trait KeyResolver {
     fn resolve(&self, signer_id: &str) -> Option<ResolvedKey>;
+
+    /// Full signed context preserves the immutable version, algorithm and key
+    /// reference for opt-in discovery. Existing local resolvers remain compatible.
+    fn resolve_document(&self, document: &Value) -> Option<ResolvedKey> {
+        self.resolve(document.pointer("/jacsSignature/agentID")?.as_str()?)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -884,7 +891,7 @@ fn verify_full_jacs_block(
         };
     }
 
-    let resolved = match resolver.resolve(&signer_id) {
+    let resolved = match resolver.resolve_document(&value) {
         Some(r) => r,
         None => {
             return SignatureEntry {
@@ -900,7 +907,9 @@ fn verify_full_jacs_block(
         .pointer("/jacsSignature/publicKeyHash")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    if !claimed_pkh.is_empty() && hash_public_key(&resolved.public_key_pem) != claimed_pkh {
+    if !claimed_pkh.is_empty()
+        && !crate::key_resolution::document_key_matches(&value, &resolved.public_key_pem)
+    {
         return SignatureEntry {
             signer_id,
             algorithm,
@@ -1159,7 +1168,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_yaml_block_body_roundtrips_through_serde_yaml_ng() {
+    fn legacy_yaml_block_body_roundtrips_through_serde_saphyr() {
         let block = SignatureBlockYaml {
             signature_block_version: 1,
             signer: "abc".into(),
@@ -1171,8 +1180,8 @@ mod tests {
             signed_content_hash: "AAAA".into(),
             signature: "BBBB".into(),
         };
-        let s = serde_yaml_ng::to_string(&block).unwrap();
-        let back: SignatureBlockYaml = serde_yaml_ng::from_str(&s).unwrap();
+        let s = serde_saphyr::to_string(&block).unwrap();
+        let back: SignatureBlockYaml = serde_saphyr::from_str(&s).unwrap();
         assert_eq!(block, back);
     }
 
@@ -1233,7 +1242,7 @@ signature: BBBB
             signed_content_hash: content_hash,
             signature,
         };
-        let body = serde_yaml_ng::to_string(&block).unwrap();
+        let body = serde_saphyr::to_string(&block).unwrap();
         let framed = format!("{content}{BEGIN_MARKER}\n{body}{END_MARKER}\n");
         let resolver = MultiKeyResolver {
             entries: vec![("legacy-agent".into(), public_key, "ed25519".into())],
@@ -1537,7 +1546,7 @@ signature: BBBB
         // Update block with a publicKeyHash we know the resolver will match.
         let mut fake = fake_block.clone();
         fake.public_key_hash = expected;
-        let body = serde_yaml_ng::to_string(&fake).unwrap();
+        let body = serde_saphyr::to_string(&fake).unwrap();
         let framed = format!("{content}{BEGIN_MARKER}\n{body}{END_MARKER}\n");
         let resolver = MultiKeyResolver {
             entries: vec![("someone".into(), pem, "ed25519".into())],

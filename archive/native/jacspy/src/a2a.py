@@ -115,6 +115,7 @@ class JACSA2AIntegration:
         Args:
             jacs_config_path: Path to JACS configuration file
         """
+        self._jacs_config_path = jacs_config_path
         if jacs_config_path:
             jacs.load(jacs_config_path)
 
@@ -378,73 +379,26 @@ class JACSA2AIntegration:
         agent_card: A2AAgentCard,
         jws_signature: str,
         public_key_b64: str,
-        agent_data: Dict[str, Any]
+        agent_data: Dict[str, Any],
+        a2a_algorithm: Optional[str] = None,
+        discovery_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Dict[str, Any]]:
-        """Generate .well-known documents for A2A integration (v0.4.0)
+        """Generate discovery through the canonical native-backed integration.
 
-        Args:
-            agent_card: The A2A Agent Card
-            jws_signature: JWS signature of the Agent Card
-            public_key_b64: Base64-encoded public key
-            agent_data: JACS agent data
-
-        Returns:
-            Dictionary mapping paths to document contents
+        Caller-provided keys, cards and signatures are compatibility inputs;
+        they cannot establish an agent identity or replace native signed data.
         """
-        documents = {}
-        key_algorithm = agent_data.get("keyAlgorithm", "pq2025")
-        post_quantum = any(
-            marker in str(key_algorithm).lower()
-            for marker in ["pq2025", "ml-dsa"]
+        from jacs.a2a import JACSA2AIntegration as NativeIntegration
+
+        if not self._jacs_config_path:
+            raise RuntimeError(
+                "Identity-bound A2A discovery requires a configured native JACS "
+                "generator; supply a config path or use jacs.a2a with JacsClient"
+            )
+        integration = NativeIntegration.from_config(self._jacs_config_path)
+        return integration.generate_well_known_documents(
+            agent_card, jws_signature, public_key_b64, agent_data, a2a_algorithm, discovery_options
         )
-
-        # 1. Agent Card with embedded signature (v0.4.0)
-        card_dict = self.agent_card_to_dict(agent_card)
-        card_dict["signatures"] = [{"jws": jws_signature}]
-        documents["/.well-known/agent-card.json"] = card_dict
-
-        # 2. JWK Set for A2A verifiers
-        documents["/.well-known/jwks.json"] = self._build_jwks(public_key_b64, agent_data)
-
-        # 3. JACS Agent Descriptor
-        documents["/.well-known/jacs-agent.json"] = {
-            "jacsVersion": "1.0",
-            "agentId": agent_data.get("jacsId"),
-            "agentVersion": agent_data.get("jacsVersion"),
-            "agentType": agent_data.get("jacsAgentType"),
-            "publicKeyHash": jacs.hash_string(public_key_b64),
-            "keyAlgorithm": key_algorithm,
-            "capabilities": {
-                "signing": True,
-                "verification": True,
-                "postQuantum": post_quantum
-            },
-            "schemas": {
-                "agent": "https://jacs.sh/schemas/agent/v1/agent.schema.json",
-                "header": "https://jacs.sh/schemas/header/v1/header.schema.json",
-                "signature": "https://jacs.sh/schemas/components/signature/v1/signature.schema.json"
-            },
-            "endpoints": {
-                "verify": "/jacs/verify",
-                "sign": "/jacs/sign",
-                "agent": "/jacs/agent"
-            }
-        }
-
-        # 4. JACS Public Key
-        documents["/.well-known/jacs-pubkey.json"] = {
-            "publicKey": public_key_b64,
-            "publicKeyHash": jacs.hash_string(public_key_b64),
-            "algorithm": key_algorithm,
-            "agentId": agent_data.get("jacsId"),
-            "agentVersion": agent_data.get("jacsVersion"),
-            "timestamp": datetime.utcnow().isoformat() + "Z"
-        }
-
-        # 5. Extension descriptor
-        documents["/.well-known/jacs-extension.json"] = self.create_extension_descriptor()
-
-        return documents
 
     def _verify_wrapped_artifact_internal(
         self,

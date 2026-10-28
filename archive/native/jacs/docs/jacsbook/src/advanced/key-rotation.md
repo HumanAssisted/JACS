@@ -348,26 +348,23 @@ impl TrustedAgent {
 
 ## DNS Support for Key Versions
 
-DNS records can advertise multiple key versions for an agent.
+Agent-specific native lookup accepts overlapping fingerprints for one agent
+and records for multiple agents. Each record uses the actual format:
 
-### Multi-Version DNS Records
-
-Each key version gets its own TXT record:
-
-```
-; Current key
-_v1.agent.jacs.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id={id}; ver=current; alg=SHA-256; hash={hash1}"
-
-; Previous key (still valid for old signatures)
-_v1.agent.jacs.example.com. 3600 IN TXT "v=hai.ai; jacs_agent_id={id}; ver=rotated; valid_until=2025-01-15; hash={hash2}"
+```text
+v=jacs; jacs_agent_id=<agent-uuid>; alg=SHA-256; enc=hex; jac_public_key_hash=<raw-key-sha256>; uri=https://keys.example.com/jacs/v1/agents/<agent-uuid>/keys/<version-uuid>
 ```
 
-### DNS Record Generation
-
-```bash
-# Generate DNS records for all active keys
-jacs agent dns --all-keys
-```
+A cross-origin URI requires an explicitly configured `JACS_KEYS_BASE_URL`.
+Publish distinct raw-key fingerprints and exact-version endpoints during an
+overlap. Conflicting URIs for the same agent and fingerprint are rejected.
+`jacs-compat agent dns` generates the configured identity's record; it does not
+publish changes or provide an `--all-keys` export. The DNS record does not
+implement `ver`, `valid_until` or revocation semantics. Keep historical keys
+available and enforce revocation in application policy. There is no universal
+rotation interval of twice the TTL: account for caches and retained documents.
+See the [key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+for signed-reference compatibility and verifier boundaries.
 
 ## Security Considerations
 
@@ -376,8 +373,8 @@ jacs agent dns --all-keys
 When a key is compromised:
 
 1. **Mark as revoked** in the agent's key history
-2. **Update DNS** to include revocation status
-3. **Signatures fail verification** when made with revoked keys
+2. **Update DNS** to remove discovery records for the compromised key; DNS has no revocation-status field
+3. **Reject revoked keys in verification policy**; cryptographic signature validity alone does not enforce revocation
 4. **Notify trusted peers** if possible
 
 ### Overlap Period

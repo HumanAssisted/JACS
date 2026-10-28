@@ -140,3 +140,14 @@ matches ECDSA type names and those SHA-256 digests as generic API keys. The 51
 reviewed findings at commit `76998c7aac2459b906e47a16d02326bbdcff5b54` are
 allowlisted by exact historical fingerprint only. No fixture may be used as a
 trusted credential, and no path or detector has been excluded.
+
+The remaining RSA disposition is additionally bound to the exact version and
+parent chain in the SurrealDB 3.3.4 lock and RSA 0.9.10 in the vendor test lock.
+The policy checker verifies RSA is absent from all-feature Linux, macOS and
+Windows trees and binds the reviewed JACS storage facade to SHA-256
+`06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa`.
+Upstream SurrealDB can perform private-key JWT signing; the reachability claim
+applies only to this private, fixed-query, default `Mem(())` JACS facade.
+Any source, version, parent or native-target drift requires renewed review.
+The crypto-bigint and basic-toml dispositions from the prior integration head
+are retired: the upstream source backports remove those affected packages.

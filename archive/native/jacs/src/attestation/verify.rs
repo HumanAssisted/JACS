@@ -4,10 +4,9 @@
 //! - `verify_attestation_local()`: crypto + hash only. Hot-path default. No network.
 //! - `verify_attestation_full()`: crypto + evidence digests + freshness + derivation chain.
 
-use crate::agent::boilerplate::BoilerPlate;
+use crate::agent::Agent;
 use crate::agent::canonicalize_json;
 use crate::agent::document::DocumentTraits;
-use crate::agent::{Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME};
 use crate::attestation::digest::compute_digest_set_bytes;
 use crate::attestation::types::*;
 use crate::crypt::hash::hash_string;
@@ -123,17 +122,64 @@ fn verify_document_hash(doc_value: &Value) -> Result<bool, JacsError> {
 }
 
 /// Verify the crypto signature of a document. Returns Ok(()) on success, Err on failure.
-fn verify_document_crypto(agent: &Agent, doc_value: &Value) -> Result<(), JacsError> {
-    let public_key = agent.get_public_key()?;
-    agent.signature_verification_procedure(
-        doc_value,
+fn verify_document_crypto(
+    agent: &Agent,
+    doc_value: &Value,
+    allow_discovery: bool,
+) -> Result<(), JacsError> {
+    let key = if allow_discovery {
+        crate::key_resolution::resolve_document_key(agent, doc_value)?
+    } else {
+        crate::key_resolution::resolve_document_key_local(agent, doc_value)?
+    };
+    // Preserve the existing, explicitly enabled v1 compatibility policy. A
+    // failed v2 signature (or an invalid version marker) never enters this path.
+    if doc_value["jacsSignature"]
+        .get("signatureContentVersion")
+        .is_none()
+    {
+        if !crate::agent::legacy_signature_content_allowed() {
+            return Err(crate::agent::legacy_signature_refusal("jacsSignature"));
+        }
+        crate::agent::validate_signature_temporal_claims(doc_value, "jacsSignature")?;
+        let algorithm = crate::verification::matching_algorithm(
+            doc_value["jacsSignature"]["signingAlgorithm"].as_str(),
+            Some(&key.algorithm),
+        )?
+        .ok_or("Legacy attestation signature requires an explicit algorithm")?;
+        let (payload, _) = crate::agent::build_signature_content(
+            doc_value,
+            crate::agent::extract_signature_fields(doc_value, "jacsSignature"),
+            "jacsSignature",
+            crate::agent::SignatureContentMode::CanonicalV2,
+        )?;
+        tracing::warn!(
+            event = "legacy_signature_content_verified",
+            "Explicitly enabled legacy attestation verification; signature metadata is unauthenticated"
+        );
+        return crate::crypt::verify_string_with_algorithm(
+            key.public_key,
+            &payload,
+            doc_value["jacsSignature"]["signature"]
+                .as_str()
+                .ok_or("Missing legacy attestation signature")?,
+            &algorithm,
+        );
+    }
+    // The local tier must not reach DNS or registry policy from the stateful
+    // verifier after selecting a key. This explicit-key verifier is I/O-free.
+    let report = crate::verification::NonSigningVerifier::new()?.verify_with_key(
+        &serde_json::to_string(doc_value)?,
+        &key.public_key,
+        &key.algorithm,
         None,
-        DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
-        public_key,
-        None,
-        None,
-        None,
-    )
+    )?;
+    if !report.integrity_valid {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: report.errors.join("; "),
+        });
+    }
+    Ok(())
 }
 
 /// Extract signer info from the document's signature block.
@@ -210,7 +256,7 @@ impl Agent {
         let hash_valid = verify_document_hash(doc_value)?;
 
         // Verify signature
-        let sig_result = verify_document_crypto(self, doc_value);
+        let sig_result = verify_document_crypto(self, doc_value, false);
         let signature_valid = sig_result.is_ok();
 
         let (signer_id, algorithm) = extract_signer_info(doc_value);
@@ -268,7 +314,7 @@ impl Agent {
 
         // Step 1: Local crypto verification
         let hash_valid = verify_document_hash(&doc_value)?;
-        let sig_result = verify_document_crypto(self, &doc_value);
+        let sig_result = verify_document_crypto(self, &doc_value, true);
         let signature_valid = sig_result.is_ok();
         let (signer_id, algorithm) = extract_signer_info(&doc_value);
 
@@ -449,7 +495,7 @@ impl Agent {
                         Ok(input_doc) => {
                             let input_value = input_doc.getvalue();
                             let hash_ok = verify_document_hash(input_value).unwrap_or(false);
-                            let sig_ok = verify_document_crypto(self, input_value).is_ok();
+                            let sig_ok = verify_document_crypto(self, input_value, true).is_ok();
                             let link_valid = hash_ok && sig_ok;
 
                             if !link_valid {
@@ -645,6 +691,127 @@ mod tests {
         );
         assert!(result.crypto.signature_valid);
         assert!(result.crypto.hash_valid);
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env)]
+    fn legacy_attestation_preserves_explicit_compatibility_policy_without_discovery() {
+        use crate::agent::boilerplate::BoilerPlate;
+        use crate::crypt::KeyManager;
+        use crate::storage::StorageDocumentTraits as _;
+
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                for (name, value) in self.0.drain(..) {
+                    unsafe {
+                        match value {
+                            Some(value) => std::env::set_var(name, value),
+                            None => std::env::remove_var(name),
+                        }
+                    }
+                }
+            }
+        }
+        let names = [
+            "JACS_ALLOW_LEGACY_SIGNATURE_CONTENT",
+            "JACS_REJECT_LEGACY_SIGNATURE_CONTENT",
+            "JACS_KEY_RESOLUTION",
+        ];
+        let _restore = Restore(
+            names
+                .iter()
+                .map(|name| (*name, std::env::var_os(name)))
+                .collect(),
+        );
+        unsafe {
+            std::env::remove_var(names[0]);
+            std::env::remove_var(names[1]);
+            std::env::set_var(names[2], "local");
+        }
+        let mut agent = test_agent();
+        let doc = agent
+            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+            .unwrap();
+        let document_key = format!("{}:{}", doc.id, doc.version);
+        let mut legacy = doc.value;
+        legacy["jacsSignature"]
+            .as_object_mut()
+            .unwrap()
+            .remove("signatureContentVersion");
+        let (payload, _) = crate::agent::build_signature_content(
+            &legacy,
+            crate::agent::extract_signature_fields(&legacy, "jacsSignature"),
+            "jacsSignature",
+            crate::agent::SignatureContentMode::CanonicalV2,
+        )
+        .unwrap();
+        legacy["jacsSignature"]["signature"] = json!(agent.sign_string(&payload).unwrap());
+        legacy["jacsSha256"] = json!(crate::agent::document::document_hash(&legacy).unwrap());
+        agent.storage_ref().remove_document(&document_key).unwrap();
+        agent.store_jacs_document(&legacy).unwrap();
+        assert!(
+            !agent
+                .verify_attestation_local_impl(&document_key)
+                .unwrap()
+                .valid
+        );
+
+        unsafe {
+            std::env::set_var(names[0], "true");
+        }
+        // This genuine v1 fixture was accepted by the pre-existing stateful
+        // verifier, proving the compatibility path rather than stripping v2.
+        agent
+            .signature_verification_procedure(
+                &legacy,
+                None,
+                "jacsSignature",
+                agent.get_public_key().unwrap(),
+                Some("ring-Ed25519".into()),
+                None,
+                None,
+            )
+            .unwrap();
+        assert!(
+            agent
+                .verify_attestation_local_impl(&document_key)
+                .unwrap()
+                .valid
+        );
+        assert!(
+            agent
+                .verify_attestation_full_impl(&document_key)
+                .unwrap()
+                .valid
+        );
+        for marker in [
+            Value::Null,
+            json!("unknown"),
+            json!(crate::agent::SIGNATURE_CONTENT_VERSION_V2),
+        ] {
+            let mut invalid = legacy.clone();
+            invalid["jacsSignature"]["signatureContentVersion"] = marker;
+            assert!(verify_document_crypto(&agent, &invalid, false).is_err());
+        }
+        let mut tampered = legacy.clone();
+        tampered["jacsSignature"]["signature"] = json!("AAAA");
+        assert!(verify_document_crypto(&agent, &tampered, false).is_err());
+        unsafe {
+            std::env::set_var(names[1], "true");
+        }
+        assert!(
+            !agent
+                .verify_attestation_local_impl(&document_key)
+                .unwrap()
+                .valid
+        );
+        assert!(
+            !agent
+                .verify_attestation_full_impl(&document_key)
+                .unwrap()
+                .valid
+        );
     }
 
     #[test]

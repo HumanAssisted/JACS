@@ -117,17 +117,31 @@ For an executable end-to-end example that exports discovery artifacts, signs a r
 
 ```bash
 # Local development: the exact listener origin is signed into the Agent Card.
-jacs a2a serve --host 127.0.0.1 --port 8080
+jacs-compat a2a serve --host 127.0.0.1 --port 8080
 
 # Production: bind behind a TLS reverse proxy and sign its public origin.
-jacs a2a serve \
+jacs-compat a2a serve \
   --host 127.0.0.1 \
   --port 8080 \
   --origin https://agent.example.com
+
+# Explicit classical compatibility for a newly created Ed25519 root.
+jacs-compat a2a quickstart --name my-agent --domain example.com \
+  --algorithm ed25519 --a2a-algorithm ES256
+
+# Serve an existing identity with its authorized ES256 compatibility key.
+jacs-compat a2a serve --a2a-algorithm ES256
 ```
 
+`--a2a-algorithm` defaults to `ML-DSA-87`, which requires a `pq2025` root.
+`--algorithm` on quickstart selects the root algorithm separately; selecting
+`ed25519` does not enable compatibility automatically. An existing classical
+root requires explicit `--a2a-algorithm ES256` on every serving invocation.
+Failures never trigger a fallback. These compatibility CLI commands serve
+legacy A2A 0.4 discovery documents, not an A2A messaging endpoint.
+
 The Agent Card's signed `supportedInterfaces[0].url` determines where verifiers
-resolve `/.well-known/jwks.json` and
+resolve `/.well-known/jwks.json` and, for explicit ES256 compatibility,
 `/.well-known/jacs-compat-binding.json`. Without `--origin`, the built-in
 plaintext server advertises only an exact loopback `http://HOST:PORT` origin.
 Non-loopback listeners fail closed unless an explicit HTTPS origin is supplied;

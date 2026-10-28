@@ -2,7 +2,160 @@
 #![cfg(feature = "a2a")]
 #[path = "../examples/support/a2a_v1.rs"]
 mod support;
+use jacs::agent::boilerplate::BoilerPlate;
 use serde_json::{Value, json};
+
+#[test]
+fn v1_direct_pq_root_uses_detached_jws_and_explicit_trust() {
+    use jacs::a2a::v1;
+    let mut agent = jacs::agent::Agent::ephemeral("pq2025").unwrap();
+    agent
+        .create_agent_and_load(
+            &json!({"jacsAgentType":"ai", "name":"v1-pq", "description":"Direct PQ v1 test"})
+                .to_string(),
+            true,
+            Some("pq2025"),
+        )
+        .unwrap();
+    let id = agent.get_id().unwrap();
+    let version = agent.get_version().unwrap();
+    let root = agent.get_public_key().unwrap().clone();
+    let jwk = jacs_core::jose::mldsa87_public_jwk(&root).unwrap();
+    let projection = v1::project_agent_card(&agent, "http://127.0.0.1:18080/a2a").unwrap();
+    let card = v1::export_agent_card(&mut agent, "unused", projection).unwrap();
+    assert!(card["signatures"][0]["protected"].is_string());
+    assert!(card["signatures"][0]["signature"].is_string());
+    assert!(card["signatures"][0].get("jws").is_none());
+    assert_eq!(card["supportedInterfaces"][0]["protocolVersion"], "1.0");
+    assert_eq!(
+        card["capabilities"]["extensions"][0]["params"]
+            .as_object()
+            .unwrap()
+            .len(),
+        3
+    );
+    v1::verify_root_card(&card, &jwk, &id, &version, &root).unwrap();
+    assert!(v1::verify_root_card(&card, &jwk, "other", &version, &root).is_err());
+    assert!(v1::verify_root_card(&card, &jwk, &id, "other", &root).is_err());
+    let wrong = jacs_core::Pq2025Signer::generate().unwrap();
+    use jacs_core::DetachedSigner;
+    assert!(v1::verify_root_card(&card, &jwk, &id, &version, wrong.public_key()).is_err());
+    let mut tampered = card.clone();
+    tampered["name"] = json!("tampered");
+    assert!(v1::verify_root_card(&tampered, &jwk, &id, &version, &root).is_err());
+
+    // A valid root signature cannot make unsupported profile fields valid.
+    use base64::{
+        Engine as _,
+        engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    };
+    use jacs::crypt::KeyManager;
+    // A countersignature does not replace the caller-pinned root authority.
+    // Both entries sign the same unsigned payload, independent of array order.
+    let root_signature = card["signatures"][0].clone();
+    let mut unsigned = card.clone();
+    unsigned.as_object_mut().unwrap().remove("signatures");
+    let payload = jacs_core::canonical::canonicalize_json_try(&unsigned).unwrap();
+    let counter_jwk = jacs_core::jose::mldsa87_public_jwk(wrong.public_key()).unwrap();
+    let counter_input = jacs_core::jose::mldsa87_jws_signing_input(
+        payload.as_bytes(),
+        counter_jwk["kid"].as_str().unwrap(),
+    )
+    .unwrap();
+    let counter_signature = json!({
+        "protected": counter_input.split('.').next().unwrap(),
+        "signature": URL_SAFE_NO_PAD.encode(wrong.sign(counter_input.as_bytes()).unwrap()),
+    });
+    for signatures in [
+        json!([counter_signature, root_signature]),
+        json!([root_signature, counter_signature]),
+    ] {
+        let mut multiple = card.clone();
+        multiple["signatures"] = signatures;
+        v1::verify_root_card(&multiple, &jwk, &id, &version, &root).unwrap();
+        multiple["name"] = json!("tampered");
+        assert!(v1::verify_root_card(&multiple, &jwk, &id, &version, &root).is_err());
+    }
+    for signatures in [
+        json!([]),
+        json!([counter_signature]),
+        json!([root_signature, root_signature]),
+        json!([root_signature, counter_signature, counter_signature]),
+    ] {
+        let mut invalid = card.clone();
+        invalid["signatures"] = signatures;
+        assert!(v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err());
+    }
+    // Malformed unrelated entries also fail, even after a valid root entry.
+    for header in [
+        r#"{"alg":"ML-DSA-87","kid":"counter","kid":"other"}"#,
+        r#"{"alg":"ML-DSA-87","kid":"counter","crit":["x"]}"#,
+        r#"{"alg":"ML-DSA-87","kid":"counter","b64":false}"#,
+        r#"{"alg":"none","kid":"counter"}"#,
+        r#"{"alg":"ML-DSA-87"}"#,
+        r#"{"alg":"ML-DSA-87","kid":""}"#,
+        r#"{"alg":"ML-DSA-87","kid":"counter","typ":"JWT"}"#,
+        r#"[]"#,
+    ] {
+        let mut invalid = card.clone();
+        let mut extra = counter_signature.clone();
+        extra["protected"] = json!(URL_SAFE_NO_PAD.encode(header));
+        invalid["signatures"] = json!([root_signature, extra]);
+        assert!(
+            v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err(),
+            "{header}"
+        );
+    }
+    for case in [
+        "header_encoding",
+        "signature_encoding",
+        "extra_member",
+        "wrong_root_alg",
+        "bad_root_signature",
+    ] {
+        let mut invalid = card.clone();
+        invalid["signatures"] = json!([counter_signature, root_signature]);
+        match case {
+            "header_encoding" => invalid["signatures"][0]["protected"] = json!("!bad!"),
+            "signature_encoding" => invalid["signatures"][0]["signature"] = json!("AA=="),
+            "extra_member" => invalid["signatures"][0]["jws"] = json!("legacy"),
+            "wrong_root_alg" => {
+                invalid["signatures"][1]["protected"] = json!(
+                    URL_SAFE_NO_PAD.encode(json!({"alg":"ES256","kid":jwk["kid"]}).to_string())
+                )
+            }
+            _ => invalid["signatures"][1]["signature"] = json!(counter_signature["signature"]),
+        }
+        assert!(
+            v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err(),
+            "{case}"
+        );
+    }
+
+    for (field, value) in [
+        ("skills", json!([])),
+        ("defaultInputModes", json!([])),
+        ("supportedInterfaces", json!([])),
+    ] {
+        let mut invalid = card.clone();
+        invalid.as_object_mut().unwrap().remove("signatures");
+        invalid[field] = value;
+        let payload = jacs_core::canonical::canonicalize_json_try(&invalid).unwrap();
+        let input = jacs_core::jose::mldsa87_jws_signing_input(
+            payload.as_bytes(),
+            jwk["kid"].as_str().unwrap(),
+        )
+        .unwrap();
+        let signature =
+            URL_SAFE_NO_PAD.encode(STANDARD.decode(agent.sign_string(&input).unwrap()).unwrap());
+        invalid["signatures"] =
+            json!([{"protected": input.split('.').next().unwrap(), "signature":signature}]);
+        assert!(
+            v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err(),
+            "{field}"
+        );
+    }
+}
 
 #[test]
 fn finite_v1_fixture_preserves_native_authority_and_legacy_contracts() {
@@ -10,6 +163,15 @@ fn finite_v1_fixture_preserves_native_authority_and_legacy_contracts() {
     let verdict = support::verify(&fixture).unwrap();
     assert_eq!(verdict["native_binding_valid"], true);
     assert_eq!(verdict["native_report_integrity_valid"], true);
+    let mut wrong_algorithm = fixture.clone();
+    wrong_algorithm["rootAlgorithm"] = json!("pq2025");
+    assert_eq!(
+        support::verify(&wrong_algorithm).unwrap()["native_report_integrity_valid"],
+        false,
+        "a mismatched explicit root algorithm must never fall back to Ed25519"
+    );
+    wrong_algorithm["rootAlgorithm"] = json!("unsupported");
+    assert!(support::verify(&wrong_algorithm).is_err());
     assert_eq!(fixture["rejectedProfiles"].as_array().unwrap().len(), 7);
     for name in [
         "scalar_extension_params",

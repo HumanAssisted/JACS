@@ -2,8 +2,8 @@
  * JACS A2A Express Middleware
  *
  * Middleware factory that serves A2A .well-known discovery endpoints
- * from an existing Express app. All 6 identity-bound endpoints are cached
- * together and refreshed lazily from the signed binding's issuance time.
+ * from an existing Express app. Five direct-root documents (six for explicit
+ * ES256 compatibility) are cached and refreshed together.
  *
  * @example
  * ```js
@@ -27,6 +27,7 @@ const {
   JACSA2AIntegration,
   A2AAgentSkill,
 } = require('./a2a');
+const { isDeepStrictEqual } = require('node:util');
 
 /**
  * CORS headers for cross-origin agent discovery.
@@ -40,7 +41,7 @@ const CORS_HEADERS = {
 };
 
 /**
- * Build all 6 identity-bound well-known document payloads from a JacsClient.
+ * Build native identity-bound well-known document payloads from a JacsClient.
  *
  * @param {import('../client').JacsClient} client
  * @param {Object} options
@@ -82,13 +83,22 @@ function buildWellKnownDocuments(client, options = {}) {
   // The compatibility arguments are ignored by the integration when the
   // required native generator is present. They remain here only for API
   // source compatibility with older callers.
-  const documents = integration.generateWellKnownDocuments(cardJson, '', '', agentData);
+  const hasProfile = ['protocolVersion', 'messagingUrl', 'defaultInputModes', 'defaultOutputModes']
+    .some((field) => options[field] !== undefined);
+  const discoveryOptions = hasProfile ? {
+    protocolVersion: options.protocolVersion,
+    messagingUrl: options.messagingUrl,
+    skills: options.skills,
+    defaultInputModes: options.defaultInputModes,
+    defaultOutputModes: options.defaultOutputModes,
+  } : undefined;
+  const documents = integration.generateWellKnownDocuments(cardJson, '', '', agentData, options.a2aAlgorithm, discoveryOptions);
 
   // Caller-side mutation after signing would invalidate the JWS. Optional
   // server overrides are therefore assertions about already-configured agent
   // data, never rewrites of the native signed card.
   const nativeCard = documents['/.well-known/agent-card.json'];
-  if (options.skills && JSON.stringify(nativeCard.skills || []) !== JSON.stringify(cardJson.skills || [])) {
+  if (options.skills && !isDeepStrictEqual(nativeCard.skills || [], cardJson.skills || [])) {
     throw new Error(
       "Cannot override A2A skills after the Agent Card is signed; configure the agent's skills before generation"
     );
@@ -152,6 +162,11 @@ function bindingTime(value, ceiling = false) {
 }
 
 function discoverySnapshot(documents, now) {
+  if (!Object.prototype.hasOwnProperty.call(documents, '/.well-known/jacs-compat-binding.json')) {
+    // Direct root signatures have no delegated grant lifetime. Bound the
+    // serving cache locally; native generation still validates root identity.
+    return { documents, issued: now, issuedLatest: now, expires: Infinity, until: now + 7 * DAY_MS };
+  }
   const binding = documents['/.well-known/jacs-compat-binding.json']?.compatibilityKeyBinding;
   const issued = bindingTime(binding?.issuedAt);
   const issuedLatest = bindingTime(binding?.issuedAt, true);
@@ -177,20 +192,23 @@ function snapshotValid(snapshot, now) {
  * - `/.well-known/jacs-extension.json`
  *
  * All responses include CORS headers for cross-origin discovery.
- * Documents refresh together on a request at six days after binding issuance.
+ * Documents refresh together after six days (from binding issuance for ES256,
+ * or local generation for direct root signatures).
  * Failed refreshes retry at most once per minute; valid cached data may be
  * served until seven days or explicit expiry, then requests receive 503.
  * HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
  * awaiting renewal are served with no-store.
  * Explicit expiry requires renewed authorization and remounting, not automatic
  * extension. Separate resource requests can straddle a snapshot replacement;
- * this is not a transactional client bundle. Consumers must verify the binding.
+ * this is not a transactional client bundle. Consumers must verify the root
+ * signature and, for ES256 compatibility, its root-signed binding.
  *
  * @param {import('../client').JacsClient} client - An initialized JacsClient
  * @param {Object} [options]
  * @param {Array<{id: string, name: string, description: string, tags: string[]}>} [options.skills] - Custom A2A skills
  * @param {string} [options.url] - Base URL / domain for the agent card
  * @param {string} [options.keyAlgorithm] - Key algorithm label (default: 'pq2025')
+ * @param {string} [options.a2aAlgorithm] - Explicit compatibility selection ('es256'); defaults to the root key
  * @returns {Function} Express middleware (Router)
  */
 function jacsA2AMiddleware(client, options = {}) {

@@ -53,6 +53,36 @@ class SecurityExceptionPolicyTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "archived SurrealDB lock"):
                     security_exceptions.require_archive_scoped_workflow_ignores(invalid)
 
+    def test_surreal_crypto_disposition_rejects_source_graph_and_version_drift(self) -> None:
+        lock = tomllib.loads((ROOT / "jacs-surrealdb/Cargo.lock").read_text())
+        source = (ROOT / "jacs-surrealdb/src/lib.rs").read_bytes()
+        graphs = {target: "jacs-surrealdb v0.15.0" for target in (
+            "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc",
+        )}
+        security_exceptions.require_surreal_crypto_disposition(lock, source, graphs)
+        with self.assertRaisesRegex(ValueError, "source changed"):
+            security_exceptions.require_surreal_crypto_disposition(lock, source + b"// auth added", graphs)
+        for target in graphs:
+            changed = dict(graphs)
+            changed[target] += "\nrsa v0.9.10"
+            with self.assertRaisesRegex(ValueError, "reached native"):
+                security_exceptions.require_surreal_crypto_disposition(lock, source, changed)
+        changed = copy.deepcopy(lock)
+        changed["package"].append({"name": "new-auth", "version": "1.0.0", "dependencies": ["rsa"]})
+        with self.assertRaisesRegex(ValueError, "parent drift"):
+            security_exceptions.require_surreal_crypto_disposition(changed, source, graphs)
+        changed = copy.deepcopy(lock)
+        next(p for p in changed["package"] if p["name"] == "rsa")["version"] = "0.9.11"
+        with self.assertRaisesRegex(ValueError, "version drift"):
+            security_exceptions.require_surreal_crypto_disposition(changed, source, graphs)
+        for name, version in (("crypto-bigint", "0.6.0"), ("rsa", "0.8.2")):
+            changed = copy.deepcopy(lock)
+            changed["package"].append({"name": name, "version": version})
+            changed_graphs = dict(graphs)
+            changed_graphs["x86_64-unknown-linux-gnu"] += f"\n{name} v{version}"
+            with self.assertRaisesRegex(ValueError, "version drift"):
+                security_exceptions.require_surreal_crypto_disposition(changed, source, changed_graphs)
+
     @staticmethod
     def notice_source(
         *,

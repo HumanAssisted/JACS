@@ -8,6 +8,14 @@ use clap::{Arg, ArgAction, ArgGroup, Command, crate_name, value_parser};
 
 use crate::password_bootstrap::quickstart_password_bootstrap_help;
 
+fn a2a_algorithm_arg() -> Arg {
+    Arg::new("a2a-algorithm")
+        .long("a2a-algorithm")
+        .value_parser(["ML-DSA-87", "ES256"])
+        .default_value("ML-DSA-87")
+        .help("Agent Card signing algorithm: ML-DSA-87 requires a pq2025 root; ES256 explicitly enables classical compatibility, including for ed25519 roots. Does not change the root algorithm")
+}
+
 pub fn build_cli() -> Command {
     let cmd = Command::new(crate_name!())
         .version(env!("CARGO_PKG_VERSION"))
@@ -912,6 +920,7 @@ pub fn build_cli() -> Command {
                 .subcommand(
                     Command::new("serve")
                         .about("Serve this agent's .well-known endpoints for A2A discovery")
+                        .arg(a2a_algorithm_arg())
                         .arg(
                             Arg::new("port")
                                 .long("port")
@@ -935,6 +944,7 @@ pub fn build_cli() -> Command {
                 .subcommand(
                     Command::new("quickstart")
                         .about("Create/load an agent and start serving A2A endpoints (password required)")
+                        .arg(a2a_algorithm_arg())
                         .after_help(quickstart_password_bootstrap_help())
                         .arg(
                             Arg::new("name")

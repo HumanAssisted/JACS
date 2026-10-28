@@ -287,27 +287,106 @@ fn public_key_for_method(
     did_document: &Value,
     verification_method: &str,
 ) -> Result<(Vec<u8>, String), JacsError> {
+    // Resolve local fragment references against this controller only. Merely
+    // publishing a key does not authorize it for authentication.
+    let did = required_str(did_document, "id")?;
+    let fragment = verification_method
+        .strip_prefix(did)
+        .filter(|suffix| suffix.starts_with('#') && suffix.len() > 1)
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: "Request proof verification method must be an absolute local DID URL".into(),
+        })?;
+    // Proof selectors remain absolute, including their replay-cache namespace;
+    // only references inside the DID document may use the relative spelling.
+    let matches_reference = |reference: &Value| {
+        reference
+            .as_str()
+            .is_some_and(|reference| reference == verification_method || reference == fragment)
+    };
+    if !did_document["authentication"]
+        .as_array()
+        .is_some_and(|methods| methods.iter().any(matches_reference))
+    {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "DID verification method is not authorized for authentication".to_string(),
+        });
+    }
     let methods = did_document["verificationMethod"]
         .as_array()
         .ok_or_else(|| JacsError::DocumentMalformed {
             field: "verificationMethod".to_string(),
             reason: "DID document verificationMethod must be an array".to_string(),
         })?;
-    let method = methods
+    let mut matching_methods = methods
         .iter()
-        .find(|method| method["id"].as_str() == Some(verification_method))
+        .filter(|method| matches_reference(&method["id"]));
+    let method = matching_methods
+        .next()
         .ok_or_else(|| JacsError::KeyNotFound {
             path: format!("verification method '{}'", verification_method),
         })?;
-    let algorithm = method["jacsSigningAlgorithm"]
-        .as_str()
-        .filter(|algorithm| !algorithm.trim().is_empty())
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "verificationMethod.jacsSigningAlgorithm".to_string(),
-            reason: "DID verification method must declare its signing algorithm".to_string(),
-        })?
-        .to_string();
+    if matching_methods.next().is_some() {
+        return Err(JacsError::DocumentMalformed {
+            field: "verificationMethod".into(),
+            reason: "Ambiguous DID verification method references".into(),
+        });
+    }
+    if method["controller"].as_str() != Some(did) {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "DID authentication method controller does not match document id".to_string(),
+        });
+    }
+    let declared_algorithm = method
+        .get("jacsSigningAlgorithm")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|algorithm| !algorithm.trim().is_empty())
+                .ok_or_else(|| JacsError::DocumentMalformed {
+                    field: "verificationMethod.jacsSigningAlgorithm".to_string(),
+                    reason: "DID signing algorithm must be a nonempty string".to_string(),
+                })
+        })
+        .transpose()?;
     if let Some(jwk) = method.get("publicKeyJwk") {
+        let algorithm = match (jwk["kty"].as_str(), jwk["alg"].as_str()) {
+            (Some("AKP"), Some("ML-DSA-87")) => "pq2025",
+            (Some("OKP"), Some("EdDSA")) if jwk["crv"] == "Ed25519" => "ring-Ed25519",
+            // Retain the historical JACS OKP representation without `alg`
+            // only when the explicit legacy algorithm disambiguates it.
+            (Some("OKP"), None)
+                if jwk.get("alg").is_none()
+                    && jwk["crv"] == "Ed25519"
+                    && declared_algorithm == Some("ring-Ed25519") =>
+            {
+                "ring-Ed25519"
+            }
+            _ => {
+                return Err(JacsError::DocumentMalformed {
+                    field: "publicKeyJwk".into(),
+                    reason: "DID JWK must declare a supported signing algorithm and key type"
+                        .into(),
+                });
+            }
+        };
+        if declared_algorithm.is_some_and(|declared| declared != algorithm) {
+            return Err(JacsError::CryptoError(
+                "DID JWK does not match its signing algorithm".into(),
+            ));
+        }
+        if algorithm == "pq2025" {
+            return Ok((jacs_core::jose::mldsa87_public_key(jwk)?, algorithm.into()));
+        }
+        if jwk.get("d").is_some()
+            || jwk.get("use").is_some_and(|value| value != "sig")
+            || jwk
+                .get("key_ops")
+                .is_some_and(|value| value != &json!(["verify"]))
+        {
+            return Err(JacsError::CryptoError(
+                "DID Ed25519 JWK must authorize public signature verification".into(),
+            ));
+        }
         let x = jwk["x"]
             .as_str()
             .ok_or_else(|| JacsError::DocumentMalformed {
@@ -317,8 +396,18 @@ fn public_key_for_method(
         let public_key = general_purpose::URL_SAFE_NO_PAD
             .decode(x)
             .map_err(|e| JacsError::CryptoError(format!("Invalid JWK public key: {}", e)))?;
-        Ok((public_key, algorithm))
+        if public_key.len() != 32 {
+            return Err(JacsError::CryptoError(
+                "Invalid Ed25519 JWK public key length".into(),
+            ));
+        }
+        Ok((public_key, algorithm.into()))
     } else {
+        // The legacy base64 representation has no standard algorithm metadata.
+        let algorithm = declared_algorithm.ok_or_else(|| JacsError::DocumentMalformed {
+            field: "verificationMethod.jacsSigningAlgorithm".into(),
+            reason: "Legacy DID verification method must declare its signing algorithm".into(),
+        })?;
         let public_key_b64 =
             method["publicKeyBase64"]
                 .as_str()
@@ -326,7 +415,7 @@ fn public_key_for_method(
                     field: "publicKeyBase64".to_string(),
                     reason: "Missing public key bytes".to_string(),
                 })?;
-        Ok((base64_decode(public_key_b64)?, algorithm))
+        Ok((base64_decode(public_key_b64)?, algorithm.into()))
     }
 }
 
@@ -355,8 +444,11 @@ mod tests {
     fn verification_method_without_algorithm_fails_closed() {
         let method_id = "did:wba:example.com:agent#key-1";
         let did_document = json!({
+            "id": "did:wba:example.com:agent",
+            "authentication": [method_id],
             "verificationMethod": [{
                 "id": method_id,
+                "controller": "did:wba:example.com:agent",
                 "publicKeyJwk": {
                     "kty": "OKP",
                     "crv": "Ed25519",
@@ -371,10 +463,112 @@ mod tests {
     }
 
     #[test]
+    fn jwk_algorithms_reject_conflicts_and_preserve_explicit_legacy_keys() {
+        let did = "did:wba:example.com:agent";
+        let id = format!("{did}#key");
+        let mut document = json!({
+            "id": did, "authentication": [id],
+            "verificationMethod": [{
+                "id": id, "controller": did, "type": "JsonWebKey",
+                "publicKeyJwk": {"kty": "OKP", "crv": "Ed25519", "alg": "EdDSA",
+                    "x": general_purpose::URL_SAFE_NO_PAD.encode([1u8; 32])}
+            }]
+        });
+        assert_eq!(
+            public_key_for_method(&document, &id).unwrap().1,
+            "ring-Ed25519"
+        );
+        for declared in [json!("pq2025"), json!(""), Value::Null] {
+            let mut bad = document.clone();
+            bad["verificationMethod"][0]["jacsSigningAlgorithm"] = declared;
+            assert!(public_key_for_method(&bad, &id).is_err());
+        }
+        for (field, value) in [
+            ("alg", json!("ES256")),
+            ("crv", json!("X25519")),
+            ("x", json!("AQ")),
+            ("d", Value::Null),
+            ("use", json!("enc")),
+            ("key_ops", json!(["sign"])),
+        ] {
+            let mut bad = document.clone();
+            bad["verificationMethod"][0]["publicKeyJwk"][field] = value;
+            assert!(public_key_for_method(&bad, &id).is_err(), "{field}");
+        }
+        // Preserve old JACS OKP exports with an explicit algorithm and no alg.
+        document["verificationMethod"][0]["publicKeyJwk"]
+            .as_object_mut()
+            .unwrap()
+            .remove("alg");
+        document["verificationMethod"][0]["jacsSigningAlgorithm"] = json!("ring-Ed25519");
+        assert!(public_key_for_method(&document, &id).is_ok());
+        document["verificationMethod"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("publicKeyJwk");
+        document["verificationMethod"][0]["publicKeyBase64"] =
+            json!(general_purpose::STANDARD.encode([1u8; 32]));
+        assert!(public_key_for_method(&document, &id).is_ok());
+        document["verificationMethod"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("jacsSigningAlgorithm");
+        assert!(public_key_for_method(&document, &id).is_err());
+    }
+
+    #[test]
+    fn local_authentication_fragments_do_not_authorize_other_methods() {
+        let did = "did:wba:example.com:agent";
+        let id = format!("{did}#key");
+        let document = json!({
+            "id": did, "authentication": ["#key"],
+            "verificationMethod": [{"id": "#key", "controller": did,
+                "jacsSigningAlgorithm": "ring-Ed25519",
+                "publicKeyBase64": general_purpose::STANDARD.encode([1u8; 32])}]
+        });
+        assert!(public_key_for_method(&document, &id).is_ok());
+        for reference in [
+            "#key".into(),
+            format!("{did}#"),
+            format!("{did}-attacker#key"),
+            "did:wba:attacker.example#key".into(),
+            format!("{did}#other"),
+        ] {
+            assert!(public_key_for_method(&document, &reference).is_err());
+        }
+        for reference in [
+            json!("#other"),
+            json!("key"),
+            json!("did:wba:attacker.example#key"),
+            json!({"id": "#key"}),
+        ] {
+            let mut bad = document.clone();
+            bad["authentication"] = json!([reference]);
+            assert!(public_key_for_method(&bad, &id).is_err());
+        }
+        let mut ambiguous = document.clone();
+        let mut duplicate = ambiguous["verificationMethod"][0].clone();
+        duplicate["id"] = json!(id);
+        ambiguous["verificationMethod"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
+        assert!(
+            public_key_for_method(&ambiguous, &id)
+                .unwrap_err()
+                .to_string()
+                .contains("Ambiguous")
+        );
+        let mut bad = document;
+        bad["verificationMethod"][0]["controller"] = json!("did:wba:attacker.example");
+        assert!(public_key_for_method(&bad, &id).is_err());
+    }
+
+    #[test]
     #[serial_test::serial(replay_store)]
     fn request_proof_round_trips() {
         let mut agent = test_agent();
-        let did_document = export_did_document(
+        let mut did_document = export_did_document(
             &agent,
             W3cDidOptions {
                 origin: Some("https://example.com".to_string()),
@@ -394,6 +588,24 @@ mod tests {
         )
         .expect("proof");
 
+        // A standard external JsonWebKey method needs no proprietary hint and
+        // may use a relative local method id and authentication reference.
+        did_document["verificationMethod"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("jacsSigningAlgorithm");
+        let fragment = format!(
+            "#{}",
+            proof["verificationMethod"]
+                .as_str()
+                .unwrap()
+                .split_once('#')
+                .unwrap()
+                .1
+        );
+        did_document["verificationMethod"][0]["id"] = json!(fragment);
+        did_document["authentication"] = json!([fragment]);
+
         let result = verify_request_proof_value(
             &agent,
             &proof,
@@ -404,6 +616,83 @@ mod tests {
         .expect("verified");
 
         assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    #[serial_test::serial(replay_store)]
+    fn pq_request_proof_requires_current_authentication_authorization() {
+        let mut agent = Agent::ephemeral("pq2025").expect("PQ agent");
+        agent
+            .create_agent_and_load(
+                &json!({"jacsAgentType": "ai", "name": "pq-auth-test", "description": "PQ auth"})
+                    .to_string(),
+                true,
+                Some("pq2025"),
+            )
+            .expect("agent created");
+        let did_document = export_did_document(
+            &agent,
+            W3cDidOptions {
+                origin: Some("https://example.com".to_string()),
+            },
+        )
+        .expect("DID document");
+        assert_eq!(
+            did_document["verificationMethod"][0]["publicKeyJwk"]["alg"],
+            "ML-DSA-87"
+        );
+        let proof = build_request_proof(
+            &mut agent,
+            W3cRequestProofParams {
+                method: "GET".to_string(),
+                url: "https://service.example/tasks".to_string(),
+                body: None,
+                nonce: Some(format!("pq-auth-{}", uuid::Uuid::new_v4())),
+                created: Some(now_rfc3339()),
+                origin: Some("https://example.com".to_string()),
+            },
+        )
+        .expect("request proof");
+
+        let mut revoked = did_document.clone();
+        revoked["authentication"] = json!([]);
+        let error = verify_request_proof_value(&agent, &proof, &revoked, None, 300).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("not authorized for authentication")
+        );
+
+        let mut wrong_controller = did_document.clone();
+        wrong_controller["verificationMethod"][0]["controller"] = json!("did:wba:attacker.example");
+        let error =
+            verify_request_proof_value(&agent, &proof, &wrong_controller, None, 300).unwrap_err();
+        assert!(error.to_string().contains("controller does not match"));
+
+        // Rejected authorization must not consume the nonce, and the native AKP
+        // public key must still verify the original proof without fallback.
+        let mut standard = did_document.clone();
+        standard["verificationMethod"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("jacsSigningAlgorithm");
+        let fragment = format!(
+            "#{}",
+            proof["verificationMethod"]
+                .as_str()
+                .unwrap()
+                .split_once('#')
+                .unwrap()
+                .1
+        );
+        standard["authentication"] = json!([fragment]);
+        let mut bad = standard.clone();
+        bad["verificationMethod"][0]["publicKeyJwk"]["kid"] = json!("wrong-key");
+        assert!(verify_request_proof_value(&agent, &proof, &bad, None, 300).is_err());
+        let verified = verify_request_proof_value(&agent, &proof, &standard, None, 300)
+            .expect("native PQ request proof verifies");
+        assert_eq!(verified["valid"], true);
+        assert_eq!(verified["signingAlgorithm"], "pq2025");
     }
 
     #[derive(Default)]

@@ -2,7 +2,7 @@
 A2A Server — FastAPI routes for well-known A2A discovery documents.
 
 Provides ``jacs_a2a_routes()`` which returns an ``APIRouter`` serving
-all six identity-bound ``.well-known`` endpoints required for A2A discovery,
+the five direct-root ``.well-known`` documents (six for explicit ES256 compatibility),
 plus a top-level ``serve_a2a()`` convenience function.
 
 Usage — mount into an existing app::
@@ -97,6 +97,10 @@ class _DiscoverySnapshot:
 
 
 def _discovery_snapshot(documents: Dict[str, Any], now: float) -> _DiscoverySnapshot:
+    if "/.well-known/jacs-compat-binding.json" not in documents:
+        # Direct root signatures carry no delegated grant lifetime. This is
+        # only a local serving-cache deadline, not identity verification.
+        return _DiscoverySnapshot(documents, now, now, float("inf"))
     binding = documents["/.well-known/jacs-compat-binding.json"][
         "compatibilityKeyBinding"
     ]
@@ -161,32 +165,40 @@ class _DiscoveryCache:
 def jacs_a2a_routes(
     client: "JacsClient",
     skills: Optional[List[Dict[str, Any]]] = None,
+    a2a_algorithm: Optional[str] = None,
+    discovery_options: Optional[Dict[str, Any]] = None,
 ) -> APIRouter:
     """Build a FastAPI ``APIRouter`` serving A2A well-known documents.
 
-    The router exposes six identity-bound endpoints under ``/.well-known/``:
+    The router exposes native identity-bound endpoints under ``/.well-known/``:
 
-    - ``agent-card.json`` — A2A Agent Card (v0.4.0)
+    - ``agent-card.json`` — legacy Agent Card, or explicit bounded A2A 1.0 profile
     - ``jwks.json`` — JWK Set for external verifiers
-    - ``jacs-compat-binding.json`` — native-root-signed ES256 key binding
+    - ``jacs-compat-binding.json`` — key binding for explicit ES256 compatibility
     - ``jacs-agent.json`` — JACS agent descriptor
     - ``jacs-pubkey.json`` — JACS public key
     - ``jacs-extension.json`` — JACS provenance extension descriptor
 
     All responses include CORS headers for cross-origin discovery.
     The complete snapshot refreshes lazily at six days after signed binding
-    issuance; failures retry at most once per minute. Valid cached documents
+    issuance for ES256, or local generation for direct root signatures;
+    failures retry at most once per minute. Valid cached documents
     remain usable until seven days or explicit expiry, then routes return 503.
     HTTP freshness ends at the six-day renewal boundary; still-valid snapshots
     awaiting renewal are served with no-store.
     Explicit expiry requires renewed authorization and remounting. Separate
     resource requests can straddle renewal: publication is atomic in-process,
-    not a transactional client bundle. Consumers must verify the binding.
+    not a transactional client bundle. Consumers must verify the root signature
+    and, for ES256 compatibility, its root-signed binding.
 
     Args:
         client: A loaded ``JacsClient`` instance.
         skills: Optional list of explicit A2A skill dicts for the
             exported agent card.
+        a2a_algorithm: Explicit compatibility selection (``es256``); defaults
+            to the root key.
+        discovery_options: Explicit A2A 1.0 service profile. The caller hosts
+            its messaging URL, skills and content modes; this router serves discovery only.
 
     Returns:
         A ``fastapi.APIRouter`` ready to be included via
@@ -219,6 +231,8 @@ def jacs_a2a_routes(
             jws_signature="",
             public_key_b64="",
             agent_data=agent_data,
+            a2a_algorithm=a2a_algorithm,
+            discovery_options=discovery_options,
         )
         if skills is not None:
             native_skills = documents["/.well-known/agent-card.json"].get("skills", [])
@@ -255,6 +269,12 @@ def jacs_a2a_routes(
                 content={"error": "A2A discovery unavailable"},
                 headers={**cors_headers, "Cache-Control": "no-store"},
             )
+        if path not in snapshot.documents:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "A2A discovery document not available"},
+                headers={**cors_headers, "Cache-Control": "no-store"},
+            )
         # HTTP caches must revalidate when another resource can trigger renewal.
         cache_remaining = min(remaining, snapshot.issued + 6 * _DAY - now)
         max_age = max(0, min(3600, int(cache_remaining)))
@@ -270,7 +290,7 @@ def jacs_a2a_routes(
     def agent_card_endpoint(signed: Optional[str] = Query(default=None)):
         """Return the A2A Agent Card.
 
-        The returned card is always the native ES256-signed, identity-bound
+        The returned card is always the native signed, identity-bound
         card. The legacy ``signed`` query parameter is accepted but no longer
         changes the response.
         """
@@ -309,6 +329,8 @@ def create_a2a_app(
     client: "JacsClient",
     skills: Optional[List[Dict[str, Any]]] = None,
     title: str = "JACS A2A Agent",
+    a2a_algorithm: Optional[str] = None,
+    discovery_options: Optional[Dict[str, Any]] = None,
 ) -> FastAPI:
     """Create a full FastAPI application with A2A routes and CORS.
 
@@ -316,6 +338,7 @@ def create_a2a_app(
         client: A loaded ``JacsClient`` instance.
         skills: Optional skill overrides.
         title: Application title.
+        a2a_algorithm: Explicit compatibility selection (``es256``), if needed.
 
     Returns:
         A configured ``FastAPI`` app.
@@ -329,7 +352,7 @@ def create_a2a_app(
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    router = jacs_a2a_routes(client, skills=skills)
+    router = jacs_a2a_routes(client, skills=skills, a2a_algorithm=a2a_algorithm, discovery_options=discovery_options)
     app.include_router(router)
 
     return app
@@ -340,6 +363,8 @@ def serve_a2a(
     port: int = 8080,
     host: str = "0.0.0.0",
     skills: Optional[List[Dict[str, Any]]] = None,
+    a2a_algorithm: Optional[str] = None,
+    discovery_options: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Start a standalone A2A discovery server.
 
@@ -364,7 +389,7 @@ def serve_a2a(
             "Install it with: pip install jacs[a2a-server]"
         ) from exc
 
-    app = create_a2a_app(client, skills=skills)
+    app = create_a2a_app(client, skills=skills, a2a_algorithm=a2a_algorithm, discovery_options=discovery_options)
     uvicorn.run(app, host=host, port=port)
 
 

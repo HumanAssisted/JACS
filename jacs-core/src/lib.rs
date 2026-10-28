@@ -14,6 +14,7 @@ pub mod envelope;
 pub mod errors;
 pub mod human_approval;
 pub mod identity;
+pub mod jose;
 pub mod lifecycle;
 pub mod material;
 pub mod recovery;

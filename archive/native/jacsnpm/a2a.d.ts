@@ -8,6 +8,19 @@
  */
 import type { JacsClient } from './client.js';
 import type { Server } from 'http';
+/** Caller-declared behavior for an actually hosted, bounded JSON-RPC 1.0 service. */
+export interface A2ADiscoveryOptions {
+    protocolVersion: '1.0';
+    messagingUrl: string;
+    skills: Array<{
+        id: string;
+        name: string;
+        description: string;
+        tags: string[];
+    }>;
+    defaultInputModes: string[];
+    defaultOutputModes: string[];
+}
 export declare const A2A_PROTOCOL_VERSION = "0.4.0";
 export declare const JACS_EXTENSION_URI = "urn:jacs:provenance-v1";
 export declare const JACS_ALGORITHMS: readonly string[];
@@ -234,8 +247,8 @@ export declare class JACSA2AIntegration {
      *
      * - open: allows all agents
      * - verified: requires native JWS/JWKS verification plus durable TOFU pinning
-     * - strict: additionally requires an explicitly trusted native root and its
-     *   valid compatibility binding for the exact ES256 card key
+     * - strict: additionally requires an explicitly trusted native root, with
+     *   a valid compatibility binding when using an ES256 card key
      */
     assessRemoteAgent(agentCardJson: string | Record<string, unknown>): TrustAssessment;
     /**
@@ -265,7 +278,10 @@ export declare class JACSA2AIntegration {
      */
     verifyWrappedArtifact(wrappedArtifact: Record<string, unknown>, agentCard?: Record<string, unknown>): Promise<ArtifactVerificationResult>;
     createChainOfCustody(artifacts: Record<string, unknown>[]): Record<string, unknown>;
-    generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData): Record<string, Record<string, unknown>>;
+    /** Generate native discovery. Explicit v1 options describe the caller's
+     * hosted service; they do not install a handler or upgrade legacy trust APIs.
+     */
+    generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData, a2aAlgorithm?: string, discoveryOptions?: A2ADiscoveryOptions): Record<string, Record<string, unknown>>;
     private _hasJacsExtension;
     private _legacyAssessRemoteAgent;
     private _buildCanonicalTrustAssessment;

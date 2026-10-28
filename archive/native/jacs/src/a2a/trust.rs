@@ -453,6 +453,10 @@ fn select_jwk<'a>(card: &AgentCard, jwks: &'a [Jwk]) -> Result<&'a Jwk, String> 
 #[cfg(not(target_arch = "wasm32"))]
 fn jwk_to_verifier(jwk: &Jwk) -> Result<(Vec<u8>, &'static str), String> {
     match jwk.kty.as_str() {
+        "AKP" => {
+            let key = crate::a2a::keys::mldsa87_jwk_public_key(jwk).map_err(|e| e.to_string())?;
+            Ok((key, "pq2025"))
+        }
         "OKP" if jwk.crv.as_deref() == Some("Ed25519") => {
             let x = jwk
                 .x
@@ -503,6 +507,30 @@ fn verify_agent_card_signature(card: &AgentCard) -> Result<VerifiedAgentCardSign
     if !verified {
         return Err("Agent Card signature verifier returned false".to_string());
     }
+    if algorithm == "pq2025" {
+        let metadata = card
+            .metadata
+            .as_ref()
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "Agent Card metadata must be an object".to_string())?;
+        let version = extract_agent_version(card)
+            .ok_or_else(|| "Agent Card is missing metadata.jacsVersion".to_string())?;
+        if card.version != version {
+            return Err("Agent Card version does not match metadata.jacsVersion".into());
+        }
+        if metadata
+            .get("jacsRootKid")
+            .and_then(serde_json::Value::as_str)
+            != Some(jwk.kid.as_str())
+        {
+            return Err("Agent Card root kid does not match the verified JWK".into());
+        }
+        if metadata.keys().any(|name| name.starts_with("jacsCompat")) {
+            return Err(
+                "Direct root Agent Card must not declare compatibility binding metadata".into(),
+            );
+        }
+    }
     Ok(VerifiedAgentCardSignature {
         public_key,
         algorithm,
@@ -527,14 +555,14 @@ fn verify_explicit_trusted_identity_binding(
     // Historical cards signed directly by the trusted native Ed25519 root do
     // not need an ES256 delegation artifact. The exact trusted key must still
     // be the key that verified the card.
-    if verified_signature.algorithm == "ring-Ed25519" {
+    if matches!(verified_signature.algorithm, "ring-Ed25519" | "pq2025") {
         let trusted_hash = crate::crypt::hash::hash_public_key(&trusted_native_root);
         let card_hash = crate::crypt::hash::hash_public_key(&verified_signature.public_key);
-        return if trusted_hash == card_hash {
+        return if trusted_native_root == verified_signature.public_key {
             Ok(())
         } else {
             Err(format!(
-                "card key substitution: directly signed Ed25519 card key hash '{card_hash}' \
+                "card key substitution: directly signed root card key hash '{card_hash}' \
                  does not match trusted native root '{trusted_hash}'"
             ))
         };
@@ -651,7 +679,13 @@ pub fn assess_a2a_agent(
     // pin the agent's A2A key trust-on-first-use.
     let verifying_key_hash = match &signature_verification {
         Ok(verified) if !verified.public_key.is_empty() => {
-            Some(crate::crypt::hash::hash_public_key(&verified.public_key))
+            // Direct PQ cards pin the raw binary key, never its lossy UTF-8
+            // rendering. Preserve historical fingerprints for legacy algorithms.
+            Some(if verified.algorithm == "pq2025" {
+                jacs_core::verify::sha256_hex(&verified.public_key)
+            } else {
+                crate::crypt::hash::hash_public_key(&verified.public_key)
+            })
         }
         _ => None,
     };
@@ -714,14 +748,21 @@ pub fn assess_a2a_agent(
             },
             (Some(key), Some(seen)) => match trust::pin_a2a_key(key, seen) {
                 Ok(trust::A2aPinOutcome::Mismatch { pinned }) => {
-                    key_binding_failure = Some(format!(
+                    let mut reason = format!(
                         "agent '{}' presents an Agent Card key (hash {}) that differs from \
                          the key pinned on first contact (hash {}); refusing trust \
                          (possible key substitution)",
                         agent_id.as_deref().unwrap_or("unknown"),
                         seen,
                         pinned
-                    ));
+                    );
+                    if signature_verification
+                        .as_ref()
+                        .is_ok_and(|verified| verified.algorithm == "pq2025")
+                    {
+                        reason.push_str(" Early source builds used a different PQ pin fingerprint; a mismatch does not establish that this is only a format change. Independently verify the identity and exact root key before deliberately replacing the pin; no automatic migration is performed.");
+                    }
+                    key_binding_failure = Some(reason);
                     TrustLevel::Untrusted
                 }
                 Ok(trust::A2aPinOutcome::FirstUse) => {
@@ -1309,6 +1350,131 @@ mod tests {
         );
     }
 
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
+    fn verified_pq_requires_consistent_metadata_and_pins_raw_key() {
+        use jacs_core::DetachedSigner;
+        struct EnvGuard;
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    std::env::remove_var("JACS_TEST_JWKS_JSON");
+                    std::env::remove_var("JACS_TRUST_STORE_DIR");
+                }
+            }
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let _guard = EnvGuard;
+        let signer = jacs_core::Pq2025Signer::generate().unwrap();
+        let jwk = jacs_core::jose::mldsa87_public_jwk(signer.public_key()).unwrap();
+        let kid = jwk["kid"].as_str().unwrap();
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", temp.path().canonicalize().unwrap());
+            std::env::set_var("JACS_TEST_JWKS_JSON", json!({"keys":[jwk]}).to_string());
+        }
+        let id = "550e8400-e29b-41d4-a716-446655440071";
+        let version = "550e8400-e29b-41d4-a716-446655440072";
+        let mut card = make_card("pq-origin", true, Some(id), Some(version));
+        card.version = version.into();
+        card.metadata.as_mut().unwrap()["jacsRootKid"] = json!(kid);
+        card.supported_interfaces[0].url = "https://local-jwks.invalid".into();
+        let sign = |card: &AgentCard| {
+            let payload =
+                jacs_core::canonical::canonicalize_json_try(&serde_json::to_value(card).unwrap())
+                    .unwrap();
+            let input =
+                jacs_core::jose::mldsa87_jws_signing_input(payload.as_bytes(), kid).unwrap();
+            let signature = URL_SAFE_NO_PAD.encode(signer.sign(input.as_bytes()).unwrap());
+            embed_signature_in_agent_card(card, &format!("{input}.{signature}"), Some(kid))
+        };
+        // Every malformed card is freshly signed: these are semantic refusals,
+        // not incidental failures caused by changing a signed payload.
+        for case in [
+            "version",
+            "missing_version",
+            "root_kid",
+            "missing_root_kid",
+            "compat_kid",
+            "compat_hash",
+            "compat_path",
+        ] {
+            let mut invalid = card.clone();
+            match case {
+                "version" => invalid.version = "other".into(),
+                "missing_version" => {
+                    invalid
+                        .metadata
+                        .as_mut()
+                        .unwrap()
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("jacsVersion");
+                }
+                "root_kid" => invalid.metadata.as_mut().unwrap()["jacsRootKid"] = json!("other"),
+                "missing_root_kid" => {
+                    invalid
+                        .metadata
+                        .as_mut()
+                        .unwrap()
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("jacsRootKid");
+                }
+                "compat_kid" => invalid.metadata.as_mut().unwrap()["jacsCompatKid"] = json!(kid),
+                "compat_hash" => {
+                    invalid.metadata.as_mut().unwrap()["jacsCompatBindingHash"] = json!("hash")
+                }
+                _ => {
+                    invalid.metadata.as_mut().unwrap()["jacsCompatBindingPath"] = json!("/binding")
+                }
+            }
+            let signed = sign(&invalid);
+            assert!(verify_agent_card_jws(&signed, signer.public_key(), "pq2025").unwrap());
+            let result = assess_a2a_agent(&test_agent(), &signed, A2ATrustPolicy::Verified);
+            assert!(!result.allowed, "{case}: {result:?}");
+            assert_eq!(result.trust_level, TrustLevel::Untrusted);
+        }
+        let signed = sign(&card);
+        let first = assess_a2a_agent(&test_agent(), &signed, A2ATrustPolicy::Verified);
+        assert!(first.allowed && first.first_contact, "{first:?}");
+        let raw_hash = jacs_core::verify::sha256_hex(signer.public_key());
+        assert_ne!(
+            raw_hash,
+            crate::crypt::hash::hash_public_key(signer.public_key())
+        );
+        assert!(matches!(
+            trust::pin_a2a_key(&format!("{id}:{version}"), &raw_hash).unwrap(),
+            trust::A2aPinOutcome::Match
+        ));
+        let repeat = assess_a2a_agent(&test_agent(), &signed, A2ATrustPolicy::Verified);
+        assert!(repeat.allowed && !repeat.first_contact, "{repeat:?}");
+
+        // An early source build's lossy PQ pin cannot establish exact key
+        // continuity. Refuse it without overwriting or silently migrating it.
+        let old_id = "550e8400-e29b-41d4-a716-446655440073";
+        let old_identity = format!("{old_id}:{version}");
+        let legacy_hash = crate::crypt::hash::hash_public_key(signer.public_key());
+        assert!(matches!(
+            trust::pin_a2a_key(&old_identity, &legacy_hash).unwrap(),
+            trust::A2aPinOutcome::FirstUse
+        ));
+        card.metadata.as_mut().unwrap()["jacsId"] = json!(old_id);
+        let refusal = assess_a2a_agent(&test_agent(), &sign(&card), A2ATrustPolicy::Verified);
+        assert!(!refusal.allowed, "{refusal:?}");
+        assert!(
+            refusal.reason.contains("Independently verify"),
+            "{refusal:?}"
+        );
+        assert!(
+            refusal.reason.contains("possible key substitution"),
+            "{refusal:?}"
+        );
+        assert!(matches!(
+            trust::pin_a2a_key(&old_identity, &legacy_hash).unwrap(),
+            trust::A2aPinOutcome::Match
+        ));
+    }
+
     // A2A-1: the verifying (A2A) key is pinned trust-on-first-use. Re-presenting
     // the same key for the same id:version stays JacsVerified.
     #[test]
@@ -1470,6 +1636,126 @@ mod tests {
 
     #[test]
     #[serial_test::serial(jacs_env, home_env)]
+    fn strict_policy_accepts_pq_root_and_rejects_signed_identity_substitution() {
+        use jacs_core::DetachedSigner;
+        use secrecy::ExposeSecret;
+
+        struct EnvGuard;
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    std::env::remove_var("JACS_TEST_JWKS_JSON");
+                    std::env::remove_var("JACS_TRUST_STORE_DIR");
+                }
+            }
+        }
+        let temp = tempfile::tempdir().expect("isolated trust store");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", temp.path());
+        }
+        let _guard = EnvGuard;
+        let (remote, info) =
+            crate::simple::SimpleAgent::ephemeral(Some("pq2025")).expect("native PQ identity");
+        let signer = {
+            let inner = remote.agent.lock().unwrap();
+            jacs_core::Pq2025Signer::from_private_bytes(
+                inner.get_private_key().unwrap().expose_secret(),
+            )
+            .expect("native signer")
+        };
+        let trust_key = crate::trust::trust_agent_with_key(
+            &remote.export_agent().unwrap(),
+            Some(&remote.get_public_key_pem().unwrap()),
+        )
+        .expect("enroll native identity");
+        let mut unsigned = make_card("PQ remote", true, Some(&info.agent_id), Some(&info.version));
+        unsigned.version = info.version.clone();
+        unsigned.supported_interfaces[0].url = "https://local-jwks.invalid/agent".into();
+
+        let sign = |mut card: AgentCard, key: &jacs_core::Pq2025Signer| {
+            let jwk = jacs_core::jose::mldsa87_public_jwk(key.public_key()).unwrap();
+            let kid = jwk["kid"].as_str().unwrap();
+            card.metadata.as_mut().unwrap()["jacsRootKid"] = json!(kid);
+            let payload =
+                jacs_core::canonical::canonicalize_json_try(&serde_json::to_value(&card).unwrap())
+                    .unwrap();
+            let jws = jacs_core::jose::sign_mldsa87_jws(payload.as_bytes(), key, kid).unwrap();
+            unsafe {
+                std::env::set_var(
+                    "JACS_TEST_JWKS_JSON",
+                    json!({"keys": [jwk.clone()]}).to_string(),
+                );
+            }
+            embed_signature_in_agent_card(&card, &jws, Some(kid))
+        };
+        let card = sign(unsigned.clone(), &signer);
+        let accepted = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        assert!(accepted.allowed, "trusted native PQ root: {accepted:?}");
+        assert_eq!(accepted.trust_level, TrustLevel::ExplicitlyTrusted);
+
+        let attacker = jacs_core::Pq2025Signer::generate().unwrap();
+        let substituted = sign(unsigned.clone(), &attacker);
+        let rejected = assess_a2a_agent(&test_agent(), &substituted, A2ATrustPolicy::Strict);
+        assert!(
+            !rejected.allowed,
+            "valid attacker signature must not inherit trust: {rejected:?}"
+        );
+        assert!(rejected.reason.contains("substitution"), "{rejected:?}");
+        assert_eq!(
+            crate::trust::get_trusted_public_key(&trust_key).unwrap(),
+            signer.public_key()
+        );
+
+        unsigned.version = "wrong-version".into();
+        let wrong_version = sign(unsigned, &signer);
+        let rejected = assess_a2a_agent(&test_agent(), &wrong_version, A2ATrustPolicy::Strict);
+        assert!(!rejected.allowed);
+        assert!(rejected.reason.contains("version"), "{rejected:?}");
+
+        // Re-sign misleading root metadata with the genuine root: authenticity
+        // alone must not bypass the identity tuple consistency check.
+        let mut wrong_kid = card.clone();
+        wrong_kid.signatures = None;
+        wrong_kid.metadata.as_mut().unwrap()["jacsRootKid"] = json!("different-kid");
+        let kid = card.signatures.as_ref().unwrap()[0]
+            .key_id
+            .as_deref()
+            .unwrap();
+        let payload =
+            jacs_core::canonical::canonicalize_json_try(&serde_json::to_value(&wrong_kid).unwrap())
+                .unwrap();
+        let jws = jacs_core::jose::sign_mldsa87_jws(payload.as_bytes(), &signer, kid).unwrap();
+        let wrong_kid = embed_signature_in_agent_card(&wrong_kid, &jws, Some(kid));
+        let rejected = assess_a2a_agent(&test_agent(), &wrong_kid, A2ATrustPolicy::Strict);
+        assert!(!rejected.allowed);
+        assert!(rejected.reason.contains("root kid"), "{rejected:?}");
+    }
+
+    #[test]
+    fn akp_jwks_validation_preserves_and_rejects_private_or_conflicting_members() {
+        use jacs_core::DetachedSigner;
+        let signer = jacs_core::Pq2025Signer::generate().unwrap();
+        let jwk = jacs_core::jose::mldsa87_public_jwk(signer.public_key()).unwrap();
+        assert!(jwk_to_verifier(&serde_json::from_value(jwk.clone()).unwrap()).is_ok());
+        for (field, value) in [
+            ("priv", json!("private seed")),
+            ("d", json!("private scalar")),
+            ("alg", json!("ML-DSA-44")),
+            ("kid", json!("unrelated-key")),
+            ("key_ops", json!(["sign"])),
+            ("use", json!("enc")),
+            ("x", json!("conflicting-public-key")),
+            ("pub", json!("AA")),
+        ] {
+            let mut invalid = jwk.clone();
+            invalid[field] = value;
+            let parsed: Jwk = serde_json::from_value(invalid).expect("preserve JWK members");
+            assert!(jwk_to_verifier(&parsed).is_err(), "must reject {field}");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
     fn test_strict_policy_rejects_unverified_a2a_card_bookmark() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
@@ -1585,7 +1871,7 @@ mod tests {
             .config_path("./jacs.config.json")
             .build();
         let (remote, _) = SimpleAgent::create_with_params(params).expect("create remote agent");
-        let documents = crate::a2a::simple::generate_well_known_documents(&remote, None)
+        let documents = crate::a2a::simple::generate_well_known_documents(&remote, Some("ES256"))
             .expect("generate bound discovery");
         let document = |path: &str| {
             documents
@@ -1701,8 +1987,9 @@ mod tests {
         let refreshed_binding = remote
             .issue_compat_binding(None, None)
             .expect("reissue compatibility binding");
-        let refreshed_documents = crate::a2a::simple::generate_well_known_documents(&remote, None)
-            .expect("generate refreshed discovery");
+        let refreshed_documents =
+            crate::a2a::simple::generate_well_known_documents(&remote, Some("ES256"))
+                .expect("generate refreshed discovery");
         let refreshed_card_value = refreshed_documents
             .iter()
             .find(|(path, _)| path == "/.well-known/agent-card.json")

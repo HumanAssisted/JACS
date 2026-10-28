@@ -1812,21 +1812,8 @@ impl SimpleAgent {
             errors.push(e.to_string());
         }
 
-        match agent.get_public_key() {
-            Ok(public_key) => {
-                if let Err(e) = agent.signature_verification_procedure(
-                    &value,
-                    None,
-                    DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
-                    public_key,
-                    None,
-                    None,
-                    None,
-                ) {
-                    errors.push(e.to_string());
-                }
-            }
-            Err(e) => errors.push(e.to_string()),
+        if let Err(e) = agent.verify_external_document_signature_value(&value) {
+            errors.push(e.to_string());
         }
 
         // Verify hash

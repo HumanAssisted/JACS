@@ -1,7 +1,12 @@
 # A2A Interoperability
 
-The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
-with current released A2A peers remains unproven.
+The default discovery adapters retain the legacy A2A `0.4.0` card shape.
+The separate typed `jacs::a2a::v1` API uses the A2A 1.0 shape for a bounded
+JSON-RPC profile; see the
+[current source quickstart](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md)
+and the [v1 example](#opt-in-a2a-10-peer-example) below.
+
+{{#include ../_snippets/node-registry-status.md}}
 
 Use A2A when your agent needs to be discoverable and verifiable by another service, team, or organization. This is the cross-boundary story; MCP is the inside-the-app story.
 
@@ -136,6 +141,13 @@ The current policy meanings are:
 `verified` means the card signature and a durable same-origin key pin verified.
 It proves origin/key continuity, not that the self-asserted `jacsId` is a
 real-world or explicitly trusted identity. `strict` is the identity-bound mode.
+Direct-PQ verification checks the version/root-key metadata before TOFU pinning
+and now uses raw-key SHA-256 fingerprints. Pins from an earlier unpublished
+direct-PQ build may use a lossy fingerprint; they fail closed and are not
+automatically reset. Independently verify the identity and exact root before
+deliberately replacing such a pin. ES256 pins and explicit trusted-root checks
+are unchanged. Native artifact-envelope [key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+is a separate verification path, not an automatic A2A policy upgrade.
 
 ### Python
 
@@ -168,7 +180,16 @@ Use the trust store when you want explicit admission:
 
 This is the cleanest path into `strict` policy.
 
-## ES256-Signed Agent Cards (P2)
+## Native post-quantum discovery
+
+Current source defaults to the persisted native ML-DSA-87 root for
+`generate_well_known_documents`. It publishes that root's RFC 9964 AKP JWK and
+five discovery documents, with no delegated-key binding. The card's JWS signs
+canonical card bytes and its `metadata.jacsRootKid` identifies the root's JWK
+thumbprint. Loading or exporting does not create another signing key. The
+legacy card wire shape remains unchanged.
+
+## Explicit ES256 compatibility
 
 Agent cards can also be exported with an ES256 signature from the agent's
 compatibility key (`export_a2a_agent_card` in the Rust core and bindings,
@@ -183,11 +204,12 @@ feature `a2a`). This is a card-typed exporter, not a generic JWS API:
   `jacsCompatBindingPath` (`/.well-known/jacs-compat-binding.json`).
 
 A stock JOSE verifier can check the ES256 signature against the agent's
-JWKS (`jacs agent export-jwks`), but that proves possession of the
+compatibility JWKS (`jacs-compat agent export-jwks`), but that proves possession of the
 compatibility key only. Tracing the card to the agent's native root requires
 verifying the native-root-signed compatibility key binding
-(`jacs agent export-compat-binding`). Native `generate_well_known_documents`
-publishes the binding at the fixed path and reuses the same persisted ES256 key
+(`jacs-compat agent export-compat-binding`). Calling native
+`generate_well_known_documents` with explicit `ES256` publishes the binding at
+the fixed path and reuses the same persisted ES256 key
 across calls and restarts. An obsolete explicit `ring-Ed25519` discovery-key
 choice is rejected rather than silently ignored — see the
 [Security Model](../advanced/security.md#compatibility-key-binding-p2).
@@ -202,12 +224,12 @@ JWKS key by itself can never establish the claimed JACS identity.
 
 ## Current Runtime Differences
 
-- **Python and Node.js**: the FastAPI and Express routers serve the six native
-  discovery documents, including the signed card, JWKS and compatibility
-  binding. They are discovery-only; `serve()` and `listen()` are convenience
+- **Python and Node.js**: the FastAPI and Express routers serve five native
+  discovery documents by default, including the signed card and JWKS. Explicit
+  ES256 adds a compatibility binding. They are discovery-only; `serve()` and `listen()` are convenience
   hosts, not complete A2A task/message services.
 - The mounted routers refresh their complete snapshots lazily at six days from
-  binding issuance. HTTP freshness ends at renewal or earlier explicit expiry;
+  local generation (direct root) or signed binding issuance (ES256). HTTP freshness ends at renewal or earlier explicit expiry;
   separate fetches can still straddle replacement. Verify the related documents
   together and refetch on a mismatch. See [Serve Your Agent Card](../guides/a2a-serve.md).
 
@@ -221,26 +243,48 @@ JWKS key by itself can never establish the claimed JACS identity.
 
 ## Opt-in A2A 1.0 peer example
 
-The existing exporters and discovery adapters retain the legacy JACS-labeled
-`0.4.0` card format. The separate native `jacs::a2a::v1` projection and
-`examples/a2a_v1_peer.py` exercise a finite A2A 1.0 JSON-RPC report exchange
-against official `a2aproject/a2a-python` **1.1.4**, pinned to commit
-`2d4d3048b245d2af854bad804f0e722ea9febc08`. This example does not enable a new
-production binding, alter the existing language facade APIs, or host a remote
-signer. The SDK version and protocol version are different numbers.
+Current source's typed `jacs::a2a::v1::export_agent_card` signs directly with the
+loaded ML-DSA-87 root. It uses the A2A 1.0 `supportedInterfaces` model and
+standard detached `signatures[].protected` / `signature` fields, with typed
+protobuf presence handling and RFC 8785 canonicalization. Its
+`verify_root_card` verifies the signature, exact trusted root and expected
+identity/version for the supported profile. Multiple signatures are accepted:
+the helper selects the expected root `kid` regardless of order, rejects
+duplicate kids or invalid entry/header shapes, and grants no authority to the
+other signatures. It does not cryptographically verify those other entries or
+fetch keys over the network. See the
+[source library guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md#library-entry-points).
 
-From the repository root, with Python 3.14 and uv installed:
+`export_agent_card_es256` is the explicit compatibility alternative. The
+pinned official-SDK example below selects this ES256 path; it does not prove
+that the peer implements ML-DSA-87. `verify_card_binding` remains the
+compatibility binding check, and its caller must additionally verify the JWS.
+
+
+Public Node and Python discovery APIs accept explicit A2A 1.0 options with
+caller-provided skills, input/output modes and a messaging URL. Without those
+options, language discovery remains the legacy `0.4.0` format. See the
+[current public API examples](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md#a2a-10-from-nodejs-or-python).
+
+The [current official SDK smokes](https://github.com/HumanAssisted/JACS/blob/main/archive/native/examples/a2a_v1_sdk/README.md)
+exercise those public APIs with stock JavaScript SDK **1.3.0** (direct ML-DSA-87,
+Node 24.7+) and stock Python SDK **1.3.0** (explicit ES256 compatibility,
+Python 3.11+). Each uses actual SDK discovery, signature verification and a
+finite JSON-RPC report exchange. SDK version and wire version are different
+numbers. The Python backend does not provide ML-DSA verification.
+
+The broader retained native-fixture/Python vector harness also uses the exact
+`a2a-sdk==1.3.0` registry package and hashed transitive dependencies. From the
+repository root, with Python 3.11+ and uv installed:
 
 ```sh
-uv venv --python python3.14 /tmp/jacs-a2a-peer-env
-uv pip sync --python /tmp/jacs-a2a-peer-env/bin/python examples/a2a_v1_peer_requirements.txt
-cargo build -p jacs --no-default-features --features a2a --example a2a_v1_peer
-/tmp/jacs-a2a-peer-env/bin/python examples/a2a_v1_peer.py --native-bin target/debug/examples/a2a_v1_peer
+uv venv --python python3 /tmp/jacs-a2a-peer-env
+uv pip sync --python /tmp/jacs-a2a-peer-env/bin/python archive/native/examples/a2a_v1_peer_requirements.txt
+cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs \
+  --no-default-features --features a2a --example a2a_v1_peer --target-dir target/a2a-v1-example
+/tmp/jacs-a2a-peer-env/bin/python archive/native/examples/a2a_v1_peer.py \
+  --native-bin target/a2a-v1-example/debug/examples/a2a_v1_peer
 ```
-
-The test-only lock uses the exact official source commit: PyPI had no 1.1.4
-artifact when checked on September 14, 2026. It pins transitive dependencies
-with distribution hashes. No global package environment is needed.
 
 A disposable native helper creates an encrypted signing identity, a card,
 its native-root-signed compatibility binding, and a pre-signed synthetic report.
@@ -260,7 +304,7 @@ arrays must be nonempty. It rejects caller-supplied binding parameters,
 duplicate extension URIs, unsupported capability claims, non-object extension
 parameter roots, and empty/null or unsafe numeric extension values instead of silently changing them. Production
 interface URLs require HTTPS; explicit loopback HTTP is permitted for this
-example. The caller must actually implement the declared finite report skill.
+example. The caller must implement every declared skill; the example implements one report skill.
 
 This deliberately bounded profile records a pinned-peer limitation: its
 canonicalizer removes explicit optional empty strings, although the protocol's
@@ -272,8 +316,9 @@ legacy Strict discovery parser is not a v1 parser, and this stateless bridge
 does not establish rollback history. Key attribution, human approval, current
 contact authority and Agreement-policy acceptance remain separate decisions.
 
-Verification on September 15, 2026 used macOS arm64, Rust 1.98.1, Python
-3.14.7, the pinned SDK, and the reviewed Rustls 0.23.45 lock. The native profile
+Historical verification on September 15, 2026 used macOS arm64, Rust 1.98.1, Python
+3.14.7, SDK 1.1.4 at commit `2d4d3048b245d2af854bad804f0e722ea9febc08`,
+and the reviewed Rustls 0.23.45 lock. The native profile
 regression and existing legacy discovery/restart regression passed. The actual
 peer verified three card vectors and received all 1,201 report bytes unchanged;
 14 peer/native refusals and seven typed-profile refusals passed, along with

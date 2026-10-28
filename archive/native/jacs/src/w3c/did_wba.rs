@@ -37,7 +37,7 @@ pub fn export_did_identifier_with_options(
 pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Value, JacsError> {
     let projection = PublicAgentProjection::from_agent(agent)?;
     let parts = parts_for_projection(&projection, &options)?;
-    let verification_method = verification_method_for_projection(&projection, &parts);
+    let verification_method = verification_method_for_projection(&projection, &parts)?;
 
     let mut verification_methods = vec![verification_method];
     let mut authentication = vec![json!(parts.verification_method)];
@@ -82,7 +82,8 @@ pub fn export_did_document(agent: &Agent, options: W3cDidOptions) -> Result<Valu
 
     Ok(json!({
         "@context": [
-            "https://www.w3.org/ns/did/v1"
+            "https://www.w3.org/ns/did/v1",
+            "https://www.w3.org/ns/cid/v1"
         ],
         "id": parts.did,
         "verificationMethod": verification_methods,
@@ -160,7 +161,18 @@ pub(crate) fn parts_for_projection(
         .chars()
         .take(16)
         .collect::<String>();
-    let verification_method = format!("{}#jacs-key-{}", did, key_fragment);
+    let verification_method = if projection.key_algorithm == "pq2025" {
+        let jwk = jacs_core::jose::mldsa87_public_jwk(&projection.public_key)?;
+        format!(
+            "{}#{}",
+            did,
+            jwk["kid"]
+                .as_str()
+                .ok_or_else(|| JacsError::CryptoError("missing root kid".into()))?
+        )
+    } else {
+        format!("{}#jacs-key-{}", did, key_fragment)
+    };
 
     Ok(W3cDidParts {
         did,
@@ -222,18 +234,32 @@ pub(crate) fn resolve_origin(
 fn verification_method_for_projection(
     projection: &PublicAgentProjection,
     parts: &W3cDidParts,
-) -> Value {
-    if projection.key_algorithm == "ring-Ed25519" && projection.public_key.len() == 32 {
+) -> Result<Value, JacsError> {
+    Ok(if projection.key_algorithm == "pq2025" {
         json!({
             "id": parts.verification_method,
-            "type": "JsonWebKey2020",
+            "type": "JsonWebKey",
+            "controller": parts.did,
+            "publicKeyJwk": jacs_core::jose::mldsa87_public_jwk(&projection.public_key)?,
+            "jacsSigningAlgorithm": projection.key_algorithm
+        })
+    } else if projection.key_algorithm == "ring-Ed25519" && projection.public_key.len() == 32 {
+        // Preserve the historical verification-method URL while using its
+        // fragment as the JWK kid (CID's JsonWebKey recommendation).
+        let kid = parts
+            .verification_method
+            .strip_prefix(&format!("{}#", parts.did))
+            .ok_or_else(|| JacsError::CryptoError("invalid DID verification method id".into()))?;
+        json!({
+            "id": parts.verification_method,
+            "type": "JsonWebKey",
             "controller": parts.did,
             "publicKeyJwk": {
                 "kty": "OKP",
                 "crv": "Ed25519",
                 "x": general_purpose::URL_SAFE_NO_PAD.encode(&projection.public_key),
                 "alg": "EdDSA",
-                "kid": parts.verification_method
+                "kid": kid
             },
             "jacsSigningAlgorithm": projection.key_algorithm
         })
@@ -245,7 +271,7 @@ fn verification_method_for_projection(
             "publicKeyBase64": projection.public_key_base64,
             "jacsSigningAlgorithm": projection.key_algorithm
         })
-    }
+    })
 }
 
 fn method_segment(input: &str) -> String {
@@ -324,6 +350,21 @@ mod tests {
             "did:wba:example.com:agent:".to_string() + doc["jacs"]["jacsId"].as_str().unwrap()
         );
         assert!(doc["verificationMethod"][0]["publicKeyJwk"].is_object());
+        let method = &doc["verificationMethod"][0];
+        let expected_fragment = format!(
+            "jacs-key-{}",
+            doc["jacs"]["publicKeyHash"]
+                .as_str()
+                .unwrap()
+                .chars()
+                .take(16)
+                .collect::<String>()
+        );
+        assert_eq!(method["publicKeyJwk"]["kid"], expected_fragment);
+        assert_eq!(
+            method["id"],
+            format!("{}#{}", doc["id"].as_str().unwrap(), expected_fragment)
+        );
         assert_eq!(
             doc["authentication"][0].as_str().unwrap(),
             doc["verificationMethod"][0]["id"].as_str().unwrap()

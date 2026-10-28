@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1058
+Third-party packages: 1054
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -262,7 +262,7 @@ Used by 81 package(s):
   - uuid 1.23.5 (https://github.com/uuid-rs/uuid)
   - uuid 1.26.1 (https://github.com/uuid-rs/uuid)
   - wnaf 0.14.1 (https://github.com/RustCrypto/elliptic-curves)
-  - zeroize 1.9.0 (https://github.com/RustCrypto/utils)
+  - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
 
 -------------------------------------------------------------------------------
@@ -376,17 +376,17 @@ Used by 7 package(s):
 License expression: ISC AND (Apache-2.0 OR ISC)
 Used by 1 package(s):
 
-  - aws-lc-rs 1.18.1 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-rs 1.18.2 (https://github.com/aws/aws-lc-rs)
 
 -------------------------------------------------------------------------------
 License expression: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)
 Used by 1 package(s):
 
-  - aws-lc-sys 0.45.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 205 package(s):
+Used by 199 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -457,12 +457,9 @@ Used by 205 package(s):
   - i_overlay 4.0.7 (https://github.com/iShape-Rust/iOverlay)
   - i_shape 1.14.0 (https://github.com/iShape-Rust/iShape)
   - i_tree 0.16.0 (https://github.com/iShape-Rust/iTree)
-  - jsonschema 0.58.6 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema 0.60.1 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.58.6 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.60.1 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.58.6 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.60.1 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.60.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.60.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.60.2 (https://github.com/Stranger6667/jsonschema)
   - jsonwebtoken 10.4.0 (https://github.com/Keats/jsonwebtoken)
   - kqueue 1.2.1 (https://gitlab.com/rust-kqueue/rust-kqueue)
   - kqueue-sys 1.1.2 (https://gitlab.com/rust-kqueue/rust-kqueue-sys)
@@ -471,7 +468,6 @@ Used by 205 package(s):
   - libredox 0.1.18 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libredox 0.1.23 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libsqlite3-sys 0.30.1 (https://github.com/rusqlite/rusqlite)
-  - libyaml-rs 0.3.0 (https://github.com/yaml/libyaml-rs)
   - lindera 6.2.0 (https://github.com/lindera/lindera)
   - lindera-dictionary 6.2.0 (https://github.com/lindera/lindera)
   - lz4 1.28.1 (https://github.com/10xGenomics/lz4-rs)
@@ -523,8 +519,7 @@ Used by 205 package(s):
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
   - redox_syscall 0.9.4 (https://gitlab.redox-os.org/redox-os/kernel)
   - redox_users 0.5.3 (https://gitlab.redox-os.org/redox-os/users)
-  - referencing 0.58.6 (https://github.com/Stranger6667/jsonschema)
-  - referencing 0.60.1 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.60.2 (https://github.com/Stranger6667/jsonschema)
   - rend 0.5.4 (https://github.com/djkoloski/rend)
   - rgb 0.8.53 (https://github.com/kornelski/rust-rgb)
   - rkyv 0.8.18 (https://github.com/rkyv/rkyv)
@@ -538,7 +533,6 @@ Used by 205 package(s):
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
   - seize 0.5.1 (https://github.com/ibraheemdev/seize)
-  - serde_json_canonicalizer 0.3.2 (https://github.com/evik42/serde-json-canonicalizer)
   - serde_json_canonicalizer 0.4.1 (https://github.com/evik42/serde-json-canonicalizer)
   - serial_test 3.5.0 (https://github.com/palfrey/serial_test/)
   - serial_test 4.0.1 (https://github.com/palfrey/serial_test/)
@@ -602,7 +596,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 486 package(s):
+Used by 487 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -611,6 +605,7 @@ Used by 486 package(s):
   - ammonia 4.1.8 (https://github.com/rust-ammonia/ammonia)
   - android_system_properties 0.1.6 (https://github.com/nical/android_system_properties)
   - anes 0.1.6 (https://github.com/zrzka/anes-rs)
+  - annotate-snippets 0.12.17 (https://github.com/rust-lang/annotate-snippets-rs)
   - anstream 1.0.0 (https://github.com/rust-cli/anstyle.git)
   - anstyle 1.0.14 (https://github.com/rust-cli/anstyle.git)
   - anstyle-parse 1.0.0 (https://github.com/rust-cli/anstyle.git)
@@ -724,8 +719,7 @@ Used by 486 package(s):
   - ferroid 2.0.0 (https://github.com/s0l0ist/ferroid/blob/main/crates/ferroid)
   - find-msvc-tools 0.1.12 (https://github.com/rust-lang/cc-rs)
   - find-msvc-tools 0.1.9 (https://github.com/rust-lang/cc-rs)
-  - fips203 0.4.3 (https://github.com/integritychain/fips203)
-  - fips204 0.4.6 (https://github.com/integritychain/fips204)
+  - fips203 0.5.0 (https://github.com/integritychain/fips203)
   - fips204 0.5.0 (https://github.com/integritychain/fips204)
   - flate2 1.1.10 (https://github.com/rust-lang/flate2-rs)
   - flate2 1.1.9 (https://github.com/rust-lang/flate2-rs)
@@ -757,6 +751,7 @@ Used by 486 package(s):
   - getrandom 0.4.3 (https://github.com/rust-random/getrandom)
   - gimli 0.32.3 (https://github.com/gimli-rs/gimli)
   - glob 0.3.4 (https://github.com/rust-lang/glob)
+  - granit-parser 2.0.0 (https://github.com/bourumir-wyngs/granit-parser)
   - half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   - hash32 0.1.1 (https://github.com/japaric/hash32)
   - hash32 0.2.1 (https://github.com/japaric/hash32)
@@ -892,7 +887,7 @@ Used by 486 package(s):
   - quinn-udp 0.5.15 (https://github.com/quinn-rs/quinn)
   - quote 1.0.46 (https://github.com/dtolnay/quote)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
-  - rand 0.10.2 (https://github.com/rust-random/rand)
+  - rand 0.10.3 (https://github.com/rust-random/rand)
   - rand 0.8.7 (https://github.com/rust-random/rand)
   - rand 0.8.8 (https://github.com/rust-random/rand)
   - rand 0.9.5 (https://github.com/rust-random/rand)
@@ -939,6 +934,7 @@ Used by 486 package(s):
   - security-framework-sys 2.17.0 (https://github.com/kornelski/rust-security-framework)
   - semver 1.0.28 (https://github.com/dtolnay/semver)
   - serde 1.0.229 (https://github.com/serde-rs/serde)
+  - serde-saphyr 2.0.0 (https://github.com/bourumir-wyngs/serde-saphyr)
   - serde_cbor_2 0.13.0 (https://github.com/kanidm/cbor)
   - serde_core 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive 1.0.229 (https://github.com/serde-rs/serde)
@@ -951,7 +947,7 @@ Used by 486 package(s):
   - serde_with_macros 3.23.0 (https://github.com/jonasbb/serde_with/)
   - sha1 0.10.7 (https://github.com/RustCrypto/hashes)
   - sha2 0.10.9 (https://github.com/RustCrypto/hashes)
-  - sha2 0.11.0 (https://github.com/RustCrypto/hashes)
+  - sha2 0.11.1 (https://github.com/RustCrypto/hashes)
   - sha3 0.10.9 (https://github.com/RustCrypto/hashes)
   - shlex 1.3.0 (https://github.com/comex/rust-shlex)
   - shlex 2.0.1 (https://github.com/comex/rust-shlex)
@@ -1089,7 +1085,6 @@ Used by 486 package(s):
   - windows_x86_64_msvc 0.53.1 (https://github.com/microsoft/windows-rs)
   - x509-parser 0.16.0 (https://github.com/rusticata/x509-parser.git)
   - xattr 1.6.1 (https://github.com/Stebalien/xattr)
-  - yaml_serde 0.10.7 (https://github.com/yaml/yaml-serde)
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0 OR BSD-1-Clause
@@ -1130,11 +1125,12 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 62 package(s):
+Used by 63 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
   - affinitypool 0.8.0 (https://github.com/surrealdb/affinitypool)
   - android_system_properties 0.1.5 (https://github.com/nical/android_system_properties)
+  - arraydeque 0.5.1 (https://github.com/andylokandy/arraydeque)
   - asn1-rs-impl 0.2.0 (https://github.com/rusticata/asn1-rs.git)
   - bitflags 1.3.2 (https://github.com/bitflags/bitflags)
   - bs58 0.5.1 (https://github.com/Nullus157/bs58-rs)

@@ -35,6 +35,59 @@ fn read_fixture(name: &str) -> Value {
         .unwrap_or_else(|e| panic!("parse fixture {}: {}", path.display(), e))
 }
 
+/// Reconstruct the historical identity from the committed fixture key. The
+/// old fixture agent JSON is not shipped; keep the golden ID/version and key
+/// stable without relying on an untracked file or regenerating golden proofs.
+fn fixture_agent() -> jacs::agent::Agent {
+    use jacs_core::DetachedSigner;
+    let private = jacs::crypt::aes_encrypt::decrypt_private_key_secure_with_password(
+        include_bytes!("fixtures/keys/agent-ed25519.private.pem.enc"),
+        utils::TEST_PASSWORD_LEGACY,
+    )
+    .expect("decrypt committed test-only Ed25519 fixture key");
+    let signer = jacs_core::Ed25519DalekSigner::from_pkcs8(private.as_slice()).unwrap();
+    let public = signer.public_key().to_vec();
+    assert_eq!(
+        public,
+        include_bytes!("fixtures/keys/agent-ed25519.public.pem")
+    );
+    let core = jacs_core::CoreAgent::from_signer(
+        Box::new(signer),
+        json!({
+            "jacsId": "22dbef6c-b85e-40e5-b82e-f95a4259339a",
+            "jacsVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+            "jacsAgentType": "ai",
+            "name": "agent-ed25519",
+            "description": "JACS agent"
+        }),
+    )
+    .expect("self-sign fixed public fixture identity");
+    // Native compatibility identities retain their historical key hash and
+    // algorithm spelling. Bind those metadata bytes before signing, too.
+    let mut document = core.export_agent();
+    document["jacsSignature"]["publicKeyHash"] = json!(jacs::crypt::hash::hash_public_key(&public));
+    document["jacsSignature"]["signingAlgorithm"] = json!("ring-Ed25519");
+    let fields: Vec<String> =
+        serde_json::from_value(document["jacsSignature"]["fields"].clone()).unwrap();
+    let payload = jacs_core::verify::build_signature_content_v2(
+        &document,
+        &fields,
+        "jacsSignature",
+        &document["jacsSignature"],
+    )
+    .unwrap();
+    document["jacsSignature"]["signature"] = json!(jacs::crypt::base64_encode(
+        &core.sign_raw_bytes(payload.as_bytes()).unwrap()
+    ));
+    document["jacsSha256"] = json!(jacs_core::document_hash_v1(&document).unwrap());
+    let mut agent = jacs::agent::Agent::ephemeral_legacy_ed25519_for_fixtures().unwrap();
+    agent.set_keys_raw(private.as_slice().to_vec(), public, "ring-Ed25519");
+    agent
+        .load(&document.to_string())
+        .expect("verify reconstructed fixture identity");
+    agent
+}
+
 fn well_known_as_object(documents: Vec<(String, Value)>) -> Value {
     let mut by_path = BTreeMap::new();
     for (path, value) in documents {
@@ -44,7 +97,7 @@ fn well_known_as_object(documents: Vec<(String, Value)>) -> Value {
 }
 
 fn generated_fixture_values() -> BTreeMap<&'static str, Value> {
-    let mut agent = utils::load_test_agent_one_ed25519();
+    let mut agent = fixture_agent();
     let did_document = jacs::w3c::export_did_document(
         &agent,
         jacs::w3c::W3cDidOptions {
@@ -127,7 +180,7 @@ fn w3c_golden_request_fails_for_wrong_actual_request() {
         return;
     }
 
-    let agent = utils::load_test_agent_one_ed25519();
+    let agent = fixture_agent();
     let did_document = read_fixture("did-document.json");
     let proof = read_fixture("request-proof.json");
 

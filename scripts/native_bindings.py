@@ -4,6 +4,8 @@
 Usage: native_bindings.py {build,test,verify} {npm,python,go,all}
 `test` consumes recorded artifacts without rebuilding. `verify` does both.
 All three builds run sequentially against one native-only Cargo target directory.
+Pass --a2a-native-bin PATH to also exercise the installed Node/Python candidates
+with the pinned official A2A SDKs and a prebuilt a2a_v1_peer verifier.
 """
 
 from __future__ import annotations
@@ -140,7 +142,47 @@ def build(surface: str, output: Path, target: Path, env: dict[str, str]) -> None
         record(output, artifact, version)
 
 
-def test(surface: str, output: Path, env: dict[str, str]) -> None:
+def test_official_a2a_sdk(surface: str, consumer: Path, env: dict[str, str],
+                          native_bin: Path) -> None:
+    """Exercise the installed candidate, never the checkout's native bindings."""
+    examples = NATIVE / "examples"
+    sdk_env = dict(env)
+    # A developer's import overrides must not substitute an unstaged binding.
+    for name in ("PYTHONPATH", "PYTHONHOME", "JACS_NODE_PACKAGE"):
+        sdk_env.pop(name, None)
+    if surface == "npm":
+        example = examples / "a2a_v1_sdk"
+        run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+            cwd=example, env=sdk_env)
+        run(["npm", "audit", "--package-lock-only", "--audit-level=high"],
+            cwd=example, env=sdk_env)
+        sdk_env["JACS_NODE_PACKAGE"] = str(consumer / "node_modules/@hai.ai/jacs")
+        command = ["node", str(example / "smoke.mjs")]
+    elif surface == "python":
+        python = consumer / "venv/bin/python"
+        run([str(python), "-m", "pip", "install", "--require-hashes", "-r",
+             str(examples / "a2a_v1_peer_requirements.txt")], cwd=consumer, env=sdk_env)
+        # Keep the peer helper next to its driver without putting the repository
+        # or a source jacs package on the consumer's Python import path.
+        for name in ("a2a_v1_sdk_python.py", "a2a_v1_peer.py"):
+            shutil.copy2(examples / name, consumer / name)
+        command = [str(python), str(consumer / "a2a_v1_sdk_python.py"),
+                   "--native-bin", str(native_bin)]
+    else:
+        raise ValueError(f"no official A2A SDK smoke for {surface}")
+    # Exercise macOS's /var -> /private/var behavior on Linux too. The examples
+    # must canonicalize this existing parent before creating private key paths;
+    # secure custody continues to reject symlinks in the paths it receives.
+    temporary = consumer / "sdk-temp"
+    temporary.mkdir(mode=0o700)
+    alias = consumer / "sdk-temp-link"
+    alias.symlink_to(temporary.resolve(), target_is_directory=True)
+    sdk_env["TMPDIR"] = str(alias)
+    run(command, cwd=consumer, env=sdk_env)
+
+
+def test(surface: str, output: Path, env: dict[str, str],
+         a2a_native_bin: Path | None = None) -> None:
     artifact, version = candidate(output)
     if surface != "npm":
         run([sys.executable, str(ROOT / "scripts/check_native_crypto_linkage.py"), str(artifact)],
@@ -179,6 +221,8 @@ def test(surface: str, output: Path, env: dict[str, str]) -> None:
         else:
             run(["bash", str(NATIVE / "jacsgo/scripts/staged-consumer-smoke.sh"), version,
                  str(output)], cwd=consumer, env=env)
+        if a2a_native_bin is not None and surface in {"npm", "python"}:
+            test_official_a2a_sdk(surface, consumer, env, a2a_native_bin)
     print(f"OK: installed {surface} {version} candidate verified", flush=True)
 
 
@@ -186,6 +230,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("build", "test", "verify"))
     parser.add_argument("surface", choices=(*SURFACES, "all"))
+    parser.add_argument("--a2a-native-bin", type=Path,
+                        help="Also test installed npm/wheel candidates with the official A2A SDKs, "
+                             "using this prebuilt a2a_v1_peer verifier")
     args = parser.parse_args(argv)
     target = Path(os.environ.get("JACS_NATIVE_TARGET_DIR", ROOT / "target/native-bindings/cargo")).resolve()
     output = Path(os.environ.get("JACS_NATIVE_OUTPUT_DIR", ROOT / "target/native-bindings/artifacts")).resolve()
@@ -195,13 +242,18 @@ def main(argv: list[str] | None = None) -> int:
     env["CARGO_BUILD_TARGET_DIR"] = str(target)
     env["CARGO_BUILD_BUILD_DIR"] = str(target / "build")
     try:
+        a2a_native_bin = (args.a2a_native_bin.resolve(strict=True)
+                          if args.a2a_native_bin is not None else None)
+        if a2a_native_bin is not None and (not a2a_native_bin.is_file()
+                                           or not os.access(a2a_native_bin, os.X_OK)):
+            raise ValueError("A2A native verifier must be a prebuilt executable file")
         if args.action in {"build", "verify"}:
             env = pinned_rust_environment(env)
         for surface in SURFACES if args.surface == "all" else (args.surface,):
             if args.action in {"build", "verify"}:
                 build(surface, output / surface, target, env)
             if args.action in {"test", "verify"}:
-                test(surface, output / surface, env)
+                test(surface, output / surface, env, a2a_native_bin)
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(f"ERROR: native {args.surface} {args.action}: {error}", file=sys.stderr)
         return 1

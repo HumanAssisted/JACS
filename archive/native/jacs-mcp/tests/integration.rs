@@ -1519,9 +1519,13 @@ fn agent_card_export_via_binding_core() {
 fn well_known_documents_generated() {
     let ctx = load_agent_in_workspace();
 
+    // This compatibility fixture has an Ed25519 native root. The default PQ
+    // route must refuse it; selecting ES256 is an explicit caller decision.
+    assert!(ctx.agent.generate_well_known_documents(None, None).is_err());
+
     let docs_json = ctx
         .agent
-        .generate_well_known_documents(None)
+        .generate_well_known_documents(Some("ES256"), None)
         .expect("generate_well_known_documents should succeed");
     let docs: Vec<serde_json::Value> =
         serde_json::from_str(&docs_json).expect("Well-known documents should be valid JSON array");
@@ -1556,7 +1560,7 @@ fn well_known_documents_generated() {
     }));
     let repeated_json = ctx
         .agent
-        .generate_well_known_documents(Some("ES256"))
+        .generate_well_known_documents(Some("ES256"), None)
         .expect("binding generator should reuse the persisted identity");
     let repeated: Vec<serde_json::Value> =
         serde_json::from_str(&repeated_json).expect("repeated discovery JSON");
@@ -1575,7 +1579,7 @@ fn well_known_documents_generated() {
     }
     let obsolete = ctx
         .agent
-        .generate_well_known_documents(Some("ring-Ed25519"))
+        .generate_well_known_documents(Some("ring-Ed25519"), None)
         .expect_err("obsolete ephemeral A2A algorithms must be rejected");
     assert!(obsolete.message.contains("ES256"));
 }

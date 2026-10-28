@@ -19,7 +19,7 @@ fn simple_agent_to_yaml_produces_valid_yaml() {
     let yaml = agent.to_yaml(&signed.raw).expect("to_yaml should succeed");
     // Verify it parses as YAML
     let _: serde_json::Value =
-        serde_yaml_ng::from_str(&yaml).expect("YAML output should be valid YAML");
+        serde_saphyr::from_str(&yaml).expect("YAML output should be valid YAML");
 }
 
 #[test]

@@ -282,10 +282,10 @@ export declare class JacsAgent {
   /** Export this agent as an A2A Agent Card (sync, blocks event loop). */
   exportAgentCardSync(): string
   /**
-   * Generate the stable, native-root-bound ES256 .well-known A2A document set
-   * (sync, blocks event loop). Omit the algorithm or pass ES256.
+   * Generate native identity-bound discovery (sync). Defaults to ML-DSA-87 and
+   * legacy cards. Explicit options JSON declares a bounded A2A 1.0 service profile.
    */
-  generateWellKnownDocumentsSync(a2AAlgorithm?: string | undefined | null): string
+  generateWellKnownDocumentsSync(a2AAlgorithm?: string | undefined | null, discoveryOptionsJson?: string | undefined | null): string
   /** Wrap an A2A artifact with JACS provenance signature (sync). */
   wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
   /** Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync. */
@@ -299,10 +299,10 @@ export declare class JacsAgent {
   /** Export this agent as an A2A Agent Card. */
   exportAgentCard(): Promise<string>
   /**
-   * Generate the stable, native-root-bound ES256 .well-known A2A document set.
-   * Omit the algorithm or pass ES256; obsolete choices are rejected.
+   * Generate native identity-bound discovery. Defaults to ML-DSA-87 and legacy
+   * cards. Explicit options JSON declares a bounded A2A 1.0 service profile.
    */
-  generateWellKnownDocuments(a2AAlgorithm?: string | undefined | null): Promise<string>
+  generateWellKnownDocuments(a2AAlgorithm?: string | undefined | null, discoveryOptionsJson?: string | undefined | null): Promise<string>
   /** Wrap an A2A artifact with JACS provenance signature. */
   wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
   /** Sign an A2A artifact. Alias for wrapA2aArtifact. */

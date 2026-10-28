@@ -490,13 +490,17 @@ impl JacsAgent {
         self.inner.export_agent_card().to_py()
     }
 
-    /// Generate the stable, native-root-bound ES256 .well-known A2A document set.
-    /// Omit `a2a_algorithm` or pass `ES256`; obsolete choices are rejected.
+    /// Generate native identity-bound discovery. Defaults to ML-DSA-87 and
+    /// legacy cards; explicit options select a caller-declared A2A 1.0 profile.
     #[cfg(feature = "a2a")]
-    #[pyo3(signature = (a2a_algorithm=None))]
-    fn generate_well_known_documents(&self, a2a_algorithm: Option<&str>) -> PyResult<String> {
+    #[pyo3(signature = (a2a_algorithm=None, discovery_options_json=None))]
+    fn generate_well_known_documents(
+        &self,
+        a2a_algorithm: Option<&str>,
+        discovery_options_json: Option<&str>,
+    ) -> PyResult<String> {
         self.inner
-            .generate_well_known_documents(a2a_algorithm)
+            .generate_well_known_documents(a2a_algorithm, discovery_options_json)
             .to_py()
     }
 

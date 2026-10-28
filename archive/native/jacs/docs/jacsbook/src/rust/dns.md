@@ -1,284 +1,75 @@
 # DNS-Based Agent Verification
 
-JACS supports DNS-based agent verification using DNS TXT records and DNSSEC. This allows agents to publish their identity in a decentralized, verifiable way that doesn't require a central authority.
+Native JACS can publish a raw public-key fingerprint in DNS and retrieve a
+candidate key over HTTPS. Discovery is opt-in and does not enroll a trusted
+identity. Start with the [key discovery and verification guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+for the current source's configuration, exact-version lookup and verifier coverage.
+Portable `jacs` CLI/MCP verification continues to require explicit key material.
 
-## Overview
+## Generate publication material
 
-DNS verification in JACS works by:
-1. Publishing an agent's public key fingerprint as a DNS TXT record
-2. Using DNSSEC to cryptographically verify the DNS response
-3. Comparing the fingerprint from DNS with the agent's actual public key
+With an existing native identity configured in `jacs.config.json`:
 
-This provides a secure, decentralized way to verify agent identity across the internet.
-
-## Why DNS Verification?
-
-- **Decentralized**: No central authority required
-- **Existing Infrastructure**: Uses established DNS infrastructure
-- **DNSSEC Security**: Cryptographic verification of DNS responses
-- **Human-Readable**: Agents can be identified by domain names
-- **Widely Supported**: Works with any DNS provider
-
-DNS verification is also a practical bridge for DID-style deployments: you can publish DID metadata for discovery while using DNS TXT + JACS signature verification as the operational trust anchor. No blockchain is required for this model.
-
-## Publishing Agent Identity
-
-### Generate DNS Commands
-
-```bash
-# Generate DNS TXT record commands for your agent
-jacs agent dns --domain myagent.example.com
-
-# Specify agent ID explicitly
-jacs agent dns --domain myagent.example.com --agent-id 550e8400-e29b-41d4-a716-446655440000
-
-# Use hex encoding instead of base64
-jacs agent dns --domain myagent.example.com --encoding hex
-
-# Set custom TTL (time-to-live)
-jacs agent dns --domain myagent.example.com --ttl 7200
+```sh
+jacs-compat agent dns --domain agent.example.com --encoding hex
+jacs-compat agent dns --domain agent.example.com --provider aws
+jacs-compat agent dns --domain agent.example.com --provider azure
+jacs-compat agent dns --domain agent.example.com --provider cloudflare
 ```
 
-### Provider-Specific Formats
+These commands print records or provider-specific publication material. Review
+and publish it through your DNS operator; the CLI does not change DNS itself.
+`--ttl` selects the record TTL. The default digest encoding is standard Base64;
+`--encoding hex` selects hexadecimal. Both encode SHA-256 of the raw public key.
 
-JACS can generate DNS commands for various providers:
+The record at `_v1.agent.jacs.agent.example.com` has this shape:
 
-```bash
-# Plain text format (default)
-jacs agent dns --domain myagent.example.com --provider plain
-
-# AWS Route 53 format
-jacs agent dns --domain myagent.example.com --provider aws
-
-# Azure DNS format
-jacs agent dns --domain myagent.example.com --provider azure
-
-# Cloudflare DNS format
-jacs agent dns --domain myagent.example.com --provider cloudflare
+```text
+v=jacs; jacs_agent_id=<agent-uuid>; alg=SHA-256; enc=hex; jac_public_key_hash=<64-hex-raw-key-digest>
 ```
 
-### DNS Record Structure
+An optional `uri=https://...` identifies supported key-discovery JSON on the
+publisher origin or an explicitly configured registry's exact-version endpoint. Without
+it, the native resolver requests the domain's `/.well-known/jacs-pubkey.json`.
+The Rust `build_agent_dns_txt_with_uri` helper validates this field. Publish
+only public material. A served current-key document cannot substitute for the
+exact historical version named by an older signature.
 
-The DNS TXT record follows this format:
-```
-_v1.agent.jacs.myagent.example.com. 3600 IN TXT "jacs-agent-fingerprint=<fingerprint>"
-```
+## Configure verification
 
-Where:
-- `_v1.agent.jacs.` is the JACS-specific subdomain prefix
-- `<fingerprint>` is the base64-encoded hash of the agent's public key
-
-### Setting Up with Route 53 (AWS)
-
-1. Generate the AWS-formatted command:
-```bash
-jacs agent dns --domain myagent.example.com --provider aws
+```sh
+export JACS_KEY_RESOLUTION=local,dns
+export JACS_ALLOW_DNS=true
+export JACS_ALLOW_REMOTE_KEY_FETCH=true
+export JACS_DNS_KEY_DOMAINS=agent.example.com
 ```
 
-2. The output will include an AWS CLI command like:
-```bash
-aws route53 change-resource-record-sets \
-  --hosted-zone-id YOUR_ZONE_ID \
-  --change-batch '{
-    "Changes": [{
-      "Action": "UPSERT",
-      "ResourceRecordSet": {
-        "Name": "_v1.agent.jacs.myagent.example.com",
-        "Type": "TXT",
-        "TTL": 3600,
-        "ResourceRecords": [{"Value": "\"jacs-agent-fingerprint=...\""}]
-      }
-    }]
-  }'
+A native v2 envelope may also contain a signed `agentDomain` routing hint.
+Until the complete signature verifies, treat that field as untrusted input.
+The fetched key must match the DNS fingerprint, signed key reference,
+algorithm and identity/version. A domain claim alone is not a trusted identity.
+
+For the configured native agent's own validation:
+
+```sh
+JACS_ALLOW_DNS=true jacs-compat agent verify --require-strict-dns
 ```
 
-3. Replace `YOUR_ZONE_ID` with your actual Route 53 hosted zone ID.
+Strict mode requires an actual `Secure` DNSSEC proof; an AD flag by itself does
+not establish it. Configure zone signing and the registrar's DS delegation
+first. Do not silently weaken strict policy to make a failed check pass.
+The [DNS trust guide](../advanced/dns-trust.md) explains the remaining boundaries.
 
-### Setting Up with Cloudflare
+## Rotation and troubleshooting
 
-1. Generate the Cloudflare-formatted command:
-```bash
-jacs agent dns --domain myagent.example.com --provider cloudflare
-```
+Agent-specific lookup accepts multiple agents and overlapping fingerprints in
+the same TXT record set. It rejects conflicting URIs for one agent/fingerprint.
+Retain historical key endpoints where your application needs old documents,
+and enforce revocation independently. TTLs, caches and retention policy govern
+your overlap; there is no fixed universal wait period.
 
-2. Or add manually in the Cloudflare dashboard:
-   - Type: `TXT`
-   - Name: `_v1.agent.jacs`
-   - Content: `jacs-agent-fingerprint=<your-fingerprint>`
-   - TTL: 3600
-
-### Setting Up with Azure DNS
-
-1. Generate the Azure-formatted command:
-```bash
-jacs agent dns --domain myagent.example.com --provider azure
-```
-
-2. The output will include an Azure CLI command that you can run directly.
-
-## Verifying Agents with DNS
-
-### Look Up Another Agent
-
-```bash
-# Look up an agent by their domain
-jacs agent lookup other-agent.example.com
-
-# With strict DNSSEC validation
-jacs agent lookup other-agent.example.com --strict
-
-# Skip DNS verification (not recommended)
-jacs agent lookup other-agent.example.com --no-dns
-```
-
-### Verify Agent with DNS
-
-When verifying an agent, you can specify DNS requirements:
-
-```bash
-# Default: Use DNS if available, but don't require it
-jacs agent verify -a ./agent.json
-
-# Require DNS validation (non-strict)
-jacs agent verify -a ./agent.json --require-dns
-
-# Require strict DNSSEC validation
-jacs agent verify -a ./agent.json --require-strict-dns
-
-# Disable DNS validation entirely
-jacs agent verify -a ./agent.json --no-dns
-
-# Ignore DNS (won't fail if DNS unavailable)
-jacs agent verify -a ./agent.json --ignore-dns
-```
-
-## DNS Validation Modes
-
-| Mode | Flag | Behavior |
-|------|------|----------|
-| Default | (none) | Use DNS if available, fall back to local verification |
-| Require DNS | `--require-dns` | Fail if DNS record not found (DNSSEC not required) |
-| Require Strict | `--require-strict-dns` | Fail if DNSSEC validation fails |
-| No DNS | `--no-dns` | Skip DNS validation entirely |
-| Ignore DNS | `--ignore-dns` | Don't fail on DNS errors, just warn |
-
-## Agent Domain Configuration
-
-Agents can specify their domain in their agent document:
-
-```json
-{
-  "jacsId": "550e8400-e29b-41d4-a716-446655440000",
-  "jacsAgentType": "ai",
-  "jacsAgentDomain": "myagent.example.com"
-}
-```
-
-The `jacsAgentDomain` field is optional but enables DNS-based verification.
-
-## DNSSEC Requirements
-
-For maximum security, enable DNSSEC on your domain:
-
-1. **Enable DNSSEC at your registrar**: Most registrars support DNSSEC
-2. **Configure your DNS provider**: Ensure your DNS provider signs zones
-3. **Use `--require-strict-dns`**: Enforce DNSSEC validation
-
-### Checking DNSSEC Status
-
-You can verify DNSSEC is working using standard tools:
-
-```bash
-# Check if DNSSEC is enabled
-dig +dnssec _v1.agent.jacs.myagent.example.com TXT
-
-# Verify DNSSEC validation
-delv @8.8.8.8 _v1.agent.jacs.myagent.example.com TXT
-```
-
-## Security Considerations
-
-### Trust Model
-
-- **With DNSSEC**: Full cryptographic chain of trust from root DNS servers
-- **Without DNSSEC**: Trust depends on DNS infrastructure security
-- **Local Only**: Trust is limited to having the correct public key
-
-### Best Practices
-
-1. **Always enable DNSSEC** for production agents
-2. **Use strict validation** when verifying unknown agents
-3. **Rotate keys carefully** - update DNS records before key changes
-4. **Monitor DNS records** for unauthorized changes
-5. **Use short TTLs during transitions** then increase for stability
-
-### Caching
-
-DNS responses are cached based on TTL. Consider:
-- **Short TTL (300-600s)**: Better for development or key rotation
-- **Long TTL (3600-86400s)**: Better for production stability
-
-## Troubleshooting
-
-### "DNS record not found"
-
-1. Verify the record exists:
-```bash
-dig _v1.agent.jacs.myagent.example.com TXT
-```
-
-2. Check DNS propagation (may take up to 48 hours for new records)
-
-3. Verify the domain in the agent document matches
-
-### "DNSSEC validation failed"
-
-1. Check DNSSEC is enabled:
-```bash
-dig +dnssec myagent.example.com
-```
-
-2. Verify DS records at registrar
-
-3. Use `--require-dns` instead of `--require-strict-dns` if DNSSEC isn't available
-
-### "Fingerprint mismatch"
-
-1. The public key may have changed - regenerate DNS record:
-```bash
-jacs agent dns --domain myagent.example.com
-```
-
-2. Update the DNS TXT record with the new fingerprint
-
-3. Wait for DNS propagation
-
-## Integration with CI/CD
-
-Automate DNS updates in your deployment pipeline:
-
-```bash
-#!/bin/bash
-# deploy-agent.sh
-
-# 1. Create new agent keys
-jacs agent create --create-keys true
-
-# 2. Generate DNS update command
-DNS_CMD=$(jacs agent dns --domain $AGENT_DOMAIN --provider aws)
-
-# 3. Execute DNS update
-eval $DNS_CMD
-
-# 4. Wait for propagation
-sleep 60
-
-# 5. Verify DNS is working
-jacs agent verify --require-dns
-```
-
-## Next Steps
-
-- [Creating an Agent](agent.md) - Set up agents with DNS domains
-- [Security Model](../advanced/security.md) - Deep dive into JACS security
-- [Agreements](agreements.md) - Use DNS-verified agents in agreements
+Use `dig +dnssec _v1.agent.jacs.agent.example.com TXT` to inspect records;
+requesting DNSSEC records with `dig` alone does not prove validation succeeded.
+On a mismatch, check the decoded raw key and selected agent/version rather than
+comparing the encoded DNS digest to `jacsSignature.publicKeyHash`. Their
+[hash contracts differ](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md#keep-the-three-hash-contracts-separate).

@@ -1,7 +1,8 @@
 # Serve Your Agent Card
 
-The current exporter uses the legacy A2A v0.4.0 card shape. Interoperability
-with current released A2A peers remains unproven.
+These discovery helpers retain the legacy A2A `0.4.0` card shape. For the
+separate typed A2A 1.0 API and its limits, see the
+[current quickstart](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md).
 
 {{#include ../_snippets/node-registry-status.md}}
 
@@ -74,31 +75,40 @@ Your agent is now discoverable at `http://localhost:8080/.well-known/agent-card.
 
 ## What Gets Served
 
-The native generator serves six `.well-known` endpoints automatically:
+The native generator returns five public discovery documents by default.
+Explicit ES256 compatibility adds the sixth, a delegated-key binding:
 
 {{#include ../_snippets/a2a-well-known-docs.md}}
 
 The Agent Card includes the `urn:jacs:provenance-v1` extension in `capabilities.extensions`, signaling to other JACS agents that your agent supports cryptographic provenance.
 
-The card and JWKS reuse the persisted ES256 compatibility key across calls and
-restarts. The card references
-`/.well-known/jacs-compat-binding.json` by both fixed path and content hash;
-strict verification checks that native-root-signed artifact before treating the
-card as the explicitly trusted JACS identity. Existing pre-compatibility agents
-must run `jacs agent add-compat-key` once before serving. Local loopback trust
-tests additionally require `JACS_ALLOW_PRIVATE_JWKS=true`; private-address JWKS
-fetching is otherwise denied.
+Current source signs the card with the persisted ML-DSA-87 root and publishes
+its AKP JWK. The key remains stable across calls and restarts; randomized
+signatures can differ. This path needs no compatibility key or binding.
+For a peer requiring ES256, select `a2a_algorithm="ES256"` in the Python
+`jacs_a2a_routes` / `create_a2a_app` options or `a2aAlgorithm: "ES256"` in
+Node's `jacsA2AMiddleware` options. The existing compatibility path uses a
+persisted ES256 key and a native-root-signed binding. Provision that key with
+`jacs-compat agent add-compat-key` when needed; loading alone never creates it.
 
-Strict verifiers accept a compatibility binding for at most seven days after
-its signed `issuedAt`, with five minutes of future clock skew. Generating the
-well-known set refreshes an authentic binding after six days under the shared
-issuance lock, preserving its scopes and any explicit `expiresAt`.
-The FastAPI and Express mounts call the generator lazily at that six-day
-boundary. HTTP freshness ends by renewal or earlier expiry; failed renewal can
-serve a still-valid snapshot with `no-store`, while hard expiry returns 503.
-Finite expiry requires renewed authorization and remounting. Separate resource
-fetches can straddle replacement; verify the card/JWKS/binding together and
-refetch if their references differ.
+Strict verification of a direct root card requires the exact explicitly trusted
+native key. For ES256 it additionally verifies the scoped compatibility binding
+referenced by fixed path and content hash. Local loopback trust tests require
+`JACS_ALLOW_PRIVATE_JWKS=true`; private-address JWKS fetching is otherwise denied.
+
+Mounted routers refresh complete snapshots lazily after six days: measured from
+local generation for direct root cards, or signed `issuedAt` for ES256 bindings.
+The seven-day snapshot serving limit for a direct root card is a local cache
+policy, not a signed expiry or revocation signal. For ES256, strict verifiers
+accept a binding for at most seven days after `issuedAt`, with five minutes of
+future skew. Generation refreshes an authentic binding after six days while
+preserving its scopes and explicit `expiresAt`.
+
+HTTP freshness ends by renewal or earlier expiry; failed renewal can serve a
+still-valid snapshot with `no-store`, while hard expiry returns 503. An explicit
+binding expiry requires renewed authorization and remounting. Separate resource
+fetches can straddle replacement; verify related documents together and refetch
+if their references differ.
 
 ## Next Steps
 

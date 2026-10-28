@@ -8,6 +8,7 @@
 # Direct libraries
 
 - [Supported libraries and packages](packages.md)
+- [DID and A2A identity](identity.md)
 - [Rust](rust.md)
 - [Node.js](nodejs.md)
 - [Python](python.md)
