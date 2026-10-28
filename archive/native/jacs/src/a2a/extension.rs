@@ -14,6 +14,8 @@ use tracing::info;
 ///
 /// Returns a clone of the AgentCard with the JWS signature appended to
 /// its `signatures` field (per A2A v0.4.0).
+/// ES256 aliases are deliberately rejected by the generic signer; use the
+/// named, scope-checked compatibility exporter, which signs JCS bytes.
 pub fn sign_agent_card_jws(
     agent_card: &AgentCard,
     private_key: &[u8],
@@ -689,6 +691,21 @@ mod tests {
             security: None,
             signatures: None,
             metadata: None,
+        }
+    }
+
+    #[test]
+    fn generic_card_signer_preserves_es256_scope_wall() {
+        let card = make_test_card();
+        for card in [
+            card.clone(),
+            embed_signature_in_agent_card(&card, "old.signature.value", Some("old")),
+        ] {
+            for algorithm in ["ES256", "es256", "ecdsa"] {
+                let error = sign_agent_card_jws(&card, &[], algorithm, "key").unwrap_err();
+                assert!(error.to_string().contains("ES256"), "{error}");
+                assert!(error.to_string().contains("named"), "{error}");
+            }
         }
     }
 

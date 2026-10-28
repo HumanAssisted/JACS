@@ -244,6 +244,12 @@ fn verification_method_for_projection(
             "jacsSigningAlgorithm": projection.key_algorithm
         })
     } else if projection.key_algorithm == "ring-Ed25519" && projection.public_key.len() == 32 {
+        // Preserve the historical verification-method URL while using its
+        // fragment as the JWK kid (CID's JsonWebKey recommendation).
+        let kid = parts
+            .verification_method
+            .strip_prefix(&format!("{}#", parts.did))
+            .ok_or_else(|| JacsError::CryptoError("invalid DID verification method id".into()))?;
         json!({
             "id": parts.verification_method,
             "type": "JsonWebKey",
@@ -253,7 +259,7 @@ fn verification_method_for_projection(
                 "crv": "Ed25519",
                 "x": general_purpose::URL_SAFE_NO_PAD.encode(&projection.public_key),
                 "alg": "EdDSA",
-                "kid": parts.verification_method
+                "kid": kid
             },
             "jacsSigningAlgorithm": projection.key_algorithm
         })
@@ -344,6 +350,21 @@ mod tests {
             "did:wba:example.com:agent:".to_string() + doc["jacs"]["jacsId"].as_str().unwrap()
         );
         assert!(doc["verificationMethod"][0]["publicKeyJwk"].is_object());
+        let method = &doc["verificationMethod"][0];
+        let expected_fragment = format!(
+            "jacs-key-{}",
+            doc["jacs"]["publicKeyHash"]
+                .as_str()
+                .unwrap()
+                .chars()
+                .take(16)
+                .collect::<String>()
+        );
+        assert_eq!(method["publicKeyJwk"]["kid"], expected_fragment);
+        assert_eq!(
+            method["id"],
+            format!("{}#{}", doc["id"].as_str().unwrap(), expected_fragment)
+        );
         assert_eq!(
             doc["authentication"][0].as_str().unwrap(),
             doc["verificationMethod"][0]["id"].as_str().unwrap()
