@@ -88,6 +88,9 @@ class OfficialSDKConsumerTests(unittest.TestCase):
             self.assertEqual(smoke.kwargs["cwd"], consumer)
             self.assertNotIn("PYTHONPATH", smoke.kwargs["env"])
             self.assertEqual(inherited["JACS_NODE_PACKAGE"], "/unreviewed/checkout")
+            temporary = Path(smoke.kwargs["env"]["TMPDIR"])
+            self.assertTrue(temporary.is_symlink())
+            self.assertEqual(temporary.resolve(), (consumer / "sdk-temp").resolve())
 
     def test_python_sdk_installs_hashed_dependencies_only_in_candidate_venv(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -103,6 +106,9 @@ class OfficialSDKConsumerTests(unittest.TestCase):
             self.assertEqual(smoke.args[0], [str(consumer / "venv/bin/python"),
                              str(consumer / "a2a_v1_sdk_python.py"), "--native-bin", "/built/verifier"])
             self.assertEqual(smoke.kwargs["cwd"], consumer)
+            temporary = Path(smoke.kwargs["env"]["TMPDIR"])
+            self.assertTrue(temporary.is_symlink())
+            self.assertEqual(temporary.resolve(), (consumer / "sdk-temp").resolve())
             for variable in ("PYTHONPATH", "PYTHONHOME", "JACS_NODE_PACKAGE"):
                 self.assertNotIn(variable, smoke.kwargs["env"])
             for name in ("a2a_v1_sdk_python.py", "a2a_v1_peer.py"):

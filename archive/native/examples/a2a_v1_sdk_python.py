@@ -43,7 +43,8 @@ from a2a_v1_peer import (
 def fixture(messaging_url):
     from jacs.client import JacsClient
 
-    with tempfile.TemporaryDirectory(prefix="jacs-python-a2a-sdk-") as temp:
+    temp_parent = Path(tempfile.gettempdir()).resolve(strict=True)
+    with tempfile.TemporaryDirectory(prefix="jacs-python-a2a-sdk-", dir=temp_parent) as temp:
         # A process-local, generated secret; never a command argument or output.
         os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "Synthetic!9aA" + secrets.token_hex(32)
         try:
@@ -82,7 +83,8 @@ def fixture(messaging_url):
 
 async def run(binary):
     sdk = peer_identity()
-    with tempfile.TemporaryDirectory(prefix="jacs-python-sdk-peer-") as temp:
+    temp_parent = Path(tempfile.gettempdir()).resolve(strict=True)
+    with tempfile.TemporaryDirectory(prefix="jacs-python-sdk-peer-", dir=temp_parent) as temp:
         work = Path(temp).resolve()
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))

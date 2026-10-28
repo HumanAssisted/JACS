@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -33,7 +33,10 @@ function jacsRequire(entry) {
 async function fixture(messagingUrl) {
   const { JacsClient } = jacsRequire('client');
   const { buildWellKnownDocuments } = jacsRequire('a2a-server');
-  const work = await mkdtemp(join(tmpdir(), 'jacs-official-a2a-pq-'));
+  // macOS /var is a symlink. Resolve the existing parent before creating any
+  // private workspace; custody deliberately rejects symlink path components.
+  const tempParent = await realpath(tmpdir());
+  const work = await mkdtemp(join(tempParent, 'jacs-official-a2a-pq-'));
   const sender = new JacsClient();
   try {
     await sender.create({

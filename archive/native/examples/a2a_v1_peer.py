@@ -491,7 +491,8 @@ async def driver(binary):
     peer_identity()
     script = Path(__file__).resolve()
     binary_hash = sha(binary.read_bytes())
-    with tempfile.TemporaryDirectory(prefix="jacs-a2a-peer-") as temp:
+    temp_parent = Path(tempfile.gettempdir()).resolve(strict=True)
+    with tempfile.TemporaryDirectory(prefix="jacs-a2a-peer-", dir=temp_parent) as temp:
         work = Path(temp).resolve()
         home = work / "native-home"
         home.mkdir(mode=0o700)

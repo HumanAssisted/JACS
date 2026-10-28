@@ -157,7 +157,7 @@ def test_official_a2a_sdk(surface: str, consumer: Path, env: dict[str, str],
         run(["npm", "audit", "--package-lock-only", "--audit-level=high"],
             cwd=example, env=sdk_env)
         sdk_env["JACS_NODE_PACKAGE"] = str(consumer / "node_modules/@hai.ai/jacs")
-        run(["node", str(example / "smoke.mjs")], cwd=consumer, env=sdk_env)
+        command = ["node", str(example / "smoke.mjs")]
     elif surface == "python":
         python = consumer / "venv/bin/python"
         run([str(python), "-m", "pip", "install", "--require-hashes", "-r",
@@ -166,8 +166,19 @@ def test_official_a2a_sdk(surface: str, consumer: Path, env: dict[str, str],
         # or a source jacs package on the consumer's Python import path.
         for name in ("a2a_v1_sdk_python.py", "a2a_v1_peer.py"):
             shutil.copy2(examples / name, consumer / name)
-        run([str(python), str(consumer / "a2a_v1_sdk_python.py"),
-             "--native-bin", str(native_bin)], cwd=consumer, env=sdk_env)
+        command = [str(python), str(consumer / "a2a_v1_sdk_python.py"),
+                   "--native-bin", str(native_bin)]
+    else:
+        raise ValueError(f"no official A2A SDK smoke for {surface}")
+    # Exercise macOS's /var -> /private/var behavior on Linux too. The examples
+    # must canonicalize this existing parent before creating private key paths;
+    # secure custody continues to reject symlinks in the paths it receives.
+    temporary = consumer / "sdk-temp"
+    temporary.mkdir(mode=0o700)
+    alias = consumer / "sdk-temp-link"
+    alias.symlink_to(temporary.resolve(), target_is_directory=True)
+    sdk_env["TMPDIR"] = str(alias)
+    run(command, cwd=consumer, env=sdk_env)
 
 
 def test(surface: str, output: Path, env: dict[str, str],
