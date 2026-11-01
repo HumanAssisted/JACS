@@ -27,6 +27,18 @@
 
 ## Unreleased
 
+### 2026-11-01 — Inline email V3: one picture above the text
+
+- Add `InlineEmailTemplateVersion::V3`: V2's links and `dir="auto"` container
+  after one 96x96 picture, `cid:mediationbench-judge@hai.ai` (new
+  `HAI_BANNER_*` constants). The picture is an ordinary inline part, so the
+  existing attachment hashes cover its bytes; payloads bind `"v3"`. V1 and V2
+  output is unchanged; V2-only readers reject V3.
+- Strict verification rebuilds the picture's placement: removing, moving or
+  resizing it fails HTML equivalence, swapped bytes fail the canonical hash, and
+  V2/V3 marker switches fail. All 138 email unit and 33 fixture tests pass;
+  source is unreleased.
+
 ### 2026-10-28 — Native PQ identity, key discovery and ecosystem integration
 
 - Reuse the persistent ML-DSA-87 identity for RFC 9964 public JWK/JWS exports,
