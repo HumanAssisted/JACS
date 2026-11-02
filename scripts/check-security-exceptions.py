@@ -50,6 +50,9 @@ CARGO_DENY_IGNORES = {
 
 
 SURREAL_BACKEND_SHA256 = "06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa"
+# SURREAL_BACKEND_SHA256 binds the JACS facade's code. Its version follows the
+# coordinated source version, so the chain names the local (path) facade package.
+SURREAL_FACADE = ("jacs-surrealdb", "local facade")
 SURREAL_REVIEWED_CHAIN = {
     ("rsa", "0.9.10"): {("jsonwebtoken", "10.4.0")},
     ("jsonwebtoken", "10.4.0"): {("surrealdb-core", "3.3.4"), ("surrealdb-expr", "3.3.4")},
@@ -60,7 +63,7 @@ SURREAL_REVIEWED_CHAIN = {
         ("surrealdb-runtime", "3.3.4"),
     },
     ("surrealdb-engine-local", "3.3.4"): {("surrealdb", "3.3.4")},
-    ("surrealdb", "3.3.4"): {("jacs-surrealdb", "0.15.0")},
+    ("surrealdb", "3.3.4"): {SURREAL_FACADE},
 }
 
 
@@ -178,7 +181,12 @@ def require_surreal_crypto_disposition(lock: dict, backend: bytes, native_graphs
         versions = {p["version"] for p in packages if p["name"] == name}
         if versions != reviewed_versions:
             raise ValueError(f"SurrealDB reviewed crypto version drift for {name}: {sorted(versions)}")
+    facades = [p for p in packages if p["name"] == SURREAL_FACADE[0] and "source" not in p]
+    if len(facades) != 1:
+        raise ValueError("SurrealDB lock must contain exactly one local JACS facade package")
+    facade = (facades[0]["name"], facades[0]["version"])
     for identity, expected_parents in SURREAL_REVIEWED_CHAIN.items():
+        expected_parents = {facade if parent == SURREAL_FACADE else parent for parent in expected_parents}
         if identity not in identities:
             raise ValueError(f"SurrealDB reviewed crypto version drift: {identity}")
         name, version = identity

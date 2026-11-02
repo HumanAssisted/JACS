@@ -15,7 +15,7 @@ Keep crypto, canonicalization, identity updates and envelope validation in jacs-
 
 The jacs CLI is the single binary (`cargo install jacs-cli`); MCP starts via `jacs mcp` and is verify-only by default. Initialize tracing at the host boundary and route it to stderr; stdio stdout is protocol-only. Keep CLI/MCP contract tests aligned with the actual focused surface, and preserve canonical compatibility fixtures.
 
-Validate affected behavior with focused tests, then required workspace/browser/mobile gates. Run cargo fmt on files touched. Use make check for dependency, release, licensing, notices and security-policy checks. Release all crates in scripts/release_catalog.py dependency order; keep exact candidate verification, registry checksums, audit gates, SBOMs and provenance. Source changes must not be represented as already published releases.
+Validate affected behavior with focused tests, then required workspace/browser/mobile gates. Run cargo fmt on files touched. Use make check for dependency, release, licensing, notices and security-policy checks. Release all crates in scripts/release_catalog.py dependency order, except crates held in its HELD_CRATES (aligned source versions, not published); keep exact candidate verification, registry checksums, audit gates, SBOMs and provenance. Source changes must not be represented as already published releases.
 
 Make changes small and reversible. Do not remove archived source or relicense it. Keep official proprietary HAI API/application code outside this public repository. Actual API endpoints and app integration are a separate task.
 

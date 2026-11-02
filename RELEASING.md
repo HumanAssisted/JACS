@@ -1,10 +1,11 @@
 # Releasing JACS
 
-The coordinated source version is **0.15.0**. MCP is the primary documented
+The coordinated source version is **0.16.0**. MCP is the primary documented
 integration; Rust, Node, Python, Go and browser packages all remain supported
 release surfaces. Consult [release status](docs/release-status.md) and the
-[0.15.0 verification record](release/0.15.0-verification.json) for observed
-publication and installation evidence, separately from source versions.
+[0.15.0 verification record](release/0.15.0-verification.json) (the latest
+published release) for observed publication and installation evidence,
+separately from source versions.
 
 ## Version and build commands
 
@@ -20,7 +21,7 @@ the same alignment check without the listing.
 
 The bump helper updates the coordinated sources and lockfile identities. It
 preserves observations of already published versions and never publishes.
-**Do not bump again for this release: the source is already 0.15.0.**
+**Do not bump again for this release: the source is already 0.16.0.**
 
 ```sh
 make build-jacsnpm       # Native @hai.ai/jacs tarball
@@ -35,6 +36,22 @@ stays separate. The extended native MCP and CLI publish as `jacs-mcp-compat` and
 `jacs-cli-compat`, preserving library imports with Cargo dependency aliases; the
 compatibility executable is `jacs-compat`. The primary CLI remains `jacs` from
 `cargo install jacs-cli`, and MCP starts with `jacs mcp`.
+
+## Held crates
+
+`HELD_CRATES` in [the release catalog](scripts/release_catalog.py) lists crates
+that keep their source version aligned but are not packaged or published, with
+the reason. For 0.16.0 it holds `jacs-surrealdb`: its lock pins unpublished
+jsonwebtoken and object_store backports, so crates.io keeps 0.15.0. A held crate
+is excluded from candidate preparation, its own lock, the publish steps,
+retries and registry parity; the generated release table names it with its
+registry version. No released crate may depend on a held crate.
+
+To release a held crate again, once its dependencies have published fixes:
+remove its `HELD_CRATES` entry, restore its two publish steps in
+`release-crate.yml` (the release contract tests require them), and for
+SurrealDB restore the reviewed `--ignore RUSTSEC-2023-0071` on the candidate
+audit while that exception remains in force.
 
 ## One-time registry setup
 
@@ -108,7 +125,7 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
   `github.com/HumanAssisted/JACS/jacsgo`; its `jacsgo/vVERSION` tag is also the
   Go submodule version tag. No separate Go registry token is needed.
 
-## Release 0.15.0, one step at a time
+## Release 0.16.0, one step at a time
 
 1. Confirm the intended version:
 
@@ -154,9 +171,10 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
    make release-jacs
    ```
 
-   All 17 candidates are prepared before the first upload; registry dependencies
-   publish in catalog order. Exact archive checksums, audits, SPDX SBOMs and
-   durable attested evidence remain mandatory.
+   Every catalogued crate except the held ones is prepared before the first
+   upload (16 for 0.16.0); registry dependencies publish in catalog order.
+   Exact archive checksums, audits, SPDX SBOMs and durable attested evidence
+   remain mandatory.
 
 6. Release CLI binaries and wait for **Release CLI Binaries**:
 
@@ -217,15 +235,15 @@ source identity; they never move a published version to new source.
 
 | Surface | Tag |
 |---|---|
-| All catalogued Rust crates | `crate/v0.15.0` |
-| CLI binaries | `cli/v0.15.0` |
-| Native npm | `npm/v0.15.0` |
-| Python | `pypi/v0.15.0` |
-| Go module/native libraries | `jacsgo/v0.15.0` |
-| Browser npm | `wasm-v0.15.0` |
+| All released Rust crates | `crate/v0.16.0` |
+| CLI binaries | `cli/v0.16.0` |
+| Native npm | `npm/v0.16.0` |
+| Python | `pypi/v0.16.0` |
+| Go module/native libraries | `jacsgo/v0.16.0` |
+| Browser npm | `wasm-v0.16.0` |
 
 A source build is not a published release. Check workflow completion, exact
-registry bytes and provenance before describing 0.15.0 as shipped. Mobile
+registry bytes and provenance before describing 0.16.0 as shipped. Mobile
 XCFramework/AAR builds remain separate from app-store/Maven/Swift repository
 publication and physical-device acceptance. Actual HAI deployment is separate
 from source compatibility qualification.

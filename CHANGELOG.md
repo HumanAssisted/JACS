@@ -1,31 +1,49 @@
-## 0.15.0
+## 0.16.0
 
-(Released 2026-09-21; see the [verified artifacts](release/0.15.0-verification.json).)
+(unreleased)
 
-- **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
-  primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
-  the focused portable surface; native Rust integrations remain isolated in the
-  compatibility workspace and publish through the coordinated Rust workflow.
-- Browser and phone bindings include human-agent creation, encrypted recovery,
-  signing-key replacement and prepared-document signing support. New agents
-  default to `pq2025`; hardware-protected mobile custody wraps software PQ keys.
-- Restore Make commands for coordinated version bumps, version checks, releases
-  and retries. Version bumps and checks include the Android Maven package metadata.
-- Restore Node, Python and Go package builds and installed-consumer checks;
-  restore native `@hai.ai/jacs` npm publication with its full API. MCP remains
-  the primary documented integration. All catalogued Rust crates and language
-  packages advance together to 0.15; extended MCP/CLI compatibility crates
-  publish as `jacs-mcp-compat` and `jacs-cli-compat`.
-- Name the WASM npm package `@hai.ai/jacs-wasm` under the
-  existing `@hai.ai` organization; align release checks and browser consumers.
-- Coordinated CI publication covers all 17 Rust crates (including WASM,
-  mobile, bindings and storage), CLI binaries, Python wheels/source, Go native
-  libraries/module tags, `@hai.ai/jacs` and `@hai.ai/jacs-wasm`. Mobile bundle
-  distribution and physical-device acceptance remain separate. Candidate
-  verification and exact artifact provenance must pass before these notes are
-  marked released.
+Release candidate; not yet published. See [release status](docs/release-status.md)
+for the artifacts actually shipped.
 
-## Unreleased
+- **Breaking: strict inline email verification covers the whole message.**
+  Rewritten links, MIME parts outside the signature, changed From/To/Cc display
+  names and repeated single-instance headers now fail verification, and signing
+  refuses uncovered parts. Adds inline email template V3 and V2 canonical links.
+- Native post-quantum identity exports (RFC 9964 JWK/JWS, `did:wba`, signed
+  Agent Cards), opt-in DNS/HTTPS key discovery and A2A interoperability fixes.
+  Maintained Python packages require Python 3.11 or newer.
+- **Breaking for `jacs-mobile` bindings builds:** the published crate no longer
+  has the `bindgen` feature or `jacs-mobile-bindgen` binary; use
+  `jacs-mobile/scripts/generate-bindings.sh`.
+- **`jacs-surrealdb` is not part of 0.16.0** and stays at 0.15.0 on crates.io.
+  It depends on `jacs` 0.15, so using it with `jacs` 0.16 builds two copies of
+  `jacs`.
+- Dependency upgrades, stronger audits and release gates.
+
+### 2026-11-02 — Release 0.16.0 without unpublished dependencies
+
+- Move the UniFFI binding generator out of the published `jacs-mobile` crate
+  into the unpublished `tools/jacs-mobile-bindgen` tool, which carries the
+  Askama source patch and pins the same UniFFI 0.32.2. `jacs-mobile` uses the
+  UniFFI runtime without default features, so the root lock, published crate
+  and downstream consumers no longer resolve the generator, Askama or the
+  unmaintained `basic-toml` (RUSTSEC-2026-0374). Regenerated Swift, C header,
+  modulemap and Kotlin bindings are byte-identical to the previous generator's.
+  CI audits the tool's lock and reruns mobile validation when it changes.
+- Hold `jacs-surrealdb` from this release. Its lock pins unpublished
+  jsonwebtoken and object_store backports (RUSTSEC-2026-0387, RUSTSEC-2026-0194,
+  RUSTSEC-2026-0195), and no published SurrealDB release accepts fixed
+  versions. `HELD_CRATES` in `scripts/release_catalog.py` keeps its source
+  version aligned while candidate preparation, packaging, publication, retries
+  and registry parity exclude it and its lock. No released crate may depend
+  on a held crate, and the candidate audit drops the SurrealDB-only RSA waiver
+  while it is held.
+- The generated release table names any crate whose registry version differs
+  from the release, so a held crate is not reported as shipped.
+- Align the native compatibility workspace on rmcp 3.7.0 (from 3.3.0), the
+  version the portable MCP server already locks. Release candidate preparation
+  had rejected the split because combining both workspaces downgraded the
+  portable server to 3.3.0.
 
 ### 2026-11-01 — Strict inline email verification covers the whole message
 
@@ -39,7 +57,8 @@
   (`ParsedEmailParts::unsigned_parts`), changed From/To/Cc display names and
   repeated single-instance headers; signing refuses uncovered parts, so
   gateways appending MIME parts break verification.
-- Targeted tests not yet run; source is unreleased.
+- On 2026-11-02, 165 native email unit tests and all 33 email fixture tests
+  pass; source is unreleased.
 
 ### 2026-11-01 — Inline email V3: one picture above the text
 
@@ -134,6 +153,35 @@
 - Retry the exact PyPI wheel installation while registry indexes propagate,
   then run the existing smoke checks. A version-listing response alone no longer
   ends the readiness wait.
+
+## 0.15.0
+
+(Released 2026-09-21; see the [verified artifacts](release/0.15.0-verification.json).)
+
+- **Breaking portable release.** The active workspace is the I/O-free `jacs-core`
+  primitive plus browser, mobile, CLI and MCP boundaries. CLI/MCP APIs now use
+  the focused portable surface; native Rust integrations remain isolated in the
+  compatibility workspace and publish through the coordinated Rust workflow.
+- Browser and phone bindings include human-agent creation, encrypted recovery,
+  signing-key replacement and prepared-document signing support. New agents
+  default to `pq2025`; hardware-protected mobile custody wraps software PQ keys.
+- Restore Make commands for coordinated version bumps, version checks, releases
+  and retries. Version bumps and checks include the Android Maven package metadata.
+- Restore Node, Python and Go package builds and installed-consumer checks;
+  restore native `@hai.ai/jacs` npm publication with its full API. MCP remains
+  the primary documented integration. All catalogued Rust crates and language
+  packages advance together to 0.15; extended MCP/CLI compatibility crates
+  publish as `jacs-mcp-compat` and `jacs-cli-compat`.
+- Name the WASM npm package `@hai.ai/jacs-wasm` under the
+  existing `@hai.ai` organization; align release checks and browser consumers.
+- Coordinated CI publication covers all 17 Rust crates (including WASM,
+  mobile, bindings and storage), CLI binaries, Python wheels/source, Go native
+  libraries/module tags, `@hai.ai/jacs` and `@hai.ai/jacs-wasm`. Mobile bundle
+  distribution and physical-device acceptance remain separate. Candidate
+  verification and exact artifact provenance must pass before these notes are
+  marked released.
+
+Detailed notes for changes in the 0.15.0 source:
 
 ### 2026-09-20 — Restore Make release commands
 

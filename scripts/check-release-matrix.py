@@ -22,13 +22,13 @@ from pathlib import Path
 try:
     from http_policy import open_no_redirect
     from verify_github_release_attestations import release_spec as _release_spec
-    from release_catalog import CRATE_MANIFESTS
+    from release_catalog import CRATE_MANIFESTS, HELD_CRATES
 except ModuleNotFoundError:  # Imported as scripts.check_release_matrix in tests.
     from scripts.http_policy import open_no_redirect
     from scripts.verify_github_release_attestations import (
         release_spec as _release_spec,
     )
-    from scripts.release_catalog import CRATE_MANIFESTS
+    from scripts.release_catalog import CRATE_MANIFESTS, HELD_CRATES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +58,20 @@ SURFACE_LABELS = {
 }
 
 
+def trailing_crate_note(artifact: dict) -> str:
+    """Name catalogued crates whose observed registry version differs from the surface."""
+    versions = artifact.get("versions")
+    if not isinstance(versions, dict):
+        return ""
+    trailing = []
+    for name, observed in versions.items():
+        if observed == artifact["version"]:
+            continue
+        state = "unpublished" if observed is None else f"at `{observed}`"
+        trailing.append(f"`{name}` {'held ' if name in HELD_CRATES else ''}{state}")
+    return "; except " + ", ".join(trailing) if trailing else ""
+
+
 def render_documentation_matrix(matrix: dict) -> str:
     """Render the shipped-artifact table from the canonical JSON inventory."""
     lines = [
@@ -79,7 +93,8 @@ def render_documentation_matrix(matrix: dict) -> str:
             raise ValueError(f"{surface} artifact is missing documentation evidence")
         cells = [
             SURFACE_LABELS[surface],
-            f"{artifact['registry']} {version_text}; {status}",
+            f"{artifact['registry']} {version_text}; {status}"
+            + (trailing_crate_note(artifact) if surface == "crate" else ""),
             targets,
             evidence.strip(),
         ]
@@ -387,7 +402,8 @@ def main(argv: list[str] | None = None) -> int:
             for crate, version in live_crates.items():
                 if version != observed_crates.get(crate):
                     fail(f"{crate} registry version {version!r} != observed matrix {observed_crates.get(crate)!r}; refresh registry evidence", failures)
-                if args.require_parity and version != declared:
+                # Held crates stay at their last published version this release.
+                if args.require_parity and crate not in HELD_CRATES and version != declared:
                     fail(f"{crate} registry version {version!r} != release {declared!r}", failures)
             live = registry_versions(live_crates)
         except (OSError, RuntimeError, ValueError, KeyError) as error:

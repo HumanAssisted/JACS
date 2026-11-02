@@ -47,7 +47,7 @@ Source graph: locked all-feature active portable workspace; archived native inte
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 318
+Third-party packages: 296
 License expressions: 20
 Distinct Cargo license files: 0
 
@@ -80,7 +80,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR MIT
-Used by 41 package(s):
+Used by 40 package(s):
 
   - aes-gcm 0.11.1 (https://github.com/RustCrypto/AEADs)
   - autocfg 1.5.1 (https://github.com/cuviper/autocfg)
@@ -111,7 +111,6 @@ Used by 41 package(s):
   - primefield 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
   - primeorder 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
   - rfc6979 0.6.0 (https://github.com/RustCrypto/signatures)
-  - rustc-hash 2.1.3 (https://github.com/rust-lang/rustc-hash)
   - sec1 0.8.1 (https://github.com/RustCrypto/formats)
   - secrecy 0.10.3 (https://github.com/iqlusioninc/crates/tree/main/secrecy)
   - serdect 0.4.3 (https://github.com/RustCrypto/formats)
@@ -159,16 +158,14 @@ Used by 3 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 55 package(s):
+Used by 47 package(s):
 
   - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
-  - cargo_metadata 0.23.1 (https://github.com/oli-obk/cargo_metadata)
   - data-encoding 2.11.1 (https://github.com/ia0/data-encoding)
   - email_address 0.2.9 (https://github.com/johnstonskj/rust-email_address.git)
   - fancy-regex 0.19.2 (https://github.com/fancy-regex/fancy-regex)
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
-  - goblin 0.8.2 (https://github.com/m4b/goblin)
   - jsonschema 0.60.2 (https://github.com/Stranger6667/jsonschema)
   - jsonschema-regex 0.60.2 (https://github.com/Stranger6667/jsonschema)
   - jsonschema-value 0.60.2 (https://github.com/Stranger6667/jsonschema)
@@ -176,7 +173,6 @@ Used by 55 package(s):
   - matchers 0.2.0 (https://github.com/hawkw/matchers)
   - micromap 0.3.0 (https://github.com/yegor256/micromap)
   - mio 1.2.3 (https://github.com/tokio-rs/mio)
-  - nom 7.1.3 (https://github.com/Geal/nom)
   - nu-ansi-term 0.50.3 (https://github.com/nushell/nu-ansi-term)
   - oorandom 11.1.5 (https://hg.sr.ht/~icefox/oorandom)
   - outref 0.5.2 (https://github.com/Nugine/outref)
@@ -188,18 +184,14 @@ Used by 55 package(s):
   - referencing 0.60.2 (https://github.com/Stranger6667/jsonschema)
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
-  - scroll 0.12.0 (https://github.com/m4b/scroll)
-  - scroll_derive 0.12.1 (https://github.com/m4b/scroll)
   - serde-wasm-bindgen 0.6.5 (https://github.com/RReverser/serde-wasm-bindgen)
   - serde_json_canonicalizer 0.4.1 (https://github.com/evik42/serde-json-canonicalizer)
   - sharded-slab 0.1.7 (https://github.com/hawkw/sharded-slab)
   - slab 0.4.12 (https://github.com/tokio-rs/slab)
-  - smawk 0.3.3 (https://github.com/mgeisler/smawk)
   - strsim 0.11.1 (https://github.com/rapidfuzz/strsim-rs)
   - strum 0.28.0 (https://github.com/Peternator7/strum)
   - strum_macros 0.28.0 (https://github.com/Peternator7/strum)
   - synstructure 0.13.2 (https://github.com/mystor/synstructure)
-  - textwrap 0.16.4 (https://github.com/mgeisler/textwrap)
   - tokio 1.54.1 (https://github.com/tokio-rs/tokio)
   - tokio-macros 2.7.2 (https://github.com/tokio-rs/tokio)
   - tokio-util 0.7.19 (https://github.com/tokio-rs/tokio)
@@ -212,14 +204,13 @@ Used by 55 package(s):
   - uuid-simd 0.8.0 (https://github.com/Nugine/simd)
   - valuable 0.1.1 (https://github.com/tokio-rs/valuable)
   - vsimd 0.8.0 (https://github.com/Nugine/simd)
-  - weedle2 5.0.0 (https://github.com/mozilla/uniffi-rs)
   - winnow 0.7.15 (https://github.com/winnow-rs/winnow)
   - winnow 1.0.4 (https://github.com/winnow-rs/winnow)
   - zmij 1.0.23 (https://github.com/dtolnay/zmij)
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 157 package(s):
+Used by 148 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -233,10 +224,6 @@ Used by 157 package(s):
   - anstyle-wincon 3.0.11 (https://github.com/rust-cli/anstyle.git)
   - anyhow 1.0.104 (https://github.com/dtolnay/anyhow)
   - argon2 0.6.0 (https://github.com/RustCrypto/password-hashes)
-  - askama 0.16.1 (https://github.com/askama-rs/askama)
-  - askama_derive 0.16.1 (https://github.com/askama-rs/askama)
-  - askama_macros 0.16.1 (https://github.com/askama-rs/askama)
-  - askama_parser 0.16.1 (https://github.com/askama-rs/askama)
   - async-trait 0.1.92 (https://github.com/dtolnay/async-trait)
   - base64 0.23.1 (https://github.com/marshallpierce/rust-base64)
   - bitflags 2.13.2 (https://github.com/bitflags/bitflags)
@@ -245,7 +232,6 @@ Used by 157 package(s):
   - block-buffer 0.12.1 (https://github.com/RustCrypto/utils)
   - bumpalo 3.20.3 (https://github.com/fitzgen/bumpalo)
   - camino 1.2.6 (https://github.com/camino-rs/camino)
-  - cargo-platform 0.3.3 (https://github.com/rust-lang/cargo)
   - cast 0.3.0 (https://github.com/japaric/cast.rs)
   - cc 1.4.5 (https://github.com/rust-lang/cc-rs)
   - cfg-if 1.0.4 (https://github.com/rust-lang/cfg-if)
@@ -286,7 +272,6 @@ Used by 157 package(s):
   - getrandom 0.2.17 (https://github.com/rust-random/getrandom)
   - getrandom 0.3.4 (https://github.com/rust-random/getrandom)
   - getrandom 0.4.3 (https://github.com/rust-random/getrandom)
-  - glob 0.3.4 (https://github.com/rust-lang/glob)
   - hashbrown 0.17.1 (https://github.com/rust-lang/hashbrown)
   - heck 0.5.0 (https://github.com/withoutboats/heck)
   - hex 0.4.3 (https://github.com/KokaKiwi/rust-hex)
@@ -353,13 +338,10 @@ Used by 157 package(s):
   - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
   - thread_local 1.1.10 (https://github.com/Amanieu/thread_local-rs)
   - toml 0.9.12+spec-1.1.0 (https://github.com/toml-rs/toml)
-  - toml 1.1.6+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_datetime 0.7.5+spec-1.1.0 (https://github.com/toml-rs/toml)
-  - toml_datetime 1.1.2+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_parser 1.1.3+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_writer 1.1.2+spec-1.1.0 (https://github.com/toml-rs/toml)
   - typenum 1.20.1 (https://github.com/paholg/typenum)
-  - unicode-width 0.2.2 (https://github.com/unicode-rs/unicode-width)
   - universal-hash 0.6.1 (https://github.com/RustCrypto/traits)
   - url 2.5.8 (https://github.com/servo/rust-url)
   - wasm-bindgen 0.2.128 (https://github.com/wasm-bindgen/wasm-bindgen)
@@ -400,30 +382,26 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 9 package(s):
+Used by 7 package(s):
 
   - core_detect 1.0.0 (https://github.com/thomcc/core_detect)
   - curve25519-dalek-derive 0.1.1 (https://github.com/dalek-cryptography/curve25519-dalek)
   - ff 0.14.0 (https://github.com/zkcrypto/ff)
   - group 0.14.0 (https://github.com/zkcrypto/group)
-  - minimal-lexical 0.2.1 (https://github.com/Alexhuszagh/minimal-lexical)
   - num-cmp 0.1.0 (https://github.com/lifthrasiir/num-cmp)
-  - plain 0.2.3 (https://github.com/randomites/plain)
   - siphasher 1.0.3 (https://github.com/jedisct1/rust-siphash)
   - version_check 0.9.5 (https://github.com/SergioBenitez/version_check)
 
 -------------------------------------------------------------------------------
 License expression: MPL-2.0
-Used by 8 package(s):
+Used by 6 package(s):
 
   - uniffi 0.32.2 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_bindgen 0.32.2 (https://github.com/mozilla/uniffi-rs)
   - uniffi_core 0.32.2 (https://github.com/mozilla/uniffi-rs)
   - uniffi_internal_macros 0.32.2 (https://github.com/mozilla/uniffi-rs)
   - uniffi_macros 0.32.2 (https://github.com/mozilla/uniffi-rs)
   - uniffi_meta 0.32.2 (https://github.com/mozilla/uniffi-rs)
   - uniffi_pipeline 0.32.2 (https://github.com/mozilla/uniffi-rs)
-  - uniffi_udl 0.32.2 (https://github.com/mozilla/uniffi-rs)
 
 -------------------------------------------------------------------------------
 License expression: Unicode-3.0

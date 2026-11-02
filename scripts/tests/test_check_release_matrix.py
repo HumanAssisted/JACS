@@ -96,6 +96,43 @@ class SourceVersionAlignmentTests(unittest.TestCase):
                     self.assertNotIn("OK:", stdout)
             path.write_text(original)
 
+    def test_registry_parity_exempts_only_held_crates(self) -> None:
+        matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
+        for artifact in matrix["artifacts"].values():
+            artifact["version"] = "1.2.3"
+        held = next(iter(release_matrix.HELD_CRATES))
+        live = dict.fromkeys(release_matrix.CRATE_MANIFESTS, "1.2.3")
+        live[held] = "1.2.2"
+        matrix["artifacts"]["crate"]["versions"] = dict(live)
+        release_matrix.MATRIX_PATH.write_text(json.dumps(matrix))
+        release_matrix.DEPLOYMENT_DOC_PATH.write_text(release_matrix.render_documentation_matrix(matrix))
+        with mock.patch.object(release_matrix, "registry_crate_versions", return_value=live), mock.patch.object(
+            release_matrix, "registry_versions", return_value=dict.fromkeys(release_matrix.SURFACE_LABELS, "1.2.3"),
+        ), mock.patch.object(release_matrix, "validate_online_asset_evidence"):
+            status, _stdout, stderr = self.check("--require-parity")
+            self.assertEqual(status, 0, stderr)
+            with mock.patch.object(release_matrix, "HELD_CRATES", {}):
+                status, _stdout, stderr = self.check("--require-parity")
+            self.assertEqual(status, 1)
+            self.assertIn(f"{held} registry version '1.2.2' != release '1.2.3'", stderr)
+            # Held crates still need registry observations that match the recorded matrix.
+            live[held] = "1.2.1"
+            status, _stdout, stderr = self.check("--require-parity")
+            self.assertEqual(status, 1)
+            self.assertIn(f"{held} registry version '1.2.1' != observed matrix '1.2.2'", stderr)
+
+    def test_documentation_matrix_names_crates_trailing_the_surface_version(self) -> None:
+        matrix = json.loads(release_matrix.MATRIX_PATH.read_text())
+        crate = matrix["artifacts"]["crate"]
+        crate["version"] = "1.2.3"
+        crate["versions"] = dict.fromkeys(release_matrix.CRATE_MANIFESTS, "1.2.3")
+        self.assertNotIn("except", release_matrix.render_documentation_matrix(matrix))
+        held = next(iter(release_matrix.HELD_CRATES))
+        crate["versions"][held] = "1.2.2"
+        crate["versions"]["jacs-media"] = None
+        rendered = release_matrix.render_documentation_matrix(matrix)
+        self.assertIn(f"except `jacs-media` unpublished, `{held}` held at `1.2.2`", rendered)
+
     def test_listing_covers_all_sources_without_changing_files(self) -> None:
         before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
         status, stdout, stderr = self.check("--show-versions")

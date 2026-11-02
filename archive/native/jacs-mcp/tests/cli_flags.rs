@@ -3,7 +3,10 @@ use predicates::str::contains;
 
 #[test]
 fn standalone_binary_prints_deprecation_and_exits() {
-    let mut cmd = Command::cargo_bin("jacs-mcp").expect("jacs-mcp binary should build");
+    // The compatibility package ships its deprecated standalone binary under the
+    // package name, `jacs-mcp-compat`.
+    let mut cmd =
+        Command::cargo_bin("jacs-mcp-compat").expect("jacs-mcp-compat binary should build");
     cmd.assert()
         .failure()
         .stderr(contains("deprecated"))

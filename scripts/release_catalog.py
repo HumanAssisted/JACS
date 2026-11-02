@@ -20,4 +20,22 @@ CRATE_MANIFESTS = {
     "jacs-surrealdb": "archive/native/jacs-surrealdb/Cargo.toml",
 }
 
-CRATES = tuple(CRATE_MANIFESTS)
+# Catalogued crates whose source versions stay aligned but which the current
+# release neither packages nor publishes. Each value records why. A held crate's
+# registry version may trail the release: registry parity exempts it, and a
+# held crate with its own lockfile keeps that lock out of the release candidate
+# (see scripts/rust_release.py). No released crate may depend on a held one.
+# Remove the entry, and restore any release-only waivers, to publish it again.
+HELD_CRATES = {
+    "jacs-surrealdb": (
+        "its lock pins unpublished jsonwebtoken and object_store source backports for "
+        "RUSTSEC-2026-0387, RUSTSEC-2026-0194 and RUSTSEC-2026-0195; as of 2026-11-02 "
+        "no published SurrealDB release accepts fixed versions"
+    ),
+}
+
+if not set(HELD_CRATES) <= set(CRATE_MANIFESTS):
+    raise ValueError("held crates must be catalogued")
+
+# Publication order for the current release.
+CRATES = tuple(name for name in CRATE_MANIFESTS if name not in HELD_CRATES)

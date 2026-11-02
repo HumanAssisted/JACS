@@ -1700,7 +1700,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jacs"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -1771,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -1802,7 +1802,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-media"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "base64 0.23.1",
  "image",

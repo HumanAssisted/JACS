@@ -5,6 +5,7 @@ on:
     paths:
       - "jacs-core/**"
       - "jacs-mobile/**"
+      - "tools/jacs-mobile-bindgen/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/mobile-bindings.yml"

@@ -63,6 +63,9 @@ still resolve the vulnerable upstream versions. Rust release preparation,
 packaging and publication explicitly reject these unpublished dependencies.
 Compatible published fixes are required before a crates.io release can qualify;
 the source backports must not be represented as already published fixes.
+Release 0.16.0 therefore holds `jacs-surrealdb` (`HELD_CRATES` in
+`scripts/release_catalog.py`): its source version stays aligned, but its lock is
+outside the release candidate and crates.io keeps 0.15.0 until those fixes exist.
 
 The same review refreshes every Python extra on Python 3.11–3.14, including the
 previously unaudited development extra. Python 3.10 is no longer supported:

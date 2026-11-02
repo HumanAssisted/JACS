@@ -71,6 +71,21 @@ class SecurityExceptionPolicyTests(unittest.TestCase):
         changed["package"].append({"name": "new-auth", "version": "1.0.0", "dependencies": ["rsa"]})
         with self.assertRaisesRegex(ValueError, "parent drift"):
             security_exceptions.require_surreal_crypto_disposition(changed, source, graphs)
+        # The facade's own version follows releases; it must remain the local path package.
+        changed = copy.deepcopy(lock)
+        next(p for p in changed["package"] if p["name"] == "jacs-surrealdb")["version"] = "9.9.9"
+        security_exceptions.require_surreal_crypto_disposition(changed, source, graphs)
+        changed = copy.deepcopy(lock)
+        next(p for p in changed["package"] if p["name"] == "jacs-surrealdb")["source"] = (
+            "registry+https://github.com/rust-lang/crates.io-index")
+        with self.assertRaisesRegex(ValueError, "local JACS facade"):
+            security_exceptions.require_surreal_crypto_disposition(changed, source, graphs)
+        changed = copy.deepcopy(lock)
+        changed["package"].append({"name": "jacs-surrealdb", "version": "0.1.0",
+                                   "source": "registry+https://github.com/rust-lang/crates.io-index",
+                                   "dependencies": ["surrealdb"]})
+        with self.assertRaisesRegex(ValueError, "parent drift"):
+            security_exceptions.require_surreal_crypto_disposition(changed, source, graphs)
         changed = copy.deepcopy(lock)
         next(p for p in changed["package"] if p["name"] == "rsa")["version"] = "0.9.11"
         with self.assertRaisesRegex(ValueError, "version drift"):

@@ -8,11 +8,12 @@ change in this repository. The new native PQ DID/JWK and Agent Card exports in
 the [identity guide](identity-standards.md) are source changes; their publication
 requires a separate release record.
 
-This checkout also contains an Askama Git patch and source-only SurrealDB
-backports. They are not published fixes available to downstream crates.io
+Source version 0.16.0 is a release candidate, not a published release. The
+SurrealDB backend's lock contains source-only jsonwebtoken and object_store
+backports, which are not published fixes available to downstream crates.io
 consumers. The [release process](../RELEASING.md) rejects unpublished third-party
-dependencies during candidate preparation, packaging and publication, even
-when source checks pass. See the
+dependencies during candidate preparation, packaging and publication, so
+`jacs-surrealdb` is held from 0.16.0 and remains at 0.15.0. See the
 [source backports and release blockers](../archive/native/SECURITY_AUDIT.md#source-backports-and-release-blockers-after-the-2026-10-27-updates)
 for the current dependency status. This does not change the historical release
 inventory below.

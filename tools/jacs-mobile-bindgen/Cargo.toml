@@ -1,0 +1,22 @@
+# UniFFI binding generator for jacs-mobile. A development tool only: it is
+# never published, so its source-only Askama patch stays out of the release
+# graph and the published jacs-mobile crate carries no `uniffi/cli` dependency.
+[package]
+name = "jacs-mobile-bindgen"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+# Keep identical to jacs-mobile's exact uniffi pin; generated scaffolding must
+# match the runtime the library is built with.
+uniffi = { version = "=0.32.2", features = ["cli"] }
+
+[workspace]
+
+# Upstream's unreleased replacement for the unmaintained basic-toml parser.
+# Remove when the Askama fix is published to crates.io.
+[patch.crates-io]
+askama_derive = { git = "https://github.com/askama-rs/askama", rev = "3863808cf594054f7644979ed92caaafc878f378" }

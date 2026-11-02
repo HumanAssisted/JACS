@@ -20,15 +20,35 @@ import tomllib
 
 try:
     from crates_release_gate import fetch_exact_version_checksum, verify_archive_checksum, wait_for_version
-    from release_catalog import CRATES, CRATE_MANIFESTS
+    from release_catalog import CRATES, CRATE_MANIFESTS, HELD_CRATES
     from release_tag import validate_semver
 except ModuleNotFoundError:
     from scripts.crates_release_gate import fetch_exact_version_checksum, verify_archive_checksum, wait_for_version
-    from scripts.release_catalog import CRATES, CRATE_MANIFESTS
+    from scripts.release_catalog import CRATES, CRATE_MANIFESTS, HELD_CRATES
     from scripts.release_tag import validate_semver
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_LOCKS = ("Cargo.lock", "archive/native/Cargo.lock", "archive/native/jacs-surrealdb/Cargo.lock")
+WORKSPACE_LOCKS = ("Cargo.lock", "archive/native/Cargo.lock")
+# Catalogued crates locked outside both source workspaces, keyed by manifest.
+STANDALONE_LOCKS = {"archive/native/jacs-surrealdb/Cargo.toml": "archive/native/jacs-surrealdb/Cargo.lock"}
+# Every reviewed source lock; release_locks() selects those behind a release.
+SOURCE_LOCKS = WORKSPACE_LOCKS + tuple(STANDALONE_LOCKS.values())
+
+
+def release_manifests():
+    """Catalogued manifests this release packages and publishes, in catalog order."""
+    return {name: relative for name, relative in CRATE_MANIFESTS.items() if name not in HELD_CRATES}
+
+
+def release_locks():
+    """Reviewed locks behind this release.
+
+    A held crate keeps its source version aligned but is neither packaged nor
+    published, so its own lock, and any unpublished dependency it pins, is not
+    part of the candidate. A shared workspace lock stays for its other crates.
+    """
+    released = set(release_manifests().values())
+    return WORKSPACE_LOCKS + tuple(lock for manifest, lock in STANDALONE_LOCKS.items() if manifest in released)
 
 
 def run(command, *, cwd=ROOT, capture=False):
@@ -58,6 +78,8 @@ def validate_sources(root, version):
                 if not isinstance(dependency, dict) or "path" not in dependency:
                     continue
                 actual = dependency.get("package", alias)
+                if name not in HELD_CRATES and actual in HELD_CRATES:
+                    raise ValueError(f"{name}: depends on held crate {actual}, which this release does not publish")
                 if actual not in seen:
                     raise ValueError(f"{name}: local dependency {actual} must be published earlier")
                 if dependency.get("version", "").lstrip("=^") != version:
@@ -98,8 +120,9 @@ def vendor_reviewed_dependencies(source, output):
     containing their exact union lets Cargo select a coherent graph without
     admitting a newly released or merely cached third-party version.
     """
+    locks = release_locks()
     allowed = set()
-    for relative in SOURCE_LOCKS:
+    for relative in locks:
         lock = tomllib.loads((source / relative).read_text())
         allowed.update(third_party(lock))
     identities = {}
@@ -116,16 +139,18 @@ def vendor_reviewed_dependencies(source, output):
         # outer checkout when this source copy lives below its target directory.
         # Give each separately locked package an explicit boundary for vendoring
         # only. Restore exact bytes before assembling the combined candidate.
-        for relative in SOURCE_LOCKS:
+        for relative in locks:
             manifest = (source / relative).with_name("Cargo.toml")
             original = manifest.read_bytes()
             if "workspace" not in tomllib.loads(original.decode()):
                 standalone_manifests[manifest] = original
                 manifest.write_bytes(original + b"\n[workspace]\n")
+        standalone = [manifest for manifest, lock in STANDALONE_LOCKS.items() if lock in locks]
         configuration = run([
             "cargo", "vendor", "--locked", "--versioned-dirs",
             "--sync", "archive/native/Cargo.toml",
-            "--sync", "archive/native/jacs-surrealdb/Cargo.toml", str(output / "vendor"),
+            *(argument for manifest in standalone for argument in ("--sync", manifest)),
+            str(output / "vendor"),
         ], cwd=source, capture=True)
     finally:
         for manifest, original in standalone_manifests.items():
@@ -146,7 +171,7 @@ def supplement_native_notices(source):
     """
     marker = "===== PORTABLE WORKSPACE NOTICES FOR COMBINED RUST RELEASE ====="
     portable = (source / "THIRD-PARTY-NOTICES").read_text()
-    for relative in CRATE_MANIFESTS.values():
+    for relative in release_manifests().values():
         if not relative.startswith("archive/native/"):
             continue
         path = (source / relative).parent / "THIRD-PARTY-NOTICES"
@@ -156,8 +181,11 @@ def supplement_native_notices(source):
 
 
 def prepare(root, output, version, allow_dirty=False):
+    if list(release_manifests()) != list(CRATES):
+        raise ValueError("release crate order must be the catalog without held crates")
     validate_sources(root, version)
-    for relative in SOURCE_LOCKS:
+    locks = release_locks()
+    for relative in locks:
         require_published_dependencies(tomllib.loads((root / relative).read_text()), relative)
     dirty = run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=root, capture=True).strip()
     if dirty and not allow_dirty:
@@ -181,9 +209,12 @@ def prepare(root, output, version, allow_dirty=False):
         shutil.copy2(path, target)
     allowed, vendor_config = vendor_reviewed_dependencies(source, output)
     workspace = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]
-    members = [str(Path(path).parent) for path in CRATE_MANIFESTS.values()]
+    members = [str(Path(path).parent) for path in release_manifests().values()]
     text = "[workspace]\nresolver = \"3\"\nmembers = " + json.dumps(members) + "\n"
-    text += 'exclude = ["archive/native/jacs/examples/observability"]\n\n[workspace.package]\n'
+    # Held crates stay in the copied source but outside the packaged workspace.
+    excluded = ["archive/native/jacs/examples/observability"]
+    excluded += [str(Path(relative).parent) for name, relative in CRATE_MANIFESTS.items() if name in HELD_CRATES]
+    text += "exclude = " + json.dumps(excluded) + "\n\n[workspace.package]\n"
     text += "\n".join(f"{key} = {json.dumps(value)}" for key, value in workspace["package"].items()) + "\n"
     (source / "Cargo.toml").write_text(text)
     (source / "archive/native/Cargo.toml").unlink()
@@ -202,7 +233,7 @@ def prepare(root, output, version, allow_dirty=False):
     supplement_native_notices(source)
     state = {"version": version, "source_commit": run(["git", "rev-parse", "HEAD"], cwd=root, capture=True).strip(),
              "publishable": not bool(dirty), "crates": list(CRATES),
-             "source_lock_sha256": {relative: sha256(root / relative) for relative in SOURCE_LOCKS},
+             "source_lock_sha256": {relative: sha256(root / relative) for relative in locks},
              "candidate_lock_sha256": sha256(source / "Cargo.lock")}
     (output / "candidate.json").write_text(json.dumps(state, indent=2) + "\n")
     print(f"Prepared {len(CRATES)} crates at {source}")

@@ -4,7 +4,10 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
 generated="${JACS_MOBILE_GENERATED_DIR:-$repo_root/jacs-mobile/generated}"
-cargo build --locked -p jacs-mobile --features bindgen
+cargo build --locked -p jacs-mobile
+# The generator is a separate unpublished tool; it shares the target directory
+# so the binary lands next to the library.
+cargo build --locked --manifest-path tools/jacs-mobile-bindgen/Cargo.toml
 case "$(uname -s)" in
     Darwin) library="$CARGO_TARGET_DIR/debug/libjacs_mobile.dylib" ;;
     Linux) library="$CARGO_TARGET_DIR/debug/libjacs_mobile.so" ;;
