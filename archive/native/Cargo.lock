@@ -3111,7 +3111,7 @@ dependencies = [
  "signature",
  "similar",
  "sqlx",
- "strum 0.27.2",
+ "strum 0.28.0",
  "strum_macros 0.28.0",
  "tempfile",
  "testcontainers",
