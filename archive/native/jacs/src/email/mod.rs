@@ -40,6 +40,8 @@ pub(crate) mod canonicalize;
 mod result;
 mod sign;
 mod transport;
+#[cfg(test)]
+mod unsigned_parts_tests;
 mod verify;
 
 // Public error types (needed by callers to handle errors).
@@ -52,7 +54,7 @@ pub use types::{
     AttachmentEntry, BodyPartEntry, ChainEntry, ContentVerificationResult, EmailSignatureHeaders,
     EmailSignaturePayload, FieldResult, FieldStatus, JacsEmailMetadata, JacsEmailSignature,
     JacsEmailSignatureDocument, ParsedAttachment, ParsedBodyPart, ParsedEmailParts,
-    SignedHeaderEntry, VerifiedEmailDocument,
+    SignedHeaderEntry, UnsignedPart, VerifiedEmailDocument,
 };
 
 // Signing: the primary sender-side function.

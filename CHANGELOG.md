@@ -39,6 +39,18 @@
   V2/V3 marker switches fail. All 138 email unit and 33 fixture tests pass;
   source is unreleased.
 
+### 2026-11-01 — Email verification fails on MIME parts the signature does not cover
+
+- Verification fails when received email has a MIME part that is neither a
+  signed body nor an attachment, such as a second text alternative, an image
+  without a filename or an embedded message. The new
+  `ParsedEmailParts::unsigned_parts` lists them; each fails as
+  `unsigned_parts[i]`. An unsigned body also fails, and inline verification
+  excludes exactly one logo. `sign_email` and the inline pre-image builder
+  refuse such parts. Mailing lists or gateways that append a separate MIME part
+  now break verification.
+- All 152 email unit and 33 fixture tests pass; source is unreleased.
+
 ### 2026-10-28 — Native PQ identity, key discovery and ecosystem integration
 
 - Reuse the persistent ML-DSA-87 identity for RFC 9964 public JWK/JWS exports,

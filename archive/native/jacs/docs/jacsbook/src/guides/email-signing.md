@@ -190,6 +190,31 @@ MIME structural headers have separate hashes. Equivalent normalized content
 can verify despite changes to its wire representation. Uncovered headers and
 transport metadata are outside this claim.
 
+### MIME parts outside the signature
+
+A signature covers the first text/plain part not marked as an attachment, the
+first such text/html part (attachment mode only), and every attachment: a part
+with a filename, or a part of another type marked `inline` or `attachment`.
+Mail clients can also show other parts: a second text or HTML alternative, an
+image without a filename, a text part marked as an attachment without a
+filename, an embedded `message/rfc822`, or a part without a Content-Type.
+`extract_email_parts` lists these in `ParsedEmailParts::unsigned_parts`.
+Content verification reports each as `Fail`, named `unsigned_parts[0]`,
+`unsigned_parts[1]` and so on, with `current_value` describing its type,
+disposition, Content-ID and size. A body that is present but not signed, such
+as an HTML part added to text-only mail, fails as `body_plain` or `body_html`
+with `current_value` `present but not signed`.
+
+`sign_email` and `build_html_inline_email_signature_payload` refuse such mail
+with `EmailError::UnsupportedFeature`, because the signature could never
+verify. HTML-inline verification excludes the generated HTML body and exactly
+one HAI logo part. A second logo part or HTML body fails; the V3 picture and
+calendar invitations remain signed attachments.
+
+Mailing lists and gateways that append a footer or disclaimer as a separate
+MIME part therefore make verification fail, as a footer added inside a signed
+body already did.
+
 ## HTML-inline signed email migration helpers
 
 The HTML-inline transport is being added for HAI email while attachment mode
@@ -326,6 +351,8 @@ jacs::email::VerificationMode             // Strict | Degraded
 jacs::email::FieldResult                  // per-field status
 jacs::email::FieldStatus                  // Pass | Modified | Fail | Unverifiable
 jacs::email::JacsEmailSignatureDocument   // parsed compatibility DTO, not raw attachment JSON
+jacs::email::ParsedEmailParts             // parsed bodies, attachments and unsigned_parts
+jacs::email::UnsignedPart                 // a MIME part no signature covers
 jacs::email::EmailError                   // error type
 
 // Attachment helpers (for advanced use)

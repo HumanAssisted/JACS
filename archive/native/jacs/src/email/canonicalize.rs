@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
 use super::error::EmailError;
-use super::types::{ParsedAttachment, ParsedBodyPart, ParsedEmailParts};
+use super::types::{ParsedAttachment, ParsedBodyPart, ParsedEmailParts, UnsignedPart};
 
 /// Parse raw RFC 5322 email bytes into structured parts.
 pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailError> {
@@ -40,15 +40,23 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
         ));
     }
 
-    // Extract body parts
-    let body_plain = extract_body_part(&message, "text/plain");
-    let body_html = extract_body_part(&message, "text/html");
+    // Extract body parts. `classified` marks the parts that end up in the
+    // signed structure; every other leaf part is reported as unsigned.
+    let mut classified = vec![false; message.parts.len()];
+    let mut body_part = |target_type: &str| {
+        extract_body_part(&message, target_type).map(|(index, part)| {
+            classified[index] = true;
+            part
+        })
+    };
+    let body_plain = body_part("text/plain");
+    let body_html = body_part("text/html");
 
     // Extract attachments
     let mut attachments = Vec::new();
     let mut jacs_attachments = Vec::new();
 
-    for part in message.parts.iter() {
+    for (index, part) in message.parts.iter().enumerate() {
         let is_attachment = part
             .content_disposition()
             .is_some_and(|d| d.ctype() == "attachment" || d.ctype() == "inline");
@@ -94,6 +102,7 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
             content_transfer_encoding: cte,
             content_disposition: cd,
         };
+        classified[index] = true;
 
         // Classify JACS signature attachments.
         // Matches: any file ending in `.jacs.json` (e.g., `foo.jacs.json`,
@@ -107,12 +116,37 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
         }
     }
 
+    // Multipart containers hold no content of their own; a nested
+    // message/rfc822 part is one leaf.
+    let unsigned_parts = message
+        .parts
+        .iter()
+        .zip(classified)
+        .filter(|(part, classified)| !classified && !part.is_multipart())
+        .map(|(part, _)| UnsignedPart {
+            content_type: part
+                .content_type()
+                .map(|ct| format!("{}/{}", ct.ctype(), ct.subtype().unwrap_or("")))
+                .unwrap_or_default()
+                .to_lowercase(),
+            content_disposition: part.content_disposition().map(|d| d.ctype().to_string()),
+            content_id: part.content_id().map(|id| {
+                id.trim()
+                    .trim_start_matches('<')
+                    .trim_end_matches('>')
+                    .to_string()
+            }),
+            size_bytes: part.len(),
+        })
+        .collect();
+
     Ok(ParsedEmailParts {
         headers,
         body_plain,
         body_html,
         attachments,
         jacs_attachments,
+        unsigned_parts,
     })
 }
 
@@ -180,12 +214,13 @@ fn parse_raw_headers(header_bytes: &[u8]) -> Result<Vec<(String, String)>, Email
     Ok(result)
 }
 
-/// Extract a body part of the given content type from a parsed message.
+/// Extract the first body part of the given content type from a parsed
+/// message, with its index in `message.parts`.
 fn extract_body_part(
     message: &mail_parser::Message<'_>,
     target_type: &str,
-) -> Option<ParsedBodyPart> {
-    for part in message.parts.iter() {
+) -> Option<(usize, ParsedBodyPart)> {
+    for (index, part) in message.parts.iter().enumerate() {
         let ct = part.content_type();
         let type_str = ct
             .map(|ct| format!("{}/{}", ct.ctype(), ct.subtype().unwrap_or("")))
@@ -208,12 +243,15 @@ fn extract_body_part(
             let cte = part.content_transfer_encoding().map(|s| s.to_string());
             let cd = part.content_disposition().map(|d| d.ctype().to_string());
 
-            return Some(ParsedBodyPart {
-                content,
-                content_type: content_type_full,
-                content_transfer_encoding: cte,
-                content_disposition: cd,
-            });
+            return Some((
+                index,
+                ParsedBodyPart {
+                    content,
+                    content_type: content_type_full,
+                    content_transfer_encoding: cte,
+                    content_disposition: cd,
+                },
+            ));
         }
     }
     None
