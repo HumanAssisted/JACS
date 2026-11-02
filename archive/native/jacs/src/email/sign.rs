@@ -133,8 +133,8 @@ pub fn build_html_inline_email_signature_payload(
         }
     };
     let mut payload = build_email_signature_payload(&parts, None, false, false, true)?;
-    if version == super::transport::InlineEmailTemplateVersion::V2 {
-        payload.inline_template_version = Some("v2".into());
+    if version != super::transport::InlineEmailTemplateVersion::V1 {
+        payload.inline_template_version = Some(version.as_str().into());
     }
     Ok(payload)
 }
@@ -803,6 +803,18 @@ mod tests {
 
         assert_eq!(payload.attachments.len(), 1);
         assert_eq!(payload.attachments[0].filename, "notes.txt");
+    }
+
+    #[test]
+    fn html_inline_v3_payload_binds_version_and_hashes_the_banner_part() {
+        let email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Inline V3\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <inline-v3@example.com>\r\nContent-Type: multipart/alternative; boundary=\"altbound\"\r\n\r\n--altbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody text\r\n--altbound\r\nContent-Type: multipart/related; boundary=\"relbound\"\r\n\r\n--relbound\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html data-hai-template-version=\"v3\"><body><img src=\"cid:mediationbench-judge@hai.ai\" alt=\"MediationBench judge\" width=\"96\" height=\"96\"><br><main data-hai-message-body=\"v1\" dir=\"auto\">Body text</main><img src=\"cid:hai-jacs-logo@hai.ai\"><script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">header</script></body></html>\r\n--relbound\r\nContent-Type: image/png; name=\"mediationbench-judge.png\"\r\nContent-ID: <mediationbench-judge@hai.ai>\r\nContent-Disposition: inline; filename=\"mediationbench-judge.png\"\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgoAAAANSUhEUgAAAAEAAAAB\r\n--relbound\r\nContent-Type: image/png\r\nContent-ID: <hai-jacs-logo@hai.ai>\r\nContent-Disposition: inline; filename=\"hai-jacs-logo.png\"\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--relbound--\r\n--altbound--\r\n";
+
+        let payload = build_html_inline_email_signature_payload(email).unwrap();
+
+        assert_eq!(payload.inline_template_version.as_deref(), Some("v3"));
+        assert!(payload.body_html.is_none());
+        assert_eq!(payload.attachments.len(), 1, "banner only, logo excluded");
+        assert_eq!(payload.attachments[0].filename, "mediationbench-judge.png");
     }
 
     #[test]

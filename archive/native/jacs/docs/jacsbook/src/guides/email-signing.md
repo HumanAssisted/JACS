@@ -211,7 +211,7 @@ The verifier detects `SignedEmailTransport::AttachmentJacs` or
 `SignedEmailTransport::HtmlInline` and returns `SignedEmailVerificationResult`
 with `Verified`, `PartiallyVerified`, or `Failed`.
 
-Canonical presentation has two explicit versions. Historical V1 escapes
+Canonical presentation has three explicit versions. Historical V1 escapes
 plaintext without links and omits `inline_template_version` from the signed
 payload. V2 uses `render_inline_email_message_body` with
 `InlineEmailTemplateVersion::V2`: a complete, unpadded HTTPS URL line becomes an
@@ -223,6 +223,15 @@ adds the canonical container: V2 uses `dir="auto"`, deriving displayed direction
 from the first strong character of signed text so Arabic and Hebrew render
 naturally; V1 retains its historical container. Direction attributes are part
 of the reconstructed presentation and cannot be changed independently.
+
+V3 is V2 after one picture: `render_inline_email_message_main` puts
+`<img src="cid:mediationbench-judge@hai.ai" alt="MediationBench judge"
+width="96" height="96"><br>` before the container (`HAI_BANNER_*` constants).
+The picture is an ordinary inline MIME part, so the signed payload hashes its
+bytes with the other attachments; its `<img>` is part of the reconstructed
+presentation, so removing, moving or resizing it fails presentation
+verification. Content-IDs are not hashed, as for the logo. V3 binds
+`inline_template_version: "v3"`; verifiers that know only V1 and V2 reject it.
 
 V2 binds `inline_template_version: "v2"` inside the signed email payload.
 The strict verifier reconstructs the complete presentation from signed

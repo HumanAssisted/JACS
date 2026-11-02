@@ -361,6 +361,7 @@ fn html_inline_presentation_equivalent(
     let signed_version = match doc.payload.inline_template_version.as_deref() {
         None => InlineEmailTemplateVersion::V1,
         Some("v2") => InlineEmailTemplateVersion::V2,
+        Some("v3") => InlineEmailTemplateVersion::V3,
         _ => return false,
     };
     inline_email_presentation_matches(parts, signed_version)
@@ -384,7 +385,7 @@ pub fn inline_email_presentation_matches(
     let user_text = user_text_from_inline_text_body(&text_body);
     let expected_html = render_expected_html_inline_body_without_artifacts(&user_text, version);
     let received_without_artifacts = strip_inline_signature_artifacts_from_html(&received_html);
-    if version == InlineEmailTemplateVersion::V2
+    if version != InlineEmailTemplateVersion::V1
         && inline_user_link_count(&received_html) != inline_user_link_count(&expected_html)
     {
         return false;
@@ -1710,6 +1711,13 @@ mod tests {
                 "unknown version",
                 original.replace(
                     r#"data-hai-template-version="v2""#,
+                    r#"data-hai-template-version="v4""#,
+                ),
+            ),
+            (
+                "upgrade to picture version",
+                original.replace(
+                    r#"data-hai-template-version="v2""#,
                     r#"data-hai-template-version="v3""#,
                 ),
             ),
@@ -1829,6 +1837,229 @@ mod tests {
             result.reasons,
             vec![EmailVerificationReason::CanonicalPreimageHashMismatch]
         );
+    }
+
+    fn solid_fixture_png(rgba: [u8; 4]) -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(32, 32, image::Rgba(rgba));
+        let mut buf = Vec::new();
+        let mut cur = std::io::Cursor::new(&mut buf);
+        img.write_to(&mut cur, image::ImageFormat::Png)
+            .expect("png encode");
+        buf
+    }
+
+    /// V3 is the V2 fixture plus the judge picture before `<main>` and its
+    /// inline MIME part between the HTML and the logo, as HAI composes it.
+    fn inline_v3_fixture(envelope: &str, logo_header: Option<&str>, banner: &[u8]) -> Vec<u8> {
+        use crate::email::transport::{
+            HAI_BANNER_CONTENT_DISPOSITION, HAI_BANNER_CONTENT_ID_HEADER, HAI_BANNER_CONTENT_TYPE,
+            HAI_BANNER_FILENAME,
+        };
+        use base64::Engine as _;
+
+        let raw =
+            String::from_utf8(html_inline_email_with_envelope(envelope, logo_header)).unwrap();
+        let text = format!("Start here:\n{INLINE_V2_URL}");
+        let body = render_inline_email_message_main(&text, InlineEmailTemplateVersion::V3);
+        let logo_part = "--hai-inline-related-test\r\nContent-Type: image/png\r\nContent-ID: <hai-jacs-logo@hai.ai>";
+        assert_eq!(raw.matches(logo_part).count(), 1);
+        let banner_part = format!(
+            concat!(
+                "--hai-inline-related-test\r\n",
+                "Content-Type: {ctype}; name=\"{name}\"\r\n",
+                "Content-ID: {cid}\r\n",
+                "Content-Disposition: {disposition}; filename=\"{name}\"\r\n",
+                "Content-Transfer-Encoding: base64\r\n",
+                "\r\n",
+                "{bytes}\r\n",
+            ),
+            ctype = HAI_BANNER_CONTENT_TYPE,
+            name = HAI_BANNER_FILENAME,
+            cid = HAI_BANNER_CONTENT_ID_HEADER,
+            disposition = HAI_BANNER_CONTENT_DISPOSITION,
+            bytes = base64::engine::general_purpose::STANDARD.encode(banner),
+        );
+        raw.replace(
+            r#"data-hai-template-version="v1""#,
+            r#"data-hai-template-version="v3""#,
+        )
+        .replace(
+            "Hello from a signed HAI agent.\r\n",
+            &format!("Start here:\r\n{INLINE_V2_URL}\r\n"),
+        )
+        .replace(
+            r#"<main data-hai-message-body="v1">Hello from a signed HAI agent.</main>"#,
+            &body,
+        )
+        .replace(logo_part, &format!("{banner_part}{logo_part}"))
+        .into_bytes()
+    }
+
+    fn signed_inline_v3_fixture(agent: &SimpleAgent, banner: &[u8]) -> Vec<u8> {
+        let payload =
+            build_html_inline_email_signature_payload(&inline_v3_fixture("{}", None, banner))
+                .unwrap();
+        assert_eq!(payload.inline_template_version.as_deref(), Some("v3"));
+        assert_eq!(payload.attachments.len(), 1, "the banner is a signed part");
+        assert_eq!(payload.attachments[0].filename, "mediationbench-judge.png");
+        let signed = agent
+            .sign_message(&serde_json::to_value(payload).unwrap())
+            .unwrap();
+        let header = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(signed.raw.as_bytes()))
+        );
+        let envelope = serde_json::json!({
+            "compactHeader": header,
+            "jacsEnvelope": serde_json::from_str::<serde_json::Value>(&signed.raw).unwrap(),
+        })
+        .to_string();
+        inline_v3_fixture(&envelope, Some(&header), banner)
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn inline_v3_judge_picture_verifies_and_binds_bytes_and_placement() {
+        use crate::email::EmailVerificationStatus::{Failed, Verified};
+        use base64::Engine as _;
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("inline-v3-banner");
+        let key = get_pubkey(&agent);
+        let banner = solid_fixture_png([241, 139, 2, 255]);
+        let raw = signed_inline_v3_fixture(&agent, &banner);
+
+        let verified = verify_signed_email(&raw, &agent, &key, VerificationMode::Strict).unwrap();
+        assert_eq!(verified.status, Verified, "{verified:?}");
+        assert_eq!(verified.transport, SignedEmailTransport::HtmlInline);
+        assert!(verified.reasons.is_empty());
+
+        let original = String::from_utf8(raw).unwrap();
+        let img = r#"<img src="cid:mediationbench-judge@hai.ai" alt="MediationBench judge" width="96" height="96">"#;
+        let picture = format!("{img}<br>");
+        assert!(original.contains(&format!("<body>{picture}<main")));
+        assert_eq!(original.matches(img).count(), 1);
+        let banner_b64 = base64::engine::general_purpose::STANDARD.encode(&banner);
+        assert_eq!(original.matches(&banner_b64).count(), 1);
+
+        // The banner part is an ordinary signed inline attachment.
+        for (name, mutated) in [
+            (
+                "swapped banner bytes",
+                original.replace(
+                    &banner_b64,
+                    &base64::engine::general_purpose::STANDARD
+                        .encode(solid_fixture_png([26, 26, 26, 255])),
+                ),
+            ),
+            (
+                "renamed banner",
+                original.replace(
+                    "filename=\"mediationbench-judge.png\"",
+                    "filename=\"other.png\"",
+                ),
+            ),
+        ] {
+            assert_ne!(mutated, original, "mutation must change fixture: {name}");
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            assert_eq!(result.status, Failed, "{name}");
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::CanonicalPreimageHashMismatch],
+                "{name}"
+            );
+        }
+
+        // Placement, size and the version marker are reconstructed from the
+        // signed version; the MIME part stays untouched here.
+        for (name, mutated) in [
+            ("picture removed", original.replace(&picture, "")),
+            (
+                "picture moved below the text",
+                original
+                    .replace(&picture, "")
+                    .replace("</main>", &format!("</main>{picture}")),
+            ),
+            (
+                "picture duplicated",
+                original.replace(&picture, &format!("{picture}{picture}")),
+            ),
+            (
+                "picture resized",
+                original.replace(r#"width="96" height="96""#, r#"width="960" height="960""#),
+            ),
+            (
+                "picture linked",
+                original.replace(
+                    img,
+                    &format!(r#"<a href="https://attacker.example/">{img}</a>"#),
+                ),
+            ),
+            (
+                "picture source",
+                original.replace(
+                    r#"src="cid:mediationbench-judge@hai.ai""#,
+                    r#"src="https://attacker.example/judge.png""#,
+                ),
+            ),
+            (
+                "downgrade to v2",
+                original.replace(
+                    r#"data-hai-template-version="v3""#,
+                    r#"data-hai-template-version="v2""#,
+                ),
+            ),
+            (
+                "downgrade to v1",
+                original.replace(
+                    r#"data-hai-template-version="v3""#,
+                    r#"data-hai-template-version="v1""#,
+                ),
+            ),
+            (
+                "unknown version",
+                original.replace(
+                    r#"data-hai-template-version="v3""#,
+                    r#"data-hai-template-version="v4""#,
+                ),
+            ),
+            ("missing direction", original.replace(r#" dir="auto""#, "")),
+        ] {
+            assert_ne!(mutated, original, "mutation must change fixture: {name}");
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            assert_eq!(result.status, Failed, "{name}");
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::HtmlEquivalenceFailed],
+                "{name}"
+            );
+        }
+
+        // Editing or removing the signed version breaks the signature.
+        let envelope = extract_topmost_inline_jacs_envelope(original.as_bytes()).unwrap();
+        for replacement in [None, Some("v2"), Some("v1")] {
+            let mut value: serde_json::Value = serde_json::from_str(&envelope).unwrap();
+            let content = value["jacsEnvelope"]["content"].as_object_mut().unwrap();
+            match replacement {
+                None => {
+                    content.remove("inline_template_version");
+                }
+                Some(version) => {
+                    content.insert("inline_template_version".into(), version.into());
+                }
+            }
+            let mutated = original.replace(&envelope, &serde_json::to_string(&value).unwrap());
+            assert_ne!(mutated, original);
+            assert!(
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .is_err(),
+                "{replacement:?}"
+            );
+        }
     }
 
     fn signed_html_inline_email_with_user_attachment(agent: &SimpleAgent) -> Vec<u8> {

@@ -22,14 +22,23 @@ pub const HAI_LOGO_CONTENT_ID_HEADER: &str = "<hai-jacs-logo@hai.ai>";
 pub const HAI_LOGO_CONTENT_DISPOSITION: &str = "inline";
 pub const HAI_LOGO_CONTENT_TYPE: &str = "image/png";
 pub const HAI_LOGO_FILENAME: &str = "hai-jacs-logo.png";
+pub const HAI_BANNER_CID: &str = "mediationbench-judge@hai.ai";
+pub const HAI_BANNER_CONTENT_ID_HEADER: &str = "<mediationbench-judge@hai.ai>";
+pub const HAI_BANNER_CONTENT_DISPOSITION: &str = "inline";
+pub const HAI_BANNER_CONTENT_TYPE: &str = "image/png";
+pub const HAI_BANNER_FILENAME: &str = "mediationbench-judge.png";
+pub const HAI_BANNER_ALT: &str = "MediationBench judge";
 pub const HAI_HIDDEN_ENVELOPE_MAX_BYTES: usize = 8 * 1024;
 
 /// Canonical HTML-inline presentation versions. V1 remains the historical
 /// escaped-text rendering; V2 adds links derived only from signed plaintext.
+/// V3 is V2 with one picture above the text: the `HAI_BANNER_CID` inline part,
+/// which the signed payload covers as an ordinary inline attachment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineEmailTemplateVersion {
     V1,
     V2,
+    V3,
 }
 
 impl InlineEmailTemplateVersion {
@@ -37,14 +46,15 @@ impl InlineEmailTemplateVersion {
         match self {
             Self::V1 => "v1",
             Self::V2 => "v2",
+            Self::V3 => "v3",
         }
     }
 }
 
-/// Render user content for the canonical inline template. V2 links only an
-/// entire, unpadded HTTPS URL line. The original URL is both the visible label
-/// and destination, including its query and fragment. Credentials, whitespace,
-/// controls and markup delimiters are never interpreted as active links.
+/// Render user content for the canonical inline template. V2 and V3 link only
+/// an entire, unpadded HTTPS URL line. The original URL is both the visible
+/// label and destination, including its query and fragment. Credentials,
+/// whitespace, controls and markup delimiters are never interpreted as links.
 pub fn render_inline_email_message_body(
     plain_text: &str,
     version: InlineEmailTemplateVersion,
@@ -53,7 +63,7 @@ pub fn render_inline_email_message_body(
     normalized
         .split('\n')
         .map(|line| {
-            let safe_url = version == InlineEmailTemplateVersion::V2
+            let safe_url = version != InlineEmailTemplateVersion::V1
                 && line.starts_with("https://")
                 && !line.chars().any(|ch| {
                     ch.is_whitespace()
@@ -77,19 +87,26 @@ pub fn render_inline_email_message_body(
         .join("<br>")
 }
 
-/// Render the canonical message container. V2 lets the email client choose
-/// direction from the first strong character of the exact signed text; V1
-/// retains its historical container bytes. URLs remain unchanged.
+/// Render the canonical message container. V2 and V3 let the email client
+/// choose direction from the first strong character of the exact signed text;
+/// V1 retains its historical container bytes. URLs remain unchanged. V3 puts
+/// the `HAI_BANNER_CID` picture, shown at 96x96, before the container.
 pub fn render_inline_email_message_main(
     plain_text: &str,
     version: InlineEmailTemplateVersion,
 ) -> String {
     let body = render_inline_email_message_body(plain_text, version);
-    let direction = match version {
-        InlineEmailTemplateVersion::V1 => "",
-        InlineEmailTemplateVersion::V2 => r#" dir="auto""#,
+    let (picture, direction) = match version {
+        InlineEmailTemplateVersion::V1 => (String::new(), ""),
+        InlineEmailTemplateVersion::V2 => (String::new(), r#" dir="auto""#),
+        InlineEmailTemplateVersion::V3 => (
+            format!(
+                r#"<img src="cid:{HAI_BANNER_CID}" alt="{HAI_BANNER_ALT}" width="96" height="96"><br>"#
+            ),
+            r#" dir="auto""#,
+        ),
     };
-    format!(r#"<main data-hai-message-body="v1"{direction}>{body}</main>"#)
+    format!(r#"{picture}<main data-hai-message-body="v1"{direction}>{body}</main>"#)
 }
 
 /// Read exactly one supported template marker on the HTML element. Duplicate
@@ -131,6 +148,7 @@ impl TokenSink for TemplateVersionSink {
                         *self.version.borrow_mut() = match attr.value.as_ref() {
                             "v1" => Some(InlineEmailTemplateVersion::V1),
                             "v2" => Some(InlineEmailTemplateVersion::V2),
+                            "v3" => Some(InlineEmailTemplateVersion::V3),
                             _ => {
                                 self.invalid.set(true);
                                 None
@@ -679,6 +697,56 @@ mod tests {
             ),
             "first<br>second<br>third"
         );
+    }
+
+    #[test]
+    fn canonical_inline_v3_is_v2_after_one_judge_picture() {
+        let text = "Start here:\nhttps://example.com/practice/";
+        let link = r#"<a href="https://example.com/practice/">https://example.com/practice/</a>"#;
+        assert_eq!(
+            render_inline_email_message_main(text, InlineEmailTemplateVersion::V3),
+            format!(
+                concat!(
+                    r#"<img src="cid:mediationbench-judge@hai.ai" alt="MediationBench judge" width="96" height="96"><br>"#,
+                    r#"<main data-hai-message-body="v1" dir="auto">Start here:<br>{}</main>"#
+                ),
+                link
+            )
+        );
+        // V1 and V2 keep their exact historical bytes.
+        assert_eq!(
+            render_inline_email_message_main(text, InlineEmailTemplateVersion::V2),
+            format!(r#"<main data-hai-message-body="v1" dir="auto">Start here:<br>{link}</main>"#)
+        );
+        assert_eq!(
+            render_inline_email_message_main(text, InlineEmailTemplateVersion::V1),
+            r#"<main data-hai-message-body="v1">Start here:<br>https://example.com/practice/</main>"#
+        );
+        assert_eq!(
+            render_inline_email_message_body(text, InlineEmailTemplateVersion::V3),
+            render_inline_email_message_body(text, InlineEmailTemplateVersion::V2)
+        );
+        assert_eq!(InlineEmailTemplateVersion::V3.as_str(), "v3");
+        assert_eq!(HAI_BANNER_CID, "mediationbench-judge@hai.ai");
+        assert_eq!(HAI_BANNER_CONTENT_ID_HEADER, format!("<{HAI_BANNER_CID}>"));
+        assert_eq!(HAI_BANNER_FILENAME, "mediationbench-judge.png");
+        assert_eq!(HAI_BANNER_CONTENT_TYPE, "image/png");
+        assert_eq!(HAI_BANNER_CONTENT_DISPOSITION, "inline");
+        assert_eq!(HAI_BANNER_ALT, "MediationBench judge");
+        for (marker, expected) in [
+            ("v1", Some(InlineEmailTemplateVersion::V1)),
+            ("v2", Some(InlineEmailTemplateVersion::V2)),
+            ("v3", Some(InlineEmailTemplateVersion::V3)),
+            ("v4", None),
+        ] {
+            assert_eq!(
+                inline_email_template_version(&format!(
+                    r#"<html data-hai-template-version="{marker}"><body></body></html>"#
+                )),
+                expected,
+                "{marker}"
+            );
+        }
     }
 
     #[test]
