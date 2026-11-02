@@ -5,6 +5,7 @@
 //! email content.
 
 use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
 
 use super::attachment::{
     DEFAULT_JACS_SIGNATURE_FILENAME, get_jacs_attachment_named, remove_jacs_attachment_named,
@@ -16,11 +17,13 @@ use super::canonicalize::{
 use super::error::{EmailError, check_email_size};
 use super::result::{EmailVerificationReason, SignedEmailVerificationResult, VerificationMode};
 use super::transport::{
-    InlineEmailTemplateVersion, SignedEmailTransport, detect_signed_email_transport,
-    extract_inline_logo_part, extract_jacs_header_from_logo_png,
-    extract_topmost_inline_jacs_envelope, html_bodies_equivalent, inline_email_template_version,
-    inline_user_link_count, render_inline_email_message_main,
-    strip_inline_signature_artifacts_from_html,
+    HAI_JACS_ENVELOPE_MARKER, HAI_JACS_ENVELOPE_SCRIPT_TYPE, HAI_LOGO_ALT, HAI_LOGO_CID,
+    HAI_LOGO_VERIFY_LINK_MARKER, HAI_VERIFY_FOOTER_MARKER, HAI_VERIFY_FOOTER_TEXT_PREFIX,
+    HAI_VERIFY_LINK_MARKER, InlineEmailTemplateVersion, SignedEmailTransport,
+    detect_signed_email_transport, escape_html_attr, extract_inline_logo_part,
+    extract_jacs_header_from_logo_png, extract_topmost_inline_jacs_envelope,
+    inline_email_template_version, logo_shows_signed_hai_logo, normalize_inline_presentation_html,
+    render_inline_email_message_main,
 };
 use super::types::{
     ChainEntry, ContentVerificationResult, FieldResult, FieldStatus, JacsEmailSignatureDocument,
@@ -113,11 +116,8 @@ pub fn verify_html_inline_email_document(
     check_email_size(raw_email)?;
 
     let envelope = extract_topmost_inline_jacs_envelope(raw_email)?;
-    let envelope_value: serde_json::Value = jacs_core::strict_json::parse_strict_json(&envelope)
-        .map_err(|e| {
-            EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
-        })?;
-    let jacs_envelope = envelope_value.get("jacsEnvelope").ok_or_else(|| {
+    let envelope_members = parse_inline_envelope(&envelope)?;
+    let jacs_envelope = envelope_members.get("jacsEnvelope").ok_or_else(|| {
         EmailError::InvalidJacsDocument("inline JACS envelope missing jacsEnvelope".to_string())
     })?;
     let jacs_json = serde_json::to_string(jacs_envelope).map_err(|e| {
@@ -306,7 +306,11 @@ pub fn verify_signed_email(
                 }
             };
 
-            if actual_logo_header != expected_logo_header {
+            // Any picture can carry the genuine header, so the picture itself
+            // must be HAI's logo as the producer embedded the header in it.
+            if actual_logo_header != expected_logo_header
+                || !logo_shows_signed_hai_logo(&logo.content, &expected_logo_header)
+            {
                 return Ok(SignedEmailVerificationResult::failed(
                     SignedEmailTransport::HtmlInline,
                     EmailVerificationReason::LogoSignatureMismatch,
@@ -338,20 +342,44 @@ pub fn verify_signed_email(
 }
 
 fn expected_logo_header_from_inline_envelope(envelope: &str) -> Option<String> {
-    let trimmed = envelope.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
+    let members = parse_inline_envelope(envelope).ok()?;
+    members.get("compactHeader")?.as_str().map(str::to_string)
+}
 
-    jacs_core::strict_json::parse_strict_json(trimmed)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("compactHeader")
-                .and_then(|header| header.as_str())
-                .map(str::to_string)
-        })
-        .or_else(|| Some(trimmed.to_string()))
+/// Members a hidden inline envelope may carry: the logo's compact header, the
+/// signed JACS document and, on HAI-countersigned mail, the agent's document.
+const INLINE_ENVELOPE_MEMBERS: [&str; 3] = ["compactHeader", "jacsEnvelope", "agentEnvelope"];
+
+/// Parse the hidden inline envelope: a JSON object with no members other than
+/// `INLINE_ENVELOPE_MEMBERS`, which the verifier checks (only `jacsEnvelope` is
+/// signed). Text containing `<!--` is refused: inside a script element it
+/// changes where HTML parsers end the element, so other content could hide in
+/// or escape from the envelope.
+fn parse_inline_envelope(
+    envelope: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, EmailError> {
+    if envelope.contains("<!--") {
+        return Err(EmailError::InvalidJacsDocument(
+            "inline JACS envelope contains `<!--`".to_string(),
+        ));
+    }
+    let value = jacs_core::strict_json::parse_strict_json(envelope.trim()).map_err(|e| {
+        EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
+    })?;
+    let serde_json::Value::Object(members) = value else {
+        return Err(EmailError::InvalidJacsDocument(
+            "inline JACS envelope is not a JSON object".to_string(),
+        ));
+    };
+    if let Some(name) = members
+        .keys()
+        .find(|name| !INLINE_ENVELOPE_MEMBERS.contains(&name.as_str()))
+    {
+        return Err(EmailError::InvalidJacsDocument(format!(
+            "inline JACS envelope has unexpected member `{name}`"
+        )));
+    }
+    Ok(members)
 }
 
 fn html_inline_presentation_equivalent(
@@ -367,8 +395,15 @@ fn html_inline_presentation_equivalent(
     inline_email_presentation_matches(parts, signed_version)
 }
 
-/// Check canonical presentation against plaintext, including destinations.
-/// This is a noncryptographic shape check for ingress safety. Call
+/// Check that the HTML part is exactly a document a HAI producer renders for
+/// the plaintext part: the template marker, the message, HAI's logo, an empty
+/// JACS envelope script and the footer. The plaintext must end with HAI's
+/// footer line, and its verify URL is the only destination accepted for the
+/// footer and logo links. Nothing is stripped before comparing; only the
+/// contents of the first envelope script are ignored. Comments, a second
+/// envelope script or HTML tokenizer errors fail.
+///
+/// This is a noncryptographic shape check, also used for ingress safety. Call
 /// `verify_signed_email` to authenticate the plaintext and version binding.
 pub fn inline_email_presentation_matches(
     parts: &ParsedEmailParts,
@@ -382,37 +417,80 @@ pub fn inline_email_presentation_matches(
         return false;
     }
     let text_body = String::from_utf8_lossy(&text_part.content);
-    let user_text = user_text_from_inline_text_body(&text_body);
-    let expected_html = render_expected_html_inline_body_without_artifacts(&user_text, version);
-    let received_without_artifacts = strip_inline_signature_artifacts_from_html(&received_html);
-    if version != InlineEmailTemplateVersion::V1
-        && inline_user_link_count(&received_html) != inline_user_link_count(&expected_html)
-    {
+    let Some((user_text, verify_url)) = split_inline_text_footer(&text_body) else {
         return false;
+    };
+    let Some(received) = normalize_inline_presentation_html(&received_html) else {
+        return false;
+    };
+    // Only HTML whitespace around the document is insignificant; HTML parsers
+    // render other whitespace there, such as U+00A0 or U+3000, as body text.
+    fn trim_html_whitespace(html: &str) -> &str {
+        html.trim_matches(['\t', '\n', '\x0C', '\r', ' '])
     }
-    html_bodies_equivalent(expected_html.trim(), received_without_artifacts.trim())
+    let received = trim_html_whitespace(&received);
+    expected_inline_email_documents(user_text, verify_url, version)
+        .iter()
+        .filter_map(|expected| normalize_inline_presentation_html(expected))
+        .any(|expected| trim_html_whitespace(&expected) == received)
 }
 
-fn user_text_from_inline_text_body(text_body: &str) -> String {
-    let trimmed = text_body.trim_end_matches(['\r', '\n']);
+/// Split the plaintext alternative into the user's text and the verify URL of
+/// its final line: `"\n\n"` (or `"\r\n\r\n"`), the footer text, the URL.
+/// Trailing whitespace is ignored, as body canonicalization ignores it. A
+/// missing, empty or non-final footer line returns `None`.
+fn split_inline_text_footer(text_body: &str) -> Option<(&str, &str)> {
+    let trimmed = text_body.trim_end_matches(['\r', '\n', ' ', '\t']);
     for separator in ["\r\n\r\n", "\n\n"] {
-        if let Some((head, tail)) = trimmed.rsplit_once(separator)
-            && tail.starts_with("This email is sent from an AI agent. Verify at ")
+        if let Some((user_text, footer)) = trimmed.rsplit_once(separator)
+            && let Some(verify_url) = footer.strip_prefix(HAI_VERIFY_FOOTER_TEXT_PREFIX)
+            && !verify_url.is_empty()
+            && !verify_url.contains(['\r', '\n'])
         {
-            return head.to_string();
+            return Some((user_text, verify_url));
         }
     }
-    trimmed.to_string()
+    None
 }
 
-fn render_expected_html_inline_body_without_artifacts(
-    plain_text: &str,
+/// The whole documents genuine producers render, with an empty envelope
+/// script. The logo is haiai's default linked logo (also HAI's earlier one),
+/// HAI's current linked logo with two line breaks before the picture, or
+/// haiai's optional unlinked picture. Every version accepts every shape.
+fn expected_inline_email_documents(
+    user_text: &str,
+    verify_url: &str,
     version: InlineEmailTemplateVersion,
-) -> String {
-    let body = render_inline_email_message_main(plain_text, version);
-    let version = version.as_str();
-
-    format!(r#"<html data-hai-template-version="{version}"><body>{body}</body></html>"#)
+) -> [String; 3] {
+    let main = render_inline_email_message_main(user_text, version);
+    let verify = escape_html_attr(verify_url);
+    let img = format!(r#"<img src="cid:{HAI_LOGO_CID}" alt="{HAI_LOGO_ALT}">"#);
+    let link = format!(r#"<a {HAI_LOGO_VERIFY_LINK_MARKER}="v1" href="{verify}">"#);
+    [
+        format!("{link}{img}</a>"),
+        format!("{link}<br><br>{img}</a>"),
+        img,
+    ]
+    .map(|logo| {
+        format!(
+            concat!(
+                r#"<html data-hai-template-version="{version}"><body>{main}{logo}"#,
+                r#"<script type="{script_type}" {envelope_marker}="v1"></script>"#,
+                r#"<footer {footer_marker}="v1">{footer_text}"#,
+                r#"<a {verify_link_marker}="v1" href="{verify}">{verify}</a></footer>"#,
+                "</body></html>"
+            ),
+            version = version.as_str(),
+            main = main,
+            logo = logo,
+            script_type = HAI_JACS_ENVELOPE_SCRIPT_TYPE,
+            envelope_marker = HAI_JACS_ENVELOPE_MARKER,
+            footer_marker = HAI_VERIFY_FOOTER_MARKER,
+            footer_text = HAI_VERIFY_FOOTER_TEXT_PREFIX,
+            verify_link_marker = HAI_VERIFY_LINK_MARKER,
+            verify = verify,
+        )
+    })
 }
 
 /// Verify a JACS-signed email whose signature attachment is in YAML format.
@@ -473,6 +551,19 @@ pub fn verify_email_html_named(
     Ok(verify_email_content(&doc, &parts))
 }
 
+/// Headers RFC 5322 allows once per message. Signing refuses mail that
+/// repeats one, and [`verify_email_content`] fails it.
+const SINGLE_INSTANCE_HEADERS: [&str; 8] = [
+    "from",
+    "to",
+    "cc",
+    "subject",
+    "date",
+    "message-id",
+    "in-reply-to",
+    "references",
+];
+
 /// Compare trusted JACS document hashes against actual email content.
 ///
 /// This is the second step of two-step verification. Use `verify_email()`
@@ -486,9 +577,15 @@ pub fn verify_email_html_named(
 /// - Attachments: recompute hashes and compare sorted lists
 ///
 /// Special cases:
-/// - Message-ID always returns `Unverifiable`
+/// - Message-ID returns `Unverifiable`, or `Fail` when repeated
 /// - Missing body parts return `Unverifiable` (not `Fail`)
-/// - Address header mismatches get case-insensitive fallback (returns `Modified`)
+/// - A body part present but not signed returns `Fail`
+/// - Each part in `parts.unsigned_parts` returns `Fail` as `unsigned_parts[i]`
+/// - An address header (From, To, Cc) that differs only in formatting returns
+///   `Modified`: quoting, angle brackets, address order or local-part case.
+///   A changed display name or address returns `Fail`.
+/// - From, To, Cc, Subject, Date, Message-ID, In-Reply-To or References
+///   appearing more than once returns `Fail`, signed or not
 pub fn verify_email_content(
     doc: &JacsEmailSignatureDocument,
     parts: &ParsedEmailParts,
@@ -567,6 +664,41 @@ pub fn verify_email_content(
         );
     }
 
+    // A repeat added after signing leaves clients to choose which value to
+    // show, while the checks above read only the first. RFC 5322's obsolete
+    // syntax allows whitespace before the colon, so names are compared
+    // without it.
+    for name in SINGLE_INSTANCE_HEADERS {
+        let count: usize = parts
+            .headers
+            .iter()
+            .filter(|(key, _)| key.trim_end_matches([' ', '\t']) == name)
+            .map(|(_, values)| values.len())
+            .sum();
+        if count < 2 {
+            continue;
+        }
+        let field = format!("headers.{}", name.replace('-', "_"));
+        let current_value = Some(format!("{count} {name} headers"));
+        match field_results
+            .iter_mut()
+            .find(|result| result.field == field)
+        {
+            Some(result) => {
+                result.status = FieldStatus::Fail;
+                result.current_value = current_value;
+            }
+            None => field_results.push(FieldResult {
+                field,
+                status: FieldStatus::Fail,
+                original_hash: None,
+                current_hash: None,
+                original_value: None,
+                current_value,
+            }),
+        }
+    }
+
     // Verify body parts
     verify_body_part(
         "body_plain",
@@ -595,6 +727,19 @@ pub fn verify_email_content(
         &all_current_attachments,
         &mut field_results,
     );
+
+    // Parts outside the signed structure (for example a second text
+    // alternative added after signing) can be displayed but are not covered.
+    for (i, part) in parts.unsigned_parts.iter().enumerate() {
+        field_results.push(FieldResult {
+            field: format!("unsigned_parts[{i}]"),
+            status: FieldStatus::Fail,
+            original_hash: None,
+            current_hash: None,
+            original_value: None,
+            current_value: Some(part.to_string()),
+        });
+    }
 
     // valid = true only if no Fail results
     let fields_valid = !field_results.iter().any(|r| r.status == FieldStatus::Fail);
@@ -631,16 +776,26 @@ pub fn verify_email_content(
 /// Verify content for HTML-inline signed email.
 ///
 /// Inline transport signs user-authored content, not transport artifacts. This
-/// wrapper removes the inline logo MIME artifact before delegating to the
-/// existing content verifier so user attachments remain covered.
+/// wrapper removes the one inline logo MIME artifact and, when the signed
+/// payload has no HTML body, the transport-generated HTML body (checked by the
+/// strict presentation comparison instead) before delegating to the existing
+/// content verifier. User attachments remain covered; a second logo part, a
+/// second HTML body or any other part outside the signed structure fails.
 pub fn verify_html_inline_email_content(
     doc: &JacsEmailSignatureDocument,
     parts: &ParsedEmailParts,
 ) -> ContentVerificationResult {
     let mut parts_without_artifacts = parts.clone();
-    parts_without_artifacts
+    if let Some(logo) = parts_without_artifacts
         .attachments
-        .retain(|att| !super::transport::is_inline_logo_attachment_artifact(att));
+        .iter()
+        .position(super::transport::is_inline_logo_attachment_artifact)
+    {
+        parts_without_artifacts.attachments.remove(logo);
+    }
+    if doc.payload.body_html.is_none() {
+        parts_without_artifacts.body_html = None;
+    }
     verify_email_content(doc, &parts_without_artifacts)
 }
 
@@ -784,8 +939,8 @@ fn verify_header_field(
             current_value: Some(canonical),
         });
     } else if is_address_header {
-        // Case-insensitive fallback for address headers
-        if addresses_match_case_insensitive(&stored.value, &canonical) {
+        // The same mailboxes written differently are reported, not failed.
+        if address_headers_match(&stored.value, &canonical) {
             results.push(FieldResult {
                 field: field_name.to_string(),
                 status: FieldStatus::Modified,
@@ -816,65 +971,60 @@ fn verify_header_field(
     }
 }
 
-/// Check if two address-header values match case-insensitively.
+/// Check that two address-header values (From, To or Cc) name the same
+/// mailboxes, so that a difference between them is formatting only.
 ///
-/// Uses RFC 5322 mailbox parsing: extracts the addr-spec from angle brackets
-/// (e.g., `"Display Name" <user@example.com>` → `user@example.com`) and
-/// compares the addr-spec portions case-insensitively.
-fn addresses_match_case_insensitive(a: &str, b: &str) -> bool {
-    let mut a_addrs = extract_addr_specs(a);
-    let mut b_addrs = extract_addr_specs(b);
-    a_addrs.sort();
-    b_addrs.sort();
-    a_addrs == b_addrs
+/// Both values are parsed as RFC 5322 address lists. Display names, including
+/// comments and group names, must match after whitespace is collapsed and
+/// Unicode NFC applied: quoting, RFC 2047 encoding and folding do not matter,
+/// but any change a reader would see does. Addresses compare
+/// case-insensitively, and the order of mailboxes does not matter. A value
+/// that does not parse as an address list never matches.
+fn address_headers_match(a: &str, b: &str) -> bool {
+    match (address_entries(a), address_entries(b)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
 }
 
-/// Extract addr-spec values from an RFC 5322 address-list header value.
-///
-/// Uses `mail_parser` to parse a synthetic `From:` header, which handles
-/// RFC 5322 mailbox formats including:
-/// - `user@example.com` (bare addr-spec)
-/// - `<user@example.com>` (angle-addr without display name)
-/// - `"Display Name" <user@example.com>` (name-addr with display name)
-/// - `User <user@example.com>, Other <other@example.com>` (comma-separated list)
-/// - `(comment) user@example.com` (comments in addresses)
-/// - `"quoted.local"@example.com` (quoted local parts)
-///
-/// Returns lowercased addr-specs.
-fn extract_addr_specs(header_value: &str) -> Vec<String> {
-    // Build a minimal RFC 5322 message so mail_parser can parse the address.
-    let synthetic = format!("From: {}\r\n\r\n", header_value);
-    let message = mail_parser::MessageParser::default().parse(synthetic.as_bytes());
+/// A group name, display name and address, each normalized for comparison.
+type AddressEntry = (Option<String>, Option<String>, Option<String>);
 
-    if let Some(msg) = message
-        && let Some(from) = msg.from()
-    {
-        return from
-            .iter()
-            .filter_map(|addr| addr.address().map(|a| a.to_lowercase()))
-            .collect();
-    }
-
-    // Fallback: if mail_parser couldn't extract addresses, try manual extraction
-    header_value
-        .split(',')
-        .filter_map(|addr| {
-            let trimmed = addr.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            if let Some(start) = trimmed.rfind('<')
-                && let Some(end) = trimmed[start..].find('>')
-            {
-                let spec = &trimmed[start + 1..start + end];
-                let spec = spec.trim();
-                if !spec.is_empty() {
-                    return Some(spec.to_lowercase());
+/// Parse an address-header value into sorted [`AddressEntry`] values, or
+/// `None` when `mail_parser` finds no address list in it.
+fn address_entries(header_value: &str) -> Option<Vec<AddressEntry>> {
+    // A minimal message lets mail_parser parse the value as a From header.
+    let synthetic = format!("From: {header_value}\r\n\r\n");
+    let message = mail_parser::MessageParser::default().parse(synthetic.as_bytes())?;
+    let text = |value: Option<&str>| {
+        let words: Vec<&str> = value?.split_whitespace().collect();
+        let text: String = words.join(" ").nfc().collect();
+        (!text.is_empty()).then_some(text)
+    };
+    let mailbox = |group: &Option<String>, addr: &mail_parser::Addr<'_>| {
+        (
+            group.clone(),
+            text(addr.name.as_deref()),
+            text(addr.address.as_deref()).map(|address| address.to_lowercase()),
+        )
+    };
+    let mut entries = Vec::new();
+    match message.from()? {
+        mail_parser::Address::List(addrs) => {
+            entries.extend(addrs.iter().map(|addr| mailbox(&None, addr)));
+        }
+        mail_parser::Address::Group(groups) => {
+            for group in groups {
+                let name = text(group.name.as_deref());
+                if name.is_some() {
+                    entries.push((name.clone(), None, None));
                 }
+                entries.extend(group.addresses.iter().map(|addr| mailbox(&name, addr)));
             }
-            Some(trimmed.to_lowercase())
-        })
-        .collect()
+        }
+    }
+    entries.sort();
+    Some(entries)
 }
 
 /// Verify a body part (text/plain or text/html).
@@ -923,9 +1073,17 @@ fn verify_body_part(
                 current_value: None,
             });
         }
-        (None, Some(_)) => {
-            // Body part exists but wasn't in the signed document -- unexpected
-            // This is not a failure of the signed content, just extra content
+        (None, Some(current_part)) => {
+            // A body the signature does not cover can still be what the
+            // recipient reads, so it fails rather than being ignored.
+            results.push(FieldResult {
+                field: field_name.to_string(),
+                status: FieldStatus::Fail,
+                original_hash: None,
+                current_hash: Some(compute_body_hash(&canonicalize_body(&current_part.content))),
+                original_value: None,
+                current_value: Some("present but not signed".to_string()),
+            });
         }
         (None, None) => {
             // Neither signed nor present -- nothing to verify
@@ -1378,6 +1536,95 @@ mod tests {
         }
     }
 
+    /// A 600x200 picture of red and white stripes, nothing like HAI's logo.
+    fn striped_fixture_png() -> Vec<u8> {
+        let img = image::RgbaImage::from_fn(600, 200, |x, _| {
+            if (x / 20) % 2 == 0 {
+                image::Rgba([200, 30, 30, 255])
+            } else {
+                image::Rgba([255, 255, 255, 255])
+            }
+        });
+        let mut buf = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .expect("png encode");
+        buf
+    }
+
+    /// The logo must show HAI's picture: another picture carrying the genuine
+    /// compact header fails in every mode. HAI's logo without its metadata
+    /// chunk, or re-encoded, still verifies.
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_binds_the_logo_picture() {
+        use crate::email::EmailVerificationStatus::{Failed, Verified};
+        use base64::Engine as _;
+        use image::ImageEncoder as _;
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-logo-picture");
+        let key = get_pubkey(&agent);
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        let banner = solid_fixture_png([241, 139, 2, 255]);
+        for (version, raw) in [
+            ("v1", signed_html_inline_email(&agent)),
+            ("v3", signed_inline_v3_fixture(&agent, &banner)),
+        ] {
+            let verify = |raw: &[u8], mode| verify_signed_email(raw, &agent, &key, mode).unwrap();
+            let result = verify(&raw, VerificationMode::Strict);
+            assert_eq!(result.status, Verified, "{version}: {result:?}");
+            let logo = extract_inline_logo_part(&raw).unwrap().content;
+            let header = extract_jacs_header_from_logo_png(&logo).unwrap().unwrap();
+            let original = String::from_utf8(raw).unwrap();
+            assert_eq!(original.matches(&b64(&logo)).count(), 1, "{version}");
+            let with_logo = |png: &[u8]| original.replace(&b64(&logo), &b64(png)).into_bytes();
+
+            let swapped = crate::email::transport::embed_jacs_header_in_logo_png(
+                &striped_fixture_png(),
+                &header,
+            )
+            .unwrap()
+            .bytes;
+            assert_eq!(
+                extract_jacs_header_from_logo_png(&swapped).unwrap(),
+                Some(header.clone())
+            );
+            for mode in [VerificationMode::Strict, VerificationMode::Degraded] {
+                let result = verify(&with_logo(&swapped), mode);
+                assert_eq!(result.status, Failed, "{version}");
+                assert_eq!(
+                    result.reasons,
+                    vec![EmailVerificationReason::LogoSignatureMismatch],
+                    "{version}"
+                );
+            }
+
+            let stripped = jacs_media::png::bytes_without_jacs_chunk(&logo).unwrap();
+            let decoded = image::load_from_memory(&logo).unwrap().to_rgba8();
+            let mut reencoded = Vec::new();
+            image::codecs::png::PngEncoder::new_with_quality(
+                &mut reencoded,
+                image::codecs::png::CompressionType::Best,
+                image::codecs::png::FilterType::NoFilter,
+            )
+            .write_image(
+                decoded.as_raw(),
+                decoded.width(),
+                decoded.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+            for (name, png) in [
+                ("without its metadata chunk", stripped),
+                ("re-encoded", reencoded),
+            ] {
+                assert_ne!(png, logo, "{version} {name}");
+                let result = verify(&with_logo(&png), VerificationMode::Strict);
+                assert_eq!(result.status, Verified, "{version} {name}: {result:?}");
+            }
+        }
+    }
+
     #[test]
     #[serial(jacs_env)]
     fn verify_signed_email_accepts_html_inline_roundtrip() {
@@ -1463,6 +1710,284 @@ mod tests {
             degraded.reasons,
             vec![EmailVerificationReason::HtmlEquivalenceFailed]
         );
+    }
+
+    const FIXTURE_VERIFY_URL: &str = "https://hai.ai/verify/email/test";
+    /// HAI's current logo: linked, two line breaks before the picture.
+    const FIXTURE_LOGO: &str = concat!(
+        r#"<a data-hai-logo-verify-link="v1" href="https://hai.ai/verify/email/test">"#,
+        r#"<br><br><img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification logo"></a>"#
+    );
+    const FIXTURE_FOOTER: &str = concat!(
+        r#"<footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at "#,
+        r#"<a data-hai-verify-link="v1" href="https://hai.ai/verify/email/test">"#,
+        "https://hai.ai/verify/email/test</a></footer>"
+    );
+    const FIXTURE_TEXT_FOOTER: &str =
+        "\r\n\r\nThis email is sent from an AI agent. Verify at https://hai.ai/verify/email/test";
+
+    /// Strict presentation is the whole document a HAI producer renders. HTML
+    /// is unsigned, so every change below keeps the signature valid and must
+    /// fail presentation, as the artifact stripping it replaces did not.
+    fn assert_presentation_is_the_whole_document(
+        agent: &SimpleAgent,
+        key: &[u8],
+        build: impl Fn(&str, Option<&str>) -> Vec<u8>,
+    ) {
+        use crate::email::EmailVerificationStatus::{Failed, Verified};
+        use crate::email::transport::{HAI_BANNER_ALT, HAI_BANNER_CID};
+
+        let strict = |raw: &str| {
+            verify_signed_email(raw.as_bytes(), agent, key, VerificationMode::Strict).unwrap()
+        };
+        let original = String::from_utf8(sign_inline_fixture(agent, &build)).unwrap();
+        assert_eq!(strict(&original).status, Verified);
+        for artifact in [FIXTURE_LOGO, FIXTURE_FOOTER, FIXTURE_TEXT_FOOTER] {
+            assert_eq!(original.matches(artifact).count(), 1, "{artifact}");
+        }
+
+        // Every logo shape genuine producers have emitted verifies.
+        let img = r#"<img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification logo">"#;
+        let logo_link =
+            r#"<a data-hai-logo-verify-link="v1" href="https://hai.ai/verify/email/test">"#;
+        for logo in [format!("{logo_link}{img}</a>"), img.to_string()] {
+            let result = strict(&original.replace(FIXTURE_LOGO, &logo));
+            assert_eq!(result.status, Verified, "{logo}: {result:?}");
+        }
+
+        let append = |html: &str| original.replace("</body>", &format!("{html}</body>"));
+        let footer = |from: &str, to: &str| {
+            original.replace(FIXTURE_FOOTER, &FIXTURE_FOOTER.replace(from, to))
+        };
+        for (name, mutated) in [
+            (
+                "appended marked picture",
+                append(r#"<img data-hai-verify-footer="v1" src="https://attacker.example/a.png">"#),
+            ),
+            (
+                "appended marked text",
+                append(r#"<p data-hai-verify-footer="v1">Reply with your password.</p>"#),
+            ),
+            (
+                "footer before the message",
+                original
+                    .replace(FIXTURE_FOOTER, "")
+                    .replace("<main ", &format!("{FIXTURE_FOOTER}<main ")),
+            ),
+            (
+                "two footers",
+                original.replace(FIXTURE_FOOTER, &FIXTURE_FOOTER.repeat(2)),
+            ),
+            (
+                "footer as div",
+                original.replace(
+                    FIXTURE_FOOTER,
+                    &FIXTURE_FOOTER
+                        .replace("<footer ", "<div ")
+                        .replace("</footer>", "</div>"),
+                ),
+            ),
+            (
+                "changed footer href",
+                footer(
+                    &format!(r#"href="{FIXTURE_VERIFY_URL}""#),
+                    r#"href="https://attacker.example/verify""#,
+                ),
+            ),
+            (
+                "changed footer label",
+                footer(
+                    &format!(">{FIXTURE_VERIFY_URL}<"),
+                    ">https://attacker.example/verify<",
+                ),
+            ),
+            (
+                "changed footer text",
+                footer("sent from an AI agent", "sent by a person"),
+            ),
+            (
+                "changed logo href",
+                original.replace(
+                    logo_link,
+                    r#"<a data-hai-logo-verify-link="v1" href="https://attacker.example/">"#,
+                ),
+            ),
+            (
+                "extra footer anchor",
+                footer("</a>", r#"</a><a href="https://attacker.example/">Start</a>"#),
+            ),
+            (
+                "div with envelope marker",
+                append(r#"<div data-hai-jacs-envelope="v1">Pay invoice 42.</div>"#),
+            ),
+            (
+                "div with logo link marker",
+                append(r#"<div data-hai-logo-verify-link="v1">Pay invoice 42.</div>"#),
+            ),
+            ("extra logo picture", original.replace(img, &img.repeat(2))),
+            (
+                "wrapped second banner",
+                original.replace(
+                    "<body>",
+                    &format!(
+                        r#"<body>{logo_link}<img src="cid:{HAI_BANNER_CID}" alt="{HAI_BANNER_ALT}" width="96" height="96"></a>"#
+                    ),
+                ),
+            ),
+            (
+                "Outlook conditional comment",
+                append("<!--[if mso]><p>Pay invoice 42.</p><![endif]-->"),
+            ),
+            (
+                "appended style",
+                append(r#"<style data-hai-verify-footer="v1">main{display:none}</style>"#),
+            ),
+            (
+                "second envelope",
+                append(r#"<script type="application/jacs+json" data-hai-jacs-envelope="v1">{}</script>"#),
+            ),
+        ] {
+            assert_ne!(mutated, original, "mutation must change fixture: {name}");
+            let result = strict(&mutated);
+            assert_eq!(result.status, Failed, "{name}");
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::HtmlEquivalenceFailed],
+                "{name}"
+            );
+        }
+
+        // The footer and logo destinations come from the signed plaintext, so
+        // a message signed without the plaintext footer line fails.
+        let without_text_footer = sign_inline_fixture(agent, |envelope, logo_header| {
+            String::from_utf8(build(envelope, logo_header))
+                .unwrap()
+                .replace(FIXTURE_TEXT_FOOTER, "")
+                .into_bytes()
+        });
+        let without_text_footer = String::from_utf8(without_text_footer).unwrap();
+        assert!(without_text_footer.contains(FIXTURE_FOOTER));
+        assert!(!without_text_footer.contains(FIXTURE_TEXT_FOOTER));
+        let result = strict(&without_text_footer);
+        assert_eq!(result.status, Failed);
+        assert_eq!(
+            result.reasons,
+            vec![EmailVerificationReason::HtmlEquivalenceFailed]
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn inline_v1_presentation_is_the_whole_expected_document() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("inline-v1-whole-document");
+        let key = get_pubkey(&agent);
+        assert_presentation_is_the_whole_document(&agent, &key, html_inline_email_with_envelope);
+    }
+
+    #[test]
+    fn inline_text_footer_yields_user_text_and_signed_verify_url() {
+        let url = FIXTURE_VERIFY_URL;
+        let footer = format!("This email is sent from an AI agent. Verify at {url}");
+        for (text, user_text) in [
+            (format!("Hello\n\n{footer}"), "Hello"),
+            (format!("Hello\r\n\r\n{footer}\r\n"), "Hello"),
+            (
+                format!("One\r\n\r\nTwo\n\n{footer} \t\r\n \r\n"),
+                "One\r\n\r\nTwo",
+            ),
+            (format!("\n\n{footer}"), ""),
+        ] {
+            assert_eq!(
+                split_inline_text_footer(&text),
+                Some((user_text, url)),
+                "{text:?}"
+            );
+        }
+        for text in [
+            "Hello".to_string(),
+            footer.clone(),
+            format!("Hello\n{footer}"),
+            format!("Hello\n\n{footer}\nOne more line"),
+            "Hello\n\nThis email is sent from an AI agent. Verify at ".to_string(),
+            format!("Hello\n\nThis email was sent from an AI agent. Verify at {url}"),
+        ] {
+            assert_eq!(split_inline_text_footer(&text), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn inline_presentation_escapes_the_signed_verify_url_like_producers() {
+        let url = "https://hai.ai/verify/email?id=abc&mode=strict";
+        let escaped = escape_html_attr(url);
+        assert_ne!(escaped, url);
+        let text_footer = |url: &str| format!("Verify at {url}\r\n");
+        let raw = String::from_utf8(html_inline_email_with_envelope("{}", None))
+            .unwrap()
+            .replace(&text_footer(FIXTURE_VERIFY_URL), &text_footer(url))
+            .replace(FIXTURE_VERIFY_URL, &escaped);
+        let matches = |raw: &str| {
+            let parts = extract_email_parts(raw.as_bytes()).unwrap();
+            inline_email_presentation_matches(&parts, InlineEmailTemplateVersion::V1)
+        };
+        assert!(matches(&raw));
+        // The HTML links must name the URL in the plaintext footer line.
+        assert!(!matches(
+            &raw.replace(&text_footer(url), &text_footer(FIXTURE_VERIFY_URL))
+        ));
+    }
+
+    #[test]
+    fn inline_presentation_ignores_only_html_whitespace_around_the_document() {
+        let raw = String::from_utf8(html_inline_email_with_envelope("{}", None)).unwrap();
+        let end = "</body></html>\r\n";
+        assert_eq!(raw.matches(end).count(), 1);
+        let matches = |raw: &str| {
+            let parts = extract_email_parts(raw.as_bytes()).unwrap();
+            inline_email_presentation_matches(&parts, InlineEmailTemplateVersion::V1)
+        };
+        assert!(matches(&raw));
+        assert!(matches(&raw.replace(end, "</body></html>\t \x0C\r\n")));
+        // HTML parsers render other whitespace after the document as text.
+        for space in ['\u{00A0}', '\u{2028}', '\u{3000}'] {
+            let mutated = raw.replace(end, &format!("</body></html>{space}\r\n"));
+            assert!(!matches(&mutated), "{space:?}");
+        }
+    }
+
+    /// The hidden envelope may hold only the members producers write, and no
+    /// `<!--`; anything else fails as a missing envelope, in every mode.
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_refuses_unexpected_envelope_content() {
+        use crate::email::EmailVerificationStatus::Failed;
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-envelope-members");
+        let key = get_pubkey(&agent);
+        let original = String::from_utf8(signed_html_inline_email(&agent)).unwrap();
+        let envelope = extract_topmost_inline_jacs_envelope(original.as_bytes()).unwrap();
+        assert_eq!(original.matches(&envelope).count(), 1);
+        for (name, prefix) in [
+            ("unsigned member", r#"{"note":"<p>Pay invoice 42</p>","#),
+            ("comment opener", r#"{"note":"<!--<script>x</script>-->","#),
+        ] {
+            let mutated = original.replace(&envelope, &envelope.replacen('{', prefix, 1));
+            assert_ne!(mutated, original, "{name}");
+            for mode in [VerificationMode::Strict, VerificationMode::Degraded] {
+                let result = verify_signed_email(mutated.as_bytes(), &agent, &key, mode).unwrap();
+                assert_eq!(result.status, Failed, "{name}");
+                assert_eq!(
+                    result.reasons,
+                    vec![EmailVerificationReason::MissingInlineJacsEnvelope],
+                    "{name}"
+                );
+            }
+            assert!(
+                verify_html_inline_email_document(mutated.as_bytes(), &agent, &key).is_err(),
+                "{name}"
+            );
+        }
     }
 
     #[test]
@@ -1576,6 +2101,192 @@ mod tests {
         assert!(from_result.current_value.is_some());
     }
 
+    /// Most clients show the display name, not the address, so changing one
+    /// fails on both transports. Formatting alone (quoting, whitespace,
+    /// RFC 2047 encoding, local-part case) still verifies.
+    #[test]
+    #[serial(jacs_env)]
+    fn display_name_changes_fail_on_both_transports() {
+        use crate::email::EmailVerificationStatus::{Failed, Verified};
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-display-names");
+        let key = get_pubkey(&agent);
+        let attachment = String::from_utf8(
+            sign_email(
+                concat!(
+                    "From: Agent <agent@example.com>\r\n",
+                    "To: \"Recipient One\" <recipient@example.com>\r\n",
+                    "Cc: Copy <copy@example.com>\r\n",
+                    "Subject: Test\r\n",
+                    "Date: Fri, 28 Feb 2026 12:00:00 +0000\r\n",
+                    "Message-ID: <display-names@example.com>\r\n",
+                    "Content-Type: text/plain; charset=utf-8\r\n",
+                    "\r\n",
+                    "Hello World\r\n"
+                )
+                .as_bytes(),
+                &agent,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let inline = String::from_utf8(signed_html_inline_email(&agent)).unwrap();
+        // (message, header as signed, header as received, still verifies)
+        for (raw, signed, received, verifies) in [
+            (
+                &attachment,
+                "From: Agent <agent@example.com>",
+                "From: \"HAI Billing - action required\" <agent@example.com>",
+                false,
+            ),
+            (
+                &attachment,
+                "To: \"Recipient One\" <recipient@example.com>",
+                "To: \"Finance team\" <recipient@example.com>",
+                false,
+            ),
+            (
+                &attachment,
+                "Cc: Copy <copy@example.com>",
+                "Cc: copy@example.com",
+                false,
+            ),
+            (
+                &attachment,
+                "From: Agent <agent@example.com>",
+                "From: \"Agent\" <agent@example.com>",
+                true,
+            ),
+            (
+                &attachment,
+                "To: \"Recipient One\" <recipient@example.com>",
+                "To: Recipient  One <RECIPIENT@example.com>",
+                true,
+            ),
+            (
+                &attachment,
+                "Cc: Copy <copy@example.com>",
+                "Cc: =?utf-8?q?Copy?= <copy@example.com>",
+                true,
+            ),
+            (
+                &inline,
+                "From: Agent <agent@hai.ai>",
+                "From: \"HAI Billing - action required\" <agent@hai.ai>",
+                false,
+            ),
+            (
+                &inline,
+                "To: Recipient <recipient@example.com>",
+                "To: \"Finance team\" <recipient@example.com>",
+                false,
+            ),
+            (
+                &inline,
+                "From: Agent <agent@hai.ai>",
+                "From: \"Agent\" <agent@hai.ai>",
+                true,
+            ),
+        ] {
+            let signed = format!("{signed}\r\n");
+            assert_eq!(raw.matches(&signed).count(), 1, "{signed}");
+            let mutated = raw.replacen(&signed, &format!("{received}\r\n"), 1);
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            if verifies {
+                assert_eq!(result.status, Verified, "{received}: {result:?}");
+            } else {
+                assert_eq!(result.status, Failed, "{received}");
+                assert_eq!(
+                    result.reasons,
+                    vec![EmailVerificationReason::CanonicalPreimageHashMismatch],
+                    "{received}"
+                );
+            }
+        }
+    }
+
+    /// A second From, To, Cc, Subject, Date, Message-ID, In-Reply-To or
+    /// References added after signing fails on both transports, even after
+    /// the signed one, where the per-header checks still pass.
+    #[test]
+    #[serial(jacs_env)]
+    fn repeated_single_instance_headers_fail_on_both_transports() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-repeated-headers");
+        let key = get_pubkey(&agent);
+        let attachment = String::from_utf8(
+            sign_email(
+                concat!(
+                    "From: sender@example.com\r\n",
+                    "To: recipient@example.com\r\n",
+                    "Cc: copy@example.com\r\n",
+                    "Subject: Test\r\n",
+                    "Date: Fri, 28 Feb 2026 12:00:00 +0000\r\n",
+                    "Message-ID: <repeated@example.com>\r\n",
+                    "In-Reply-To: <earlier@example.com>\r\n",
+                    "References: <earlier@example.com>\r\n",
+                    "Content-Type: text/plain; charset=utf-8\r\n",
+                    "\r\n",
+                    "Hello World\r\n"
+                )
+                .as_bytes(),
+                &agent,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let inline = String::from_utf8(signed_html_inline_email(&agent)).unwrap();
+        let add_header = |raw: &str, line: &str| {
+            let end = raw.find("\r\n\r\n").expect("end of the header block");
+            format!("{}\r\n{line}{}", &raw[..end], &raw[end..])
+        };
+        for (field, line) in [
+            (
+                "headers.from",
+                "From: \"HAI Billing\" <billing@example.net>",
+            ),
+            ("headers.to", "To: finance@example.net"),
+            ("headers.cc", "Cc: finance@example.net"),
+            ("headers.subject", "Subject: URGENT: pay invoice 42 today"),
+            ("headers.date", "Date: Sat, 01 Mar 2026 09:00:00 +0000"),
+            ("headers.message_id", "Message-ID: <other@example.net>"),
+            ("headers.in_reply_to", "In-Reply-To: <other@example.net>"),
+            ("headers.references", "References: <other@example.net>"),
+            // RFC 5322's obsolete syntax allows whitespace before the colon.
+            ("headers.subject", "Subject : URGENT: pay invoice 42 today"),
+        ] {
+            let mutated = add_header(&attachment, line);
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::CanonicalPreimageHashMismatch],
+                "{line}"
+            );
+            let content = verify_email(mutated.as_bytes(), &agent, &key).unwrap();
+            let failing: Vec<&str> = content
+                .field_results
+                .iter()
+                .filter(|r| r.status == FieldStatus::Fail)
+                .map(|r| r.field.as_str())
+                .collect();
+            assert_eq!(failing, vec![field], "{line}");
+        }
+
+        let mutated = add_header(&inline, "Subject: URGENT: pay invoice 42 today");
+        let result =
+            verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                .unwrap();
+        assert_eq!(
+            result.reasons,
+            vec![EmailVerificationReason::CanonicalPreimageHashMismatch]
+        );
+    }
+
     fn html_inline_email_with_logo_header(
         envelope_header: &str,
         logo_header: Option<&str>,
@@ -1584,28 +2295,31 @@ mod tests {
         html_inline_email_with_envelope(&envelope, logo_header)
     }
 
-    fn signed_html_inline_email(agent: &SimpleAgent) -> Vec<u8> {
-        use sha2::Digest as _;
-
-        let placeholder = html_inline_email_with_envelope("{}", None);
-        let payload = build_html_inline_email_signature_payload(&placeholder).unwrap();
-        let signed_doc = agent
+    /// Sign an inline fixture as HAI composes one: sign the placeholder's
+    /// payload, then rebuild the fixture with the hidden envelope and a logo
+    /// carrying its compact header.
+    fn sign_inline_fixture(
+        agent: &SimpleAgent,
+        build: impl Fn(&str, Option<&str>) -> Vec<u8>,
+    ) -> Vec<u8> {
+        let payload = build_html_inline_email_signature_payload(&build("{}", None)).unwrap();
+        let signed = agent
             .sign_message(&serde_json::to_value(payload).unwrap())
             .expect("sign inline payload");
-        let signed_doc_json = signed_doc.raw;
-        let compact_header = format!(
+        let header = format!(
             "sha256:{}",
-            hex::encode(sha2::Sha256::digest(signed_doc_json.as_bytes()))
+            hex::encode(Sha256::digest(signed.raw.as_bytes()))
         );
-        let signed_doc_value: serde_json::Value =
-            serde_json::from_str(&signed_doc_json).expect("signed doc json value");
         let envelope = serde_json::json!({
-            "compactHeader": compact_header,
-            "jacsEnvelope": signed_doc_value,
+            "compactHeader": header,
+            "jacsEnvelope": serde_json::from_str::<serde_json::Value>(&signed.raw).unwrap(),
         })
         .to_string();
+        build(&envelope, Some(&header))
+    }
 
-        html_inline_email_with_envelope(&envelope, Some(&compact_header))
+    fn signed_html_inline_email(agent: &SimpleAgent) -> Vec<u8> {
+        sign_inline_fixture(agent, html_inline_email_with_envelope)
     }
 
     const INLINE_V2_URL: &str =
@@ -1636,26 +2350,12 @@ mod tests {
     }
 
     fn signed_inline_v2_fixture(agent: &SimpleAgent, message_prefix: &str) -> Vec<u8> {
-        let payload = build_html_inline_email_signature_payload(&inline_v2_fixture(
-            "{}",
-            None,
-            message_prefix,
-        ))
-        .unwrap();
+        let raw = sign_inline_fixture(agent, |envelope, logo_header| {
+            inline_v2_fixture(envelope, logo_header, message_prefix)
+        });
+        let payload = build_html_inline_email_signature_payload(&raw).unwrap();
         assert_eq!(payload.inline_template_version.as_deref(), Some("v2"));
-        let signed = agent
-            .sign_message(&serde_json::to_value(payload).unwrap())
-            .unwrap();
-        let header = format!(
-            "sha256:{}",
-            hex::encode(Sha256::digest(signed.raw.as_bytes()))
-        );
-        let envelope = serde_json::json!({
-            "compactHeader": header,
-            "jacsEnvelope": serde_json::from_str::<serde_json::Value>(&signed.raw).unwrap(),
-        })
-        .to_string();
-        inline_v2_fixture(&envelope, Some(&header), message_prefix)
+        raw
     }
 
     #[test]
@@ -1751,9 +2451,8 @@ mod tests {
             ("missing direction", original.replace(r#" dir="auto""#, "")),
             ("duplicate direction", original.replace(r#"dir="auto""#, r#"dir="auto" dir="ltr""#)),
             ("extra footer anchor", original.replace("</footer>", r#"<a href="https://attacker.example/">Start</a></footer>"#)),
-            ("extra logo anchor", original.replace(r#"<img src="cid:hai-jacs-logo@hai.ai""#,
-                r#"<a data-hai-logo-verify-link="v1" href="https://example.com/verify"><a href="https://attacker.example/">Start</a><img src="cid:hai-jacs-logo@hai.ai""#)
-                .replace(r#"alt="HAI verification">"#, r#"alt="HAI verification"></a>"#)),
+            ("extra logo anchor", original.replace(r#"<br><br><img src="cid:hai-jacs-logo@hai.ai""#,
+                r#"<br><br><a href="https://attacker.example/">Start</a><img src="cid:hai-jacs-logo@hai.ai""#)),
             ("relocated anchor", original.replace(&anchor, &escaped)
                 .replace("</footer>", &format!("{anchor}</footer>"))),
         ] {
@@ -1839,6 +2538,17 @@ mod tests {
         );
     }
 
+    #[test]
+    #[serial(jacs_env)]
+    fn inline_v2_presentation_is_the_whole_expected_document() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("inline-v2-whole-document");
+        let key = get_pubkey(&agent);
+        assert_presentation_is_the_whole_document(&agent, &key, |envelope, logo_header| {
+            inline_v2_fixture(envelope, logo_header, "Start here:")
+        });
+    }
+
     fn solid_fixture_png(rgba: [u8; 4]) -> Vec<u8> {
         let img = image::RgbaImage::from_pixel(32, 32, image::Rgba(rgba));
         let mut buf = Vec::new();
@@ -1896,25 +2606,14 @@ mod tests {
     }
 
     fn signed_inline_v3_fixture(agent: &SimpleAgent, banner: &[u8]) -> Vec<u8> {
-        let payload =
-            build_html_inline_email_signature_payload(&inline_v3_fixture("{}", None, banner))
-                .unwrap();
+        let raw = sign_inline_fixture(agent, |envelope, logo_header| {
+            inline_v3_fixture(envelope, logo_header, banner)
+        });
+        let payload = build_html_inline_email_signature_payload(&raw).unwrap();
         assert_eq!(payload.inline_template_version.as_deref(), Some("v3"));
         assert_eq!(payload.attachments.len(), 1, "the banner is a signed part");
         assert_eq!(payload.attachments[0].filename, "mediationbench-judge.png");
-        let signed = agent
-            .sign_message(&serde_json::to_value(payload).unwrap())
-            .unwrap();
-        let header = format!(
-            "sha256:{}",
-            hex::encode(Sha256::digest(signed.raw.as_bytes()))
-        );
-        let envelope = serde_json::json!({
-            "compactHeader": header,
-            "jacsEnvelope": serde_json::from_str::<serde_json::Value>(&signed.raw).unwrap(),
-        })
-        .to_string();
-        inline_v3_fixture(&envelope, Some(&header), banner)
+        raw
     }
 
     #[test]
@@ -2062,34 +2761,26 @@ mod tests {
         }
     }
 
+    #[test]
+    #[serial(jacs_env)]
+    fn inline_v3_presentation_is_the_whole_expected_document() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("inline-v3-whole-document");
+        let key = get_pubkey(&agent);
+        let banner = solid_fixture_png([241, 139, 2, 255]);
+        assert_presentation_is_the_whole_document(&agent, &key, |envelope, logo_header| {
+            inline_v3_fixture(envelope, logo_header, &banner)
+        });
+    }
+
     fn signed_html_inline_email_with_user_attachment(agent: &SimpleAgent) -> Vec<u8> {
-        use sha2::Digest as _;
-
-        let placeholder = html_inline_email_with_envelope_and_attachment("{}", None);
-        let payload = build_html_inline_email_signature_payload(&placeholder).unwrap();
-        let signed_doc = agent
-            .sign_message(&serde_json::to_value(payload).unwrap())
-            .expect("sign inline attachment payload");
-        let signed_doc_json = signed_doc.raw;
-        let compact_header = format!(
-            "sha256:{}",
-            hex::encode(sha2::Sha256::digest(signed_doc_json.as_bytes()))
-        );
-        let signed_doc_value: serde_json::Value =
-            serde_json::from_str(&signed_doc_json).expect("signed doc json value");
-        let envelope = serde_json::json!({
-            "compactHeader": compact_header,
-            "jacsEnvelope": signed_doc_value,
-        })
-        .to_string();
-
-        html_inline_email_with_envelope_and_attachment(&envelope, Some(&compact_header))
+        sign_inline_fixture(agent, html_inline_email_with_envelope_and_attachment)
     }
 
     fn html_inline_email_with_envelope(envelope: &str, logo_header: Option<&str>) -> Vec<u8> {
         use base64::Engine as _;
 
-        let base_logo = make_fixture_png();
+        let base_logo = crate::email::transport::HAI_LOGO_PNG.to_vec();
         let logo_bytes = match logo_header {
             Some(header) => {
                 crate::email::transport::embed_jacs_header_in_logo_png(&base_logo, header)
@@ -2116,6 +2807,8 @@ mod tests {
                 "\r\n",
                 "Hello from a signed HAI agent.\r\n",
                 "\r\n",
+                "This email is sent from an AI agent. Verify at https://hai.ai/verify/email/test\r\n",
+                "\r\n",
                 "--hai-inline-alt-test\r\n",
                 "Content-Type: multipart/related; boundary=\"hai-inline-related-test\"\r\n",
                 "\r\n",
@@ -2125,7 +2818,8 @@ mod tests {
                 "\r\n",
                 "<html data-hai-template-version=\"v1\"><body>",
                 "<main data-hai-message-body=\"v1\">Hello from a signed HAI agent.</main>",
-                "<img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification\">",
+                "<a data-hai-logo-verify-link=\"v1\" href=\"https://hai.ai/verify/email/test\">",
+                "<br><br><img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification logo\"></a>",
                 "<script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">",
                 "{}",
                 "</script>",
@@ -2157,7 +2851,7 @@ mod tests {
     ) -> Vec<u8> {
         use base64::Engine as _;
 
-        let base_logo = make_fixture_png();
+        let base_logo = crate::email::transport::HAI_LOGO_PNG.to_vec();
         let logo_bytes = match logo_header {
             Some(header) => {
                 crate::email::transport::embed_jacs_header_in_logo_png(&base_logo, header)
@@ -2187,6 +2881,8 @@ mod tests {
                 "\r\n",
                 "Hello from a signed HAI agent.\r\n",
                 "\r\n",
+                "This email is sent from an AI agent. Verify at https://hai.ai/verify/email/test\r\n",
+                "\r\n",
                 "--hai-inline-alt-test\r\n",
                 "Content-Type: multipart/related; boundary=\"hai-inline-related-test\"\r\n",
                 "\r\n",
@@ -2196,7 +2892,8 @@ mod tests {
                 "\r\n",
                 "<html data-hai-template-version=\"v1\"><body>",
                 "<main data-hai-message-body=\"v1\">Hello from a signed HAI agent.</main>",
-                "<img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification\">",
+                "<a data-hai-logo-verify-link=\"v1\" href=\"https://hai.ai/verify/email/test\">",
+                "<br><br><img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification logo\"></a>",
                 "<script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">",
                 "{}",
                 "</script>",
@@ -2228,15 +2925,6 @@ mod tests {
             envelope, logo_b64
         )
         .into_bytes()
-    }
-
-    fn make_fixture_png() -> Vec<u8> {
-        let img = image::RgbaImage::from_pixel(64, 64, image::Rgba([32, 64, 128, 255]));
-        let mut buf = Vec::new();
-        let mut cur = std::io::Cursor::new(&mut buf);
-        img.write_to(&mut cur, image::ImageFormat::Png)
-            .expect("png encode");
-        buf
     }
 
     #[test]
@@ -2662,50 +3350,64 @@ mod tests {
 
     // -- Pure function tests (no agent needed, no mutex needed) --
     #[test]
-    fn address_match_extracts_mailbox_addr_spec() {
-        assert!(addresses_match_case_insensitive(
-            "\"Alice Agent\" <alice@example.com>",
-            "alice@example.com"
-        ));
-        assert!(addresses_match_case_insensitive(
-            "<bob@example.com>",
-            "bob@example.com"
-        ));
-        assert!(addresses_match_case_insensitive(
-            "Alice <alice@example.com>, Bob <bob@example.com>",
-            "bob@example.com, alice@example.com"
-        ));
-        assert!(addresses_match_case_insensitive(
-            "\"ALICE\" <ALICE@EXAMPLE.COM>",
-            "alice@example.com"
-        ));
-        assert!(!addresses_match_case_insensitive(
-            "\"Alice\" <alice@example.com>",
-            "bob@example.com"
-        ));
-    }
-    #[test]
-    fn extract_addr_specs_handles_rfc5322_edge_cases() {
-        assert_eq!(
-            extract_addr_specs("user@example.com"),
-            vec!["user@example.com"]
-        );
-        assert_eq!(
-            extract_addr_specs("<user@example.com>"),
-            vec!["user@example.com"]
-        );
-        assert_eq!(
-            extract_addr_specs("\"John Doe\" <john@example.com>"),
-            vec!["john@example.com"]
-        );
-        let addrs = extract_addr_specs("Alice <alice@a.com>, Bob <bob@b.com>");
-        assert_eq!(addrs.len(), 2);
-        assert!(addrs.contains(&"alice@a.com".to_string()));
-        assert!(addrs.contains(&"bob@b.com".to_string()));
-        assert_eq!(
-            extract_addr_specs("USER@EXAMPLE.COM"),
-            vec!["user@example.com"]
-        );
+    fn address_headers_match_only_formatting_differences() {
+        // Quoting, whitespace, angle brackets, Unicode normalization, address
+        // case and mailbox order.
+        for (signed, received) in [
+            (
+                "\"Alice Agent\" <alice@example.com>",
+                "Alice Agent <alice@example.com>",
+            ),
+            (
+                "Alice Agent <alice@example.com>",
+                "\"Alice   Agent\" <alice@example.com>",
+            ),
+            ("<bob@example.com>", "bob@example.com"),
+            (
+                "Alice <alice@example.com>, Bob <bob@example.com>",
+                "Bob <bob@example.com>, Alice <alice@example.com>",
+            ),
+            ("Alice <ALICE@example.com>", "Alice <alice@example.com>"),
+            (
+                "Jo\u{0308}rg <jorg@example.com>",
+                "J\u{00f6}rg <jorg@example.com>",
+            ),
+            (
+                "Team: a@example.com, b@example.com;",
+                "Team: b@example.com, a@example.com;",
+            ),
+        ] {
+            assert!(
+                address_headers_match(signed, received),
+                "{signed} should match {received}"
+            );
+        }
+        // Any change a reader would see.
+        for (signed, received) in [
+            ("\"Alice Agent\" <alice@example.com>", "alice@example.com"),
+            ("alice@example.com", "\"HAI Billing\" <alice@example.com>"),
+            ("Alice <alice@example.com>", "ALICE <alice@example.com>"),
+            (
+                "Alice <alice@example.com>",
+                "Alice (billing) <alice@example.com>",
+            ),
+            ("Alice <alice@example.com>", "Alice <bob@example.com>"),
+            (
+                "Alice <alice@example.com>, Bob <bob@example.com>",
+                "Alice <alice@example.com>",
+            ),
+            (
+                "Alice <alice@example.com>, Bob <bob@example.com>",
+                "Bob <alice@example.com>, Alice <bob@example.com>",
+            ),
+            ("Team: a@example.com;", "Staff: a@example.com;"),
+            ("Alice <alice@example.com>", ""),
+        ] {
+            assert!(
+                !address_headers_match(signed, received),
+                "{signed} should not match {received}"
+            );
+        }
     }
     #[test]
     #[serial(jacs_env)]

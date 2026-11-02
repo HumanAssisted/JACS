@@ -19,7 +19,7 @@ Content-Type: multipart/related; boundary="hai-inline-related-03"
 Content-Type: text/html; charset=utf-8
 Content-Transfer-Encoding: 8bit
 
-<!doctype html><html data-hai-template-version="v1"><body><p>Hello from a signed HAI agent.</p><a data-hai-logo-verify-link="v1" href="https://hai.ai/verify/email/html-inline-03"><img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification"></a><script type="application/jacs+json" data-hai-jacs-envelope="v1">{"fixture":"03","compactHeader":"fixture-header-03"}</script><footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at <a data-hai-verify-link="v1" href="https://hai.ai/verify/email/html-inline-03">https://hai.ai/verify/email/html-inline-03</a></footer></body></html>
+<!doctype html><html data-hai-template-version="v1"><body><p>Hello from a signed HAI agent.</p><a data-hai-logo-verify-link="v1" href="https://hai.ai/verify/email/html-inline-03"><img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification logo"></a><script type="application/jacs+json" data-hai-jacs-envelope="v1">{"fixture":"03","compactHeader":"fixture-header-03"}</script><footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at <a data-hai-verify-link="v1" href="https://hai.ai/verify/email/html-inline-03">https://hai.ai/verify/email/html-inline-03</a></footer></body></html>
 
 --hai-inline-related-03
 Content-Type: image/png

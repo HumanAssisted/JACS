@@ -74,7 +74,10 @@ pub fn sign_email_named_with_extras(
 ///
 /// Accepts any type implementing [`JacsSigner`], including `SimpleAgent`.
 ///
-/// Returns the modified email bytes with the JACS attachment.
+/// Returns the modified email bytes with the JACS attachment. Returns
+/// [`EmailError::UnsupportedFeature`] when a MIME part is neither the first
+/// text/plain or text/html body nor an attachment (see
+/// [`ParsedEmailParts::unsigned_parts`]), because no signature could cover it.
 pub fn sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>, EmailError> {
     sign_email_inner(raw_email, signer, DEFAULT_JACS_SIGNATURE_FILENAME, None)
 }
@@ -99,6 +102,7 @@ fn sign_email_inner(
 
     // Step 1: Parse and canonicalize (from the wrapped email)
     let parts = extract_email_parts(&wrapped_email)?;
+    refuse_unsigned_parts(&parts)?;
 
     // Step 2-5: Build the attachment-mode payload.
     let payload = build_email_signature_payload(&parts, parent_signature_hash, true, true, false)?;
@@ -115,12 +119,26 @@ fn sign_email_inner(
 /// Inline transport signs the same header scope as attachment mode, plus the
 /// text body and user attachments. Generated HTML and inline signature
 /// artifacts are excluded because they are added after the signed content is
-/// authored.
+/// authored. Returns [`EmailError::UnsupportedFeature`] for a MIME part that
+/// is neither a body nor an attachment, or for more than one HAI logo part.
 pub fn build_html_inline_email_signature_payload(
     raw_email: &[u8],
 ) -> Result<EmailSignaturePayload, EmailError> {
     check_email_size(raw_email)?;
     let parts = extract_email_parts(raw_email)?;
+    refuse_unsigned_parts(&parts)?;
+    // The verifier removes exactly one logo artifact; any other logo-shaped
+    // part would be left uncovered, so refuse it here.
+    let logo_parts = parts
+        .attachments
+        .iter()
+        .filter(|att| super::transport::is_inline_logo_attachment_artifact(att))
+        .count();
+    if logo_parts > 1 {
+        return Err(EmailError::UnsupportedFeature(format!(
+            "inline email has {logo_parts} HAI logo parts; the transport adds exactly one"
+        )));
+    }
     // Callers may prepare the signed preimage before generating HTML. Keep
     // that historical plaintext-only helper usage as V1 (no signed field).
     let version = match parts.body_html.as_ref() {
@@ -137,6 +155,25 @@ pub fn build_html_inline_email_signature_payload(
         payload.inline_template_version = Some(version.as_str().into());
     }
     Ok(payload)
+}
+
+/// Refuse to sign an email with a MIME part outside the signed structure.
+///
+/// Verification fails on such parts, so signing them would produce a
+/// signature that never verifies while the part stays visible to readers.
+fn refuse_unsigned_parts(parts: &ParsedEmailParts) -> Result<(), EmailError> {
+    let Some(first) = parts.unsigned_parts.first() else {
+        return Ok(());
+    };
+    let count = parts.unsigned_parts.len();
+    let (noun, verb) = if count == 1 {
+        ("part", "is")
+    } else {
+        ("parts", "are")
+    };
+    Err(EmailError::UnsupportedFeature(format!(
+        "email has {count} MIME {noun} that {verb} neither a body nor an attachment; first: {first}"
+    )))
 }
 
 fn build_email_signature_payload(

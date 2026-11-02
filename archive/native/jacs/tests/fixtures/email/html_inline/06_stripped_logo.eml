@@ -16,6 +16,6 @@ Hello with a stripped logo.
 Content-Type: text/html; charset=utf-8
 Content-Transfer-Encoding: 8bit
 
-<!doctype html><html data-hai-template-version="v1"><body><p>Hello with a stripped logo.</p><img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification"><script type="application/jacs+json" data-hai-jacs-envelope="v1">{"fixture":"06","compactHeader":"fixture-header-06"}</script><footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at <a data-hai-verify-link="v1" href="https://hai.ai/verify/email/html-inline-06">https://hai.ai/verify/email/html-inline-06</a></footer></body></html>
+<!doctype html><html data-hai-template-version="v1"><body><p>Hello with a stripped logo.</p><img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification logo"><script type="application/jacs+json" data-hai-jacs-envelope="v1">{"fixture":"06","compactHeader":"fixture-header-06"}</script><footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at <a data-hai-verify-link="v1" href="https://hai.ai/verify/email/html-inline-06">https://hai.ai/verify/email/html-inline-06</a></footer></body></html>
 
 --hai-inline-alt-06--

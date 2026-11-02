@@ -27,6 +27,20 @@
 
 ## Unreleased
 
+### 2026-11-01 — Strict inline email verification covers the whole message
+
+- Strict HTML-inline verification rebuilds the whole V1–V3 document instead of
+  stripping marked elements; rewritten footer or logo links (for example Safe
+  Links) fail. The logo must show HAI's picture carrying the signed header (new
+  public `HAI_LOGO_PNG`, `HAI_LOGO_ALT`, `HAI_VERIFY_FOOTER_TEXT_PREFIX`); the
+  envelope may hold only `compactHeader`, `jacsEnvelope` and `agentEnvelope`,
+  without `<!--`.
+- Both transports fail on MIME parts outside the signature
+  (`ParsedEmailParts::unsigned_parts`), changed From/To/Cc display names and
+  repeated single-instance headers; signing refuses uncovered parts, so
+  gateways appending MIME parts break verification.
+- Targeted tests not yet run; source is unreleased.
+
 ### 2026-11-01 — Inline email V3: one picture above the text
 
 - Add `InlineEmailTemplateVersion::V3`: V2's links and `dir="auto"` container
