@@ -124,6 +124,46 @@ pub struct ParsedEmailParts {
     pub attachments: Vec<ParsedAttachment>,
     /// JACS signature attachments found in the email.
     pub jacs_attachments: Vec<ParsedAttachment>,
+    /// MIME leaf parts that are neither the selected bodies nor attachments.
+    /// No JACS email signature covers them: signing refuses them and
+    /// content verification fails on them.
+    pub unsigned_parts: Vec<UnsignedPart>,
+}
+
+/// A MIME leaf part outside the signed email structure: not the selected
+/// text/plain or text/html body and not an attachment. Mail clients can show
+/// it (for example a second text alternative), but no signature covers it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsignedPart {
+    /// Lowercase `type/subtype`, or empty when the part has no Content-Type.
+    pub content_type: String,
+    /// Content-Disposition type, if present.
+    pub content_disposition: Option<String>,
+    /// Content-ID without angle brackets, if present.
+    pub content_id: Option<String>,
+    /// Decoded size in bytes.
+    pub size_bytes: usize,
+}
+
+impl std::fmt::Display for UnsignedPart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.content_type.is_empty() {
+            f.write_str("part without Content-Type")?;
+        } else {
+            write!(f, "{} part", self.content_type)?;
+        }
+        if let Some(disposition) = &self.content_disposition {
+            write!(f, ", disposition {disposition}")?;
+        }
+        if let Some(content_id) = &self.content_id {
+            write!(f, ", Content-ID <{content_id}>")?;
+        }
+        write!(
+            f,
+            ", {} bytes, not covered by the signature",
+            self.size_bytes
+        )
+    }
 }
 
 /// A parsed body part with content and MIME metadata.
@@ -415,6 +455,7 @@ mod tests {
             body_html: None,
             attachments: vec![],
             jacs_attachments: vec![],
+            unsigned_parts: vec![],
         };
 
         assert!(parts.body_plain.is_some());

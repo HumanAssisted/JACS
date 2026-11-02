@@ -535,6 +535,8 @@ pub fn verify_email_html_named(
 /// Special cases:
 /// - Message-ID always returns `Unverifiable`
 /// - Missing body parts return `Unverifiable` (not `Fail`)
+/// - A body part present but not signed returns `Fail`
+/// - Each part in `parts.unsigned_parts` returns `Fail` as `unsigned_parts[i]`
 /// - Address header mismatches get case-insensitive fallback (returns `Modified`)
 pub fn verify_email_content(
     doc: &JacsEmailSignatureDocument,
@@ -643,6 +645,19 @@ pub fn verify_email_content(
         &mut field_results,
     );
 
+    // Parts outside the signed structure (for example a second text
+    // alternative added after signing) can be displayed but are not covered.
+    for (i, part) in parts.unsigned_parts.iter().enumerate() {
+        field_results.push(FieldResult {
+            field: format!("unsigned_parts[{i}]"),
+            status: FieldStatus::Fail,
+            original_hash: None,
+            current_hash: None,
+            original_value: None,
+            current_value: Some(part.to_string()),
+        });
+    }
+
     // valid = true only if no Fail results
     let fields_valid = !field_results.iter().any(|r| r.status == FieldStatus::Fail);
 
@@ -678,16 +693,26 @@ pub fn verify_email_content(
 /// Verify content for HTML-inline signed email.
 ///
 /// Inline transport signs user-authored content, not transport artifacts. This
-/// wrapper removes the inline logo MIME artifact before delegating to the
-/// existing content verifier so user attachments remain covered.
+/// wrapper removes the one inline logo MIME artifact and, when the signed
+/// payload has no HTML body, the transport-generated HTML body (checked by the
+/// strict presentation comparison instead) before delegating to the existing
+/// content verifier. User attachments remain covered; a second logo part, a
+/// second HTML body or any other part outside the signed structure fails.
 pub fn verify_html_inline_email_content(
     doc: &JacsEmailSignatureDocument,
     parts: &ParsedEmailParts,
 ) -> ContentVerificationResult {
     let mut parts_without_artifacts = parts.clone();
-    parts_without_artifacts
+    if let Some(logo) = parts_without_artifacts
         .attachments
-        .retain(|att| !super::transport::is_inline_logo_attachment_artifact(att));
+        .iter()
+        .position(super::transport::is_inline_logo_attachment_artifact)
+    {
+        parts_without_artifacts.attachments.remove(logo);
+    }
+    if doc.payload.body_html.is_none() {
+        parts_without_artifacts.body_html = None;
+    }
     verify_email_content(doc, &parts_without_artifacts)
 }
 
@@ -970,9 +995,17 @@ fn verify_body_part(
                 current_value: None,
             });
         }
-        (None, Some(_)) => {
-            // Body part exists but wasn't in the signed document -- unexpected
-            // This is not a failure of the signed content, just extra content
+        (None, Some(current_part)) => {
+            // A body the signature does not cover can still be what the
+            // recipient reads, so it fails rather than being ignored.
+            results.push(FieldResult {
+                field: field_name.to_string(),
+                status: FieldStatus::Fail,
+                original_hash: None,
+                current_hash: Some(compute_body_hash(&canonicalize_body(&current_part.content))),
+                original_value: None,
+                current_value: Some("present but not signed".to_string()),
+            });
         }
         (None, None) => {
             // Neither signed nor present -- nothing to verify
