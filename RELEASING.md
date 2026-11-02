@@ -70,6 +70,9 @@ To release a held crate again, once its dependencies have published fixes:
    tests require them.
 4. For SurrealDB, restore the reviewed `--ignore RUSTSEC-2023-0071` on the
    candidate audit while that exception remains in force.
+5. Unpin its install guidance: the crate README,
+   `archive/native/DEVELOPMENT.md` and the `jacs` storage module docs pin it
+   to 0.15 while it is held.
 
 ## One-time registry setup
 

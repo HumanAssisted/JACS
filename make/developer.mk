@@ -101,8 +101,10 @@ test-jacsnpm-parallel:
 audit-jacs:
 	cargo audit
 	cd archive/native && cargo audit
-	cargo audit --file archive/native/jacs-surrealdb/Cargo.lock
 	cargo audit --file tools/jacs-mobile-bindgen/Cargo.lock
+# Keep this last: it exits non-zero on RUSTSEC-2023-0071, which security.yml
+# waives with a review date (archive/native/SECURITY_AUDIT.md).
+	cargo audit --file archive/native/jacs-surrealdb/Cargo.lock
 
 install-githooks:
 	git config core.hooksPath .githooks

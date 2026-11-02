@@ -20,7 +20,7 @@
 //! | Crate | Install | Description |
 //! |-------|---------|-------------|
 //! | [`jacs-postgresql`](https://crates.io/crates/jacs-postgresql) | `cargo add jacs-postgresql` | PostgreSQL with pgvector search |
-//! | [`jacs-surrealdb`](https://crates.io/crates/jacs-surrealdb) | `cargo add jacs-surrealdb` | SurrealDB multi-model backend |
+//! | [`jacs-surrealdb`](https://crates.io/crates/jacs-surrealdb) | `cargo add jacs-surrealdb@0.15 jacs@0.15` | SurrealDB multi-model backend; held at 0.15.0, which implements `jacs` 0.15's traits and does not work with this version |
 //! | [`jacs-duckdb`](https://crates.io/crates/jacs-duckdb) | `cargo add jacs-duckdb` | DuckDB analytical queries |
 //! | [`jacs-redb`](https://crates.io/crates/jacs-redb) | `cargo add jacs-redb` | Redb embedded key-value store |
 //!

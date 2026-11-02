@@ -209,10 +209,16 @@ class RustReleaseTests(unittest.TestCase):
                         release.validate_sources(self.root, "0.15.0")
 
     def test_only_crates_with_their_own_lock_can_be_held(self):
-        release.require_held_crates_have_own_locks()
-        with mock.patch.object(release, "HELD_CRATES", {"jacs-redb": "fixture"}):
-            with self.assertRaisesRegex(ValueError, "own lock in STANDALONE_LOCKS: jacs-redb"):
+        # A fixture catalog, so both cases survive lifting the live hold.
+        catalog = {"fixture-own": "own/Cargo.toml", "fixture-shared": "shared/Cargo.toml"}
+        with mock.patch.object(release, "CRATE_MANIFESTS", catalog), mock.patch.object(
+            release, "STANDALONE_LOCKS", {"own/Cargo.toml": "own/Cargo.lock"},
+        ):
+            with mock.patch.object(release, "HELD_CRATES", {"fixture-own": "fixture"}):
                 release.require_held_crates_have_own_locks()
+            with mock.patch.object(release, "HELD_CRATES", {"fixture-shared": "fixture"}):
+                with self.assertRaisesRegex(ValueError, "own lock in STANDALONE_LOCKS: fixture-shared"):
+                    release.require_held_crates_have_own_locks()
 
     def test_vendor_failure_restores_standalone_manifest_bytes(self):
         for relative in release.SOURCE_LOCKS:
