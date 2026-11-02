@@ -196,7 +196,7 @@ pub(crate) fn canonicalize_json(value: &Value) -> Result<String, JacsError> {
     jacs_core::canonical::canonicalize_json_try(value).map_err(JacsError::from)
 }
 
-fn validate_signature_temporal_claims(
+pub(crate) fn validate_signature_temporal_claims(
     json_value: &Value,
     signature_key_from: &str,
 ) -> Result<(), JacsError> {
@@ -1140,6 +1140,15 @@ impl Agent {
                     .to_string(),
             )),
         }
+    }
+
+    pub(crate) fn key_discovery_dns_strict(&self) -> bool {
+        self.dns_strict
+            || self
+                .config
+                .as_ref()
+                .and_then(|config| *config.jacs_dns_strict())
+                .unwrap_or(false)
     }
 
     pub fn set_dns_strict(&mut self, strict: bool) {
@@ -2742,25 +2751,47 @@ impl Agent {
             public_key_enc_type.as_deref(),
         )?;
 
-        // DNS policy resolution
-        let maybe_domain = self
-            .value
-            .as_ref()
-            .and_then(|v| v.get("jacsAgentDomain").and_then(|x| x.as_str()))
-            .or_else(|| {
-                self.config
-                    .as_ref()
-                    .and_then(|c| c.jacs_agent_domain().as_deref())
-            });
-
+        // A foreign signer's domain is an untrusted routing hint, never the
+        // verifier's own identity/domain or verification claim.
         let maybe_agent_id = json_value
             .get(signature_key_from)
             .and_then(|sig| sig.get("agentID"))
-            .and_then(|v| v.as_str());
+            .and_then(Value::as_str);
+        let self_signed = maybe_agent_id == self.id.as_deref() && maybe_agent_id.is_some();
+        let maybe_domain = if self_signed {
+            self.value
+                .as_ref()
+                .and_then(|v| v.get("jacsAgentDomain").and_then(Value::as_str))
+                .or_else(|| {
+                    self.config
+                        .as_ref()
+                        .and_then(|c| c.jacs_agent_domain().as_deref())
+                })
+        } else if json_value[signature_key_from][SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str()
+            == Some(SIGNATURE_CONTENT_VERSION_V2)
+        {
+            json_value[signature_key_from]["agentDomain"].as_str()
+        } else {
+            None
+        };
+
+        let key_reference_matches = public_key_hash == hash_public_key(&public_key)
+            || (json_value[signature_key_from][SIGNATURE_CONTENT_VERSION_FIELDNAME].as_str()
+                == Some(SIGNATURE_CONTENT_VERSION_V2)
+                && public_key_hash == crate::crypt::hash::hash_bytes(&public_key));
+        if !key_reference_matches {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: "Public key does not match the signed document reference".into(),
+            });
+        }
 
         // Claim-based policy enforcement
         // "If you claim it, you must prove it"
-        let verification_claim = self.get_verification_claim();
+        let verification_claim = if self_signed {
+            self.get_verification_claim()
+        } else {
+            None
+        };
         let domain_present = maybe_domain.is_some();
         let (validate, strict, required) = match verification_claim.as_deref() {
             // "verified-hai.ai" kept as fallback during deprecation period (normalized above)
@@ -2783,12 +2814,12 @@ impl Agent {
                 let validate = self
                     .dns_validate_enabled
                     .or_else(|| self.config.as_ref().and_then(|c| *c.jacs_dns_validate()))
-                    .unwrap_or(domain_present);
+                    .unwrap_or(self_signed && domain_present);
                 let strict = self.dns_strict;
                 let required = self
                     .dns_required
                     .or_else(|| self.config.as_ref().and_then(|c| *c.jacs_dns_required()))
-                    .unwrap_or(domain_present);
+                    .unwrap_or(self_signed && domain_present);
                 (validate, strict, required)
             }
         };
@@ -2813,21 +2844,6 @@ impl Agent {
                 }
             } else if required {
                 return Err("DNS validation failed: domain required but not configured".into());
-            }
-        } else {
-            // DNS not validated -> rely on embedded fingerprint
-            let public_key_rehash = hash_public_key(&public_key);
-            if public_key_rehash != public_key_hash {
-                let error_message = format!(
-                    "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
-                    public_key_rehash, public_key_hash
-                );
-                error!("{}", error_message);
-
-                let algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
-                record_signature_verification("unknown_agent", false, algorithm);
-
-                return Err(error_message.into());
             }
         }
 
@@ -3111,6 +3127,19 @@ impl Agent {
             "fields": serialized_fields,
             SIGNATURE_CONTENT_VERSION_FIELDNAME: SIGNATURE_CONTENT_VERSION_V2
         });
+        // A discovery hint is authenticated only as part of the v2 metadata.
+        // Do not add it after signing or infer trust in the claimed domain.
+        let agent_domain = self
+            .value
+            .as_ref()
+            .and_then(|value| value.get("jacsAgentDomain").and_then(Value::as_str))
+            .filter(|domain| !domain.is_empty())
+            .or_else(|| config.jacs_agent_domain().as_deref());
+        if let Some(configured) = agent_domain.filter(|domain| !domain.is_empty())
+            && let Some(domain) = crate::dns::bootstrap::signing_agent_domain(configured)?
+        {
+            signature_document["agentDomain"] = json!(domain);
+        }
         let document_values_string = build_signature_content_v2(
             json_value,
             accepted_fields,

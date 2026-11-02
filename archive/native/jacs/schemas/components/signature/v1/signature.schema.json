@@ -11,6 +11,13 @@
       "type": "string",
       "format": "uuid"
     },
+    "agentDomain": {
+      "description": "Optional bare DNS discovery hostname. Authenticated only by jacs-signature-v2; a discovery hint does not establish an independent identity or trust binding. Legacy signatures do not authenticate this metadata.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "format": "hostname"
+    },
     "agentVersion": {
       "description": " Version of the agent",
       "hai": "meta",

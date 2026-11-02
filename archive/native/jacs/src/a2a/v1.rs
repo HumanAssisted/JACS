@@ -333,6 +333,77 @@ impl Card {
     }
 }
 
+// Select only the caller-pinned root's signature. Other signatures may support
+// rotation or countersigning, but confer no authority here. Validate every
+// entry's bounded JOSE shape before selecting, so order cannot hide malformed
+// headers or duplicate key identifiers.
+fn root_signature<'a>(
+    card: &'a Value,
+    expected_kid: &str,
+) -> Result<(&'a str, &'a str), JacsError> {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let signatures = card["signatures"]
+        .as_array()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| invalid("expected nonempty v1 card signatures"))?;
+    let mut kids = std::collections::HashSet::new();
+    let mut selected = None;
+    for entry in signatures {
+        let sig = entry
+            .as_object()
+            .filter(|s| s.len() == 2)
+            .ok_or_else(|| invalid("invalid v1 signature object"))?;
+        let protected = sig
+            .get("protected")
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid("missing protected header"))?;
+        let signature = sig
+            .get("signature")
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid("missing signature"))?;
+        let header_bytes = URL_SAFE_NO_PAD
+            .decode(protected)
+            .map_err(|_| invalid("invalid protected header encoding"))?;
+        let signature_bytes = URL_SAFE_NO_PAD
+            .decode(signature)
+            .map_err(|_| invalid("invalid signature encoding"))?;
+        if URL_SAFE_NO_PAD.encode(&header_bytes) != protected
+            || signature_bytes.is_empty()
+            || URL_SAFE_NO_PAD.encode(&signature_bytes) != signature
+        {
+            return Err(invalid("noncanonical or empty v1 signature encoding"));
+        }
+        let header = jacs_core::strict_json::parse_strict_json_slice(&header_bytes)?;
+        let object = header
+            .as_object()
+            .ok_or_else(|| invalid("protected header must be an object"))?;
+        let kid = header["kid"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| invalid("missing protected kid"))?;
+        if object
+            .keys()
+            .any(|name| !matches!(name.as_str(), "alg" | "typ" | "kid"))
+            || header["alg"]
+                .as_str()
+                .is_none_or(|alg| alg.is_empty() || alg == "none")
+            || header.get("typ").is_some_and(|typ| typ != "JOSE")
+        {
+            return Err(invalid("unsupported v1 protected header"));
+        }
+        if !kids.insert(kid.to_owned()) {
+            return Err(invalid("duplicate v1 signature kid"));
+        }
+        if kid == expected_kid {
+            if header["alg"] != "ML-DSA-87" {
+                return Err(invalid("root signature must use ML-DSA-87"));
+            }
+            selected = Some((protected, signature));
+        }
+    }
+    selected.ok_or_else(|| invalid("no signature for the trusted root kid"))
+}
+
 /// Verify this finite A2A v1 profile against an explicitly trusted native root
 /// and identity/version. A self-published JWKS alone is not a trust input.
 pub fn verify_root_card(
@@ -353,22 +424,7 @@ pub fn verify_root_card(
     let kid = expected_jwk["kid"]
         .as_str()
         .ok_or_else(|| invalid("missing root kid"))?;
-    let signatures = card["signatures"]
-        .as_array()
-        .filter(|s| s.len() == 1)
-        .ok_or_else(|| invalid("expected one v1 card signature"))?;
-    let sig = signatures[0]
-        .as_object()
-        .filter(|s| s.len() == 2)
-        .ok_or_else(|| invalid("invalid v1 signature object"))?;
-    let protected = sig
-        .get("protected")
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid("missing protected header"))?;
-    let signature = sig
-        .get("signature")
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid("missing signature"))?;
+    let (protected, signature) = root_signature(card, kid)?;
     let mut unsigned = card.clone();
     unsigned
         .as_object_mut()

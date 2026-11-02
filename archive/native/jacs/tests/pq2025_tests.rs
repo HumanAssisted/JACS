@@ -207,6 +207,33 @@ fn test_pq2025_kem_wrong_key() {
 }
 
 #[test]
+fn test_pq2025_kem_rejects_noncanonical_secret_coefficient_before_decapsulation() {
+    let _env_guard = env_guard();
+    use jacs::crypt::kem::{generate_kem_keys, open, seal};
+
+    let (mut sk, pk) = generate_kem_keys().expect("KEM keygen failed");
+    let aad = b"key validation";
+    let (kem_ct, nonce, aead_ct) = seal(&pk, aad, b"message").expect("Seal failed");
+    assert_eq!(
+        open(&sk, &kem_ct, aad, &nonce, &aead_ct).unwrap(),
+        b"message"
+    );
+
+    // ML-KEM packs two 12-bit secret coefficients into each three bytes.
+    // Set the first to q=3329 (outside [0,q)), preserving its neighbor and
+    // the embedded public key/hash. fips203 0.5 rejects this at key import.
+    sk[0] = 0x01;
+    sk[1] = (sk[1] & 0xf0) | 0x0d;
+    let error = open(&sk, &kem_ct, aad, &nonce, &aead_ct).unwrap_err();
+    assert!(matches!(error, jacs::error::JacsError::CryptoError(_)));
+    assert!(
+        error
+            .to_string()
+            .contains("decapsulation key deserialization failed")
+    );
+}
+
+#[test]
 fn test_pq2025_kem_wrong_aad() {
     let _env_guard = env_guard();
     use jacs::crypt::kem::{generate_kem_keys, open, seal};

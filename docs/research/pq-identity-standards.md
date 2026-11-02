@@ -1,12 +1,19 @@
 # Native post-quantum identity: checked standards
 
-Checked against primary sources on **2026-10-27**. Research only; this note does not claim implementation or publication of JACS changes.
+Standards checked against primary sources on **2026-10-27**; implementation
+and dependency notes updated **2026-10-28**. Research only; this note does not claim implementation or publication of JACS changes.
 
 JACS can retain its persistent final-FIPS-204 ML-DSA-87 key and export a standards-based public JWK, DID verification method, and signed A2A Agent Card. ES256 is an explicit compatibility option for peers without PQ support. A conforming representation does not guarantee support in every verifier.
 
 ## Finalized JOSE and the native key
 
 [RFC 9964](https://www.rfc-editor.org/rfc/rfc9964.html), published May 2026 on the IETF Standards Track, defines ML-DSA-44/65/87 for JOSE and COSE. Its public JWK is `{ "kty": "AKP", "alg": "ML-DSA-87", "pub": "<base64url(raw-public-key)>" }`. The public key is 2592 bytes and signature 4627 bytes. A public export must omit private information. Private JWK `priv` is exclusively a 32-byte seed, not the 4896-byte expanded secret.
+
+JACS's public-key profile requires a supplied `kid` to equal its thumbprint;
+general JOSE does not impose that choice. CID's thumbprint naming guidance is
+a recommendation, not a requirement to rename every existing verification
+method. Relative fragment references in DID documents are allowed when resolved
+against the document identifier.
 
 AKP thumbprints use exactly `alg`, `kty`, and `pub`, in that lexicographic order; `kid` is not included. Signing uses pure ML-DSA (FIPS 204 Algorithm 2), empty context, and raw signature bytes encoded base64url for JWS. HashML-DSA is not the registered JOSE algorithm. See RFC 9964 sections 3–7. JOSE implementation support is optional. Appendix A.1, Figure 5 supplies an ML-DSA-87 public JWK and signed JOSE example suitable for known-vector verification.
 
@@ -30,27 +37,52 @@ Existing JACS signing helpers are appropriate only when they sign those exact in
 
 | Library | Latest verified version and date | Practical consequence |
 | --- | --- | --- |
-| [`fips204`](https://docs.rs/crate/fips204/latest) | 0.5.0, 2026-10-23 | Pure Rust, final FIPS 204, all parameter sets. The portable and native JACS workspaces currently select different versions, listed below. |
+| [`fips204`](https://docs.rs/crate/fips204/latest) | 0.5.0, 2026-10-23 | Pure Rust, final FIPS 204, all parameter sets. JACS production ML-DSA-87 uses core; native signing delegates to it. |
 | [RustCrypto `ml-dsa`](https://docs.rs/crate/ml-dsa/0.1.1) | 0.1.1, 2026-06-05 | Pure Rust final-FIPS-204 implementation; README explicitly says it has not been independently audited. |
 | [`aws-lc-rs`](https://docs.rs/crate/aws-lc-rs/1.18.2) | 1.18.2, 2026-10-12 | Stable ML-DSA APIs in `signature`; accepts seed or expanded secret imports. [Expanded import cannot recover the original seed](https://docs.rs/aws-lc-rs/latest/aws_lc_rs/signature/struct.PqdsaKeyPair.html). |
 | [`oqs`](https://github.com/open-quantum-safe/liboqs-rust/blob/main/CHANGELOG.md) | 0.11.0, 2025-05-01 | Rust bindings to liboqs, including ML-DSA, with native build dependencies. |
 
 The current [portable core manifest](../../jacs-core/Cargo.toml) selects
-`fips204` **0.5.0** and `serde_json_canonicalizer` **0.4.1**. The separate
-[native library manifest](../../archive/native/jacs/Cargo.toml) retains
-`fips204` **0.4.6** and `serde_json_canonicalizer` **0.3.2** for its compatibility
-implementation. These are distinct resolved dependencies, not a claim that the
-whole repository uses one library version. Both ML-DSA implementations target
-final FIPS 204; key formats, canonical bytes and verification must remain
-compatible across the boundary. Dependency updates require renewed RFC-vector,
-SDK interoperability and malformed-input checks. The standards findings alone
-do not establish that a particular dependency version is safe or release-ready.
+`fips204` **0.5.0** for production ML-DSA-87 and
+`serde_json_canonicalizer` **0.4.1**. Native `pq2025` signing delegates to that
+core implementation; the unused native `fips204` 0.4.6 dependency has been
+removed. The native test-only canonicalizer now also uses **0.4.1**.
+The [native library](../../archive/native/jacs/Cargo.toml) separately uses
+`fips203` **0.5.0** for its live ML-KEM-768 implementation. These source updates
+do not establish availability in published packages. Dependency changes require
+renewed RFC-vector, SDK interoperability and malformed-input checks; standards
+conformance alone does not establish implementation assurance or release readiness.
+
+## Source dependency refresh: 2026-10-28
+
+The current locks select these versions for the relevant direct dependency
+lines. This is a scoped source inventory, not a claim that every transitive
+package has been upgraded to its newest major version.
+
+| Dependency | Selected version | Reason or boundary |
+| --- | --- | --- |
+| `fips203` | 0.5.0 | [Upstream changelog](https://docs.rs/crate/fips203/0.5.0/source/CHANGELOG.md): correct nearest-integer Decompress rounding required by FIPS 203 equation 4.8; reject secret coefficients at or above q during key import |
+| `jsonschema` / `referencing` | 0.60.2 | [Upstream release](https://github.com/Stranger6667/jsonschema/releases/tag/rust-v0.60.2): fix validator-construction stack overflow for `unevaluated*` schemas with `$ref` cycles across `$id` resources |
+| `base64` / `sha2` | 0.23.1 / 0.11.1 | Align native direct encoding with core and refresh the compatible hash dependency line |
+| `zeroize` / `rand` | 1.9.1 / 0.10.3 | Compatible resolved patch updates; existing platform RNG and secret-owner contracts remain in force |
+| `aws-lc-rs` | 1.18.2 | Native transport dependency update; JACS ML-DSA signing continues to use core's `fips204` 0.5.0 |
+| JavaScript smoke `jose` / Express | 6.2.13 / 5.3.0 | Exact test dependencies, installed with scripts disabled; official A2A SDK remains 1.3.0 |
+
+Older transitive `base64`, `sha2` and `rand` major-version lines remain where
+other native dependencies require them. Removing the unused native `fips204`
+declaration does not replace a production cryptographic backend. On 2026-10-28,
+a temporary dual-version ML-KEM-768 harness checked 64 keypairs generated by
+`fips203` 0.4.3: 0.5.0 decapsulated their old ciphertexts to identical shared
+secrets, and 0.4.3 likewise opened new 0.5.0 ciphertexts made with those public
+keys. Ephemeral test keys stayed in memory. This is sampled primitive/key/wire
+compatibility evidence, not an exhaustive corpus guarantee or a test of
+persisted JACS encrypted-file migration.
 
 ## Current official SDK integration
 
 The [JavaScript SDK 1.3.0 signing API](https://github.com/a2aproject/a2a-js/blob/v1.3.0/src/signature.ts)
 uses its standard Agent Card canonicalizer and `jose` verification. With
-`jose` 6.2.3, ML-DSA-87 runs through Node WebCrypto. [Node 24.7.0 introduced
+`jose` 6.2.13, ML-DSA-87 runs through Node WebCrypto. [Node 24.7.0 introduced
 ML-DSA WebCrypto support](https://nodejs.org/download/release/v24.7.0/docs/api/webcrypto.html);
 Node's generic SDK minimum of 20 is insufficient for this signature path.
 The test pins the SDK and `jose` rather than assuming the runtime supports an
@@ -71,3 +103,19 @@ The managed environment has OpenSSL **3.5.7** and advertises `ML-DSA-87` in `ope
 Wrap the raw public key in SubjectPublicKeyInfo using ML-DSA-87 OID `2.16.840.1.101.3.4.3.19` and no algorithm parameters. For a 2592-byte key, the DER prefix is hex `30820a32300b060960864801650304031303820a2100`, followed by the raw key. [OpenSSL ML-DSA documentation](https://docs.openssl.org/3.5/man7/EVP_SIGNATURE-ML-DSA/); [RFC 9881 key encoding](https://www.rfc-editor.org/rfc/rfc9881.html).
 
 Bind accepted keys to a trusted DID/provider; a self-supplied JWK proves possession, not external identity. Check algorithm/key consistency, lengths, relevant verification relationship, revocation, and unsupported critical headers. Do not silently downgrade after PQ errors. Arbitrary `jku` retrieval requires a trusted-source policy. PQ signatures do not make HTTPS, DID resolution, or the complete A2A channel post-quantum.
+
+## DNS discovery is a separate trust layer
+
+Publish the raw public-key SHA-256 fingerprint and an optional HTTPS discovery
+pointer, then verify the fetched key and the complete signed document. Neither
+a self-declared domain nor a registry response enrolls a trusted identity.
+[The implementation guide](../key-discovery.md) distinguishes DNS digests,
+frozen signed document references and transport hashes.
+
+[RFC 9715](https://www.rfc-editor.org/rfc/rfc9715.html) discusses DNS/UDP
+fragmentation avoidance; 1232 bytes is not an absolute DNS TXT or message size
+limit. Fingerprint-plus-HTTPS discovery avoids unnecessarily large DNS answers.
+[RFC 7583](https://www.rfc-editor.org/rfc/rfc7583.html) analyzes DNSSEC key
+rollovers, not a universal JACS application-key overlap of twice the TTL.
+Rotation must account for the deployment's caches, retained signed documents,
+revocation policy and historical-key availability.

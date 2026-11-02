@@ -8,8 +8,12 @@ report and compare the returned artifact bytes.
 
 | Peer | Pinned SDK | Card signing | Runtime |
 | --- | --- | --- | --- |
-| JavaScript | `@a2a-js/sdk` 1.3.0, `jose` 6.2.3 | Native ML-DSA-87 root; stock SDK verification | Node 24.7+ with ML-DSA WebCrypto (tested on 24.19.0) |
+| JavaScript | `@a2a-js/sdk` 1.3.0, `jose` 6.2.13 | Native ML-DSA-87 root; stock SDK verification | Node 24.7+ with ML-DSA WebCrypto (tested on 24.19.0) |
 | Python | `a2a-sdk` 1.3.0 | Explicit ES256 compatibility key, bound to the native ML-DSA-87 root | Python 3.11+ (tested on 3.12.14) |
+
+The JavaScript fixture pins Express **5.3.0** for its local HTTP server. The
+lockfile retains the local `@hai.ai/jacs` package reference; install with scripts
+disabled as shown below.
 
 The Python SDK's PyJWT signing backend does not provide ML-DSA verification.
 Selecting ES256 for that peer is explicit; the identity's native root remains

@@ -767,16 +767,71 @@ pub struct PublicKeyInfo {
     pub hash: String,
 }
 
-/// Response structure from the remote keys API.
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, serde::Deserialize)]
-struct RemoteKeysApiResponse {
-    /// Public key in either PEM or Base64 format.
-    public_key: String,
-    /// The cryptographic algorithm used.
-    algorithm: String,
-    /// Hash of the public key.
-    public_key_hash: String,
+/// Decode a registry response without confusing its transport checksum with a
+/// document key reference. `sha256:` hashes the exact returned representation;
+/// the historical bare checksum hashes the decoded native key alias.
+pub(crate) fn decode_remote_key_response(
+    value: &serde_json::Value,
+) -> Result<PublicKeyInfo, JacsError> {
+    let field = |name: &str| {
+        value[name]
+            .as_str()
+            .ok_or_else(|| JacsError::ValidationError(format!("Missing registry {name}")))
+    };
+    let representation = field("public_key")?;
+    let algorithm = field("algorithm")?;
+    let declared = field("public_key_hash")?;
+    let public_key = crate::key_resolution::decode_key_representation(representation, algorithm)?;
+    let expanded = ["jacs_id", "version", "public_key_b64", "public_key_raw_b64"]
+        .iter()
+        .any(|name| value.get(*name).is_some());
+    if expanded {
+        uuid::Uuid::parse_str(field("jacs_id")?)
+            .map_err(|e| JacsError::ValidationError(e.to_string()))?;
+        uuid::Uuid::parse_str(field("version")?)
+            .map_err(|e| JacsError::ValidationError(e.to_string()))?;
+        let wire = base64::engine::general_purpose::STANDARD
+            .decode(field("public_key_b64")?)
+            .map_err(|e| JacsError::CryptoError(e.to_string()))?;
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(field("public_key_raw_b64")?)
+            .map_err(|e| JacsError::CryptoError(e.to_string()))?;
+        if wire != representation.as_bytes() || raw != public_key {
+            return Err(JacsError::ValidationError(
+                "Registry public-key representations disagree".into(),
+            ));
+        }
+    }
+    if value.get("revoked_at").is_some_and(|v| !v.is_null())
+        || value.get("status").and_then(serde_json::Value::as_str) == Some("revoked")
+    {
+        return Err(JacsError::TrustError(
+            "Registry reports a revoked key".into(),
+        ));
+    }
+    let expected = if declared.starts_with("sha256:") {
+        format!(
+            "sha256:{}",
+            crate::crypt::hash::hash_bytes(representation.as_bytes())
+        )
+    } else if expanded {
+        // Current expanded API's unprefixed (human-key) contract hashes raw
+        // bytes. The old minimal response contract retains its native alias.
+        crate::crypt::hash::hash_bytes(&public_key)
+    } else {
+        crate::crypt::hash::hash_public_key(&public_key)
+    };
+    if !declared.is_empty() && declared != expected {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "Registry transport public_key_hash does not match its declared representation"
+                .into(),
+        });
+    }
+    Ok(PublicKeyInfo {
+        public_key,
+        algorithm: algorithm.into(),
+        hash: declared.into(),
+    })
 }
 
 /// Maximum number of HTTP redirects to follow when fetching a remote key.
@@ -796,7 +851,7 @@ const MAX_REMOTE_KEY_RESPONSE_BYTES: usize = 64 * 1024;
 /// - Raw Base64: direct Base64 encoding of the key bytes
 ///
 /// This function auto-detects the format and decodes accordingly.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn decode_public_key(key_data: &str) -> Result<Vec<u8>, JacsError> {
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
@@ -820,7 +875,7 @@ fn decode_public_key(key_data: &str) -> Result<Vec<u8>, JacsError> {
 ///
 /// Extracts the Base64 content between the BEGIN and END markers,
 /// removes whitespace, and decodes the resulting Base64 string.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
@@ -1073,6 +1128,11 @@ fn fetch_public_key_attempt(
 
     // Handle response status
     let status = response.status;
+    if status == reqwest::StatusCode::GONE {
+        return Err(JacsError::TrustError(
+            "Registry reports the exact key revoked or withdrawn (HTTP 410)".into(),
+        ));
+    }
     if status == reqwest::StatusCode::NOT_FOUND {
         return Err(JacsError::KeyNotFound {
             path: format!(
@@ -1089,29 +1149,19 @@ fn fetch_public_key_attempt(
         )));
     }
 
-    // Parse JSON response
-    let body = response.body;
-    let api_response: RemoteKeysApiResponse =
-        jacs_core::strict_json::deserialize_strict_json_slice(&body).map_err(|e| {
-            JacsError::NetworkError(format!(
-                "Failed to parse remote key service response as JSON: {}",
-                e
-            ))
-        })?;
-
-    // Decode public key - supports both PEM and Base64 formats
-    let public_key = decode_public_key(&api_response.public_key)?;
-
-    info!(
-        "Successfully fetched public key from remote service: agent_id={}, version={}, algorithm={}",
-        agent_id, version, api_response.algorithm
-    );
-
-    Ok(PublicKeyInfo {
-        public_key,
-        algorithm: api_response.algorithm,
-        hash: api_response.public_key_hash,
-    })
+    let value = jacs_core::strict_json::parse_strict_json_slice(&response.body)?;
+    if value
+        .get("jacs_id")
+        .is_some_and(|id| id.as_str() != Some(agent_id))
+        || value
+            .get("version")
+            .is_some_and(|found| found.as_str() != Some(version))
+    {
+        return Err(JacsError::ValidationError(
+            "Registry response identity/version differs from exact request".into(),
+        ));
+    }
+    decode_remote_key_response(&value)
 }
 
 #[cfg(test)]

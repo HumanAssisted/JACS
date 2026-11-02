@@ -50,6 +50,88 @@ fn v1_direct_pq_root_uses_detached_jws_and_explicit_trust() {
         engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
     };
     use jacs::crypt::KeyManager;
+    // A countersignature does not replace the caller-pinned root authority.
+    // Both entries sign the same unsigned payload, independent of array order.
+    let root_signature = card["signatures"][0].clone();
+    let mut unsigned = card.clone();
+    unsigned.as_object_mut().unwrap().remove("signatures");
+    let payload = jacs_core::canonical::canonicalize_json_try(&unsigned).unwrap();
+    let counter_jwk = jacs_core::jose::mldsa87_public_jwk(wrong.public_key()).unwrap();
+    let counter_input = jacs_core::jose::mldsa87_jws_signing_input(
+        payload.as_bytes(),
+        counter_jwk["kid"].as_str().unwrap(),
+    )
+    .unwrap();
+    let counter_signature = json!({
+        "protected": counter_input.split('.').next().unwrap(),
+        "signature": URL_SAFE_NO_PAD.encode(wrong.sign(counter_input.as_bytes()).unwrap()),
+    });
+    for signatures in [
+        json!([counter_signature, root_signature]),
+        json!([root_signature, counter_signature]),
+    ] {
+        let mut multiple = card.clone();
+        multiple["signatures"] = signatures;
+        v1::verify_root_card(&multiple, &jwk, &id, &version, &root).unwrap();
+        multiple["name"] = json!("tampered");
+        assert!(v1::verify_root_card(&multiple, &jwk, &id, &version, &root).is_err());
+    }
+    for signatures in [
+        json!([]),
+        json!([counter_signature]),
+        json!([root_signature, root_signature]),
+        json!([root_signature, counter_signature, counter_signature]),
+    ] {
+        let mut invalid = card.clone();
+        invalid["signatures"] = signatures;
+        assert!(v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err());
+    }
+    // Malformed unrelated entries also fail, even after a valid root entry.
+    for header in [
+        r#"{"alg":"ML-DSA-87","kid":"counter","kid":"other"}"#,
+        r#"{"alg":"ML-DSA-87","kid":"counter","crit":["x"]}"#,
+        r#"{"alg":"ML-DSA-87","kid":"counter","b64":false}"#,
+        r#"{"alg":"none","kid":"counter"}"#,
+        r#"{"alg":"ML-DSA-87"}"#,
+        r#"{"alg":"ML-DSA-87","kid":""}"#,
+        r#"{"alg":"ML-DSA-87","kid":"counter","typ":"JWT"}"#,
+        r#"[]"#,
+    ] {
+        let mut invalid = card.clone();
+        let mut extra = counter_signature.clone();
+        extra["protected"] = json!(URL_SAFE_NO_PAD.encode(header));
+        invalid["signatures"] = json!([root_signature, extra]);
+        assert!(
+            v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err(),
+            "{header}"
+        );
+    }
+    for case in [
+        "header_encoding",
+        "signature_encoding",
+        "extra_member",
+        "wrong_root_alg",
+        "bad_root_signature",
+    ] {
+        let mut invalid = card.clone();
+        invalid["signatures"] = json!([counter_signature, root_signature]);
+        match case {
+            "header_encoding" => invalid["signatures"][0]["protected"] = json!("!bad!"),
+            "signature_encoding" => invalid["signatures"][0]["signature"] = json!("AA=="),
+            "extra_member" => invalid["signatures"][0]["jws"] = json!("legacy"),
+            "wrong_root_alg" => {
+                invalid["signatures"][1]["protected"] = json!(
+                    URL_SAFE_NO_PAD.encode(json!({"alg":"ES256","kid":jwk["kid"]}).to_string())
+                )
+            }
+            _ => invalid["signatures"][1]["signature"] = json!(counter_signature["signature"]),
+        }
+        assert!(
+            v1::verify_root_card(&invalid, &jwk, &id, &version, &root).is_err(),
+            "{case}"
+        );
+    }
+
     for (field, value) in [
         ("skills", json!([])),
         ("defaultInputModes", json!([])),

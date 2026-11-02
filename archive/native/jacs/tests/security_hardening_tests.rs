@@ -363,6 +363,9 @@ mod signature_v2_binding {
     #[serial_test::serial(jacs_env)]
     fn missing_algorithm_fails_unless_legacy_detection_is_explicitly_enabled() {
         let (agent, mut value) = signed_doc();
+        let original_v2 = value.clone();
+        let public_key = agent.get_public_key().expect("fixture public key");
+        let _reject_guard = EnvVarGuard::unset("JACS_REJECT_LEGACY_SIGNATURE_CONTENT");
         // This test isolates the separate legacy algorithm-detection switch.
         // Legacy signature-content verification itself must also be enabled
         // explicitly; it remains denied by default elsewhere.
@@ -388,16 +391,71 @@ mod signature_v2_binding {
             .expect("verification result");
         assert!(
             !blocked.valid,
-            "legacy algorithm detection should be disabled by default"
+            "legacy algorithm detection should be disabled by default: {:?}",
+            blocked.errors
+        );
+        assert_eq!(blocked.data, Value::Null);
+        assert!(!blocked.errors.is_empty());
+        let explicit_blocked = agent
+            .verify_with_key(&legacy_missing_alg, public_key.clone())
+            .expect("explicit-key verification result");
+        assert!(
+            !explicit_blocked.valid,
+            "algorithm detection must be opt-in even with an explicit key"
         );
 
         let _legacy_guard = EnvVarGuard::set("JACS_ALLOW_LEGACY_ALGORITHM_DETECTION", "true");
+        // Prove the fixture's true-v1 signature is valid independently of key
+        // discovery before testing the shared resolver's compatibility path.
+        let explicit_allowed = agent
+            .verify_with_key(&legacy_missing_alg, public_key.clone())
+            .expect("explicit-key legacy result");
+        assert!(
+            explicit_allowed.valid,
+            "genuine v1 fixture errors: {:?}",
+            explicit_allowed.errors
+        );
         let allowed = agent
             .verify(&legacy_missing_alg)
             .expect("verification result");
         assert!(
             allowed.valid,
-            "explicit legacy algorithm detection opt-in should preserve old documents"
+            "explicit legacy algorithm detection opt-in should preserve old documents: {:?}",
+            allowed.errors
+        );
+        assert!(
+            allowed.signer_id.is_empty() && allowed.timestamp.is_empty(),
+            "legacy metadata must not become authenticated identity/time"
+        );
+
+        // Neither opt-in permits a v2 downgrade or overrides a declared
+        // algorithm. Rehash the public checksum so it cannot mask these gates.
+        let mut missing_v2 = original_v2;
+        missing_v2["jacsSignature"]
+            .as_object_mut()
+            .unwrap()
+            .remove("signingAlgorithm");
+        recompute_jacs_sha256(&mut missing_v2);
+        let missing_v2_result = agent.verify(&missing_v2.to_string()).unwrap();
+        assert!(
+            !missing_v2_result.valid,
+            "v2 missing algorithm must fail: {:?}",
+            missing_v2_result.errors
+        );
+        value["jacsSignature"]["signingAlgorithm"] = json!("pq2025");
+        recompute_jacs_sha256(&mut value);
+        let mismatched = agent.verify(&value.to_string()).unwrap();
+        assert!(
+            !mismatched.valid,
+            "declared algorithm must not fall back to Ed25519: {:?}",
+            mismatched.errors
+        );
+
+        let _content_disabled = EnvVarGuard::unset("JACS_ALLOW_LEGACY_SIGNATURE_CONTENT");
+        let denied_content = agent.verify(&legacy_missing_alg).unwrap();
+        assert!(
+            !denied_content.valid,
+            "algorithm detection alone must not enable legacy content"
         );
     }
 }

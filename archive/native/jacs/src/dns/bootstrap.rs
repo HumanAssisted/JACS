@@ -32,6 +32,8 @@ pub struct AgentTxtFields {
     pub alg: String,
     pub enc: DigestEncoding,
     pub digest: String,
+    /// Optional HTTPS discovery location. Fetch policy still restricts origins and addresses.
+    pub uri: Option<String>,
 }
 
 pub fn pubkey_digest_sha256_bytes(pubkey: &[u8]) -> [u8; 32] {
@@ -59,17 +61,44 @@ pub fn build_agent_dns_txt(agent_id: &str, digest: &str, enc: DigestEncoding) ->
     )
 }
 
+pub fn build_agent_dns_txt_with_uri(
+    agent_id: &str,
+    digest: &str,
+    enc: DigestEncoding,
+    uri: Option<&str>,
+) -> Result<String, JacsError> {
+    let mut record = build_agent_dns_txt(agent_id, digest, enc);
+    if let Some(uri) = uri {
+        record.push_str("; uri=");
+        record.push_str(uri);
+    }
+    parse_agent_txt(&record)?;
+    Ok(record)
+}
+
 pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, JacsError> {
+    let invalid = |reason: &str| JacsError::DnsRecordInvalid {
+        domain: String::new(),
+        reason: reason.to_string(),
+    };
+    if txt.len() > 4096 || txt.chars().any(char::is_control) {
+        return Err(invalid("Invalid TXT record length or control character"));
+    }
     let parts: Vec<&str> = txt.split(';').map(|s| s.trim()).collect();
     let mut map = std::collections::HashMap::new();
     for p in parts {
         if p.is_empty() {
             continue;
         }
-        if let Some((k, v)) = p.split_once('=')
-            && map
-                .insert(k.trim().to_string(), v.trim().to_string())
-                .is_some()
+        let (k, value) = p
+            .split_once('=')
+            .ok_or_else(|| invalid("Malformed TXT field"))?;
+        if k.trim().is_empty() || value.trim().is_empty() {
+            return Err(invalid("Empty TXT field name or value"));
+        }
+        if map
+            .insert(k.trim().to_string(), value.trim().to_string())
+            .is_some()
         {
             return Err(JacsError::DnsRecordInvalid {
                 domain: String::new(),
@@ -87,6 +116,12 @@ pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, JacsError> {
         .cloned()
         .ok_or_else(|| missing("jacs_agent_id"))?;
     let alg = map.get("alg").cloned().ok_or_else(|| missing("alg"))?;
+    if v != "jacs" || alg != "SHA-256" {
+        return Err(invalid("TXT record requires v=jacs and alg=SHA-256"));
+    }
+    if jacs_agent_id.len() > 256 || jacs_agent_id.chars().any(char::is_whitespace) {
+        return Err(invalid("Invalid jacs_agent_id"));
+    }
     let enc_val = map.get("enc").cloned().ok_or_else(|| missing("enc"))?;
     let enc = match enc_val.as_str() {
         "base64" => DigestEncoding::Base64,
@@ -102,17 +137,199 @@ pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, JacsError> {
         .get("jac_public_key_hash")
         .cloned()
         .ok_or_else(|| missing("jac_public_key_hash"))?;
+    decode_dns_digest(&digest, &enc)?;
+    let uri = map.get("uri").cloned();
+    if let Some(uri) = uri.as_deref() {
+        let parsed = url::Url::parse(uri).map_err(|_| invalid("Invalid DNS key URI"))?;
+        if uri.len() > 2048
+            || uri.chars().any(char::is_whitespace)
+            || parsed.scheme() != "https"
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(invalid(
+                "DNS key URI must be HTTPS without credentials or fragment",
+            ));
+        }
+    }
     Ok(AgentTxtFields {
         v,
         jacs_agent_id,
         alg,
         enc,
         digest,
+        uri,
     })
+}
+
+fn decode_dns_digest(digest: &str, encoding: &DigestEncoding) -> Result<[u8; 32], JacsError> {
+    let invalid = || JacsError::DnsRecordInvalid {
+        domain: String::new(),
+        reason: "DNS fingerprint must encode exactly 32 SHA-256 bytes".to_string(),
+    };
+    let bytes = match encoding {
+        DigestEncoding::Base64 => {
+            let bytes = B64.decode(digest).map_err(|_| invalid())?;
+            if B64.encode(&bytes) != digest {
+                return Err(invalid());
+            }
+            bytes
+        }
+        DigestEncoding::Hex => hex::decode(digest).map_err(|_| invalid())?,
+    };
+    bytes.try_into().map_err(|_| invalid())
+}
+
+pub fn record_matches_public_key(fields: &AgentTxtFields, key: &[u8]) -> bool {
+    fields.v == "jacs"
+        && fields.alg == "SHA-256"
+        && decode_dns_digest(&fields.digest, &fields.enc)
+            .is_ok_and(|digest| digest == pubkey_digest_sha256_bytes(key))
+}
+
+fn is_jacs_record(record: &str) -> bool {
+    record
+        .split(';')
+        .next()
+        .is_some_and(|tag| tag.trim() == "v=jacs")
+}
+
+/// Select one agent's complete rotation set; unrelated agents do not create ambiguity.
+pub fn select_agent_txt_records(
+    records: &[String],
+    domain: &str,
+    agent_id: &str,
+) -> Result<Vec<AgentTxtFields>, JacsError> {
+    let mut selected = Vec::new();
+    for record in records.iter().filter(|r| is_jacs_record(r)) {
+        // Unrelated publishers sharing an owner must not block this identity.
+        // Parse every record claiming the requested ID in full, including duplicate
+        // ID tags, so malformed or contradictory evidence cannot be skipped.
+        let claims_agent = record.split(';').any(|part| {
+            part.split_once('=').is_some_and(|(name, value)| {
+                name.trim() == "jacs_agent_id" && value.trim() == agent_id
+            })
+        });
+        if claims_agent {
+            selected.push(parse_agent_txt(record)?);
+        }
+    }
+    if selected.is_empty() {
+        return Err(JacsError::DnsRecordMissing {
+            domain: domain.to_string(),
+        });
+    }
+    // A single content address must not send different clients to different locations.
+    for (index, record) in selected.iter().enumerate() {
+        let digest = decode_dns_digest(&record.digest, &record.enc)?;
+        if selected[..index].iter().any(|other| {
+            decode_dns_digest(&other.digest, &other.enc).ok() == Some(digest)
+                && other.uri != record.uri
+        }) {
+            return Err(JacsError::DnsRecordInvalid {
+                domain: domain.to_string(),
+                reason: "Conflicting DNS key URIs for the same agent and fingerprint".into(),
+            });
+        }
+    }
+    Ok(selected)
+}
+
+pub fn match_agent_txt_record(
+    records: &[String],
+    domain: &str,
+    agent_id: &str,
+    key: &[u8],
+) -> Result<AgentTxtFields, JacsError> {
+    select_agent_txt_records(records, domain, agent_id)?
+        .into_iter()
+        .find(|record| record_matches_public_key(record, key))
+        .ok_or_else(|| JacsError::DnsRecordInvalid {
+            domain: domain.into(),
+            reason: "DNS fingerprint does not match candidate public key".into(),
+        })
 }
 
 pub fn record_owner(domain: &str) -> String {
     format!("_v1.agent.jacs.{}.", domain.trim_end_matches('.'))
+}
+
+/// Existing configuration accepts service origins and local development hosts.
+/// Emit only a DNS hostname usable for HTTPS discovery. Keep local/HTTP origins
+/// working without a discovery hint, and never rewrite the configured origin.
+pub(crate) fn signing_agent_domain(configured: &str) -> Result<Option<String>, JacsError> {
+    let invalid = || {
+        JacsError::ValidationError(
+            "Agent discovery domain requires a bare hostname or HTTP(S) origin".into(),
+        )
+    };
+    if configured
+        .chars()
+        .any(|ch| ch.is_whitespace() || ch.is_control())
+        || configured.contains('\\')
+    {
+        return Err(invalid());
+    }
+    let domain = if configured.starts_with("https://") || configured.starts_with("http://") {
+        let origin = url::Url::parse(configured).map_err(|_| invalid())?;
+        if !origin.username().is_empty()
+            || origin.password().is_some()
+            || origin.query().is_some()
+            || origin.fragment().is_some()
+            || origin.path() != "/"
+        {
+            return Err(invalid());
+        }
+        let host = origin.host_str().ok_or_else(invalid)?;
+        if matches!(origin.host(), Some(url::Host::Ipv4(_) | url::Host::Ipv6(_))) {
+            return Ok(None);
+        }
+        validate_agent_domain(host)?;
+        if origin.scheme() == "http" {
+            return Ok(None);
+        }
+        host.to_string()
+    } else {
+        // Preserve valid bare IP dev configuration without advertising it as DNS.
+        let address = configured
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+            .unwrap_or(configured);
+        if address.parse::<std::net::IpAddr>().is_ok() {
+            return Ok(None);
+        }
+        configured.to_string()
+    };
+    validate_agent_domain(&domain)?;
+    let bare = domain.trim_end_matches('.').to_ascii_lowercase();
+    if !bare.contains('.') || bare.ends_with(".localhost") || bare.ends_with(".local") {
+        return Ok(None);
+    }
+    Ok(Some(domain))
+}
+
+/// Validate a bare DNS domain hint, without performing I/O or granting trust.
+pub fn validate_agent_domain(domain: &str) -> Result<(), JacsError> {
+    let bare = domain.strip_suffix('.').unwrap_or(domain);
+    if bare.is_empty()
+        || bare.parse::<std::net::IpAddr>().is_ok()
+        || bare.split('.').any(|label| {
+            label.is_empty()
+                || label.starts_with('-')
+                || label.ends_with('-')
+                || !label
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+        })
+    {
+        return Err(JacsError::DnsRecordInvalid {
+            domain: domain.into(),
+            reason: "agentDomain must be a bare DNS hostname".into(),
+        });
+    }
+    validate_dns_owner(&record_owner(domain))
 }
 
 /// Reject DNS owner names that exceed RFC 1035 limits before they reach the
@@ -241,7 +458,7 @@ pub fn emit_cloudflare_curl(rr: &DnsRecord, zone_id_hint: &str) -> String {
 pub fn find_jacs_txt_record(records: Vec<String>, domain: &str) -> Result<String, JacsError> {
     let mut selected = None;
     for record in records {
-        if record.starts_with("v=jacs") {
+        if is_jacs_record(&record) {
             if selected.is_some() {
                 return Err(JacsError::DnsRecordInvalid {
                     domain: domain.to_string(),
@@ -317,6 +534,24 @@ fn resolver_from_config(
 }
 
 fn resolve_txt(owner: &str, require_secure: bool) -> Result<String, JacsError> {
+    find_jacs_txt_record(resolve_txt_records(owner, require_secure)?, owner)
+}
+
+pub fn resolve_agent_txt_records(
+    domain: &str,
+    agent_id: &str,
+    require_secure: bool,
+) -> Result<Vec<AgentTxtFields>, JacsError> {
+    validate_agent_domain(domain)?;
+    let owner = record_owner(domain);
+    select_agent_txt_records(
+        &resolve_txt_records(&owner, require_secure)?,
+        domain,
+        agent_id,
+    )
+}
+
+pub fn resolve_txt_records(owner: &str, require_secure: bool) -> Result<Vec<String>, JacsError> {
     validate_dns_owner(owner)?;
     ensure_network_access(NetworkCapability::DnsLookup)?;
     let (config, options) = hickory_resolver::system_conf::read_system_conf().map_err(|error| {
@@ -335,14 +570,26 @@ fn resolve_txt(owner: &str, require_secure: bool) -> Result<String, JacsError> {
             domain: owner.to_string(),
             reason: format!("DNS lookup failed: {e}"),
         })?;
-    txt_from_answers(resp.answers(), owner, require_secure)
+    txt_records_from_answers(resp.answers(), owner, require_secure)
 }
 
+#[cfg(test)]
 fn txt_from_answers(
     answers: &[hickory_resolver::proto::rr::Record],
     owner: &str,
     require_secure: bool,
 ) -> Result<String, JacsError> {
+    find_jacs_txt_record(
+        txt_records_from_answers(answers, owner, require_secure)?,
+        owner,
+    )
+}
+
+fn txt_records_from_answers(
+    answers: &[hickory_resolver::proto::rr::Record],
+    owner: &str,
+    require_secure: bool,
+) -> Result<Vec<String>, JacsError> {
     let mut records = Vec::new();
     for rr in answers {
         let hickory_resolver::proto::rr::RData::TXT(txt) = &rr.data else {
@@ -367,7 +614,7 @@ fn txt_from_answers(
         }
         records.push(record);
     }
-    find_jacs_txt_record(records, owner)
+    Ok(records)
 }
 
 pub fn verify_pubkey_via_dns_or_embedded(
@@ -382,39 +629,19 @@ pub fn verify_pubkey_via_dns_or_embedded(
 
     if let Some(domain) = jacs_agent_domain {
         let owner = record_owner(domain);
-        let lookup = if strict_dns {
-            resolve_txt_dnssec(&owner)
-        } else {
-            resolve_txt_insecure(&owner)
-        };
+        let lookup = resolve_txt_records(&owner, strict_dns).and_then(|records| {
+            if records.iter().any(|record| is_jacs_record(record)) {
+                Ok(records)
+            } else {
+                Err(JacsError::DnsRecordMissing {
+                    domain: domain.to_string(),
+                })
+            }
+        });
         match lookup {
-            Ok(txt) => {
-                let f = parse_agent_txt(&txt)?;
-                if f.v != "jacs" {
-                    return Err(JacsError::DnsRecordInvalid {
-                        domain: domain.to_string(),
-                        reason: format!("Unexpected v field: {}", f.v),
-                    });
-                }
-                if f.jacs_agent_id != agent_id {
-                    return Err(JacsError::DnsRecordInvalid {
-                        domain: domain.to_string(),
-                        reason: "Agent ID mismatch".to_string(),
-                    });
-                }
-                let ok = match f.enc {
-                    DigestEncoding::Base64 => f.digest == local_b64,
-                    DigestEncoding::Hex => f.digest.eq_ignore_ascii_case(&local_hex),
-                };
-                if ok {
-                    return Ok(());
-                } else {
-                    return Err(JacsError::DnsRecordInvalid {
-                        domain: domain.to_string(),
-                        reason: "DNS fingerprint mismatch: digest does not match local public key"
-                            .to_string(),
-                    });
-                }
+            Ok(records) => {
+                match_agent_txt_record(&records, domain, agent_id, agent_public_key)?;
+                return Ok(());
             }
             Err(error) => {
                 if strict_dns {
@@ -671,139 +898,142 @@ pub fn dnssec_guidance(provider: &str) -> &'static str {
     }
 }
 
-/// Result of verifying an agent's identity via DNS TXT record.
+/// Document integrity and DNS fingerprint agreement, not independent identity authorization.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DnsVerificationResult {
-    /// Whether the DNS record matches the agent's public key hash.
+    /// True only when the document signature and a matching raw-key DNS fingerprint verify.
     pub verified: bool,
-    /// The agent ID extracted from the agent document.
     pub agent_id: String,
-    /// The domain that was checked.
     pub domain: String,
-    /// The public key hash from the agent document.
+    /// The signed document reference, which may use the frozen native legacy hash profile.
     pub document_hash: String,
-    /// The public key hash from the DNS TXT record (empty if lookup failed).
+    /// The separate raw-key SHA-256 fingerprint in its DNS-declared encoding.
     pub dns_hash: String,
-    /// Human-readable status message.
     pub message: String,
 }
 
-/// Verify an agent's DNS TXT record matches its public key hash.
-///
-/// Parses the agent JSON to extract `jacsSignature.publicKeyHash` and `jacsSignature.agentID`,
-/// then looks up the DNS TXT record at `_v1.agent.jacs.{domain}` and compares the hashes.
-///
-/// # Arguments
-/// * `agent_json` - Full agent JSON document string
-/// * `domain` - Domain to check (e.g., "example.com")
-///
-/// # Returns
-/// `Ok(DnsVerificationResult)` with match status. Never returns `Err` for DNS failures;
-/// those are reported via `verified: false` in the result.
+fn dns_verification_input(
+    agent_json: &str,
+    domain: &str,
+) -> Result<(serde_json::Value, DnsVerificationResult), JacsError> {
+    let parsed = jacs_core::strict_json::parse_strict_json(agent_json).map_err(|e| {
+        JacsError::DocumentMalformed {
+            field: "agent_json".into(),
+            reason: format!("Invalid agent JSON: {e}"),
+        }
+    })?;
+    let sig = parsed
+        .get("jacsSignature")
+        .ok_or_else(|| JacsError::DocumentMalformed {
+            field: "jacsSignature".into(),
+            reason: "Missing jacsSignature in agent document".into(),
+        })?;
+    let result = DnsVerificationResult {
+        verified: false,
+        agent_id: sig["agentID"].as_str().unwrap_or_default().into(),
+        domain: domain.into(),
+        document_hash: sig["publicKeyHash"].as_str().unwrap_or_default().into(),
+        dns_hash: String::new(),
+        message: String::new(),
+    };
+    Ok((parsed, result))
+}
+
+/// Resolve an exact-version public key from this DNS publisher, then verify the
+/// document and raw-key DNS fingerprint separately. Network access remains opt-in;
+/// configured DNSSEC strictness applies. Lookup failures produce `verified: false`.
+/// This does not authorize the signer identity. Legacy v1 signatures are not
+/// accepted by this integrity API and never authenticate an `agentDomain` hint.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn verify_agent_dns(
     agent_json: &str,
     domain: &str,
 ) -> Result<DnsVerificationResult, JacsError> {
-    let parsed: serde_json::Value =
-        jacs_core::strict_json::parse_strict_json(agent_json).map_err(|e| {
-            JacsError::DocumentMalformed {
-                field: "agent_json".to_string(),
-                reason: format!("Invalid agent JSON: {}", e),
-            }
-        })?;
-
-    let sig = parsed
-        .get("jacsSignature")
-        .ok_or_else(|| JacsError::DocumentMalformed {
-            field: "jacsSignature".to_string(),
-            reason: "Missing jacsSignature in agent document".to_string(),
-        })?;
-    let agent_id = sig
-        .get("agentID")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let doc_hash = sig
-        .get("publicKeyHash")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    if doc_hash.is_empty() {
-        return Ok(DnsVerificationResult {
-            verified: false,
-            agent_id,
-            domain: domain.to_string(),
-            document_hash: doc_hash,
-            dns_hash: String::new(),
-            message: "Agent document has no publicKeyHash".to_string(),
-        });
+    let (parsed, mut result) = dns_verification_input(agent_json, domain)?;
+    if result.document_hash.is_empty() {
+        result.message = "Agent document has no publicKeyHash".into();
+        return Ok(result);
     }
-
-    let owner = record_owner(domain);
-    let txt = match resolve_txt_insecure(&owner) {
-        Ok(t) => t,
-        Err(e) => {
-            return Ok(DnsVerificationResult {
-                verified: false,
-                agent_id,
-                domain: domain.to_string(),
-                document_hash: doc_hash,
-                dns_hash: String::new(),
-                message: format!("DNS lookup failed for {}: {}", owner, e),
-            });
+    let attempt = (|| {
+        let agent = crate::agent::Agent::new("v1", "v1", "v1")?;
+        let require_secure = agent.key_discovery_dns_strict();
+        let key = crate::key_resolution::resolve_document_key_for_domain(
+            &agent,
+            &parsed,
+            domain,
+            require_secure,
+        )?;
+        verify_agent_dns_with_key(
+            agent_json,
+            domain,
+            &key.public_key,
+            &key.algorithm,
+            require_secure,
+        )
+    })();
+    match attempt {
+        Ok(verified) => Ok(verified),
+        Err(error) => {
+            result.message = format!("DNS key discovery or verification failed: {error}");
+            Ok(result)
         }
-    };
-
-    let fields = match parse_agent_txt(&txt) {
-        Ok(f) => f,
-        Err(e) => {
-            return Ok(DnsVerificationResult {
-                verified: false,
-                agent_id,
-                domain: domain.to_string(),
-                document_hash: doc_hash,
-                dns_hash: String::new(),
-                message: format!("Failed to parse DNS TXT record: {}", e),
-            });
-        }
-    };
-
-    // Compare agent IDs
-    if !agent_id.is_empty() && fields.jacs_agent_id != agent_id {
-        let msg = format!(
-            "Agent ID mismatch: document={}, dns={}",
-            agent_id, fields.jacs_agent_id
-        );
-        return Ok(DnsVerificationResult {
-            verified: false,
-            agent_id,
-            domain: domain.to_string(),
-            document_hash: doc_hash,
-            dns_hash: fields.digest.clone(),
-            message: msg,
-        });
     }
+}
 
-    // Compare hashes (support both base64 and hex encodings)
-    let matched = match fields.enc {
-        DigestEncoding::Base64 => fields.digest == doc_hash,
-        DigestEncoding::Hex => fields.digest.eq_ignore_ascii_case(&doc_hash),
-    };
-
-    Ok(DnsVerificationResult {
-        verified: matched,
-        agent_id,
-        domain: domain.to_string(),
-        document_hash: doc_hash,
-        dns_hash: fields.digest,
-        message: if matched {
-            "DNS public key hash matches agent document".to_string()
-        } else {
-            "DNS public key hash does NOT match agent document".to_string()
-        },
+/// Check a caller-selected raw public key against a signed v2 document and this
+/// DNS publisher. `require_secure` requires locally validated DNSSEC proofs.
+/// The document's legacy key reference is never used as the DNS fingerprint.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn verify_agent_dns_with_key(
+    agent_json: &str,
+    domain: &str,
+    public_key: &[u8],
+    algorithm: &str,
+    require_secure: bool,
+) -> Result<DnsVerificationResult, JacsError> {
+    verify_agent_dns_with_records(agent_json, domain, public_key, algorithm, |agent_id| {
+        resolve_agent_txt_records(domain, agent_id, require_secure)
     })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_agent_dns_with_records(
+    agent_json: &str,
+    domain: &str,
+    public_key: &[u8],
+    algorithm: &str,
+    records: impl FnOnce(&str) -> Result<Vec<AgentTxtFields>, JacsError>,
+) -> Result<DnsVerificationResult, JacsError> {
+    let (_, mut result) = dns_verification_input(agent_json, domain)?;
+    let attempt = (|| {
+        validate_agent_domain(domain)?;
+        let report = crate::verification::NonSigningVerifier::new()?
+            .verify_with_key(agent_json, public_key, algorithm, None)?;
+        if !report.integrity_valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: format!("Document integrity failed: {}", report.errors.join("; ")),
+            });
+        }
+        records(&result.agent_id)?
+            .into_iter()
+            .find(|record| {
+                record.jacs_agent_id == result.agent_id
+                    && record_matches_public_key(record, public_key)
+            })
+            .ok_or_else(|| JacsError::DnsRecordInvalid {
+                domain: domain.into(),
+                reason: "DNS fingerprint does not match the verified public key".into(),
+            })
+    })();
+    match attempt {
+        Ok(record) => {
+            result.verified = true;
+            result.dns_hash = record.digest;
+            result.message = "Document signature and raw public-key DNS fingerprint verified; identity authorization is separate".into();
+        }
+        Err(error) => result.message = format!("DNS key verification failed: {error}"),
+    }
+    Ok(result)
 }
 
 pub fn tld_requirement_text() -> &'static str {
@@ -990,6 +1220,235 @@ mod tests {
     }
 
     #[test]
+    fn rrset_preserves_chunk_boundaries_and_dnssec_for_every_record() {
+        use hickory_resolver::proto::dnssec::Proof;
+        use hickory_resolver::proto::rr::{Name, RData, Record, rdata::TXT};
+        let owner = "_v1.agent.jacs.example.test.";
+        let text = build_agent_dns_txt("agent", &pubkey_digest_b64(b"old"), DigestEncoding::Base64);
+        let other = build_agent_dns_txt("agent", &pubkey_digest_hex(b"new"), DigestEncoding::Hex);
+        let mut first = Record::from_rdata(
+            Name::from_ascii(owner).unwrap(),
+            60,
+            RData::TXT(TXT::new(vec![
+                text[..20].to_string(),
+                text[20..].to_string(),
+            ])),
+        );
+        let mut second = Record::from_rdata(
+            Name::from_ascii(owner).unwrap(),
+            60,
+            RData::TXT(TXT::new(vec![other.clone()])),
+        );
+        first.proof = Proof::Secure;
+        second.proof = Proof::Secure;
+        assert_eq!(
+            txt_records_from_answers(&[first.clone(), second.clone()], owner, true).unwrap(),
+            vec![text, other]
+        );
+        second.proof = Proof::Bogus;
+        assert!(txt_records_from_answers(&[first, second], owner, true).is_err());
+    }
+
+    #[test]
+    fn signed_domain_and_dns_fingerprint_are_independent_verified_inputs() {
+        use crate::simple::SimpleAgent;
+        use serde_json::{Value, json};
+        let (signer, info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let no_domain = signer
+            .sign_message(&json!({"message": "no discovery hint"}))
+            .unwrap();
+        let old: Value = serde_json::from_str(&no_domain.raw).unwrap();
+        assert!(old["jacsSignature"].get("agentDomain").is_none());
+        {
+            let mut agent = signer.agent.lock().unwrap();
+            agent.config = Some(
+                crate::config::Config::builder()
+                    .key_algorithm("ring-Ed25519")
+                    .default_storage("memory")
+                    .agent_domain("https://keys.example.test/")
+                    .build(),
+            );
+        }
+        let signed = signer
+            .sign_message(&json!({"message": "signed discovery hint"}))
+            .unwrap();
+        let mut document: Value = serde_json::from_str(&signed.raw).unwrap();
+        assert_eq!(
+            document["jacsSignature"]["agentDomain"],
+            "keys.example.test"
+        );
+        let key = signer.get_public_key().unwrap();
+        for source in [
+            include_str!("../../schemas/components/signature/v1/signature.schema.json"),
+            jacs_core::schema::EmbeddedSchemaResolver::lookup(
+                "schemas/components/signature/v1/signature.schema.json",
+            )
+            .unwrap(),
+        ] {
+            let schema: Value = serde_json::from_str(source).unwrap();
+            let validator = jsonschema::validator_for(&schema).unwrap();
+            assert!(validator.is_valid(&old["jacsSignature"]));
+            assert!(validator.is_valid(&document["jacsSignature"]));
+        }
+        assert!(
+            jacs_core::verify::verify_document(
+                &document,
+                &key,
+                jacs_core::sign::SigningAlgorithm::Ed25519,
+                "jacsSignature"
+            )
+            .unwrap()
+            .valid
+        );
+        let verifier = crate::verification::NonSigningVerifier::new().unwrap();
+        assert!(
+            verifier
+                .verify_with_key(&no_domain.raw, &key, "ed25519", None)
+                .unwrap()
+                .integrity_valid
+        );
+        assert!(
+            verifier
+                .verify_with_key(&signed.raw, &key, "ed25519", None)
+                .unwrap()
+                .integrity_valid
+        );
+        for encoding in [DigestEncoding::Base64, DigestEncoding::Hex] {
+            let digest = match encoding {
+                DigestEncoding::Base64 => pubkey_digest_b64(&key),
+                DigestEncoding::Hex => pubkey_digest_hex(&key),
+            };
+            let fields =
+                parse_agent_txt(&build_agent_dns_txt(&info.agent_id, &digest, encoding)).unwrap();
+            let result = verify_agent_dns_with_records(
+                &signed.raw,
+                "keys.example.test",
+                &key,
+                "ed25519",
+                |_| Ok(vec![fields]),
+            )
+            .unwrap();
+            assert!(result.verified, "{}", result.message);
+            assert_eq!(result.dns_hash, digest);
+            assert_eq!(result.document_hash, hash_public_key(&key));
+        }
+        let wrong_record = parse_agent_txt(&build_agent_dns_txt(
+            &info.agent_id,
+            &pubkey_digest_b64(b"wrong key"),
+            DigestEncoding::Base64,
+        ))
+        .unwrap();
+        assert!(
+            !verify_agent_dns_with_records(
+                &signed.raw,
+                "keys.example.test",
+                &key,
+                "ed25519",
+                |_| Ok(vec![wrong_record])
+            )
+            .unwrap()
+            .verified
+        );
+        document["jacsSignature"]["agentDomain"] = json!("attacker.example.test");
+        let tampered = serde_json::to_string(&document).unwrap();
+        assert!(
+            !verifier
+                .verify_with_key(&tampered, &key, "ed25519", None)
+                .unwrap()
+                .signature_valid
+        );
+        let failed =
+            verify_agent_dns_with_records(&tampered, "keys.example.test", &key, "ed25519", |_| {
+                panic!("tampered signature must fail before DNS")
+            });
+        assert!(!failed.unwrap().verified);
+        // A legacy profile never upgrades this metadata into an authenticated hint.
+        document["jacsSignature"]["signatureContentVersion"] = json!("jacs-signature-v1");
+        assert!(
+            !verifier
+                .verify_with_key(&document.to_string(), &key, "ed25519", None)
+                .unwrap()
+                .integrity_valid
+        );
+        for local in ["localhost", "http://127.0.0.1:8080/", "https://[::1]:8443/"] {
+            signer.agent.lock().unwrap().config = Some(
+                crate::config::Config::builder()
+                    .key_algorithm("ring-Ed25519")
+                    .default_storage("memory")
+                    .agent_domain(local)
+                    .build(),
+            );
+            let signed = signer
+                .sign_message(&json!({"message": "local signing"}))
+                .unwrap();
+            let document: Value = serde_json::from_str(&signed.raw).unwrap();
+            assert!(document["jacsSignature"].get("agentDomain").is_none());
+            assert!(
+                verifier
+                    .verify_with_key(&signed.raw, &key, "ed25519", None)
+                    .unwrap()
+                    .integrity_valid
+            );
+        }
+    }
+
+    #[test]
+    fn domain_hints_are_bare_bounded_hostnames() {
+        assert_eq!(
+            signing_agent_domain("https://keys.example.test/").unwrap(),
+            Some("keys.example.test".into())
+        );
+        assert_eq!(
+            signing_agent_domain("keys.example.test").unwrap(),
+            Some("keys.example.test".into())
+        );
+        for origin in [
+            "https://user@keys.example.test/",
+            "https://keys.example.test/path",
+            "https://keys.example.test/?x=1",
+            "https://keys.example.test/#fragment",
+            "https://keys.example.test/\0",
+            "https://keys.example.test\\",
+        ] {
+            assert!(signing_agent_domain(origin).is_err(), "{origin}");
+        }
+        for local in [
+            "localhost",
+            "dev.localhost",
+            "service.local",
+            "127.0.0.1",
+            "[::1]",
+            "http://localhost:8080/",
+            "https://127.0.0.1:8443/",
+            "https://[::1]/",
+            "http://keys.example.test/",
+        ] {
+            assert_eq!(signing_agent_domain(local).unwrap(), None, "{local}");
+        }
+        for domain in [
+            "example.test",
+            "keys.example.test.",
+            "xn--bcher-kva.example",
+        ] {
+            assert!(validate_agent_domain(domain).is_ok(), "{domain}");
+        }
+        for domain in [
+            "",
+            "https://example.test",
+            "example.test/path",
+            "127.0.0.1",
+            "[::1]",
+            "-bad.example",
+            "bad-.example",
+            "a..example",
+            "example.test..",
+            "_bad.example",
+        ] {
+            assert!(validate_agent_domain(domain).is_err(), "{domain}");
+        }
+    }
+
+    #[test]
     fn dns_txt_rejects_duplicate_fields() {
         let text = build_agent_dns_txt("sample-agent", "sample-digest", DigestEncoding::Hex);
         assert!(parse_agent_txt(&format!("{text}; alg=SHA-256")).is_err());
@@ -1068,14 +1527,16 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_agent_dns_no_record() {
-        // example.com won't have a JACS TXT record
+    fn test_verify_agent_dns_invalid_identity_fails_without_lookup() {
+        // An incomplete identity cannot trigger discovery or claim a hash match.
         let agent = r#"{"jacsSignature":{"agentID":"test-id","publicKeyHash":"abc123"}}"#;
         let result = verify_agent_dns(agent, "example.com").unwrap();
         assert!(!result.verified);
         assert_eq!(result.domain, "example.com");
         assert!(
-            result.message.contains("DNS lookup failed"),
+            result
+                .message
+                .contains("DNS key discovery or verification failed"),
             "Expected DNS lookup failure, got: {}",
             result.message
         );
@@ -1127,8 +1588,8 @@ mod tests {
 
     #[test]
     fn test_parse_agent_txt_accepts_jacs_version() {
-        let txt = "v=jacs; jacs_agent_id=a1; alg=SHA-256; enc=base64; jac_public_key_hash=abc";
-        let result = parse_agent_txt(txt).unwrap();
+        let txt = build_agent_dns_txt("a1", &pubkey_digest_b64(b"key"), DigestEncoding::Base64);
+        let result = parse_agent_txt(&txt).unwrap();
         assert_eq!(result.v, "jacs");
     }
 
@@ -1144,11 +1605,7 @@ mod tests {
             agent_id, digest
         );
 
-        // parse_agent_txt itself is format-only; it parses any v value.
-        // The rejection happens in verify_pubkey_via_dns_or_embedded.
-        let fields = parse_agent_txt(&txt).unwrap();
-        assert_eq!(fields.v, "hai.ai");
-        // The verify function should reject this v field
+        assert!(parse_agent_txt(&txt).is_err());
     }
 
     #[test]

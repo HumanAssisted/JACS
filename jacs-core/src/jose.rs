@@ -28,13 +28,20 @@ pub fn mldsa87_public_jwk(public_key: &[u8]) -> Result<Value, CoreError> {
 
 /// Validate a public ML-DSA-87 AKP JWK; private material is never accepted.
 /// Optional JOSE usage restrictions must authorize signature verification.
+/// The JACS canonical public-key profile accepts only the public AKP and usage
+/// members below. An optional `kid` must be the SHA-256 JWK thumbprint used by
+/// this library's exports; general JOSE does not require thumbprint-based kids.
 pub fn mldsa87_public_key(jwk: &Value) -> Result<Vec<u8>, CoreError> {
     let invalid = || CoreError::MalformedKey("invalid public ML-DSA-87 AKP JWK".into());
+    let object = jwk.as_object().ok_or_else(invalid)?;
     if jwk["kty"] != "AKP"
         || jwk["alg"] != ML_DSA_87
-        || ["priv", "d", "x", "y", "crv", "n", "e"]
-            .iter()
-            .any(|k| jwk.get(k).is_some())
+        || object.keys().any(|k| {
+            !matches!(
+                k.as_str(),
+                "kty" | "alg" | "pub" | "kid" | "use" | "key_ops"
+            )
+        })
         || jwk.get("use").is_some_and(|v| v != "sig")
         || jwk.get("key_ops").is_some_and(|v| {
             v.as_array()
@@ -43,11 +50,17 @@ pub fn mldsa87_public_key(jwk: &Value) -> Result<Vec<u8>, CoreError> {
     {
         return Err(invalid());
     }
-    let key = URL_SAFE_NO_PAD
-        .decode(jwk["pub"].as_str().ok_or_else(invalid)?)
-        .map_err(|_| invalid())?;
-    if key.len() != crate::sign::ML_DSA_87_PUBLIC_KEY_SIZE {
+    let encoded = jwk["pub"].as_str().ok_or_else(invalid)?;
+    let key = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| invalid())?;
+    if key.len() != crate::sign::ML_DSA_87_PUBLIC_KEY_SIZE
+        || URL_SAFE_NO_PAD.encode(&key) != encoded
+    {
         return Err(invalid());
+    }
+    if let Some(kid) = jwk.get("kid") {
+        if kid != &mldsa87_public_jwk(&key)?["kid"] {
+            return Err(invalid());
+        }
     }
     Ok(key)
 }
@@ -205,6 +218,45 @@ mod tests {
                 URL_SAFE_NO_PAD.encode(signer.sign(input.as_bytes()).unwrap())
             );
             assert!(verify_mldsa87_jws(&signed, signer.public_key(), None).is_err());
+        }
+    }
+
+    #[test]
+    fn public_akp_profile_rejects_private_extensions_and_inconsistent_kid() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/rfc9964-mldsa87-public-vector.json"
+        ))
+        .unwrap();
+        let jwk = &fixture["jwk"];
+        let expected = mldsa87_public_key(jwk).unwrap();
+        for member in [
+            "priv", "d", "k", "p", "q", "dp", "dq", "qi", "oth", "x", "y", "crv", "n", "e",
+            "future",
+        ] {
+            let mut bad = jwk.clone();
+            bad[member] = Value::Null;
+            assert!(mldsa87_public_key(&bad).is_err(), "member {member}");
+        }
+        for kid in [Value::Null, json!(42), json!(""), json!("different-key")] {
+            let mut bad = jwk.clone();
+            bad["kid"] = kid;
+            assert!(mldsa87_public_key(&bad).is_err());
+        }
+        for value in [Value::Null, json!([]), json!("AKP")] {
+            assert!(mldsa87_public_key(&value).is_err());
+        }
+        let mut public = jwk.clone();
+        public.as_object_mut().unwrap().remove("kid");
+        public["key_ops"] = json!(["verify"]);
+        assert_eq!(mldsa87_public_key(&public).unwrap(), expected);
+        for operations in [
+            json!([]),
+            json!(["verify", "sign"]),
+            json!(["verify", "verify"]),
+            Value::Null,
+        ] {
+            public["key_ops"] = operations;
+            assert!(mldsa87_public_key(&public).is_err());
         }
     }
 }

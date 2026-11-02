@@ -24,3 +24,8 @@ trust anchor, and a valid signature is not permission to act.
 See the [standards evidence](https://github.com/HumanAssisted/JACS/blob/main/docs/research/pq-identity-standards.md)
 for RFC 9964, DID and A2A references. An AKP JWK represents an ML-DSA key; it does
 not imply a finalized ML-DSA Data Integrity cryptosuite or universal peer support.
+
+The [key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+covers opt-in native DNS/HTTPS lookup and exact signed identity/version checks.
+Discovered keys do not enroll trusted identities. Portable CLI/MCP verification
+continues to use caller-supplied public identity or key material.

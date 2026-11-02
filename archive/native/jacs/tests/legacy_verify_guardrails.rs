@@ -2,7 +2,8 @@
 //!
 //! Proves P2 did NOT reopen the old broad projection design:
 //!
-//! * a committed legacy Ed25519 fixture and a generated true-v1 pq2025
+//! * a deterministic legacy Ed25519 fixture reconstructed from a committed test key
+//!   and a generated true-v1 pq2025
 //!   fixture are denied by default and remain available only through explicit
 //!   compatibility/migration mode;
 //! * the native signature schema enum stays exactly
@@ -18,6 +19,8 @@
 //! These tests add no product behavior — they pin the walls added by
 //! Tasks 001–005 so a regression reopening the old projection surface
 //! fails loudly.
+
+mod utils;
 
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
@@ -84,35 +87,56 @@ impl Drop for EnvVarGuard {
     }
 }
 
-/// Root of the committed test fixtures.
-fn fixtures_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
-
-fn legacy_ed25519_paths() -> (PathBuf, PathBuf) {
-    let root = fixtures_root();
-    (
-        root.join("agent")
-            .join("22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a.json"),
-        root.join("keys").join("agent-ed25519.public.pem"),
+/// Reconstruct a genuine v1 identity with the committed historical test key.
+/// The old agent JSON was never tracked. Keep this fixture deterministic and
+/// independent of generated v2 cross-language documents or developer files.
+fn legacy_ed25519_fixture() -> (String, Vec<u8>) {
+    use jacs_core::DetachedSigner;
+    let private = jacs::crypt::aes_encrypt::decrypt_private_key_secure_with_password(
+        include_bytes!("fixtures/keys/agent-ed25519.private.pem.enc"),
+        utils::TEST_PASSWORD_LEGACY,
     )
-}
-
-/// Verify a committed legacy-v1 document through standalone verification
-/// against an isolated key cache built from its committed public key.
-fn verify_committed_legacy_fixture(signed_path: &Path, raw_key_path: &Path) {
-    assert!(signed_path.exists(), "missing {}", signed_path.display());
-    assert!(raw_key_path.exists(), "missing {}", raw_key_path.display());
-
-    let signed_doc = fs::read_to_string(signed_path).expect("read signed fixture");
-    let raw_key_bytes = fs::read(raw_key_path).expect("read fixture public key bytes");
-    verify_legacy_fixture(
-        &signed_doc,
-        &raw_key_bytes,
-        &signed_path.display().to_string(),
+    .expect("decrypt committed test-only Ed25519 key");
+    let signer = jacs_core::Ed25519DalekSigner::from_pkcs8(private.as_slice()).unwrap();
+    let public = signer.public_key().to_vec();
+    assert_eq!(
+        public,
+        include_bytes!("fixtures/keys/agent-ed25519.public.pem")
     );
+    let mut document = json!({
+        "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+        "jacsId": "22dbef6c-b85e-40e5-b82e-f95a4259339a",
+        "jacsVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+        "jacsOriginalVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+        "jacsVersionDate": "2024-07-31T15:52:17.465433+00:00",
+        "jacsOriginalDate": "2024-07-31T15:52:17.465433+00:00",
+        "jacsType": "agent", "jacsLevel": "config", "jacsAgentType": "ai",
+        "name": "agent-ed25519", "description": "Legacy signature guardrail fixture"
+    });
+    let mut fields: Vec<_> = document.as_object().unwrap().keys().cloned().collect();
+    fields.sort();
+    // V1 authenticates the canonical field values only, unlike v2's metadata
+    // binding. Do not create v2 bytes then merely remove its version marker.
+    let payload = fields
+        .iter()
+        .map(|field| jacs_core::canonical::canonicalize_json_try(&document[field]).unwrap())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let signature = signer.sign(payload.as_bytes()).unwrap();
+    jacs_core::Ed25519DalekSigner::verify(&public, payload.as_bytes(), &signature).unwrap();
+    document["jacsSignature"] = json!({
+        "agentID": document["jacsId"], "agentVersion": document["jacsVersion"],
+        "date": "2024-07-31T15:52:17.465433+00:00",
+        "iat": 1722441137, "jti": "legacy-ed25519-guardrail-fixture",
+        "signingAlgorithm": "ring-Ed25519", "publicKeyHash": jacs::crypt::hash::hash_public_key(&public),
+        "fields": fields, "signature": jacs::crypt::base64_encode(&signature)
+    });
+    document["jacsSha256"] = json!(jacs_core::document_hash_v1(&document).unwrap());
+    jacs::schema::Schema::new("v1", "v1", "v1")
+        .unwrap()
+        .validate_signature(&document["jacsSignature"])
+        .expect("reconstructed v1 signature must satisfy the current metadata schema");
+    (document.to_string(), public)
 }
 
 fn verify_legacy_fixture(signed_doc: &str, raw_key_bytes: &[u8], fixture_label: &str) {
@@ -163,9 +187,21 @@ fn verify_legacy_fixture(signed_doc: &str, raw_key_bytes: &[u8], fixture_label: 
     let result =
         verify_document_standalone(signed_doc, Some("local"), Some(out_str), Some(out_str))
             .expect("standalone verify should not error");
+    // The standalone binding result intentionally omits diagnostics. On a
+    // failure, use the public explicit-key verifier to expose the native error
+    // without generating an unrelated identity or touching signed bytes.
+    let diagnostics = (!result.valid).then(|| {
+        SimpleAgent::from_shared_agent(
+            std::sync::Arc::new(std::sync::Mutex::new(jacs::get_empty_agent())),
+            None,
+            false,
+        )
+        .verify_with_key(signed_doc, raw_key_bytes.to_vec())
+        .map(|report| report.errors)
+    });
     assert!(
         result.valid,
-        "{fixture_label} verification failed. signer_id={}, timestamp={}, result={result:?}",
+        "{fixture_label} verification failed. signer_id={}, timestamp={}, native_errors={diagnostics:?}, result={result:?}",
         result.signer_id, result.timestamp
     );
     assert!(
@@ -183,8 +219,7 @@ fn legacy_fixture_is_rejected_by_default() {
     let _allow_legacy_guard = EnvVarGuard::remove(ALLOW_LEGACY_SIGNATURE_ENV_VAR);
     let _reject_legacy_guard = EnvVarGuard::remove(REJECT_LEGACY_SIGNATURE_ENV_VAR);
 
-    let (signed_path, raw_key_path) = legacy_ed25519_paths();
-    let signed_doc = fs::read_to_string(&signed_path).expect("read signed fixture");
+    let (signed_doc, raw_key) = legacy_ed25519_fixture();
     let document: Value = serde_json::from_str(&signed_doc).expect("parse signed fixture");
     let signature = &document["jacsSignature"];
     let public_key_hash = signature["publicKeyHash"].as_str().expect("key hash");
@@ -193,11 +228,8 @@ fn legacy_fixture_is_rejected_by_default() {
     let cache = tempfile::tempdir().expect("create key cache");
     let public_keys = cache.path().join("public_keys");
     fs::create_dir_all(&public_keys).expect("create public key directory");
-    fs::copy(
-        raw_key_path,
-        public_keys.join(format!("{public_key_hash}.pem")),
-    )
-    .expect("copy key");
+    fs::write(public_keys.join(format!("{public_key_hash}.pem")), raw_key)
+        .expect("write fixture key");
     fs::write(
         public_keys.join(format!("{public_key_hash}.enc_type")),
         signing_algorithm,
@@ -221,8 +253,12 @@ fn legacy_fixture_is_rejected_by_default() {
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn legacy_ed25519_fixture_still_verifies() {
-    let (signed_path, raw_key_path) = legacy_ed25519_paths();
-    verify_committed_legacy_fixture(&signed_path, &raw_key_path);
+    let (signed_doc, raw_key) = legacy_ed25519_fixture();
+    verify_legacy_fixture(
+        &signed_doc,
+        &raw_key,
+        "reconstructed committed-key Ed25519 v1 fixture",
+    );
 }
 
 #[test]
@@ -309,7 +345,8 @@ fn legacy_lowercase_ed25519_wire_form_is_pinned() {
 
     // The portable spelling is accepted without rewriting any signed bytes.
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").expect("native schema");
-    schema.validate_signature(&signed["jacsSignature"])
+    schema
+        .validate_signature(&signed["jacsSignature"])
         .expect("canonical 'ed25519' must pass the native signature schema");
 
     // Historical spelling remains schema-valid as well.
@@ -640,8 +677,14 @@ fn native_es256_verification_preserves_algorithm_key_and_schema_boundaries() {
         wrong_key_result
             .errors
             .iter()
-            .any(|error| error.contains("Incorrect public key"))
+            .any(|error| error.to_ascii_lowercase().contains("public key")),
+        "wrong key must produce a key-related refusal: {:?}",
+        wrong_key_result.errors
     );
+    assert!(wrong_key_result.signer_id.is_empty());
+    assert!(wrong_key_result.signer_name.is_none());
+    assert!(wrong_key_result.timestamp.is_empty());
+    assert!(wrong_key_result.attachments.is_empty());
 
     let mut tampered = doc.clone();
     tampered["content"]["guardrail"] = json!("tampered");

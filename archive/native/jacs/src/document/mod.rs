@@ -127,132 +127,25 @@ pub use types::{
 };
 
 use crate::agent::Agent;
-use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
-use crate::agent::loaders::{FileLoader, fetch_remote_public_key};
 use crate::agent::{DOCUMENT_AGENT_SIGNATURE_FIELDNAME, SHA256_FIELDNAME};
-use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::error::JacsError;
 use crate::search::{SearchQuery, SearchResults};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tracing::{debug, warn};
+use tracing::debug;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 use crate::storage::SqliteDocumentService;
 
 const SQLITE_DOCUMENT_DB_FILENAME: &str = "jacs_documents.sqlite3";
 
-fn same_signer(current_agent_id: Option<&str>, signer_id: &str) -> bool {
-    fn normalize(value: &str) -> &str {
-        value.split(':').next().unwrap_or(value)
-    }
-    match current_agent_id {
-        Some(agent_id) if !agent_id.is_empty() && !signer_id.is_empty() => {
-            normalize(agent_id) == normalize(signer_id)
-        }
-        _ => false,
-    }
-}
-
-fn document_signer_id(value: &serde_json::Value) -> Option<&str> {
-    value
-        .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
-        .and_then(|sig| sig.get("agentID"))
-        .and_then(|id| id.as_str())
-}
-
 fn resolve_document_verification_key(
     agent: &mut Agent,
     value: &serde_json::Value,
 ) -> Result<(Vec<u8>, Option<String>), JacsError> {
-    let signer_id = document_signer_id(value).unwrap_or_default();
-    let current_agent_id = agent
-        .get_value()
-        .and_then(|agent_value| agent_value.get("jacsId"))
-        .and_then(|id| id.as_str());
-
-    if same_signer(current_agent_id, signer_id) {
-        return Ok((agent.get_public_key()?, None));
-    }
-
-    let public_key_hash = value
-        .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
-        .and_then(|sig| sig.get("publicKeyHash"))
-        .and_then(|hash| hash.as_str())
-        .unwrap_or_default()
-        .to_string();
-    let signer_version = value
-        .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
-        .and_then(|sig| sig.get("agentVersion"))
-        .and_then(|version| version.as_str())
-        .unwrap_or_default()
-        .to_string();
-
-    let resolution_order = get_key_resolution_order();
-    let mut last_error: Option<JacsError> = None;
-
-    for source in &resolution_order {
-        debug!("Resolving document verification key via {:?}", source);
-        match source {
-            KeyResolutionSource::Local => match agent.fs_load_public_key(&public_key_hash) {
-                Ok(key) => {
-                    let enc_type = agent.fs_load_public_key_type(&public_key_hash).ok();
-                    return Ok((key, enc_type));
-                }
-                Err(err) => last_error = Some(err),
-            },
-            KeyResolutionSource::Dns => {
-                // DNS validates key identity during signature verification.
-                continue;
-            }
-            KeyResolutionSource::Registry => {
-                if signer_id.is_empty() {
-                    continue;
-                }
-
-                let requested_version = if signer_version.is_empty() {
-                    "latest".to_string()
-                } else {
-                    signer_version.clone()
-                };
-
-                match fetch_remote_public_key(signer_id, &requested_version) {
-                    Ok(key_info) => {
-                        if !public_key_hash.is_empty()
-                            && !key_info.hash.is_empty()
-                            && key_info.hash != public_key_hash
-                        {
-                            warn!(
-                                "Registry key hash mismatch for signer {}: expected {}..., got {}...",
-                                signer_id,
-                                &public_key_hash[..public_key_hash.len().min(16)],
-                                &key_info.hash[..key_info.hash.len().min(16)]
-                            );
-                            last_error = Some(JacsError::VerificationClaimFailed {
-                                claim: "registry".to_string(),
-                                reason: format!(
-                                    "Registry key hash mismatch for signer '{}'",
-                                    signer_id
-                                ),
-                            });
-                            continue;
-                        }
-
-                        return Ok((key_info.public_key, Some(key_info.algorithm)));
-                    }
-                    Err(err) => last_error = Some(err),
-                }
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| {
-        JacsError::DocumentError(format!(
-            "Failed to resolve verification key for signer '{}'",
-            signer_id
-        ))
-    }))
+    let key = crate::key_resolution::resolve_document_key(agent, value)?;
+    Ok((key.public_key, Some(key.algorithm)))
 }
 
 pub(crate) fn verify_document_with_agent(

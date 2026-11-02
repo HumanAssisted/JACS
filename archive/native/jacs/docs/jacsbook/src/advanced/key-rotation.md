@@ -242,18 +242,24 @@ from UUID comparison.
 
 ## DNS and key versions
 
-The native DNS discovery name supports exactly one JACS TXT record. Multiple
-matching records are rejected; there is no `--all-keys` option. Generate the
-current key's record using:
+Agent-specific native lookup accepts overlapping fingerprints for one agent
+and records for multiple agents. Each record uses the actual format:
 
-```bash
-jacs-compat agent dns --domain example.com --provider plain
+```text
+v=jacs; jacs_agent_id=<agent-uuid>; alg=SHA-256; enc=hex; jac_public_key_hash=<raw-key-sha256>; uri=https://keys.example.com/jacs/v1/agents/<agent-uuid>/keys/<version-uuid>
 ```
 
-Coordinate replacing the record with activation of the new key, allowing for
-TTL and propagation. Retain independently trusted historical keys and signed
-version transitions outside this single current-key DNS record. See
-[DNS trust anchoring](dns-trust.md).
+A cross-origin URI requires an explicitly configured `JACS_KEYS_BASE_URL`.
+Publish distinct raw-key fingerprints and exact-version endpoints during an
+overlap. Conflicting URIs for the same agent and fingerprint are rejected.
+`jacs-compat agent dns` generates the configured identity's record; it does not
+publish changes or provide an `--all-keys` export. The DNS record does not
+implement `ver`, `valid_until` or revocation semantics. Keep historical keys
+available and enforce revocation in application policy. There is no universal
+rotation interval of twice the TTL: account for caches and retained documents.
+See [DNS trust anchoring](dns-trust.md) and the
+[key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+for signed-reference compatibility and verifier boundaries.
 
 ## Security Considerations
 
@@ -262,8 +268,8 @@ version transitions outside this single current-key DNS record. See
 When a key is compromised:
 
 1. **Revoke the key in the relying application's trust policy**
-2. **Update DNS** to the trusted replacement key; DNS has no per-key revocation field
-3. **Enforce revocation policy** in the relying application; mathematical validity alone does not establish current trust
+2. **Update DNS** to remove discovery records for the compromised key; DNS has no revocation-status field
+3. **Reject revoked keys in verification policy**; cryptographic signature validity alone does not enforce revocation
 4. **Notify trusted peers** if possible
 
 ### Secure Deletion
