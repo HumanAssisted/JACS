@@ -36,14 +36,16 @@ library produced by its build. For a separately staged source package, set
 `JACS_NODE_PACKAGE` to its absolute package directory; the same public `client`
 and `a2a-server` exports are exercised.
 
-For Python, install the locked SDK and the freshly built JACS wheel into an
-isolated environment, then build the helper that independently checks native
-root/binding and document signatures:
+For Python, install the locked SDK and the JACS wheel recorded by the last
+native build into an isolated environment, then build the helper that
+independently checks native root/binding and document signatures. The recorded
+candidate avoids picking up an older wheel left in the artifacts directory:
 
 ```sh
 uv venv --python python3 /tmp/jacs-a2a-sdk-env
 uv pip sync --python /tmp/jacs-a2a-sdk-env/bin/python archive/native/examples/a2a_v1_peer_requirements.txt
-uv pip install --python /tmp/jacs-a2a-sdk-env/bin/python target/native-bindings/artifacts/python/jacs-0.15.0-*.whl
+wheel=$(python3 -c 'import json; print(json.load(open("target/native-bindings/artifacts/python/candidate.json"))["artifact"])')
+uv pip install --python /tmp/jacs-a2a-sdk-env/bin/python "target/native-bindings/artifacts/python/$wheel"
 cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs \
   --no-default-features --features a2a --example a2a_v1_peer --target-dir target/a2a-v1-example
 /tmp/jacs-a2a-sdk-env/bin/python archive/native/examples/a2a_v1_sdk_python.py \

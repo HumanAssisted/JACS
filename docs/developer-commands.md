@@ -20,7 +20,7 @@ to the five portable crates. SurrealDB retains its own Cargo workspace.
 | Broad Rust checks | `make test-rust-pr`, `test-rust-slow`, `test-all-pq` | Explicit larger suites; `test-all` continues to mean the portable workspace |
 | Parallel binding tests | `make test-bindings-fast`, `test-jacspy-parallel`, `test-jacsnpm-parallel` | Prepared native bindings and each language's test dependencies |
 | Installed packages | `make test-bindings` | Builds and tests fresh installed Node/Python/Go consumers |
-| Dependency audit | `make audit-jacs` | `cargo-audit`; portable, native and SurrealDB lockfiles |
+| Dependency audit | `make audit-jacs` | `cargo-audit`; portable, native, SurrealDB and mobile bindgen tool lockfiles |
 | Public release verification | `make verify-shipped-release` | Network, `gh`, npm and `pypi-attestations`; requires recorded registry parity and provenance |
 | Portable verifier smoke | `make smoke-verifiers` | Builds the portable CLI; real PQ, tamper, MCP and encrypted-custody checks |
 | Schema comparison | `make sync-schemas` | Read-only byte comparison of native and portable schema trees |

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import re
 import tomllib
 import unittest
 import urllib.error
@@ -344,7 +345,9 @@ class CratesReleaseGateTests(unittest.TestCase):
 
     def test_candidate_audit_waives_surrealdb_rsa_only_while_surrealdb_is_released(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-crate.yml").read_text()
-        audits = [line.strip() for line in workflow.splitlines()
+        # Join shell continuations: security.yml puts waivers on the next line.
+        logical = re.sub(r"\\\s*\n\s*", " ", workflow).splitlines()
+        audits = [line.strip() for line in logical
                   if line.strip().startswith("cargo audit --file target/crate-release/source/Cargo.lock")]
         self.assertEqual(len(audits), 1)
         waiver = "--ignore RUSTSEC-2023-0071"

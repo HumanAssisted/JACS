@@ -38,6 +38,12 @@ jobs:
           toolchain: stable
           targets: aarch64-linux-android,x86_64-linux-android
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          # generate-bindings.sh builds the binding generator, a separate
+          # workspace, into its own target; cache both workspaces.
+          workspaces: |
+            . -> target
+            tools/jacs-mobile-bindgen -> target
       - name: Portable mobile integration tests
         run: cargo test -p jacs-mobile --test portable -- --nocapture
       - name: Generate Kotlin and Swift from the current Rust API
@@ -97,6 +103,12 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          # generate-bindings.sh builds the binding generator, a separate
+          # workspace, into its own target; cache both workspaces.
+          workspaces: |
+            . -> target
+            tools/jacs-mobile-bindgen -> target
       - name: Generate Swift from the current Rust API
         run: bash jacs-mobile/scripts/generate-bindings.sh
       - name: Compile generated Swift and native security adapters

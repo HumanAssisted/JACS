@@ -296,7 +296,7 @@ real dynamic library, with an independent Python `cryptography` P-256 callback.
 On Linux after `generate-bindings.sh` (requires Python `cryptography`):
 
 ```sh
-target/debug/jacs-mobile-bindgen generate --library target/debug/libjacs_mobile.so --language python --out-dir jacs-mobile/generated/python --no-format
+tools/jacs-mobile-bindgen/target/debug/jacs-mobile-bindgen generate --library target/debug/libjacs_mobile.so --language python --out-dir jacs-mobile/generated/python --no-format
 ln -sfn ../../../target/debug/libjacs_mobile.so jacs-mobile/generated/python/libjacs_mobile.so
 PYTHONPATH=jacs-mobile/generated/python python3 jacs-mobile/tests/ffi_smoke.py
 ```

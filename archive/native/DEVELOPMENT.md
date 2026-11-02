@@ -49,7 +49,7 @@ Storage guarantees:
 | AWS S3 | built-in (`s3` feature) | `cargo add jacs --features s3` |
 | PostgreSQL | `jacs-postgresql` | `cargo add jacs-postgresql` |
 | DuckDB | `jacs-duckdb` | `cargo add jacs-duckdb` |
-| SurrealDB | `jacs-surrealdb` | `cargo add jacs-surrealdb` |
+| SurrealDB | `jacs-surrealdb` (held at 0.15.0; use with jacs 0.15) | `cargo add jacs-surrealdb@0.15 jacs@0.15` |
 | Redb | `jacs-redb` | `cargo add jacs-redb` |
 
 ### Document visibility

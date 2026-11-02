@@ -102,6 +102,7 @@ audit-jacs:
 	cargo audit
 	cd archive/native && cargo audit
 	cargo audit --file archive/native/jacs-surrealdb/Cargo.lock
+	cargo audit --file tools/jacs-mobile-bindgen/Cargo.lock
 
 install-githooks:
 	git config core.hooksPath .githooks

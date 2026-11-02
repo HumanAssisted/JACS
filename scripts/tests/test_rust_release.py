@@ -191,6 +191,29 @@ class RustReleaseTests(unittest.TestCase):
             with mock.patch.object(release, "HELD_CRATES", {}):
                 release.validate_sources(self.root, "0.15.0")
 
+    def test_released_crates_cannot_declare_their_own_workspace_or_patch(self):
+        catalog = {"fixture-backend": "backend/Cargo.toml"}
+        manifest = self.write(catalog["fixture-backend"],
+                              '[package]\nname="fixture-backend"\nversion="0.15.0"\n')
+        original = manifest.read_text()
+        tables = ("[workspace]\n", '[patch.crates-io]\nfixture-dep={git="https://example.invalid/dep"}\n')
+        with mock.patch.object(release, "CRATE_MANIFESTS", catalog):
+            for table in tables:
+                with self.subTest(table=table):
+                    manifest.write_text(original + table)
+                    with mock.patch.object(release, "HELD_CRATES", {}):
+                        with self.assertRaisesRegex(ValueError, "cannot declare its own"):
+                            release.validate_sources(self.root, "0.15.0")
+                    # Only a held crate may keep a standalone workspace or source patches.
+                    with mock.patch.object(release, "HELD_CRATES", {"fixture-backend": "fixture"}):
+                        release.validate_sources(self.root, "0.15.0")
+
+    def test_only_crates_with_their_own_lock_can_be_held(self):
+        release.require_held_crates_have_own_locks()
+        with mock.patch.object(release, "HELD_CRATES", {"jacs-redb": "fixture"}):
+            with self.assertRaisesRegex(ValueError, "own lock in STANDALONE_LOCKS: jacs-redb"):
+                release.require_held_crates_have_own_locks()
+
     def test_vendor_failure_restores_standalone_manifest_bytes(self):
         for relative in release.SOURCE_LOCKS:
             self.write(relative, "version=4\n")
@@ -304,6 +327,10 @@ class RustReleaseTests(unittest.TestCase):
     def test_held_backend_with_unpublished_dependency_stays_outside_the_candidate(self):
         catalog, before = self.nested_checkout()
         backend = catalog["fixture-backend"]
+        # Like the real held manifest, the backend roots its own workspace.
+        manifest = self.root / backend
+        manifest.write_text(manifest.read_text() + "[workspace]\n")
+        before[backend] = manifest.read_bytes()
         lock = self.root / Path(backend).with_name("Cargo.lock")
         # A held crate may pin unpublished code; the released crates must still qualify.
         lock.write_text(lock.read_text() + '\n[[package]]\nname = "fixture-backport"\nversion = "1.0.0"\n'

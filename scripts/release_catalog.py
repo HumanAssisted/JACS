@@ -22,10 +22,12 @@ CRATE_MANIFESTS = {
 
 # Catalogued crates whose source versions stay aligned but which the current
 # release neither packages nor publishes. Each value records why. A held crate's
-# registry version may trail the release: registry parity exempts it, and a
-# held crate with its own lockfile keeps that lock out of the release candidate
-# (see scripts/rust_release.py). No released crate may depend on a held one.
-# Remove the entry, and restore any release-only waivers, to publish it again.
+# registry version may trail the release: registry parity exempts it, and its
+# own lockfile stays out of the release candidate. Only a crate with its own
+# lock can be held (STANDALONE_LOCKS in scripts/rust_release.py). No released
+# crate may depend on a held one. To publish it again, follow "Held crates" in
+# RELEASING.md: remove the entry and the crate's own [workspace] and [patch]
+# tables, then restore its publish steps and any release-only waivers.
 HELD_CRATES = {
     "jacs-surrealdb": (
         "its lock pins unpublished jsonwebtoken and object_store source backports for "

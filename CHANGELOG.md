@@ -16,8 +16,9 @@ for the artifacts actually shipped.
   has the `bindgen` feature or `jacs-mobile-bindgen` binary; use
   `jacs-mobile/scripts/generate-bindings.sh`.
 - **`jacs-surrealdb` is not part of 0.16.0** and stays at 0.15.0 on crates.io.
-  It depends on `jacs` 0.15, so using it with `jacs` 0.16 builds two copies of
-  `jacs`.
+  It depends on `jacs` 0.15 and its storage type implements `jacs` 0.15's
+  traits, so use it with `jacs` 0.15, not 0.16. Combined with `jacs` 0.16, Cargo
+  builds two copies of `jacs` and the storage traits do not match.
 - Dependency upgrades, stronger audits and release gates.
 
 ### 2026-11-02 — Release 0.16.0 without unpublished dependencies
@@ -44,6 +45,18 @@ for the artifacts actually shipped.
   version the portable MCP server already locks. Release candidate preparation
   had rejected the split because combining both workspaces downgraded the
   portable server to 3.3.0.
+- Release review fixes:
+  - `rust_release.py validate` rejects a released crate that declares its own
+    `[workspace]` or `[patch]`, and only a crate with its own lock can be held.
+  - RELEASING.md now documents the un-hold steps and the WASM trusted-publisher
+    precondition, and notes that the SurrealDB advisory review dates
+    (2026-11-26) still gate every release tag.
+  - `bump_version.py` now updates the jacs and jacs-cli-compat README
+    source-version footers, which had stayed at 0.15.0.
+  - SurrealDB install guidance pins 0.15 for both crates.
+- The binding generator builds into its own target directory, which mobile CI
+  caches as a second workspace. The compat MCP `cli_flags` test looks for the
+  binary the renamed package builds, `jacs-mcp-compat`.
 
 ### 2026-11-01 — Strict inline email verification covers the whole message
 

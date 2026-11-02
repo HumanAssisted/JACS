@@ -35,6 +35,20 @@ STANDALONE_LOCKS = {"archive/native/jacs-surrealdb/Cargo.toml": "archive/native/
 SOURCE_LOCKS = WORKSPACE_LOCKS + tuple(STANDALONE_LOCKS.values())
 
 
+def require_held_crates_have_own_locks():
+    """A hold works by leaving the crate's own lock out of the candidate.
+
+    A crate locked inside a shared workspace would instead reach that lock's
+    publication gate as a source-only package, which misreports the cause.
+    """
+    shared = sorted(name for name in HELD_CRATES if CRATE_MANIFESTS[name] not in STANDALONE_LOCKS)
+    if shared:
+        raise ValueError(f"held crates need their own lock in STANDALONE_LOCKS: {', '.join(shared)}")
+
+
+require_held_crates_have_own_locks()
+
+
 def release_manifests():
     """Catalogued manifests this release packages and publishes, in catalog order."""
     return {name: relative for name, relative in CRATE_MANIFESTS.items() if name not in HELD_CRATES}
@@ -70,6 +84,10 @@ def validate_sources(root, version):
         package = data["package"]
         if package["name"] != name or package["version"] != version or package.get("publish") is False:
             raise ValueError(f"{relative}: expected publishable {name}@{version}")
+        # The combined candidate makes every released crate a member of one
+        # workspace, and Cargo patches never reach registry consumers.
+        if name not in HELD_CRATES and ("workspace" in data or "patch" in data):
+            raise ValueError(f"{relative}: a released crate cannot declare its own [workspace] or [patch]")
         sections = [data.get("dependencies", {}), data.get("build-dependencies", {})]
         for target in data.get("target", {}).values():
             sections.extend([target.get("dependencies", {}), target.get("build-dependencies", {})])

@@ -4,8 +4,13 @@ SurrealDB storage backend for JACS documents.
 
 ## Install
 
+`jacs-surrealdb` is held at 0.15.0 for the 0.16.0 release (see
+[release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md))
+and requires `jacs` 0.15 until it is released again. With `jacs` 0.16, Cargo
+builds two copies of `jacs` and the Quick Start does not compile.
+
 ```sh
-cargo add jacs-surrealdb jacs
+cargo add jacs-surrealdb@0.15 jacs@0.15
 cargo add tokio --features rt-multi-thread,macros
 ```
 
