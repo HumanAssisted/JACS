@@ -101,7 +101,10 @@ class RustReleaseTests(unittest.TestCase):
                     self.write(affected, 'version=4\n[[package]]\nname="fixed-parser"\n'
                                'version="1.0.0"\n' + origin)
                     output = self.root / "candidate"
-                    with mock.patch.object(release, "validate_sources"), mock.patch.object(release, "run") as runner:
+                    # Every reviewed lock is gated when all catalogued crates are released.
+                    with mock.patch.object(release, "HELD_CRATES", {}), mock.patch.object(
+                        release, "CRATES", tuple(release.CRATE_MANIFESTS),
+                    ), mock.patch.object(release, "validate_sources"), mock.patch.object(release, "run") as runner:
                         with self.assertRaisesRegex(ValueError, "source-only dependencies.*fixed-parser"):
                             release.prepare(self.root, output, "0.15.0", allow_dirty=True)
                         runner.assert_not_called()
@@ -132,7 +135,9 @@ class RustReleaseTests(unittest.TestCase):
         for relative in release.SOURCE_LOCKS:
             self.write(relative, "version=4\n")
             self.write(str(Path(relative).with_name("Cargo.toml")), "[workspace]\n")
-        with mock.patch.object(release, "run", return_value="[source]\n") as runner:
+        with mock.patch.object(release, "HELD_CRATES", {}), mock.patch.object(
+            release, "run", return_value="[source]\n",
+        ) as runner:
             allowed, config = release.vendor_reviewed_dependencies(self.root, self.root)
         command = runner.call_args.args[0]
         self.assertIn("--locked", command)
@@ -140,6 +145,80 @@ class RustReleaseTests(unittest.TestCase):
         self.assertEqual(command.count("--sync"), 2)
         self.assertFalse(allowed)
         self.assertEqual(config.read_text(), "[source]\n")
+
+    def test_held_backend_lock_is_neither_read_nor_vendored(self):
+        for relative in release.WORKSPACE_LOCKS:
+            self.write(relative, "version=4\n")
+            self.write(str(Path(relative).with_name("Cargo.toml")), "[workspace]\n")
+        held_manifest = "archive/native/jacs-surrealdb/Cargo.toml"
+        # Not TOML: reading the held lock at all would fail this test.
+        self.write("archive/native/jacs-surrealdb/Cargo.lock", "not toml [")
+        manifest = self.write(held_manifest, '[package]\nname="jacs-surrealdb"\nversion="0.15.0"\n')
+        original = manifest.read_bytes()
+        with mock.patch.object(release, "HELD_CRATES", {"jacs-surrealdb": "fixture"}), mock.patch.object(
+            release, "run", return_value="[source]\n",
+        ) as runner:
+            self.assertEqual(release.release_locks(), release.WORKSPACE_LOCKS)
+            release.vendor_reviewed_dependencies(self.root, self.root)
+        command = runner.call_args.args[0]
+        self.assertEqual(command.count("--sync"), 1)
+        self.assertNotIn(held_manifest, command)
+        self.assertEqual(manifest.read_bytes(), original)
+
+    def test_catalog_release_set_excludes_held_crates_and_their_own_locks(self):
+        self.assertEqual(list(release.release_manifests()), list(release.CRATES))
+        for name in release.HELD_CRATES:
+            self.assertNotIn(name, release.CRATES)
+            lock = release.STANDALONE_LOCKS.get(release.CRATE_MANIFESTS[name])
+            if lock is not None:
+                self.assertNotIn(lock, release.release_locks())
+
+    def test_release_order_must_match_catalog_before_reading_sources(self):
+        with mock.patch.object(release, "CRATES", tuple(reversed(release.CRATES))):
+            with self.assertRaisesRegex(ValueError, "catalog without held crates"):
+                release.prepare(self.root, self.root / "candidate", "0.16.0")
+        self.assertFalse((self.root / "candidate").exists())
+
+    def test_released_crates_cannot_depend_on_held_crates(self):
+        catalog = {"fixture-held": "held/Cargo.toml", "fixture-core": "core/Cargo.toml"}
+        self.write("held/Cargo.toml", '[package]\nname="fixture-held"\nversion="0.15.0"\n')
+        self.write("core/Cargo.toml", '[package]\nname="fixture-core"\nversion="0.15.0"\n'
+                   '[dependencies]\nfixture-held={version="0.15.0",path="../held"}\n')
+        with mock.patch.object(release, "CRATE_MANIFESTS", catalog):
+            with mock.patch.object(release, "HELD_CRATES", {"fixture-held": "fixture"}):
+                with self.assertRaisesRegex(ValueError, "fixture-core: depends on held crate fixture-held"):
+                    release.validate_sources(self.root, "0.15.0")
+            with mock.patch.object(release, "HELD_CRATES", {}):
+                release.validate_sources(self.root, "0.15.0")
+
+    def test_released_crates_cannot_declare_their_own_workspace_or_patch(self):
+        catalog = {"fixture-backend": "backend/Cargo.toml"}
+        manifest = self.write(catalog["fixture-backend"],
+                              '[package]\nname="fixture-backend"\nversion="0.15.0"\n')
+        original = manifest.read_text()
+        tables = ("[workspace]\n", '[patch.crates-io]\nfixture-dep={git="https://example.invalid/dep"}\n')
+        with mock.patch.object(release, "CRATE_MANIFESTS", catalog):
+            for table in tables:
+                with self.subTest(table=table):
+                    manifest.write_text(original + table)
+                    with mock.patch.object(release, "HELD_CRATES", {}):
+                        with self.assertRaisesRegex(ValueError, "cannot declare its own"):
+                            release.validate_sources(self.root, "0.15.0")
+                    # Only a held crate may keep a standalone workspace or source patches.
+                    with mock.patch.object(release, "HELD_CRATES", {"fixture-backend": "fixture"}):
+                        release.validate_sources(self.root, "0.15.0")
+
+    def test_only_crates_with_their_own_lock_can_be_held(self):
+        # A fixture catalog, so both cases survive lifting the live hold.
+        catalog = {"fixture-own": "own/Cargo.toml", "fixture-shared": "shared/Cargo.toml"}
+        with mock.patch.object(release, "CRATE_MANIFESTS", catalog), mock.patch.object(
+            release, "STANDALONE_LOCKS", {"own/Cargo.toml": "own/Cargo.lock"},
+        ):
+            with mock.patch.object(release, "HELD_CRATES", {"fixture-own": "fixture"}):
+                release.require_held_crates_have_own_locks()
+            with mock.patch.object(release, "HELD_CRATES", {"fixture-shared": "fixture"}):
+                with self.assertRaisesRegex(ValueError, "own lock in STANDALONE_LOCKS: fixture-shared"):
+                    release.require_held_crates_have_own_locks()
 
     def test_vendor_failure_restores_standalone_manifest_bytes(self):
         for relative in release.SOURCE_LOCKS:
@@ -153,14 +232,16 @@ class RustReleaseTests(unittest.TestCase):
             self.assertEqual(tomllib.loads(manifest.read_text())["workspace"], {})
             raise subprocess.CalledProcessError(101, args[0])
 
-        with mock.patch.object(release, "run", side_effect=fail_vendor):
+        with mock.patch.object(release, "HELD_CRATES", {}), mock.patch.object(
+            release, "run", side_effect=fail_vendor,
+        ):
             with self.assertRaises(subprocess.CalledProcessError):
                 release.vendor_reviewed_dependencies(self.root, self.root)
         self.assertEqual(manifest.read_bytes(), original)
         self.assertFalse((self.root / "vendor-config.toml").exists())
 
-    @unittest.skipUnless(shutil.which("cargo"), "Cargo is needed for the nested staging regression")
-    def test_nested_prepare_preserves_source_workspaces_and_locked_dependencies(self):
+    def nested_checkout(self):
+        """Three locked fixture workspaces in the release layout; returns catalog and bytes."""
         catalog = {
             "fixture-core": "core/Cargo.toml",
             "fixture-compat": "archive/native/compat/Cargo.toml",
@@ -180,33 +261,30 @@ class RustReleaseTests(unittest.TestCase):
         with (self.root / catalog["fixture-backend"]).open("a") as stream:
             stream.write('[dependencies]\nfixture-compat={version="0.15.0",path="../compat"}\n')
         self.write("THIRD-PARTY-NOTICES", "Portable fixture notices\n")
-
-        cargo_env = dict(os.environ, CARGO_NET_OFFLINE="true")
-        original_run = release.run
-
-        def metadata(source, manifest="Cargo.toml", *, locked=True):
-            command = ["cargo", "metadata", "--offline", "--no-deps", "--format-version", "1",
-                       "--manifest-path", str(source / manifest)]
-            if locked:
-                command.append("--locked")
-            result = subprocess.run(command, cwd=source, env=cargo_env, check=True,
-                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return json.loads(result.stdout)
-
         for relative in release.SOURCE_LOCKS:
             manifest = str(Path(relative).with_name("Cargo.toml"))
             subprocess.run(["cargo", "generate-lockfile", "--offline", "--manifest-path", manifest],
-                           cwd=self.root, env=cargo_env, check=True, capture_output=True)
+                           cwd=self.root, env=dict(os.environ, CARGO_NET_OFFLINE="true"),
+                           check=True, capture_output=True)
         before = {path.relative_to(self.root).as_posix(): path.read_bytes()
                   for path in self.root.rglob("*") if path.is_file()}
-        source_members = metadata(self.root)["workspace_members"]
-        native_members = metadata(self.root, "archive/native/Cargo.toml")["workspace_members"]
-        self.assertEqual(len(source_members), 1)
-        self.assertEqual(len(native_members), 1)
+        return catalog, before
+
+    def cargo_metadata(self, source, manifest="Cargo.toml", *, locked=True):
+        command = ["cargo", "metadata", "--offline", "--no-deps", "--format-version", "1",
+                   "--manifest-path", str(source / manifest)]
+        if locked:
+            command.append("--locked")
+        result = subprocess.run(command, cwd=source, env=dict(os.environ, CARGO_NET_OFFLINE="true"),
+                                check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return json.loads(result.stdout)
+
+    def prepare_nested(self, catalog, before, crates, held):
+        original_run = release.run
 
         def staged_run(command, **kwargs):
             # Only Git identity is synthetic; Cargo actually resolves and vendors
-            # all three reviewed workspaces inside the outer fixture checkout.
+            # the reviewed workspaces inside the outer fixture checkout.
             if command[:2] == ["git", "status"]:
                 return ""
             if command[:2] == ["git", "ls-files"]:
@@ -217,20 +295,32 @@ class RustReleaseTests(unittest.TestCase):
 
         output = self.root / "target/crate-release"
         with mock.patch.object(release, "CRATE_MANIFESTS", catalog), mock.patch.object(
-            release, "CRATES", tuple(catalog),
-        ), mock.patch.object(release, "run", side_effect=staged_run), mock.patch.dict(
-            os.environ, {"CARGO_NET_OFFLINE": "true"},
-        ):
+            release, "CRATES", crates,
+        ), mock.patch.object(release, "HELD_CRATES", held), mock.patch.object(
+            release, "run", side_effect=staged_run,
+        ), mock.patch.dict(os.environ, {"CARGO_NET_OFFLINE": "true"}):
             release.prepare(self.root, output, "0.15.0")
+        return output
+
+    @unittest.skipUnless(shutil.which("cargo"), "Cargo is needed for the nested staging regression")
+    def test_nested_prepare_preserves_source_workspaces_and_locked_dependencies(self):
+        catalog, before = self.nested_checkout()
+        source_members = self.cargo_metadata(self.root)["workspace_members"]
+        native_members = self.cargo_metadata(self.root, "archive/native/Cargo.toml")["workspace_members"]
+        self.assertEqual(len(source_members), 1)
+        self.assertEqual(len(native_members), 1)
+
+        output = self.prepare_nested(catalog, before, tuple(catalog), {})
 
         for relative, contents in before.items():
             self.assertEqual((self.root / relative).read_bytes(), contents, relative)
-        self.assertEqual(metadata(self.root)["workspace_members"], source_members)
-        self.assertEqual(metadata(self.root, "archive/native/Cargo.toml")["workspace_members"], native_members)
+        self.assertEqual(self.cargo_metadata(self.root)["workspace_members"], source_members)
+        self.assertEqual(self.cargo_metadata(self.root, "archive/native/Cargo.toml")["workspace_members"],
+                         native_members)
         source = output / "source"
         backend = catalog["fixture-backend"]
         self.assertEqual((source / backend).read_bytes(), before[backend])
-        combined = metadata(source)
+        combined = self.cargo_metadata(source)
         self.assertEqual(Path(combined["workspace_root"]).resolve(), source.resolve())
         self.assertEqual({item["name"] for item in combined["packages"]}, set(catalog))
         self.assertEqual(len(combined["workspace_members"]), len(catalog))
@@ -238,6 +328,37 @@ class RustReleaseTests(unittest.TestCase):
         self.assertEqual(candidate["source_lock_sha256"],
                          {relative: release.sha256(self.root / relative) for relative in release.SOURCE_LOCKS})
         self.assertEqual(candidate["candidate_lock_sha256"], release.sha256(source / "Cargo.lock"))
+
+    @unittest.skipUnless(shutil.which("cargo"), "Cargo is needed for the nested staging regression")
+    def test_held_backend_with_unpublished_dependency_stays_outside_the_candidate(self):
+        catalog, before = self.nested_checkout()
+        backend = catalog["fixture-backend"]
+        # Like the real held manifest, the backend roots its own workspace.
+        manifest = self.root / backend
+        manifest.write_text(manifest.read_text() + "[workspace]\n")
+        before[backend] = manifest.read_bytes()
+        lock = self.root / Path(backend).with_name("Cargo.lock")
+        # A held crate may pin unpublished code; the released crates must still qualify.
+        lock.write_text(lock.read_text() + '\n[[package]]\nname = "fixture-backport"\nversion = "1.0.0"\n'
+                        'source = "git+https://example.invalid/backport?rev=1#1"\n')
+        before[lock.relative_to(self.root).as_posix()] = lock.read_bytes()
+
+        output = self.prepare_nested(catalog, before, ("fixture-core", "fixture-compat"),
+                                     {"fixture-backend": "fixture"})
+
+        for relative, contents in before.items():
+            self.assertEqual((self.root / relative).read_bytes(), contents, relative)
+        source = output / "source"
+        self.assertEqual((source / backend).read_bytes(), before[backend])
+        workspace = tomllib.loads((source / "Cargo.toml").read_text())["workspace"]
+        self.assertNotIn(str(Path(backend).parent), workspace["members"])
+        self.assertIn(str(Path(backend).parent), workspace["exclude"])
+        combined = self.cargo_metadata(source)
+        self.assertEqual({item["name"] for item in combined["packages"]}, {"fixture-core", "fixture-compat"})
+        self.assertNotIn("fixture-backport", (source / "Cargo.lock").read_text())
+        candidate = json.loads((output / "candidate.json").read_text())
+        self.assertEqual(candidate["crates"], ["fixture-core", "fixture-compat"])
+        self.assertEqual(set(candidate["source_lock_sha256"]), set(release.WORKSPACE_LOCKS))
 
     def test_combined_candidates_retain_both_notice_inventories_and_license_texts(self):
         portable = "Portable notice\n  - parser 1.1.3+spec-1.1.0 (https://example.invalid)\nPortable license\n"

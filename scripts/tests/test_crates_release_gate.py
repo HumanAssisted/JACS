@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import re
 import tomllib
 import unittest
 import urllib.error
@@ -13,7 +14,7 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "crates_release_gate.py"
 
-from scripts.release_catalog import CRATE_MANIFESTS
+from scripts.release_catalog import CRATE_MANIFESTS, CRATES as RELEASE_CRATES, HELD_CRATES
 
 PUBLISHABLE_CRATES = CRATE_MANIFESTS
 IGNORED_MANIFEST_PARTS = {
@@ -98,7 +99,11 @@ class CratesReleaseGateTests(unittest.TestCase):
         }
 
         self.assertEqual(observed_publishable, PUBLISHABLE_CRATES)
-        self.assertEqual(tuple(load_module().ALLOWED_CRATES), tuple(PUBLISHABLE_CRATES))
+        # The gate admits exactly the publishable manifests, minus held crates, in catalog order.
+        self.assertEqual(
+            tuple(load_module().ALLOWED_CRATES),
+            tuple(name for name in PUBLISHABLE_CRATES if name not in HELD_CRATES),
+        )
 
         for name, (_path, document) in packages.items():
             if name not in PUBLISHABLE_CRATES:
@@ -332,9 +337,23 @@ class CratesReleaseGateTests(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "release-crate.yml").read_text()
         self.assertNotIn("max_version", workflow)
         self.assertNotIn("https://crates.io/api/v1/crates/", workflow)
-        self.assertEqual(workflow.count("scripts/rust_release.py publish-one"), len(PUBLISHABLE_CRATES))
-        for crate in PUBLISHABLE_CRATES:
-            self.assertIn(f"--crate {crate}", workflow)
+        self.assertEqual(workflow.count("scripts/rust_release.py publish-one"), len(RELEASE_CRATES))
+        for crate in RELEASE_CRATES:
+            self.assertIn(f"--crate {crate}\n", workflow)
+        for crate in HELD_CRATES:
+            self.assertNotIn(f"--crate {crate}\n", workflow)
+
+    def test_candidate_audit_waives_surrealdb_rsa_only_while_surrealdb_is_released(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release-crate.yml").read_text()
+        # Join shell continuations: security.yml puts waivers on the next line.
+        logical = re.sub(r"\\\s*\n\s*", " ", workflow).splitlines()
+        audits = [line.strip() for line in logical
+                  if line.strip().startswith("cargo audit --file target/crate-release/source/Cargo.lock")]
+        self.assertEqual(len(audits), 1)
+        waiver = "--ignore RUSTSEC-2023-0071"
+        # The RSA path exists only in SurrealDB's lock; a held crate's lock is not in the candidate.
+        self.assertEqual(waiver in audits[0], "jacs-surrealdb" in RELEASE_CRATES)
+        self.assertNotIn("--ignore", audits[0].replace(waiver, ""))
 
 
 if __name__ == "__main__":

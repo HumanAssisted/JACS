@@ -26,13 +26,14 @@ With no extra environment variables, `vite.config.ts` aliases the bare
 `@hai.ai/jacs-wasm` import to the locally built `../../pkg/index.js`, and
 `@hai.ai/jacs-wasm/worker` to `../../pkg/worker/index.js`.
 
-After `0.15.0` has been published, test that exact package by installing it into
-this example and selecting it explicitly:
+After this source version has been published, test that exact package by
+installing it into this example and selecting it explicitly:
 
 ```bash
-npm install --no-save --ignore-scripts @hai.ai/jacs-wasm@0.15.0
+VERSION=$(node -p "require('../../package.template.json').version")
+npm install --no-save --ignore-scripts "@hai.ai/jacs-wasm@$VERSION"
 JACS_WASM_PACKAGE_ROOT="$PWD/node_modules/@hai.ai/jacs-wasm" \
-  JACS_WASM_EXPECTED_VERSION=0.15.0 \
+  JACS_WASM_EXPECTED_VERSION="$VERSION" \
   npm test
 ```
 

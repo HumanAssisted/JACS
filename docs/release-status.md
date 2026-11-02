@@ -8,11 +8,12 @@ change in this repository. The new native PQ DID/JWK and Agent Card exports in
 the [identity guide](identity-standards.md) are source changes; their publication
 requires a separate release record.
 
-This checkout also contains an Askama Git patch and source-only SurrealDB
-backports. They are not published fixes available to downstream crates.io
+Source version 0.16.0 is a release candidate, not a published release. The
+SurrealDB backend's lock contains source-only jsonwebtoken and object_store
+backports, which are not published fixes available to downstream crates.io
 consumers. The [release process](../RELEASING.md) rejects unpublished third-party
-dependencies during candidate preparation, packaging and publication, even
-when source checks pass. See the
+dependencies during candidate preparation, packaging and publication, so
+`jacs-surrealdb` is held from 0.16.0 and remains at 0.15.0. See the
 [source backports and release blockers](../archive/native/SECURITY_AUDIT.md#source-backports-and-release-blockers-after-the-2026-10-27-updates)
 for the current dependency status. This does not change the historical release
 inventory below.
@@ -43,14 +44,16 @@ tests using the actual crates.io packages without local JACS overrides.
 <!-- END GENERATED SHIPPED ARTIFACT MATRIX -->
 
 The release catalog includes portable crates, native compatibility crates,
-language binding crates and storage backends. All are enabled for CI publishing.
+language binding crates and storage backends. All except crates in `HELD_CRATES`
+(for 0.16.0, jacs-surrealdb, which stays at 0.15.0) are enabled for CI publishing.
 The extended MCP/CLI crates use `jacs-mcp-compat` and `jacs-cli-compat` to preserve
 the active portable identities. Mobile Rust publication is enabled; mobile
 bundle delivery and app/device acceptance are separate.
 
 `make versions` checks source alignment across the full catalog.
 `scripts/check-release-matrix.py --online` verifies registry observations;
-`--require-parity` requires every release surface and crate to match source.
+`--require-parity` requires every release surface and every non-held crate to
+match source; held crates keep their recorded registry version.
 After publication, update observed versions and statuses only with actual
 registry and provenance evidence, then regenerate this table with `--write-docs`.
 The scheduled readiness workflow checks recorded npm/PyPI provenance and exact

@@ -57,7 +57,9 @@ and application policy.
 
 Current source pins SurrealDB 3.3.4 and carries unpublished dependency backports.
 See [source backports and release blockers](https://github.com/HumanAssisted/JACS/blob/main/archive/native/SECURITY_AUDIT.md#source-backports-and-release-blockers-after-the-2026-10-27-updates).
-Repository patches are not published fixes for downstream crates.io consumers.
+Repository patches are not published fixes for downstream crates.io consumers,
+so 0.16.0 does not publish `jacs-surrealdb`. crates.io keeps 0.15.0, which
+requires `jacs` 0.15.
 
 ## Build and release
 

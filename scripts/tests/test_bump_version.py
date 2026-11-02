@@ -12,6 +12,11 @@ from scripts.release_catalog import CRATE_MANIFESTS
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATES = ("jacs-core", "jacs-wasm", "jacs-mobile", "jacs-mcp", "jacs-cli")
+README_FOOTERS = (
+    ('archive/native/jacs/README.md', '**Source version**: '),
+    ('archive/native/jacs-cli/README.md', 'Source version '),
+)
+
 ARCHIVE_LOCKS = (
     "archive/native/Cargo.lock",
     "archive/native/jacs/examples/observability/Cargo.lock",
@@ -78,6 +83,8 @@ class BumpVersionTests(unittest.TestCase):
                 contents = contents.replace('[[package]]\nname = "jacs-surrealdb"\nversion = "0.13.0"\n\n', '')
             self.write(relative, contents)
         self.write('archive/native/untouched.txt', 'ARCHIVED SENTINEL\n')
+        for relative, prefix in README_FOOTERS:
+            self.write(relative, f'# Fixture\n\nSource version is in the footer.\n\n{prefix}0.13.0 | [Apache-2.0](LICENSE)\n')
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -141,7 +148,10 @@ class BumpVersionTests(unittest.TestCase):
                             self.assertEqual(updated, {**previous, 'version': expected})
                         else:
                             self.assertEqual(updated, previous)
-                editable_archive = {*ARCHIVE_LOCKS, *CRATE_MANIFESTS.values(), 'archive/native/jacsnpm/package.json', 'archive/native/jacsnpm/package-lock.json', 'archive/native/jacspy/pyproject.toml', 'archive/native/jacspy/uv.lock', 'archive/native/jacs-mcp/contract/jacs-mcp-contract.json'}
+                for relative, prefix in README_FOOTERS:
+                    self.assertEqual((self.root / relative).read_text(),
+                                     before[relative].decode().replace(f'{prefix}0.13.0 |', f'{prefix}{expected} |'))
+                editable_archive = {*ARCHIVE_LOCKS, *CRATE_MANIFESTS.values(), *(relative for relative, _ in README_FOOTERS), 'archive/native/jacsnpm/package.json', 'archive/native/jacsnpm/package-lock.json', 'archive/native/jacspy/pyproject.toml', 'archive/native/jacspy/uv.lock', 'archive/native/jacs-mcp/contract/jacs-mcp-contract.json'}
                 for relative in CRATE_MANIFESTS.values():
                     self.assertEqual(tomllib.loads((self.root / relative).read_text())['package']['version'], expected)
                 python = tomllib.loads((self.root / 'archive/native/jacspy/pyproject.toml').read_text())['project']
@@ -186,6 +196,8 @@ class BumpVersionTests(unittest.TestCase):
             ('archive/native/jacspy/uv.lock', 'version = "0.13.0"', 'version = "0.12.0"'),
             ('archive/native/Cargo.lock', 'name = "jacs-redb"', 'name = "missing-native-entry"'),
             ('archive/native/jacs-surrealdb/Cargo.lock', 'name = "jacs-core"\nversion = "0.13.0"', 'name = "jacs-core"\nversion = "0.12.0"'),
+            ('archive/native/jacs/README.md', '**Source version**: 0.13.0', '**Source version**: 0.12.0'),
+            ('archive/native/jacs-cli/README.md', 'Source version 0.13.0 |', 'Source version 0.13.0 |\nSource version 0.13.0 |'),
         ]
         for filename, old, new in cases:
             with self.subTest(filename=filename, invalid=new):

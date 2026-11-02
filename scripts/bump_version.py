@@ -186,6 +186,21 @@ def android_version_edit(text, current, new):
     return replace_once(pattern, rf'\g<1>{new}\3', text, "Android Maven metadata")
 
 
+# The jacs and jacs-cli-compat crates.io pages render these READMEs, whose
+# footers state the source version they were packaged from.
+README_FOOTERS = {
+    "archive/native/jacs/README.md": r"^(\*\*Source version\*\*: )([^ \r\n|]+)( \|)",
+    "archive/native/jacs-cli/README.md": r"^(Source version )([^ \r\n|]+)( \|)",
+}
+
+
+def readme_footer_edit(text, current, new, pattern, label):
+    versions = re.findall(pattern, text, flags=re.MULTILINE)
+    require(len(versions) == 1, f"{label}: expected one source-version footer")
+    require(versions[0][1] == current, f"{label}: source-version footer mismatch")
+    return replace_once(pattern, rf"\g<1>{new}\3", text, label)
+
+
 def python_project_edit(text, current, new):
     parsed = tomllib.loads(text)
     project = parsed.get("project", {})
@@ -260,6 +275,8 @@ def prepare(root, bump):
     edits[root / relative] = python_lock_edit(read(relative), current, new)
     relative = "jacs-mobile/distribution/android/library/build.gradle.kts"
     edits[root / relative] = android_version_edit(read(relative), current, new)
+    for relative, pattern in README_FOOTERS.items():
+        edits[root / relative] = readme_footer_edit(read(relative), current, new, pattern, relative)
     # Align the source candidate without changing observed registry versions,
     # publication status, checksums, or provenance from previous releases.
     relative = "release/shipped-artifacts.json"

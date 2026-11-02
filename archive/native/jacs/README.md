@@ -179,4 +179,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md)
 
-**Source version**: 0.15.0 | [Apache-2.0](https://github.com/HumanAssisted/JACS/blob/main/archive/native/LICENSE-APACHE)
+**Source version**: 0.16.0 | [Apache-2.0](https://github.com/HumanAssisted/JACS/blob/main/archive/native/LICENSE-APACHE)

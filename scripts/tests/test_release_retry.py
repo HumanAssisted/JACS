@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from scripts.release_catalog import CRATE_MANIFESTS
+from scripts.release_catalog import CRATE_MANIFESTS, CRATES, HELD_CRATES
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -518,7 +518,7 @@ class RetryRegistryProbeTests(unittest.TestCase):
 
         self.assertEqual(urls, [])
 
-    def test_probes_all_catalogued_rust_crates_at_the_exact_version(self) -> None:
+    def test_probes_all_released_rust_crates_at_the_exact_version(self) -> None:
         module = load_module()
         urls: list[str] = []
         verifier_commands: list[list[str]] = []
@@ -542,9 +542,12 @@ class RetryRegistryProbeTests(unittest.TestCase):
 
         self.assertEqual(missing, [])
         crate_urls = [url for url in urls if "crates.io/api/v1/crates" in url]
-        self.assertEqual(len(crate_urls), len(CRATE_MANIFESTS))
-        for crate in CRATE_MANIFESTS:
+        self.assertEqual(len(crate_urls), len(CRATES))
+        for crate in CRATES:
             self.assertIn(f"https://crates.io/api/v1/crates/{crate}/0.11.4", crate_urls)
+        # A held crate is not part of this release; its absence is not a retry.
+        for crate in HELD_CRATES:
+            self.assertNotIn(f"https://crates.io/api/v1/crates/{crate}/0.11.4", crate_urls)
         self.assertIn("https://registry.npmjs.org/@hai.ai%2Fjacs/0.11.4", urls)
         self.assertIn("https://pypi.org/pypi/jacs/0.11.4/json", urls)
         self.assertIn("https://registry.npmjs.org/@hai.ai%2Fjacs-wasm/0.11.4", urls)

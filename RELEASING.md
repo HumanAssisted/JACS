@@ -1,10 +1,11 @@
 # Releasing JACS
 
-The coordinated source version is **0.15.0**. MCP is the primary documented
+The coordinated source version is **0.16.0**. MCP is the primary documented
 integration; Rust, Node, Python, Go and browser packages all remain supported
 release surfaces. Consult [release status](docs/release-status.md) and the
-[0.15.0 verification record](release/0.15.0-verification.json) for observed
-publication and installation evidence, separately from source versions.
+[0.15.0 verification record](release/0.15.0-verification.json) (the latest
+published release) for observed publication and installation evidence,
+separately from source versions.
 
 ## Version and build commands
 
@@ -20,7 +21,7 @@ the same alignment check without the listing.
 
 The bump helper updates the coordinated sources and lockfile identities. It
 preserves observations of already published versions and never publishes.
-**Do not bump again for this release: the source is already 0.15.0.**
+**Do not bump again for this release: the source is already 0.16.0.**
 
 ```sh
 make build-jacsnpm       # Native @hai.ai/jacs tarball
@@ -35,6 +36,43 @@ stays separate. The extended native MCP and CLI publish as `jacs-mcp-compat` and
 `jacs-cli-compat`, preserving library imports with Cargo dependency aliases; the
 compatibility executable is `jacs-compat`. The primary CLI remains `jacs` from
 `cargo install jacs-cli`, and MCP starts with `jacs mcp`.
+
+## Held crates
+
+`HELD_CRATES` in [the release catalog](scripts/release_catalog.py) lists crates
+that keep their source version aligned but are not packaged or published, with
+the reason. For 0.16.0 it holds `jacs-surrealdb`: its lock pins unpublished
+jsonwebtoken and object_store backports, so crates.io keeps 0.15.0. A held crate
+is excluded from candidate preparation, its own lock, the publish steps,
+retries and registry parity; the generated release table names it with its
+registry version. No released crate may depend on a held crate. Only a crate
+with its own lock (`STANDALONE_LOCKS` in `scripts/rust_release.py`) can be held.
+A crate inside a shared workspace lock would fail that lock's publication gate.
+
+Holding a crate does not remove its security gate. Every release workflow's
+`security-gate` audits the held crate's lock and runs
+`scripts/check-security-exceptions.py` at the tagged commit. That check fails
+after any review date in `archive/native/SECURITY_AUDIT.md`. The SurrealDB
+exceptions RUSTSEC-2023-0071, RUSTSEC-2023-0089 and RUSTSEC-2025-0141 are due
+2026-11-26. Finish every 0.16.0 tag by then, including retries, which re-push
+the original tag. Otherwise complete a fresh reachability review and renew the
+dates in the release commit before tagging. Review dates are deadlines, not
+automatic renewals.
+
+To release a held crate again, once its dependencies have published fixes:
+
+1. Remove its `HELD_CRATES` entry.
+2. Remove its `[patch.crates-io]` backports and its standalone `[workspace]`
+   table, then regenerate its lock. It stays standalone because
+   `archive/native/Cargo.toml` excludes it. A released crate cannot declare
+   either table, and `rust_release.py validate` rejects one that does.
+3. Restore its two publish steps in `release-crate.yml`; the release contract
+   tests require them.
+4. For SurrealDB, restore the reviewed `--ignore RUSTSEC-2023-0071` on the
+   candidate audit while that exception remains in force.
+5. Unpin its install guidance: the crate README,
+   `archive/native/DEVELOPMENT.md` and the `jacs` storage module docs pin it
+   to 0.15 while it is held.
 
 ## One-time registry setup
 
@@ -61,28 +99,27 @@ and account 2FA:
 npm trust github @hai.ai/jacs --repo HumanAssisted/JACS --file release-npm.yml --env npm --allow-publish
 ```
 
-The new `@hai.ai/jacs-wasm` package does not yet exist. npm requires an existing
-package before a trusted publisher can be registered. Its first release still
-runs entirely through CI:
+`@hai.ai/jacs-wasm` has existed since 0.15.0. That first release used a
+one-time bootstrap token, because npm requires an existing package before a
+trusted publisher can be registered. `release/0.15.0-verification.json` records
+the trusted publisher as awaiting configuration. Bootstrap mode
+(`JACS_NPM_WASM_BOOTSTRAP=true` with the `NPM_WASM_BOOTSTRAP_TOKEN` secret) now
+always fails, because the workflow requires the package to return HTTP 404.
+Without a trusted publisher, OIDC publication fails after every gate passes.
+Before pushing `wasm-v0.16.0`:
 
-1. Create a short-lived npm granular token with write access to create packages
-   in `@hai.ai` and the CI 2FA bypass permission. Store it as the GitHub `npm`
-   environment secret **`NPM_WASM_BOOTSTRAP_TOKEN`**; do not put it in Git or chat.
-2. Set the `npm` environment variable **`JACS_NPM_WASM_BOOTSTRAP=true`**.
-3. Run the normal WASM release command below. The workflow requires the package
-   itself to return authoritative HTTP 404, runs all candidate/browser gates,
-   and publishes the exact tarball with provenance. Existing packages cannot
-   use this bootstrap mode.
-4. After the first successful publication, configure its trusted publisher with
-   the same organization/repository/environment and **`release-wasm.yml`**:
+1. Confirm or configure the package's trusted publisher, using the npm website
+   or an interactive 2FA session, with the same organization, repository and
+   environment and **`release-wasm.yml`**:
 
    ```sh
    npm trust github @hai.ai/jacs-wasm --repo HumanAssisted/JACS --file release-wasm.yml --env npm --allow-publish
    ```
 
-5. Remove the bootstrap variable and secret, and revoke that temporary token.
-   Later releases use OIDC. If publication succeeded but a later job failed,
-   finish this switch before retrying the workflow.
+2. Remove the `JACS_NPM_WASM_BOOTSTRAP` variable and the
+   `NPM_WASM_BOOTSTRAP_TOKEN` secret from the `npm` environment, and revoke
+   that temporary token in npm.
+3. After publication, record the switch in the 0.16.0 verification record.
 
 The npm CLI refuses publisher-setting changes authenticated only by a granular
 token that bypasses 2FA. Use the website or an interactive 2FA session for those
@@ -91,9 +128,10 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
 
 ### Rust and Python
 
-- **crates.io:** `release-crate.yml` publishes every entry in
-  [the ordered release catalog](scripts/release_catalog.py), including WASM,
-  mobile, bindings and four storage backends. Configure each crate's trusted
+- **crates.io:** `release-crate.yml` publishes every crate in
+  [the ordered release catalog](scripts/release_catalog.py) except those in
+  `HELD_CRATES` (16 for 0.16.0), including WASM, mobile, bindings and the
+  DuckDB, PostgreSQL and Redb storage backends. Configure each crate's trusted
   publisher for `HumanAssisted/JACS`, `release-crate.yml`, and the
   `crates-io` environment. Keep the protected `CRATES_IO_TOKEN` migration credential for
   first publication/new crate names until all publisher identities exist and
@@ -108,7 +146,7 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
   `github.com/HumanAssisted/JACS/jacsgo`; its `jacsgo/vVERSION` tag is also the
   Go submodule version tag. No separate Go registry token is needed.
 
-## Release 0.15.0, one step at a time
+## Release 0.16.0, one step at a time
 
 1. Confirm the intended version:
 
@@ -154,9 +192,10 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
    make release-jacs
    ```
 
-   All 17 candidates are prepared before the first upload; registry dependencies
-   publish in catalog order. Exact archive checksums, audits, SPDX SBOMs and
-   durable attested evidence remain mandatory.
+   Every catalogued crate except the held ones is prepared before the first
+   upload (16 for 0.16.0); registry dependencies publish in catalog order.
+   Exact archive checksums, audits, SPDX SBOMs and durable attested evidence
+   remain mandatory.
 
 6. Release CLI binaries and wait for **Release CLI Binaries**:
 
@@ -184,7 +223,8 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
    make release-jacsgo
    ```
 
-10. Release browser npm and wait for **Release @hai.ai/jacs-wasm**:
+10. Release browser npm and wait for **Release @hai.ai/jacs-wasm**. First
+    confirm its trusted publisher and remove bootstrap mode (see [npm](#npm)):
 
     ```sh
     make release-jacs-wasm
@@ -217,15 +257,15 @@ source identity; they never move a published version to new source.
 
 | Surface | Tag |
 |---|---|
-| All catalogued Rust crates | `crate/v0.15.0` |
-| CLI binaries | `cli/v0.15.0` |
-| Native npm | `npm/v0.15.0` |
-| Python | `pypi/v0.15.0` |
-| Go module/native libraries | `jacsgo/v0.15.0` |
-| Browser npm | `wasm-v0.15.0` |
+| All released Rust crates | `crate/v0.16.0` |
+| CLI binaries | `cli/v0.16.0` |
+| Native npm | `npm/v0.16.0` |
+| Python | `pypi/v0.16.0` |
+| Go module/native libraries | `jacsgo/v0.16.0` |
+| Browser npm | `wasm-v0.16.0` |
 
 A source build is not a published release. Check workflow completion, exact
-registry bytes and provenance before describing 0.15.0 as shipped. Mobile
+registry bytes and provenance before describing 0.16.0 as shipped. Mobile
 XCFramework/AAR builds remain separate from app-store/Maven/Swift repository
 publication and physical-device acceptance. Actual HAI deployment is separate
 from source compatibility qualification.

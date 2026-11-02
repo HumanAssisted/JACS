@@ -59,7 +59,9 @@ cargo test -p jacs-mobile --test portable -- --nocapture
 bash jacs-mobile/scripts/generate-bindings.sh
 ```
 
-The generator is pinned with the runtime to UniFFI 0.32.2. Host generation
+The script builds the generator from the unpublished `tools/jacs-mobile-bindgen`
+crate, pinned with the runtime to UniFFI 0.32.2. The published `jacs-mobile`
+crate links only the UniFFI runtime and has no `bindgen` feature. Host generation
 produces `generated/swift/JacsMobile.swift`, its C header/modulemap, and Kotlin
 under `generated/kotlin/ai/hai/jacs`. Include these files in the consuming app.
 Generated files are build outputs, not hand-maintained source.
@@ -294,7 +296,7 @@ real dynamic library, with an independent Python `cryptography` P-256 callback.
 On Linux after `generate-bindings.sh` (requires Python `cryptography`):
 
 ```sh
-target/debug/jacs-mobile-bindgen generate --library target/debug/libjacs_mobile.so --language python --out-dir jacs-mobile/generated/python --no-format
+tools/jacs-mobile-bindgen/target/debug/jacs-mobile-bindgen generate --library target/debug/libjacs_mobile.so --language python --out-dir jacs-mobile/generated/python --no-format
 ln -sfn ../../../target/debug/libjacs_mobile.so jacs-mobile/generated/python/libjacs_mobile.so
 PYTHONPATH=jacs-mobile/generated/python python3 jacs-mobile/tests/ffi_smoke.py
 ```

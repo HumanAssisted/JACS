@@ -67,6 +67,11 @@ jobs:
           cargo deny --all-features check advisories
           cargo deny --all-features check licenses
 
+      - name: Audit unpublished mobile binding generator lock
+        run: |
+          cargo audit --file tools/jacs-mobile-bindgen/Cargo.lock
+          cargo deny --manifest-path tools/jacs-mobile-bindgen/Cargo.toml --all-features check --config deny.toml advisories licenses
+
       - name: Audit archived native lock
         run: cargo audit --file archive/native/Cargo.lock
 

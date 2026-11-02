@@ -4,14 +4,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
 generated="${JACS_MOBILE_GENERATED_DIR:-$repo_root/jacs-mobile/generated}"
-cargo build --locked -p jacs-mobile --features bindgen
+cargo build --locked -p jacs-mobile
+# The generator is a separate unpublished tool with its own lock and its own
+# target directory, which CI caches as a second workspace. Sharing the root
+# target would let that cache trim the generator's dependencies on every save.
+bindgen_target="$repo_root/tools/jacs-mobile-bindgen/target"
+cargo build --locked --manifest-path tools/jacs-mobile-bindgen/Cargo.toml --target-dir "$bindgen_target"
 case "$(uname -s)" in
     Darwin) library="$CARGO_TARGET_DIR/debug/libjacs_mobile.dylib" ;;
     Linux) library="$CARGO_TARGET_DIR/debug/libjacs_mobile.so" ;;
     *) echo "Use jacs-mobile-bindgen with your host DLL on this platform" >&2; exit 1 ;;
 esac
 for language in swift kotlin; do
-    "$CARGO_TARGET_DIR/debug/jacs-mobile-bindgen" generate --library "$library" \
+    "$bindgen_target/debug/jacs-mobile-bindgen" generate --library "$library" \
         --language "$language" --config jacs-mobile/uniffi.toml \
         --out-dir "$generated/$language" --no-format
 done
