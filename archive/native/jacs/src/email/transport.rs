@@ -29,6 +29,12 @@ pub const HAI_BANNER_CONTENT_TYPE: &str = "image/png";
 pub const HAI_BANNER_FILENAME: &str = "mediationbench-judge.png";
 pub const HAI_BANNER_ALT: &str = "MediationBench judge";
 pub const HAI_HIDDEN_ENVELOPE_MAX_BYTES: usize = 8 * 1024;
+/// Alt text of the verification logo in every HAI and haiai producer.
+pub(crate) const HAI_LOGO_ALT: &str = "HAI verification logo";
+/// Footer text before the verify URL, in the HTML footer and as the final
+/// line of the plaintext alternative.
+pub(crate) const HAI_VERIFY_FOOTER_TEXT_PREFIX: &str =
+    "This email is sent from an AI agent. Verify at ";
 
 /// Canonical HTML-inline presentation versions. V1 remains the historical
 /// escaped-text rendering; V2 adds links derived only from signed plaintext.
@@ -166,37 +172,59 @@ impl TokenSink for TemplateVersionSink {
     }
 }
 
-// Count every non-artifact anchor, including anchors nested inside artifacts.
-// Stripping must never hide additional clickable user destinations in V2.
-pub(crate) fn inline_user_link_count(html: &str) -> usize {
+/// Serialize HTML for strict comparison of a whole inline email with the
+/// documents HAI producers render, the way `normalize_html_for_equivalence`
+/// serializes tags, attributes and text. Nothing is removed: only the contents
+/// of the first JACS envelope script are blanked, because the signed logo
+/// header authenticates that envelope separately. Any comment, a second
+/// envelope script or a tokenizer parse error returns `None`.
+pub(crate) fn normalize_inline_presentation_html(html: &str) -> Option<String> {
     let input = BufferQueue::default();
     input.push_back(StrTendril::from(html));
-    let tokenizer = Tokenizer::new(UserLinkCountSink::default(), Default::default());
+
+    let tokenizer = Tokenizer::new(PresentationNormalizeSink::default(), Default::default());
     let _ = tokenizer.feed(&input);
     tokenizer.end();
-    tokenizer.sink.count.get()
+
+    let sink = tokenizer.sink;
+    (!sink.invalid.get()).then(|| sink.output.into_inner())
 }
 
 #[derive(Default)]
-struct UserLinkCountSink {
-    count: Cell<usize>,
+struct PresentationNormalizeSink {
+    output: RefCell<String>,
+    seen_envelope: Cell<bool>,
+    in_envelope: Cell<bool>,
+    invalid: Cell<bool>,
 }
 
-impl TokenSink for UserLinkCountSink {
+impl TokenSink for PresentationNormalizeSink {
     type Handle = ();
-    fn process_token(&self, token: Token, _line: u64) -> TokenSinkResult<()> {
-        if let Token::TagToken(tag) = token {
-            if tag.kind == TagKind::StartTag {
-                if tag.name.as_ref() == "a"
-                    && !has_attr_value(&tag.attrs, HAI_VERIFY_LINK_MARKER, "v1")
-                    && !has_attr_value(&tag.attrs, HAI_LOGO_VERIFY_LINK_MARKER, "v1")
-                {
-                    self.count.set(self.count.get() + 1);
-                }
-                if tag.name.as_ref() == "script" {
+
+    fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<Self::Handle> {
+        let mut output = self.output.borrow_mut();
+        match token {
+            // Script data ends only at `</script>`, so every character before
+            // that end tag belongs to the envelope.
+            Token::CharacterTokens(_) | Token::NullCharacterToken if self.in_envelope.get() => {}
+            Token::TagToken(tag) => {
+                write_tag(&mut output, &tag);
+                self.in_envelope.set(false);
+                if tag.kind == TagKind::StartTag && tag.name.as_ref() == "script" {
+                    if is_jacs_envelope_script(&tag.attrs) {
+                        if self.seen_envelope.replace(true) {
+                            self.invalid.set(true);
+                        }
+                        self.in_envelope.set(true);
+                    }
                     return TokenSinkResult::RawData(RawKind::ScriptData);
                 }
             }
+            Token::DoctypeToken(doctype) => write_doctype(&mut output, &doctype),
+            Token::CharacterTokens(text) => write_escaped_text(&mut output, &text),
+            Token::NullCharacterToken => output.push('\u{fffd}'),
+            Token::CommentToken(_) | Token::ParseError(_) => self.invalid.set(true),
+            Token::EOFToken => {}
         }
         TokenSinkResult::Continue
     }
@@ -803,7 +831,7 @@ mod tests {
             "<!doctype html><html data-hai-template-version=\"v1\"><body>",
             "<p>Keep text mentioning data-hai-jacs-envelope and cid:hai-jacs-logo@hai.ai.</p>",
             "<a data-hai-logo-verify-link=\"v1\" href=\"https://hai.ai/verify/email/test\">",
-            "<img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification\"></a>",
+            "<img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification logo\"></a>",
             "<script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">secret</script>",
             "<footer data-hai-verify-footer=\"v1\">footer <a data-hai-verify-link=\"v1\">verify</a></footer>",
             "<p>Keep final text.</p>",
@@ -869,6 +897,52 @@ mod tests {
     fn html_equivalence_detects_user_visible_changes() {
         assert!(html_bodies_equivalent("<p>Hello</p>", "<p>Hello</p>"));
         assert!(!html_bodies_equivalent("<p>Hello</p>", "<p>Hell0</p>"));
+    }
+
+    #[test]
+    fn presentation_normalizer_blanks_only_the_first_envelope_and_fails_closed() {
+        let envelope = r#"<script type="application/jacs+json" data-hai-jacs-envelope="v1">{"a":"<b>x</b>"}</script>"#;
+        let html = format!(
+            r#"<HTML><body><P data-hai-verify-footer='v1'>Tom &amp; Jerry</P>{envelope}</body></html>"#
+        );
+
+        // Marked elements stay; tag case and attribute quoting are normalized.
+        assert_eq!(
+            normalize_inline_presentation_html(&html).as_deref(),
+            Some(concat!(
+                r#"<html><body><p data-hai-verify-footer="v1">Tom &amp; Jerry</p>"#,
+                r#"<script data-hai-jacs-envelope="v1" type="application/jacs+json"></script>"#,
+                "</body></html>"
+            ))
+        );
+        // Other scripts keep their contents, read as script data.
+        assert_eq!(
+            normalize_inline_presentation_html("<script>a < b</script>").as_deref(),
+            Some("<script>a &lt; b</script>")
+        );
+        for (name, invalid) in [
+            ("comment", html.replace("</body>", "<!-- note --></body>")),
+            (
+                "conditional comment",
+                html.replace("</body>", "<!--[if mso]><p>Pay</p><![endif]--></body>"),
+            ),
+            (
+                "second envelope",
+                html.replace("</body>", &format!("{envelope}</body>")),
+            ),
+            (
+                "duplicate attribute",
+                html.replace("<body>", r#"<body dir="ltr" dir="rtl">"#),
+            ),
+            ("malformed tag", html.replace("</body>", "< p></body>")),
+            (
+                "end tag attribute",
+                html.replace("</body>", r#"</body class="x">"#),
+            ),
+        ] {
+            assert_ne!(invalid, html, "{name}");
+            assert_eq!(normalize_inline_presentation_html(&invalid), None, "{name}");
+        }
     }
 
     #[test]

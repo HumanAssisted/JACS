@@ -234,15 +234,33 @@ verification. Content-IDs are not hashed, as for the logo. V3 binds
 `inline_template_version: "v3"`; verifiers that know only V1 and V2 reject it.
 
 V2 binds `inline_template_version: "v2"` inside the signed email payload.
-The strict verifier reconstructs the complete presentation from signed
-plaintext, requires exactly one supported HTML template marker matching the
-signed version, and compares the DOM including anchor destinations. Altered
-hrefs, labels, fragments, extra markup and unsigned version changes fail
-presentation verification; edits to the signed version fail cryptographic
-verification. V2 also rejects extra unmarked message anchors hidden inside
-stripped verification artifacts. Reserved verification/logo links retain their
-existing transport-artifact contract and are not signed message destinations. Signature/footer/logo artifact markers retain their V1 meaning
-and are never used to exempt user links from verification.
+In every version, the strict verifier rebuilds the whole HTML document from the
+signed plaintext and requires exactly one supported template marker matching
+the signed version. The plaintext must end with HAI's footer line: a blank
+line, then `This email is sent from an AI agent. Verify at <URL>`. The expected
+document is the marker, the message from `render_inline_email_message_main`,
+HAI's logo, an empty `application/jacs+json` envelope script, and the footer
+`<footer data-hai-verify-footer="v1">`, whose text and single link both name
+that URL. The logo may take any shape a HAI producer has emitted, each with alt
+text `HAI verification logo`: the picture linked to the same URL, that link
+with `<br><br>` before the picture, or the unlinked picture.
+
+Only the contents of the first envelope script are ignored, because the signed
+logo header binds that envelope. Nothing else is stripped: elements carrying
+the footer, envelope or logo markers are compared like any other markup, and
+any comment (including Outlook conditional comments), a second envelope script
+or an HTML tokenizer error fails. Tag and attribute-name case, attribute order
+and quoting, and character references are normalized. Altered hrefs, labels,
+fragments, extra or moved markup, a missing plaintext footer line and unsigned
+version changes fail presentation verification with `HtmlEquivalenceFailed`:
+`Failed` in `VerificationMode::Strict`, `PartiallyVerified` in
+`VerificationMode::Degraded`. Edits to the signed version fail cryptographic
+verification.
+
+Link rewriting in transit, such as Microsoft Defender Safe Links, therefore
+changes the verified presentation. A V1 email whose footer or logo link was
+rewritten now fails presentation verification, as V2 and V3 emails with
+rewritten message links already did.
 
 Readers implementing only V1 reject V2 presentation. Upgrade producers and
 verifying delivery services together before emitting V2; SDKs may continue to
@@ -260,10 +278,13 @@ HTML-inline helpers include:
   the signed inline PNG logo transport.
 - `extract_topmost_inline_jacs_envelope` for reply-safe hidden envelope
   selection.
+- `inline_email_presentation_matches` for the noncryptographic whole-document
+  presentation check, also suitable for ingress safety.
 - `remove_inline_signature_artifacts`,
   `strip_inline_signature_artifacts_from_html`, and
   `html_bodies_equivalent` for parser-based artifact removal and HTML
-  presentation checks.
+  comparison, for example to display or index a message. Strict presentation
+  verification does not use them.
 - `verify_html_inline_email_content` for content-hash verification after
   removing inline transport artifacts while keeping user attachments signed.
 

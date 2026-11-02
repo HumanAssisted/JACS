@@ -27,6 +27,18 @@
 
 ## Unreleased
 
+### 2026-11-01 — Inline email verification compares the whole document
+
+- Strict HTML-inline verification no longer strips marked footer, envelope or
+  logo elements, logo pictures or comments before comparing. For V1, V2 and V3
+  it rebuilds the whole document: HAI's footer and one of the three logo shapes
+  HAI producers have emitted, linked to the verify URL from the signed
+  plaintext's final footer line, which is now required. Added marked markup,
+  comments, a second envelope or banner, and changed or rewritten (for example
+  Safe Links) footer and logo links fail with `HtmlEquivalenceFailed`.
+- `inline_email_presentation_matches` keeps its signature. All 146 email unit
+  and 33 fixture tests pass; source is unreleased.
+
 ### 2026-11-01 — Inline email V3: one picture above the text
 
 - Add `InlineEmailTemplateVersion::V3`: V2's links and `dir="auto"` container
