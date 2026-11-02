@@ -5,6 +5,7 @@
 //! email content.
 
 use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
 
 use super::attachment::{
     DEFAULT_JACS_SIGNATURE_FILENAME, get_jacs_attachment_named, remove_jacs_attachment_named,
@@ -21,7 +22,7 @@ use super::transport::{
     HAI_VERIFY_LINK_MARKER, InlineEmailTemplateVersion, SignedEmailTransport,
     detect_signed_email_transport, escape_html_attr, extract_inline_logo_part,
     extract_jacs_header_from_logo_png, extract_topmost_inline_jacs_envelope,
-    inline_email_template_version, normalize_inline_presentation_html,
+    inline_email_template_version, logo_shows_signed_hai_logo, normalize_inline_presentation_html,
     render_inline_email_message_main,
 };
 use super::types::{
@@ -115,11 +116,8 @@ pub fn verify_html_inline_email_document(
     check_email_size(raw_email)?;
 
     let envelope = extract_topmost_inline_jacs_envelope(raw_email)?;
-    let envelope_value: serde_json::Value = jacs_core::strict_json::parse_strict_json(&envelope)
-        .map_err(|e| {
-            EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
-        })?;
-    let jacs_envelope = envelope_value.get("jacsEnvelope").ok_or_else(|| {
+    let envelope_members = parse_inline_envelope(&envelope)?;
+    let jacs_envelope = envelope_members.get("jacsEnvelope").ok_or_else(|| {
         EmailError::InvalidJacsDocument("inline JACS envelope missing jacsEnvelope".to_string())
     })?;
     let jacs_json = serde_json::to_string(jacs_envelope).map_err(|e| {
@@ -308,7 +306,11 @@ pub fn verify_signed_email(
                 }
             };
 
-            if actual_logo_header != expected_logo_header {
+            // Any picture can carry the genuine header, so the picture itself
+            // must be HAI's logo as the producer embedded the header in it.
+            if actual_logo_header != expected_logo_header
+                || !logo_shows_signed_hai_logo(&logo.content, &expected_logo_header)
+            {
                 return Ok(SignedEmailVerificationResult::failed(
                     SignedEmailTransport::HtmlInline,
                     EmailVerificationReason::LogoSignatureMismatch,
@@ -340,20 +342,44 @@ pub fn verify_signed_email(
 }
 
 fn expected_logo_header_from_inline_envelope(envelope: &str) -> Option<String> {
-    let trimmed = envelope.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
+    let members = parse_inline_envelope(envelope).ok()?;
+    members.get("compactHeader")?.as_str().map(str::to_string)
+}
 
-    jacs_core::strict_json::parse_strict_json(trimmed)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("compactHeader")
-                .and_then(|header| header.as_str())
-                .map(str::to_string)
-        })
-        .or_else(|| Some(trimmed.to_string()))
+/// Members a hidden inline envelope may carry: the logo's compact header, the
+/// signed JACS document and, on HAI-countersigned mail, the agent's document.
+const INLINE_ENVELOPE_MEMBERS: [&str; 3] = ["compactHeader", "jacsEnvelope", "agentEnvelope"];
+
+/// Parse the hidden inline envelope: a JSON object with no members other than
+/// `INLINE_ENVELOPE_MEMBERS`, which the verifier checks (only `jacsEnvelope` is
+/// signed). Text containing `<!--` is refused: inside a script element it
+/// changes where HTML parsers end the element, so other content could hide in
+/// or escape from the envelope.
+fn parse_inline_envelope(
+    envelope: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, EmailError> {
+    if envelope.contains("<!--") {
+        return Err(EmailError::InvalidJacsDocument(
+            "inline JACS envelope contains `<!--`".to_string(),
+        ));
+    }
+    let value = jacs_core::strict_json::parse_strict_json(envelope.trim()).map_err(|e| {
+        EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
+    })?;
+    let serde_json::Value::Object(members) = value else {
+        return Err(EmailError::InvalidJacsDocument(
+            "inline JACS envelope is not a JSON object".to_string(),
+        ));
+    };
+    if let Some(name) = members
+        .keys()
+        .find(|name| !INLINE_ENVELOPE_MEMBERS.contains(&name.as_str()))
+    {
+        return Err(EmailError::InvalidJacsDocument(format!(
+            "inline JACS envelope has unexpected member `{name}`"
+        )));
+    }
+    Ok(members)
 }
 
 fn html_inline_presentation_equivalent(
@@ -397,11 +423,16 @@ pub fn inline_email_presentation_matches(
     let Some(received) = normalize_inline_presentation_html(&received_html) else {
         return false;
     };
-    let received = received.trim();
+    // Only HTML whitespace around the document is insignificant; HTML parsers
+    // render other whitespace there, such as U+00A0 or U+3000, as body text.
+    fn trim_html_whitespace(html: &str) -> &str {
+        html.trim_matches(['\t', '\n', '\x0C', '\r', ' '])
+    }
+    let received = trim_html_whitespace(&received);
     expected_inline_email_documents(user_text, verify_url, version)
         .iter()
         .filter_map(|expected| normalize_inline_presentation_html(expected))
-        .any(|expected| expected.trim() == received)
+        .any(|expected| trim_html_whitespace(&expected) == received)
 }
 
 /// Split the plaintext alternative into the user's text and the verify URL of
@@ -520,6 +551,19 @@ pub fn verify_email_html_named(
     Ok(verify_email_content(&doc, &parts))
 }
 
+/// Headers RFC 5322 allows once per message. Signing refuses mail that
+/// repeats one, and [`verify_email_content`] fails it.
+const SINGLE_INSTANCE_HEADERS: [&str; 8] = [
+    "from",
+    "to",
+    "cc",
+    "subject",
+    "date",
+    "message-id",
+    "in-reply-to",
+    "references",
+];
+
 /// Compare trusted JACS document hashes against actual email content.
 ///
 /// This is the second step of two-step verification. Use `verify_email()`
@@ -533,11 +577,15 @@ pub fn verify_email_html_named(
 /// - Attachments: recompute hashes and compare sorted lists
 ///
 /// Special cases:
-/// - Message-ID always returns `Unverifiable`
+/// - Message-ID returns `Unverifiable`, or `Fail` when repeated
 /// - Missing body parts return `Unverifiable` (not `Fail`)
 /// - A body part present but not signed returns `Fail`
 /// - Each part in `parts.unsigned_parts` returns `Fail` as `unsigned_parts[i]`
-/// - Address header mismatches get case-insensitive fallback (returns `Modified`)
+/// - An address header (From, To, Cc) that differs only in formatting returns
+///   `Modified`: quoting, angle brackets, address order or local-part case.
+///   A changed display name or address returns `Fail`.
+/// - From, To, Cc, Subject, Date, Message-ID, In-Reply-To or References
+///   appearing more than once returns `Fail`, signed or not
 pub fn verify_email_content(
     doc: &JacsEmailSignatureDocument,
     parts: &ParsedEmailParts,
@@ -614,6 +662,41 @@ pub fn verify_email_content(
             false,
             &mut field_results,
         );
+    }
+
+    // A repeat added after signing leaves clients to choose which value to
+    // show, while the checks above read only the first. RFC 5322's obsolete
+    // syntax allows whitespace before the colon, so names are compared
+    // without it.
+    for name in SINGLE_INSTANCE_HEADERS {
+        let count: usize = parts
+            .headers
+            .iter()
+            .filter(|(key, _)| key.trim_end_matches([' ', '\t']) == name)
+            .map(|(_, values)| values.len())
+            .sum();
+        if count < 2 {
+            continue;
+        }
+        let field = format!("headers.{}", name.replace('-', "_"));
+        let current_value = Some(format!("{count} {name} headers"));
+        match field_results
+            .iter_mut()
+            .find(|result| result.field == field)
+        {
+            Some(result) => {
+                result.status = FieldStatus::Fail;
+                result.current_value = current_value;
+            }
+            None => field_results.push(FieldResult {
+                field,
+                status: FieldStatus::Fail,
+                original_hash: None,
+                current_hash: None,
+                original_value: None,
+                current_value,
+            }),
+        }
     }
 
     // Verify body parts
@@ -856,8 +939,8 @@ fn verify_header_field(
             current_value: Some(canonical),
         });
     } else if is_address_header {
-        // Case-insensitive fallback for address headers
-        if addresses_match_case_insensitive(&stored.value, &canonical) {
+        // The same mailboxes written differently are reported, not failed.
+        if address_headers_match(&stored.value, &canonical) {
             results.push(FieldResult {
                 field: field_name.to_string(),
                 status: FieldStatus::Modified,
@@ -888,65 +971,60 @@ fn verify_header_field(
     }
 }
 
-/// Check if two address-header values match case-insensitively.
+/// Check that two address-header values (From, To or Cc) name the same
+/// mailboxes, so that a difference between them is formatting only.
 ///
-/// Uses RFC 5322 mailbox parsing: extracts the addr-spec from angle brackets
-/// (e.g., `"Display Name" <user@example.com>` → `user@example.com`) and
-/// compares the addr-spec portions case-insensitively.
-fn addresses_match_case_insensitive(a: &str, b: &str) -> bool {
-    let mut a_addrs = extract_addr_specs(a);
-    let mut b_addrs = extract_addr_specs(b);
-    a_addrs.sort();
-    b_addrs.sort();
-    a_addrs == b_addrs
+/// Both values are parsed as RFC 5322 address lists. Display names, including
+/// comments and group names, must match after whitespace is collapsed and
+/// Unicode NFC applied: quoting, RFC 2047 encoding and folding do not matter,
+/// but any change a reader would see does. Addresses compare
+/// case-insensitively, and the order of mailboxes does not matter. A value
+/// that does not parse as an address list never matches.
+fn address_headers_match(a: &str, b: &str) -> bool {
+    match (address_entries(a), address_entries(b)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
 }
 
-/// Extract addr-spec values from an RFC 5322 address-list header value.
-///
-/// Uses `mail_parser` to parse a synthetic `From:` header, which handles
-/// RFC 5322 mailbox formats including:
-/// - `user@example.com` (bare addr-spec)
-/// - `<user@example.com>` (angle-addr without display name)
-/// - `"Display Name" <user@example.com>` (name-addr with display name)
-/// - `User <user@example.com>, Other <other@example.com>` (comma-separated list)
-/// - `(comment) user@example.com` (comments in addresses)
-/// - `"quoted.local"@example.com` (quoted local parts)
-///
-/// Returns lowercased addr-specs.
-fn extract_addr_specs(header_value: &str) -> Vec<String> {
-    // Build a minimal RFC 5322 message so mail_parser can parse the address.
-    let synthetic = format!("From: {}\r\n\r\n", header_value);
-    let message = mail_parser::MessageParser::default().parse(synthetic.as_bytes());
+/// A group name, display name and address, each normalized for comparison.
+type AddressEntry = (Option<String>, Option<String>, Option<String>);
 
-    if let Some(msg) = message
-        && let Some(from) = msg.from()
-    {
-        return from
-            .iter()
-            .filter_map(|addr| addr.address().map(|a| a.to_lowercase()))
-            .collect();
-    }
-
-    // Fallback: if mail_parser couldn't extract addresses, try manual extraction
-    header_value
-        .split(',')
-        .filter_map(|addr| {
-            let trimmed = addr.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            if let Some(start) = trimmed.rfind('<')
-                && let Some(end) = trimmed[start..].find('>')
-            {
-                let spec = &trimmed[start + 1..start + end];
-                let spec = spec.trim();
-                if !spec.is_empty() {
-                    return Some(spec.to_lowercase());
+/// Parse an address-header value into sorted [`AddressEntry`] values, or
+/// `None` when `mail_parser` finds no address list in it.
+fn address_entries(header_value: &str) -> Option<Vec<AddressEntry>> {
+    // A minimal message lets mail_parser parse the value as a From header.
+    let synthetic = format!("From: {header_value}\r\n\r\n");
+    let message = mail_parser::MessageParser::default().parse(synthetic.as_bytes())?;
+    let text = |value: Option<&str>| {
+        let words: Vec<&str> = value?.split_whitespace().collect();
+        let text: String = words.join(" ").nfc().collect();
+        (!text.is_empty()).then_some(text)
+    };
+    let mailbox = |group: &Option<String>, addr: &mail_parser::Addr<'_>| {
+        (
+            group.clone(),
+            text(addr.name.as_deref()),
+            text(addr.address.as_deref()).map(|address| address.to_lowercase()),
+        )
+    };
+    let mut entries = Vec::new();
+    match message.from()? {
+        mail_parser::Address::List(addrs) => {
+            entries.extend(addrs.iter().map(|addr| mailbox(&None, addr)));
+        }
+        mail_parser::Address::Group(groups) => {
+            for group in groups {
+                let name = text(group.name.as_deref());
+                if name.is_some() {
+                    entries.push((name.clone(), None, None));
                 }
+                entries.extend(group.addresses.iter().map(|addr| mailbox(&name, addr)));
             }
-            Some(trimmed.to_lowercase())
-        })
-        .collect()
+        }
+    }
+    entries.sort();
+    Some(entries)
 }
 
 /// Verify a body part (text/plain or text/html).
@@ -1458,6 +1536,95 @@ mod tests {
         }
     }
 
+    /// A 600x200 picture of red and white stripes, nothing like HAI's logo.
+    fn striped_fixture_png() -> Vec<u8> {
+        let img = image::RgbaImage::from_fn(600, 200, |x, _| {
+            if (x / 20) % 2 == 0 {
+                image::Rgba([200, 30, 30, 255])
+            } else {
+                image::Rgba([255, 255, 255, 255])
+            }
+        });
+        let mut buf = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .expect("png encode");
+        buf
+    }
+
+    /// The logo must show HAI's picture: another picture carrying the genuine
+    /// compact header fails in every mode. HAI's logo without its metadata
+    /// chunk, or re-encoded, still verifies.
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_binds_the_logo_picture() {
+        use crate::email::EmailVerificationStatus::{Failed, Verified};
+        use base64::Engine as _;
+        use image::ImageEncoder as _;
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-logo-picture");
+        let key = get_pubkey(&agent);
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        let banner = solid_fixture_png([241, 139, 2, 255]);
+        for (version, raw) in [
+            ("v1", signed_html_inline_email(&agent)),
+            ("v3", signed_inline_v3_fixture(&agent, &banner)),
+        ] {
+            let verify = |raw: &[u8], mode| verify_signed_email(raw, &agent, &key, mode).unwrap();
+            let result = verify(&raw, VerificationMode::Strict);
+            assert_eq!(result.status, Verified, "{version}: {result:?}");
+            let logo = extract_inline_logo_part(&raw).unwrap().content;
+            let header = extract_jacs_header_from_logo_png(&logo).unwrap().unwrap();
+            let original = String::from_utf8(raw).unwrap();
+            assert_eq!(original.matches(&b64(&logo)).count(), 1, "{version}");
+            let with_logo = |png: &[u8]| original.replace(&b64(&logo), &b64(png)).into_bytes();
+
+            let swapped = crate::email::transport::embed_jacs_header_in_logo_png(
+                &striped_fixture_png(),
+                &header,
+            )
+            .unwrap()
+            .bytes;
+            assert_eq!(
+                extract_jacs_header_from_logo_png(&swapped).unwrap(),
+                Some(header.clone())
+            );
+            for mode in [VerificationMode::Strict, VerificationMode::Degraded] {
+                let result = verify(&with_logo(&swapped), mode);
+                assert_eq!(result.status, Failed, "{version}");
+                assert_eq!(
+                    result.reasons,
+                    vec![EmailVerificationReason::LogoSignatureMismatch],
+                    "{version}"
+                );
+            }
+
+            let stripped = jacs_media::png::bytes_without_jacs_chunk(&logo).unwrap();
+            let decoded = image::load_from_memory(&logo).unwrap().to_rgba8();
+            let mut reencoded = Vec::new();
+            image::codecs::png::PngEncoder::new_with_quality(
+                &mut reencoded,
+                image::codecs::png::CompressionType::Best,
+                image::codecs::png::FilterType::NoFilter,
+            )
+            .write_image(
+                decoded.as_raw(),
+                decoded.width(),
+                decoded.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+            for (name, png) in [
+                ("without its metadata chunk", stripped),
+                ("re-encoded", reencoded),
+            ] {
+                assert_ne!(png, logo, "{version} {name}");
+                let result = verify(&with_logo(&png), VerificationMode::Strict);
+                assert_eq!(result.status, Verified, "{version} {name}: {result:?}");
+            }
+        }
+    }
+
     #[test]
     #[serial(jacs_env)]
     fn verify_signed_email_accepts_html_inline_roundtrip() {
@@ -1771,6 +1938,59 @@ mod tests {
     }
 
     #[test]
+    fn inline_presentation_ignores_only_html_whitespace_around_the_document() {
+        let raw = String::from_utf8(html_inline_email_with_envelope("{}", None)).unwrap();
+        let end = "</body></html>\r\n";
+        assert_eq!(raw.matches(end).count(), 1);
+        let matches = |raw: &str| {
+            let parts = extract_email_parts(raw.as_bytes()).unwrap();
+            inline_email_presentation_matches(&parts, InlineEmailTemplateVersion::V1)
+        };
+        assert!(matches(&raw));
+        assert!(matches(&raw.replace(end, "</body></html>\t \x0C\r\n")));
+        // HTML parsers render other whitespace after the document as text.
+        for space in ['\u{00A0}', '\u{2028}', '\u{3000}'] {
+            let mutated = raw.replace(end, &format!("</body></html>{space}\r\n"));
+            assert!(!matches(&mutated), "{space:?}");
+        }
+    }
+
+    /// The hidden envelope may hold only the members producers write, and no
+    /// `<!--`; anything else fails as a missing envelope, in every mode.
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_refuses_unexpected_envelope_content() {
+        use crate::email::EmailVerificationStatus::Failed;
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-envelope-members");
+        let key = get_pubkey(&agent);
+        let original = String::from_utf8(signed_html_inline_email(&agent)).unwrap();
+        let envelope = extract_topmost_inline_jacs_envelope(original.as_bytes()).unwrap();
+        assert_eq!(original.matches(&envelope).count(), 1);
+        for (name, prefix) in [
+            ("unsigned member", r#"{"note":"<p>Pay invoice 42</p>","#),
+            ("comment opener", r#"{"note":"<!--<script>x</script>-->","#),
+        ] {
+            let mutated = original.replace(&envelope, &envelope.replacen('{', prefix, 1));
+            assert_ne!(mutated, original, "{name}");
+            for mode in [VerificationMode::Strict, VerificationMode::Degraded] {
+                let result = verify_signed_email(mutated.as_bytes(), &agent, &key, mode).unwrap();
+                assert_eq!(result.status, Failed, "{name}");
+                assert_eq!(
+                    result.reasons,
+                    vec![EmailVerificationReason::MissingInlineJacsEnvelope],
+                    "{name}"
+                );
+            }
+            assert!(
+                verify_html_inline_email_document(mutated.as_bytes(), &agent, &key).is_err(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     #[serial(jacs_env)]
     fn html_inline_artifact_removal_preserves_user_text() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
@@ -1879,6 +2099,192 @@ mod tests {
         assert_eq!(from_result.status, FieldStatus::Fail);
         assert!(from_result.original_value.is_some());
         assert!(from_result.current_value.is_some());
+    }
+
+    /// Most clients show the display name, not the address, so changing one
+    /// fails on both transports. Formatting alone (quoting, whitespace,
+    /// RFC 2047 encoding, local-part case) still verifies.
+    #[test]
+    #[serial(jacs_env)]
+    fn display_name_changes_fail_on_both_transports() {
+        use crate::email::EmailVerificationStatus::{Failed, Verified};
+
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-display-names");
+        let key = get_pubkey(&agent);
+        let attachment = String::from_utf8(
+            sign_email(
+                concat!(
+                    "From: Agent <agent@example.com>\r\n",
+                    "To: \"Recipient One\" <recipient@example.com>\r\n",
+                    "Cc: Copy <copy@example.com>\r\n",
+                    "Subject: Test\r\n",
+                    "Date: Fri, 28 Feb 2026 12:00:00 +0000\r\n",
+                    "Message-ID: <display-names@example.com>\r\n",
+                    "Content-Type: text/plain; charset=utf-8\r\n",
+                    "\r\n",
+                    "Hello World\r\n"
+                )
+                .as_bytes(),
+                &agent,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let inline = String::from_utf8(signed_html_inline_email(&agent)).unwrap();
+        // (message, header as signed, header as received, still verifies)
+        for (raw, signed, received, verifies) in [
+            (
+                &attachment,
+                "From: Agent <agent@example.com>",
+                "From: \"HAI Billing - action required\" <agent@example.com>",
+                false,
+            ),
+            (
+                &attachment,
+                "To: \"Recipient One\" <recipient@example.com>",
+                "To: \"Finance team\" <recipient@example.com>",
+                false,
+            ),
+            (
+                &attachment,
+                "Cc: Copy <copy@example.com>",
+                "Cc: copy@example.com",
+                false,
+            ),
+            (
+                &attachment,
+                "From: Agent <agent@example.com>",
+                "From: \"Agent\" <agent@example.com>",
+                true,
+            ),
+            (
+                &attachment,
+                "To: \"Recipient One\" <recipient@example.com>",
+                "To: Recipient  One <RECIPIENT@example.com>",
+                true,
+            ),
+            (
+                &attachment,
+                "Cc: Copy <copy@example.com>",
+                "Cc: =?utf-8?q?Copy?= <copy@example.com>",
+                true,
+            ),
+            (
+                &inline,
+                "From: Agent <agent@hai.ai>",
+                "From: \"HAI Billing - action required\" <agent@hai.ai>",
+                false,
+            ),
+            (
+                &inline,
+                "To: Recipient <recipient@example.com>",
+                "To: \"Finance team\" <recipient@example.com>",
+                false,
+            ),
+            (
+                &inline,
+                "From: Agent <agent@hai.ai>",
+                "From: \"Agent\" <agent@hai.ai>",
+                true,
+            ),
+        ] {
+            let signed = format!("{signed}\r\n");
+            assert_eq!(raw.matches(&signed).count(), 1, "{signed}");
+            let mutated = raw.replacen(&signed, &format!("{received}\r\n"), 1);
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            if verifies {
+                assert_eq!(result.status, Verified, "{received}: {result:?}");
+            } else {
+                assert_eq!(result.status, Failed, "{received}");
+                assert_eq!(
+                    result.reasons,
+                    vec![EmailVerificationReason::CanonicalPreimageHashMismatch],
+                    "{received}"
+                );
+            }
+        }
+    }
+
+    /// A second From, To, Cc, Subject, Date, Message-ID, In-Reply-To or
+    /// References added after signing fails on both transports, even after
+    /// the signed one, where the per-header checks still pass.
+    #[test]
+    #[serial(jacs_env)]
+    fn repeated_single_instance_headers_fail_on_both_transports() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-repeated-headers");
+        let key = get_pubkey(&agent);
+        let attachment = String::from_utf8(
+            sign_email(
+                concat!(
+                    "From: sender@example.com\r\n",
+                    "To: recipient@example.com\r\n",
+                    "Cc: copy@example.com\r\n",
+                    "Subject: Test\r\n",
+                    "Date: Fri, 28 Feb 2026 12:00:00 +0000\r\n",
+                    "Message-ID: <repeated@example.com>\r\n",
+                    "In-Reply-To: <earlier@example.com>\r\n",
+                    "References: <earlier@example.com>\r\n",
+                    "Content-Type: text/plain; charset=utf-8\r\n",
+                    "\r\n",
+                    "Hello World\r\n"
+                )
+                .as_bytes(),
+                &agent,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let inline = String::from_utf8(signed_html_inline_email(&agent)).unwrap();
+        let add_header = |raw: &str, line: &str| {
+            let end = raw.find("\r\n\r\n").expect("end of the header block");
+            format!("{}\r\n{line}{}", &raw[..end], &raw[end..])
+        };
+        for (field, line) in [
+            (
+                "headers.from",
+                "From: \"HAI Billing\" <billing@example.net>",
+            ),
+            ("headers.to", "To: finance@example.net"),
+            ("headers.cc", "Cc: finance@example.net"),
+            ("headers.subject", "Subject: URGENT: pay invoice 42 today"),
+            ("headers.date", "Date: Sat, 01 Mar 2026 09:00:00 +0000"),
+            ("headers.message_id", "Message-ID: <other@example.net>"),
+            ("headers.in_reply_to", "In-Reply-To: <other@example.net>"),
+            ("headers.references", "References: <other@example.net>"),
+            // RFC 5322's obsolete syntax allows whitespace before the colon.
+            ("headers.subject", "Subject : URGENT: pay invoice 42 today"),
+        ] {
+            let mutated = add_header(&attachment, line);
+            let result =
+                verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                    .unwrap();
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::CanonicalPreimageHashMismatch],
+                "{line}"
+            );
+            let content = verify_email(mutated.as_bytes(), &agent, &key).unwrap();
+            let failing: Vec<&str> = content
+                .field_results
+                .iter()
+                .filter(|r| r.status == FieldStatus::Fail)
+                .map(|r| r.field.as_str())
+                .collect();
+            assert_eq!(failing, vec![field], "{line}");
+        }
+
+        let mutated = add_header(&inline, "Subject: URGENT: pay invoice 42 today");
+        let result =
+            verify_signed_email(mutated.as_bytes(), &agent, &key, VerificationMode::Strict)
+                .unwrap();
+        assert_eq!(
+            result.reasons,
+            vec![EmailVerificationReason::CanonicalPreimageHashMismatch]
+        );
     }
 
     fn html_inline_email_with_logo_header(
@@ -2374,7 +2780,7 @@ mod tests {
     fn html_inline_email_with_envelope(envelope: &str, logo_header: Option<&str>) -> Vec<u8> {
         use base64::Engine as _;
 
-        let base_logo = make_fixture_png();
+        let base_logo = crate::email::transport::HAI_LOGO_PNG.to_vec();
         let logo_bytes = match logo_header {
             Some(header) => {
                 crate::email::transport::embed_jacs_header_in_logo_png(&base_logo, header)
@@ -2445,7 +2851,7 @@ mod tests {
     ) -> Vec<u8> {
         use base64::Engine as _;
 
-        let base_logo = make_fixture_png();
+        let base_logo = crate::email::transport::HAI_LOGO_PNG.to_vec();
         let logo_bytes = match logo_header {
             Some(header) => {
                 crate::email::transport::embed_jacs_header_in_logo_png(&base_logo, header)
@@ -2519,15 +2925,6 @@ mod tests {
             envelope, logo_b64
         )
         .into_bytes()
-    }
-
-    fn make_fixture_png() -> Vec<u8> {
-        let img = image::RgbaImage::from_pixel(64, 64, image::Rgba([32, 64, 128, 255]));
-        let mut buf = Vec::new();
-        let mut cur = std::io::Cursor::new(&mut buf);
-        img.write_to(&mut cur, image::ImageFormat::Png)
-            .expect("png encode");
-        buf
     }
 
     #[test]
@@ -2953,50 +3350,64 @@ mod tests {
 
     // -- Pure function tests (no agent needed, no mutex needed) --
     #[test]
-    fn address_match_extracts_mailbox_addr_spec() {
-        assert!(addresses_match_case_insensitive(
-            "\"Alice Agent\" <alice@example.com>",
-            "alice@example.com"
-        ));
-        assert!(addresses_match_case_insensitive(
-            "<bob@example.com>",
-            "bob@example.com"
-        ));
-        assert!(addresses_match_case_insensitive(
-            "Alice <alice@example.com>, Bob <bob@example.com>",
-            "bob@example.com, alice@example.com"
-        ));
-        assert!(addresses_match_case_insensitive(
-            "\"ALICE\" <ALICE@EXAMPLE.COM>",
-            "alice@example.com"
-        ));
-        assert!(!addresses_match_case_insensitive(
-            "\"Alice\" <alice@example.com>",
-            "bob@example.com"
-        ));
-    }
-    #[test]
-    fn extract_addr_specs_handles_rfc5322_edge_cases() {
-        assert_eq!(
-            extract_addr_specs("user@example.com"),
-            vec!["user@example.com"]
-        );
-        assert_eq!(
-            extract_addr_specs("<user@example.com>"),
-            vec!["user@example.com"]
-        );
-        assert_eq!(
-            extract_addr_specs("\"John Doe\" <john@example.com>"),
-            vec!["john@example.com"]
-        );
-        let addrs = extract_addr_specs("Alice <alice@a.com>, Bob <bob@b.com>");
-        assert_eq!(addrs.len(), 2);
-        assert!(addrs.contains(&"alice@a.com".to_string()));
-        assert!(addrs.contains(&"bob@b.com".to_string()));
-        assert_eq!(
-            extract_addr_specs("USER@EXAMPLE.COM"),
-            vec!["user@example.com"]
-        );
+    fn address_headers_match_only_formatting_differences() {
+        // Quoting, whitespace, angle brackets, Unicode normalization, address
+        // case and mailbox order.
+        for (signed, received) in [
+            (
+                "\"Alice Agent\" <alice@example.com>",
+                "Alice Agent <alice@example.com>",
+            ),
+            (
+                "Alice Agent <alice@example.com>",
+                "\"Alice   Agent\" <alice@example.com>",
+            ),
+            ("<bob@example.com>", "bob@example.com"),
+            (
+                "Alice <alice@example.com>, Bob <bob@example.com>",
+                "Bob <bob@example.com>, Alice <alice@example.com>",
+            ),
+            ("Alice <ALICE@example.com>", "Alice <alice@example.com>"),
+            (
+                "Jo\u{0308}rg <jorg@example.com>",
+                "J\u{00f6}rg <jorg@example.com>",
+            ),
+            (
+                "Team: a@example.com, b@example.com;",
+                "Team: b@example.com, a@example.com;",
+            ),
+        ] {
+            assert!(
+                address_headers_match(signed, received),
+                "{signed} should match {received}"
+            );
+        }
+        // Any change a reader would see.
+        for (signed, received) in [
+            ("\"Alice Agent\" <alice@example.com>", "alice@example.com"),
+            ("alice@example.com", "\"HAI Billing\" <alice@example.com>"),
+            ("Alice <alice@example.com>", "ALICE <alice@example.com>"),
+            (
+                "Alice <alice@example.com>",
+                "Alice (billing) <alice@example.com>",
+            ),
+            ("Alice <alice@example.com>", "Alice <bob@example.com>"),
+            (
+                "Alice <alice@example.com>, Bob <bob@example.com>",
+                "Alice <alice@example.com>",
+            ),
+            (
+                "Alice <alice@example.com>, Bob <bob@example.com>",
+                "Bob <alice@example.com>, Alice <bob@example.com>",
+            ),
+            ("Team: a@example.com;", "Staff: a@example.com;"),
+            ("Alice <alice@example.com>", ""),
+        ] {
+            assert!(
+                !address_headers_match(signed, received),
+                "{signed} should not match {received}"
+            );
+        }
     }
     #[test]
     #[serial(jacs_env)]

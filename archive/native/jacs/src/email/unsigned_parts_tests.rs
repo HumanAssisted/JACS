@@ -122,6 +122,16 @@ fn append_part_to(raw: &[u8], boundary: &str, part: &str) -> Vec<u8> {
     format!("{}--{boundary}\r\n{part}\r\n{}", &text[..at], &text[at..]).into_bytes()
 }
 
+/// Insert `part` into HAI's V3 related multipart just before the judge picture.
+fn insert_part_before_banner(raw: &[u8], part: &str) -> Vec<u8> {
+    let text = String::from_utf8(raw.to_vec()).expect("test mail is UTF-8");
+    let banner = format!(
+        "--{REL}\r\nContent-Type: {HAI_BANNER_CONTENT_TYPE}; name=\"{HAI_BANNER_FILENAME}\""
+    );
+    let at = text.find(&banner).expect("banner part");
+    format!("{}--{REL}\r\n{part}\r\n{}", &text[..at], &text[at..]).into_bytes()
+}
+
 /// Insert `part` as the last part of the message's top-level multipart.
 fn append_part(raw: &[u8], part: &str) -> Vec<u8> {
     use mail_parser::MimeHeaders as _;
@@ -416,8 +426,9 @@ fn hai_inline_message(
 
 const CALENDAR: &[u8] = b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HAI//Word//EN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:unsigned-parts-test@hai.ai\r\nDTSTAMP:20261101T120000Z\r\nDTSTART:20261102T120000Z\r\nSUMMARY:Check in\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
+/// HAI's logo, which verification requires the signed logo to show.
 fn base_logo() -> Vec<u8> {
-    png([20, 20, 20, 255])
+    crate::email::HAI_LOGO_PNG.to_vec()
 }
 
 /// The composed HAI inline message before HAI countersigns it: the hosted
@@ -842,6 +853,122 @@ fn unsigned_parts_inline_transport_added_parts_fail_verification() {
     assert!(
         still_verified.is_empty(),
         "added parts that still verify: {still_verified:?}"
+    );
+}
+
+/// V3 mail shows its judge picture by Content-ID, and Content-IDs are not
+/// signed. A part that takes that Content-ID, or any other part a client can
+/// show beside the signed ones, must fail.
+#[test]
+#[serial(jacs_env)]
+fn unsigned_parts_inline_v3_parts_beside_the_judge_picture_fail() {
+    let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let agent = signer();
+    let hai = signer();
+    let signed = hai_signed_inline(&agent, &hai, InlineEmailTemplateVersion::V3, None);
+    assert_inline_verified(&signed, &hai, "v3");
+
+    let banner_cid = format!("Content-ID: {HAI_BANNER_CONTENT_ID_HEADER}\r\n");
+    let text = String::from_utf8(signed.clone()).unwrap();
+    assert_eq!(text.matches(&banner_cid).count(), 1);
+    let renamed = text
+        .replacen(
+            &banner_cid,
+            "Content-ID: <judge-renamed@example.com>\r\n",
+            1,
+        )
+        .into_bytes();
+    let unnamed = |content_type: &str, bytes: &[u8]| {
+        format!(
+            "Content-Type: {content_type}\r\nContent-Transfer-Encoding: base64\r\n\r\n{}",
+            base64_lines(bytes).trim_end()
+        )
+    };
+    let picture = png([200, 30, 30, 255]);
+    let impostor = format!(
+        "Content-Type: image/png\r\nContent-ID: {HAI_BANNER_CONTENT_ID_HEADER}\r\nContent-Transfer-Encoding: base64\r\n\r\n{}",
+        base64_lines(&picture).trim_end()
+    );
+    let impostor_reported = "image/png part, Content-ID <mediationbench-judge@hai.ai>,";
+    let cases: Vec<(&str, Vec<u8>, &str)> = vec![
+        (
+            "(a) banner Content-ID renamed, a new part takes it",
+            append_part_to(&renamed, REL, &impostor),
+            impostor_reported,
+        ),
+        (
+            "(b) a part with the banner Content-ID before the banner",
+            insert_part_before_banner(&signed, &impostor),
+            impostor_reported,
+        ),
+        (
+            "(b) the same, banner Content-ID renamed",
+            insert_part_before_banner(&renamed, &impostor),
+            impostor_reported,
+        ),
+        (
+            "(c) unnamed image/png part",
+            append_part_to(&signed, REL, &unnamed("image/png", &picture)),
+            "image/png part, ",
+        ),
+        (
+            "(d) unnamed application/pdf part",
+            append_part_to(
+                &signed,
+                REL,
+                &unnamed("application/pdf", format!("%PDF-1.4 {PAYMENT}").as_bytes()),
+            ),
+            "application/pdf part, ",
+        ),
+        (
+            "(e) text/html attachment without filename",
+            append_part_to(
+                &signed,
+                ALT,
+                &format!(
+                    "Content-Type: text/html; charset=utf-8\r\nContent-Disposition: attachment\r\n\r\n<p>{PAYMENT}</p>"
+                ),
+            ),
+            "text/html part, disposition attachment,",
+        ),
+        (
+            "(f) image/png as the last alternative",
+            append_part_to(&signed, ALT, &unnamed("image/png", &picture)),
+            "image/png part, ",
+        ),
+    ];
+
+    let mut still_verified = Vec::new();
+    for (name, tampered, expected) in cases {
+        assert_ne!(tampered, signed, "{name}");
+        let strict = verify_signed_email(
+            &tampered,
+            &hai.agent,
+            &hai.public_key,
+            VerificationMode::Strict,
+        )
+        .unwrap();
+        let (doc, parts) =
+            verify_html_inline_email_document(&tampered, &hai.agent, &hai.public_key).unwrap();
+        let content = verify_html_inline_email_content(&doc, &parts);
+        println!(
+            "inline v3 + {name}: strict={:?} content_valid={}",
+            strict.status, content.valid
+        );
+        if strict.status != EmailVerificationStatus::Failed || content.valid {
+            still_verified.push(name);
+            continue;
+        }
+        assert_eq!(
+            strict.reasons,
+            vec![EmailVerificationReason::CanonicalPreimageHashMismatch],
+            "{name}"
+        );
+        assert_reported(&content, expected, name);
+    }
+    assert!(
+        still_verified.is_empty(),
+        "parts that still verify: {still_verified:?}"
     );
 }
 

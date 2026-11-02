@@ -27,17 +27,19 @@
 
 ## Unreleased
 
-### 2026-11-01 — Inline email verification compares the whole document
+### 2026-11-01 — Strict inline email verification covers the whole message
 
-- Strict HTML-inline verification no longer strips marked footer, envelope or
-  logo elements, logo pictures or comments before comparing. For V1, V2 and V3
-  it rebuilds the whole document: HAI's footer and one of the three logo shapes
-  HAI producers have emitted, linked to the verify URL from the signed
-  plaintext's final footer line, which is now required. Added marked markup,
-  comments, a second envelope or banner, and changed or rewritten (for example
-  Safe Links) footer and logo links fail with `HtmlEquivalenceFailed`.
-- `inline_email_presentation_matches` keeps its signature. All 146 email unit
-  and 33 fixture tests pass; source is unreleased.
+- Strict HTML-inline verification rebuilds the whole V1–V3 document instead of
+  stripping marked elements; rewritten footer or logo links (for example Safe
+  Links) fail. The logo must show HAI's picture carrying the signed header (new
+  public `HAI_LOGO_PNG`, `HAI_LOGO_ALT`, `HAI_VERIFY_FOOTER_TEXT_PREFIX`); the
+  envelope may hold only `compactHeader`, `jacsEnvelope` and `agentEnvelope`,
+  without `<!--`.
+- Both transports fail on MIME parts outside the signature
+  (`ParsedEmailParts::unsigned_parts`), changed From/To/Cc display names and
+  repeated single-instance headers; signing refuses uncovered parts, so
+  gateways appending MIME parts break verification.
+- Targeted tests not yet run; source is unreleased.
 
 ### 2026-11-01 — Inline email V3: one picture above the text
 
@@ -50,18 +52,6 @@
   resizing it fails HTML equivalence, swapped bytes fail the canonical hash, and
   V2/V3 marker switches fail. All 138 email unit and 33 fixture tests pass;
   source is unreleased.
-
-### 2026-11-01 — Email verification fails on MIME parts the signature does not cover
-
-- Verification fails when received email has a MIME part that is neither a
-  signed body nor an attachment, such as a second text alternative, an image
-  without a filename or an embedded message. The new
-  `ParsedEmailParts::unsigned_parts` lists them; each fails as
-  `unsigned_parts[i]`. An unsigned body also fails, and inline verification
-  excludes exactly one logo. `sign_email` and the inline pre-image builder
-  refuse such parts. Mailing lists or gateways that append a separate MIME part
-  now break verification.
-- All 152 email unit and 33 fixture tests pass; source is unreleased.
 
 ### 2026-10-28 — Native PQ identity, key discovery and ecosystem integration
 

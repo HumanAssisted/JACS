@@ -174,7 +174,7 @@ entry per field:
 | Status          | Meaning                                                       |
 |-----------------|---------------------------------------------------------------|
 | `Pass`          | Covered hash matches the signed value; no independent mailbox attribution |
-| `Modified`      | Hash mismatch but case-insensitive email address match (address headers only) |
+| `Modified`      | From, To or Cc names the same mailboxes, differing only in quoting, whitespace, RFC 2047 encoding, order or address case |
 | `Fail`          | Content does not match the signed hash                        |
 | `Unverifiable`  | Field absent or not verifiable (e.g. Message-ID may change in transit) |
 
@@ -182,6 +182,13 @@ Headers covered include `from`, `to`, `subject`, `date` and, when present, `cc`,
 `in_reply_to` and `references`. `message_id` is stored in the signed payload but
 always reported `Unverifiable`, since transit can change it. Inspect every
 field status; overall `valid` does not mean every field was checked.
+
+Most clients show a display name instead of the address, so a changed, added or
+removed display name (or comment) in From, To or Cc fails. A From, To, Cc,
+Subject, Date, Message-ID, In-Reply-To or References header that appears more
+than once fails as that field (`current_value` such as `2 subject headers`),
+whether or not it was signed: clients choose which copy to show. Signing
+already refuses such mail.
 
 Body hashing uses decoded/canonicalized text, including charset, line-ending
 and trailing-whitespace normalization. Attachment hashes include the normalized
@@ -255,7 +262,9 @@ width="96" height="96"><br>` before the container (`HAI_BANNER_*` constants).
 The picture is an ordinary inline MIME part, so the signed payload hashes its
 bytes with the other attachments; its `<img>` is part of the reconstructed
 presentation, so removing, moving or resizing it fails presentation
-verification. Content-IDs are not hashed, as for the logo. V3 binds
+verification. Content-IDs are not hashed, as for the logo: a part without a
+signature that takes the picture's Content-ID fails as an unsigned part, but
+relabelling another signed image part is not detected. V3 binds
 `inline_template_version: "v3"`; verifiers that know only V1 and V2 reject it.
 
 V2 binds `inline_template_version: "v2"` inside the signed email payload.
@@ -270,8 +279,20 @@ that URL. The logo may take any shape a HAI producer has emitted, each with alt
 text `HAI verification logo`: the picture linked to the same URL, that link
 with `<br><br>` before the picture, or the unlinked picture.
 
-Only the contents of the first envelope script are ignored, because the signed
-logo header binds that envelope. Nothing else is stripped: elements carrying
+The logo part must show HAI's picture, `HAI_LOGO_PNG`, carrying the compact
+header of the signed document: the size and decoded pixels of
+`embed_jacs_header_in_logo_png(HAI_LOGO_PNG, header)`. Dropped metadata and
+re-encoding still verify; another picture, even one carrying the genuine
+header, or an animated PNG fails with `LogoSignatureMismatch` in every mode.
+
+Only the contents of the first envelope script are ignored; the verifier checks
+that envelope separately. It must be a JSON object with no members other than
+`compactHeader` (matched against the logo), `jacsEnvelope` (the signed JACS
+document) and `agentEnvelope` (the hosted agent's document on HAI-countersigned
+mail), and must not contain `<!--`, which changes where HTML parsers end a
+script. Otherwise verification fails with `MissingInlineJacsEnvelope`; a signed
+value containing `<!--`, such as a subject, fails safe unless the producer
+escapes `<` as `\u003c`. Nothing else is stripped: elements carrying
 the footer, envelope or logo markers are compared like any other markup, and
 any comment (including Outlook conditional comments), a second envelope script
 or an HTML tokenizer error fails. Tag and attribute-name case, attribute order
@@ -283,9 +304,10 @@ version changes fail presentation verification with `HtmlEquivalenceFailed`:
 verification.
 
 Link rewriting in transit, such as Microsoft Defender Safe Links, therefore
-changes the verified presentation. A V1 email whose footer or logo link was
-rewritten now fails presentation verification, as V2 and V3 emails with
-rewritten message links already did.
+changes the verified presentation. Any email whose footer or logo link was
+rewritten now fails presentation verification: V1 mail, and V2 or V3 mail whose
+message has no URL lines, as well as V2 and V3 mail with rewritten message
+links, which already failed.
 
 Readers implementing only V1 reject V2 presentation. Upgrade producers and
 verifying delivery services together before emitting V2; SDKs may continue to
@@ -300,7 +322,9 @@ HTML-inline helpers include:
   It signs the existing email header scope, the text body, and user
   attachments. Generated HTML and signature artifacts are excluded.
 - `embed_jacs_header_in_logo_png` and `extract_jacs_header_from_logo_png` for
-  the signed inline PNG logo transport.
+  the signed inline PNG logo transport, with `HAI_LOGO_PNG` as the picture.
+- `HAI_LOGO_ALT` and `HAI_VERIFY_FOOTER_TEXT_PREFIX`, the logo alt text and the
+  footer text before the verify URL, for producers and their tests.
 - `extract_topmost_inline_jacs_envelope` for reply-safe hidden envelope
   selection.
 - `inline_email_presentation_matches` for the noncryptographic whole-document

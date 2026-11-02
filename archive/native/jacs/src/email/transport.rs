@@ -30,11 +30,16 @@ pub const HAI_BANNER_FILENAME: &str = "mediationbench-judge.png";
 pub const HAI_BANNER_ALT: &str = "MediationBench judge";
 pub const HAI_HIDDEN_ENVELOPE_MAX_BYTES: usize = 8 * 1024;
 /// Alt text of the verification logo in every HAI and haiai producer.
-pub(crate) const HAI_LOGO_ALT: &str = "HAI verification logo";
+pub const HAI_LOGO_ALT: &str = "HAI verification logo";
 /// Footer text before the verify URL, in the HTML footer and as the final
 /// line of the plaintext alternative.
-pub(crate) const HAI_VERIFY_FOOTER_TEXT_PREFIX: &str =
-    "This email is sent from an AI agent. Verify at ";
+pub const HAI_VERIFY_FOOTER_TEXT_PREFIX: &str = "This email is sent from an AI agent. Verify at ";
+/// HAI's verification logo: the `hai-jacs-logo.png` hai and haiai bundle,
+/// byte for byte (SHA-256 `4bbe834a…0dff`, 150x144). Strict inline
+/// verification requires the received logo to show this picture carrying the
+/// signed header, as `embed_jacs_header_in_logo_png(HAI_LOGO_PNG, header)`
+/// renders it.
+pub const HAI_LOGO_PNG: &[u8] = include_bytes!("hai-jacs-logo.png");
 
 /// Canonical HTML-inline presentation versions. V1 remains the historical
 /// escaped-text rendering; V2 adds links derived only from signed plaintext.
@@ -175,9 +180,10 @@ impl TokenSink for TemplateVersionSink {
 /// Serialize HTML for strict comparison of a whole inline email with the
 /// documents HAI producers render, the way `normalize_html_for_equivalence`
 /// serializes tags, attributes and text. Nothing is removed: only the contents
-/// of the first JACS envelope script are blanked, because the signed logo
-/// header authenticates that envelope separately. Any comment, a second
-/// envelope script or a tokenizer parse error returns `None`.
+/// of the first JACS envelope script are blanked, because the verifier checks
+/// that envelope separately (the JACS signature authenticates `jacsEnvelope`;
+/// other members are refused). Any comment, a second envelope script or a
+/// tokenizer parse error returns `None`.
 pub(crate) fn normalize_inline_presentation_html(html: &str) -> Option<String> {
     let input = BufferQueue::default();
     input.push_back(StrTendril::from(html));
@@ -367,6 +373,61 @@ pub fn extract_jacs_header_from_logo_png(
     require_png_logo(signed_logo_png)?;
     jacs_media::extract_signature_with_format(jacs_media::MediaFormat::Png, signed_logo_png, true)
         .map_err(|err| EmailError::InvalidJacsDocument(format!("logo extraction failed: {err}")))
+}
+
+/// Whether `logo_png` shows HAI's logo carrying `compact_jacs_header`: the
+/// width, height and decoded pixels of
+/// `embed_jacs_header_in_logo_png(HAI_LOGO_PNG, compact_jacs_header)`, and no
+/// animation. Pixels are compared, not bytes: PNG encoder output depends on
+/// the image library version each producer and verifier is built with, and
+/// transit may drop the metadata chunk; neither changes the picture. The size
+/// is read from the PNG header before any decoding, and animation chunks are
+/// refused because an animated PNG can show other frames than the one decoded.
+pub(crate) fn logo_shows_signed_hai_logo(logo_png: &[u8], compact_jacs_header: &str) -> bool {
+    let Some(received) = png_chunks(logo_png) else {
+        return false;
+    };
+    if received
+        .iter()
+        .any(|&(kind, _)| matches!(kind, b"acTL" | b"fcTL" | b"fdAT"))
+    {
+        return false;
+    }
+    let Ok(expected) = embed_jacs_header_in_logo_png(HAI_LOGO_PNG, compact_jacs_header) else {
+        return false;
+    };
+    // IHDR is first; its data starts with the width and height.
+    let size = |chunks: &[(&[u8; 4], &[u8])]| match chunks.first() {
+        Some(&(kind, data)) if kind == b"IHDR" && data.len() == 13 => Some(data[..8].to_vec()),
+        _ => None,
+    };
+    let expected_size = png_chunks(&expected.bytes).and_then(|chunks| size(&chunks));
+    if expected_size.is_none() || size(&received) != expected_size {
+        return false;
+    }
+    let pixels =
+        |png: &[u8]| jacs_media::pixel_hash_pre_lsb(jacs_media::MediaFormat::Png, png).ok();
+    pixels(logo_png).is_some_and(|hash| pixels(&expected.bytes) == Some(hash))
+}
+
+/// The chunks of a PNG, each as (type, data), up to and including IEND, or
+/// `None` if the bytes are not a complete PNG chunk sequence. CRCs are not
+/// checked; the image decoder checks them.
+fn png_chunks(png: &[u8]) -> Option<Vec<(&[u8; 4], &[u8])>> {
+    let mut rest = png.strip_prefix(b"\x89PNG\r\n\x1a\n")?;
+    let mut chunks = Vec::new();
+    loop {
+        let (header, after_header) = rest.split_first_chunk::<8>()?;
+        let (length, kind) = header.split_first_chunk::<4>()?;
+        let length = usize::try_from(u32::from_be_bytes(*length)).ok()?;
+        let kind: &[u8; 4] = kind.try_into().ok()?;
+        let data = after_header.get(..length)?;
+        rest = after_header.get(length.checked_add(4)?..)?;
+        chunks.push((kind, data));
+        if kind == b"IEND" {
+            return Some(chunks);
+        }
+    }
 }
 
 pub fn remove_inline_signature_artifacts(
@@ -1029,6 +1090,119 @@ mod tests {
 
         assert!(embed_jacs_header_in_logo_png(&jpeg, "fixture-header").is_err());
         assert!(embed_jacs_header_in_logo_png(&webp, "fixture-header").is_err());
+    }
+
+    const LOGO_HEADER: &str =
+        "sha256:5e0f4a1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6";
+
+    #[test]
+    fn bundled_hai_logo_is_the_asset_hai_and_haiai_ship() {
+        use sha2::{Digest as _, Sha256};
+        // haiai pins this digest (`HAI_JACS_LOGO_SHA256_HEX`); hai tests against it.
+        assert_eq!(
+            hex::encode(Sha256::digest(HAI_LOGO_PNG)),
+            "4bbe834af55a42fcc600cefcf5cd50b1e56afec5b97785391ccabe30985e0dff"
+        );
+        let chunks = png_chunks(HAI_LOGO_PNG).expect("well-formed PNG");
+        let (kind, ihdr) = chunks[0];
+        assert_eq!(kind, b"IHDR");
+        assert_eq!(&ihdr[..8], &[0, 0, 0, 150, 0, 0, 0, 144]);
+    }
+
+    #[test]
+    fn hai_logo_embedding_is_deterministic_and_checked_by_pixels() {
+        use image::ImageEncoder as _;
+
+        let signed = embed_jacs_header_in_logo_png(HAI_LOGO_PNG, LOGO_HEADER).unwrap();
+        assert_eq!(
+            embed_jacs_header_in_logo_png(HAI_LOGO_PNG, LOGO_HEADER)
+                .unwrap()
+                .bytes,
+            signed.bytes
+        );
+        assert!(logo_shows_signed_hai_logo(&signed.bytes, LOGO_HEADER));
+        let other_header = LOGO_HEADER.replace("5e0f", "0000");
+        assert!(!logo_shows_signed_hai_logo(&signed.bytes, &other_header));
+
+        // Changes that keep the picture: the metadata chunk dropped in transit,
+        // or another encoder writing the same pixels.
+        let stripped = jacs_media::png::bytes_without_jacs_chunk(&signed.bytes).unwrap();
+        assert!(logo_shows_signed_hai_logo(&stripped, LOGO_HEADER));
+        let decoded = image::load_from_memory(&signed.bytes).unwrap().to_rgba8();
+        let mut reencoded = Vec::new();
+        image::codecs::png::PngEncoder::new_with_quality(
+            &mut reencoded,
+            image::codecs::png::CompressionType::Best,
+            image::codecs::png::FilterType::NoFilter,
+        )
+        .write_image(decoded.as_raw(), 150, 144, image::ExtendedColorType::Rgba8)
+        .unwrap();
+        assert_ne!(reencoded, signed.bytes);
+        assert!(logo_shows_signed_hai_logo(&reencoded, LOGO_HEADER));
+
+        // Pictures that differ, each carrying the expected header.
+        let mut tweaked = image::load_from_memory(HAI_LOGO_PNG).unwrap().to_rgba8();
+        tweaked.get_pixel_mut(75, 72).0[0] ^= 0x40;
+        let mut tweaked_png = Vec::new();
+        tweaked
+            .write_to(
+                &mut std::io::Cursor::new(&mut tweaked_png),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let animated = {
+            // An APNG control chunk after IHDR: clients that animate can show
+            // frames other than the decoded default image.
+            let ihdr_end = 8 + 12 + 13;
+            let mut data = 2u32.to_be_bytes().to_vec();
+            data.extend_from_slice(&0u32.to_be_bytes());
+            let mut png = signed.bytes[..ihdr_end].to_vec();
+            png.extend_from_slice(&png_chunk(b"acTL", &data));
+            png.extend_from_slice(&signed.bytes[ihdr_end..]);
+            png
+        };
+        for (name, logo) in [
+            (
+                "another picture",
+                embed_jacs_header_in_logo_png(&make_fixture_png(), LOGO_HEADER)
+                    .unwrap()
+                    .bytes,
+            ),
+            (
+                "one pixel changed",
+                embed_jacs_header_in_logo_png(&tweaked_png, LOGO_HEADER)
+                    .unwrap()
+                    .bytes,
+            ),
+            ("animated", animated),
+            (
+                "truncated",
+                signed.bytes[..signed.bytes.len() - 20].to_vec(),
+            ),
+            ("not a PNG", b"GIF89a".to_vec()),
+        ] {
+            assert!(!logo_shows_signed_hai_logo(&logo, LOGO_HEADER), "{name}");
+        }
+    }
+
+    /// A PNG chunk with its CRC-32 (ISO 3309, as PNG specifies).
+    fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut crc = 0xffff_ffff_u32;
+        for &byte in kind.iter().chain(data) {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    0xedb8_8320 ^ (crc >> 1)
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        let mut chunk = u32::try_from(data.len()).unwrap().to_be_bytes().to_vec();
+        chunk.extend_from_slice(kind);
+        chunk.extend_from_slice(data);
+        chunk.extend_from_slice(&(!crc).to_be_bytes());
+        chunk
     }
 
     fn make_fixture_png() -> Vec<u8> {
