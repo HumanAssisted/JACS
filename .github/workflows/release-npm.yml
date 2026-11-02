@@ -227,7 +227,7 @@ jobs:
         if: ${{ steps.build_native_module.outcome == 'success' || steps.build_native_module_alpine.outcome == 'success' }}
         run: python3 scripts/check_native_crypto_linkage.py archive/native/jacsnpm/*.node
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ steps.build_native_module.outcome == 'success' || steps.build_native_module_alpine.outcome == 'success' }}
         with:
           # Keep cross-build evidence, but only runtime-covered targets may
@@ -396,7 +396,7 @@ jobs:
       - name: Validate npm SPDX SBOM
         run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacsnpm.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacsnpm.spdx.json >/dev/null
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: |
