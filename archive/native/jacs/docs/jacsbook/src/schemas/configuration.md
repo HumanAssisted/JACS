@@ -150,11 +150,11 @@ The domain used for DNS fingerprint checks. Configure it during agent creation, 
 
 #### jacs_dns_validate
 
-Controls whether native verification attempts DNS, with the domain and explicit CLI options determining the effective behavior. See the [DNS mode table](../rust/dns.md).
+Controls whether native verification attempts DNS, with the domain and explicit CLI options determining the effective behavior. See the [CLI DNS options](../rust/cli.md#verify-agent).
 
 #### jacs_dns_strict
 
-This field exists in the schema, but the current native loader does not apply it to the runtime strict flag. Use `jacs-compat agent verify --require-strict-dns` or `AgentBuilder::dns_strict(true)` to require strict validation. A verified DNS claim also forces strict validation.
+When `true`, shared native key discovery (the `dns` key source) requires a `Secure` DNSSEC proof, as does `Agent::set_dns_strict(true)`. Agent verification does not read this field: use `jacs-compat agent verify --require-strict-dns` or `AgentBuilder::dns_strict(true)` to require strict validation there. A verified DNS claim also forces strict validation.
 
 #### jacs_dns_required
 

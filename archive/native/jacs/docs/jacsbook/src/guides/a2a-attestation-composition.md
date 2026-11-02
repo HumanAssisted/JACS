@@ -21,7 +21,7 @@ The Node equivalent is `JacsClient.quickstart({name, domain, configPath})` with 
 
 ## Configure verification before exchanging artifacts
 
-Independently authenticate the sender's agent document and public key. [Trust-store enrollment](../advanced/trust-store.md) records admission evidence, but it is not sufficient by itself to configure artifact verification: the native A2A artifact verifier resolves foreign keys from its configured local public-key cache or registry. The OS/XDG trust-store key cache is a separate location. Provision the appropriate resolver with the authenticated key and test rejection of a wrong key before enabling the exchange.
+Independently authenticate the sender's agent document and public key, then record them with [trust-store enrollment](../advanced/trust-store.md). With `local` in `JACS_KEY_RESOLUTION` (the default), the native A2A artifact verifier uses that enrollment for v2 artifacts signed by the exact enrolled `agent_id:version`, and refuses a key that conflicts with it. Other signers, and other versions that keep the enrolled key, need a cached local key or opt-in registry or DNS/HTTPS [key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md). Neither enrollment nor discovery authorizes the sender. Test rejection of a wrong key before enabling the exchange.
 
 The following is an application workflow, not a complete cross-agent program:
 

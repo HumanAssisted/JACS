@@ -128,8 +128,10 @@ fn verify_signature(doc: &Document) -> Result<()> {
 ### Key Lookup Priority
 
 Native external-document verification uses the configured `JACS_KEY_RESOLUTION`
-sources (default `local,registry`). DNS authenticates a published fingerprint;
-it does not supply historical public keys.
+sources (default `local,registry`). An opted-in `dns` source fetches the exact
+signed version's key over HTTPS and pins it to the raw-key DNS fingerprint, so
+old documents verify through DNS only while their fingerprint and exact-version
+key endpoint stay published.
 
 ## Key Rotation Process
 

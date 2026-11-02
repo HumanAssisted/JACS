@@ -135,9 +135,7 @@ When verifying a remote signer, provide a directory of authenticated `<signer_id
 jacs-compat verify-text README.md --key-dir ./trusted-keys/
 ```
 
-Use independently authenticated keys in `--key-dir` for remote signers. A matching file is considered after the local signer's own key; version-qualified IDs encode `:` as `%3A` in filenames. Ordinary trust-store enrollment is not sufficient for this resolver: its trust-store branch expects a public-key field inside the stored agent JSON, while enrollment also stores key bytes separately.
-
-Optional network lookup uses configured `JACS_DNS_KEY_DOMAINS`: TXT supplies a fingerprint and HTTPS supplies key bytes. The inline resolver uses non-DNSSEC TXT lookup; do not confuse it with strict agent DNS verification or independent identity authorization.
+Use independently authenticated keys in `--key-dir` for remote signers. A matching file is considered after the local signer's own key; version-qualified IDs encode `:` as `%3A` in filenames. Legacy compact blocks resolve only locally: the signer's own key, `--key-dir`, then a trust-store agent document that embeds its public key. A full JACS footer that none of those match falls back to the shared native resolver, which uses a [trust-store enrollment](../advanced/trust-store.md) for the exact signed `agentID`/`agentVersion` and, when enabled, opt-in registry or DNS/HTTPS [key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md). DNS discovery requires DNSSEC when `jacs_dns_strict` is set; a discovered key is not independent identity authorization.
 
 ## Marker collision — what happens if your file mentions the marker
 

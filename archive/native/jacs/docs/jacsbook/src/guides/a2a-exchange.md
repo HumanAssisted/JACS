@@ -1,6 +1,6 @@
 # Exchange Signed Artifacts
 
-Sign artifacts with cryptographic provenance and verify artifacts from other agents. Node.js snippets run inside an async function. For multi-agent examples, create separate clients/configurations and independently authenticate each signer's public evidence and configure the verifier's key resolver before verification. Native artifact verification uses its local public-key cache or registry; trust-store enrollment alone does not populate that cache. See [cross-agent setup](a2a-attestation-composition.md).
+Sign artifacts with cryptographic provenance and verify artifacts from other agents. Node.js snippets run inside an async function. For multi-agent examples, create separate clients/configurations and independently authenticate each signer's public evidence and configure the verifier's key resolver before verification. Native artifact verification uses a [trust-store enrollment](../advanced/trust-store.md) for v2 artifacts signed by the exact enrolled `agent_id:version`; otherwise it uses its local public-key cache or opt-in registry or DNS/HTTPS [key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md). See [cross-agent setup](a2a-attestation-composition.md).
 
 <div class="tabs">
 <div class="tab">

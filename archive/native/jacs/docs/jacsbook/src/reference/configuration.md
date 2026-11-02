@@ -8,9 +8,10 @@ This is the comprehensive configuration guide covering zero-config quickstart, s
 
 `JACS_KEY_RESOLUTION` is an environment-only comma-separated source list.
 The default is `local,registry`: local public-key cache/trust data, then the
-configured registry when network policy permits. `dns` is a recognized option
-but native document lookup skips it: DNS authenticates fingerprints, not public
-key bytes. `hai` is not a source name. Use independently trusted key evidence
+configured registry when network policy permits. `dns` looks up the publisher's
+TXT fingerprint and fetches the exact signed version's key over HTTPS when
+`JACS_ALLOW_DNS` and `JACS_ALLOW_REMOTE_KEY_FETCH` are set; see the
+[key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md). `hai` is not a source name. Use independently trusted key evidence
 and the [DNS guide](../rust/dns.md) for domain anchoring.
 
 ## Zero-Config Path

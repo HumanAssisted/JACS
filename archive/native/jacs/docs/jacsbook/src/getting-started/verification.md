@@ -220,7 +220,9 @@ Test sources:
 
 Native document verification uses `JACS_KEY_RESOLUTION` (environment only),
 defaulting to `local,registry`. Local storage supplies cached/trusted public
-keys; registry lookup requires the relevant network policy. DNS does not fetch
-historical public keys: its TXT record anchors a fingerprint, and native document
-key lookup skips that source. See [DNS verification](../rust/dns.md) and
-[trust enrollment](../advanced/trust-store.md).
+keys; registry lookup requires the relevant network policy. Adding `dns`, with
+DNS and remote key fetch allowed and a configured or signed publisher domain,
+fetches the exact signed version's key over HTTPS and pins it to the TXT
+record's raw-key fingerprint. Discovered keys do not enroll a trusted identity.
+See the [key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md),
+[DNS verification](../rust/dns.md) and [trust enrollment](../advanced/trust-store.md).

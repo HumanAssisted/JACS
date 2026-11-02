@@ -51,10 +51,12 @@ full = client.verify_attestation(attestation.raw, full=True)
 print(full["valid"], full.get("evidence"), full.get("chain"))
 ```
 
-Inspect the complete report and errors before accepting it. The current full
-verifier uses the loaded agent's key; do not assume it can fully verify an
-arbitrary other agent's attestation. Exchanging bytes or resolving a public key
-does not remove that implementation limitation.
+Inspect the complete report and errors before accepting it. Published 0.15.0
+packages check the signature with the loaded agent's key, so they cannot fully
+verify another agent's attestation. Current source resolves the signer's exact
+signed key: local verification uses own, enrolled or cached keys and stays
+offline; full verification also follows the opt-in
+[key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md) settings.
 
 Full verification does not fetch URI-only evidence. Non-embedded evidence whose
 bytes are unavailable reports `digestValid=false`; an HTTPS URL and a claimed

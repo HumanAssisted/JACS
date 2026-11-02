@@ -106,7 +106,7 @@ npm ci --ignore-scripts --prefix archive/native/examples/a2a_v1_sdk
 npm test --prefix archive/native/examples/a2a_v1_sdk
 ```
 
-The pinned JavaScript SDK 1.3.0 supports direct ML-DSA-87 through `jose` 6.2.3.
+The pinned JavaScript SDK 1.3.0 supports direct ML-DSA-87 through `jose` 6.2.13.
 The Python SDK 1.3.0 example uses explicit ES256 because its PyJWT backend lacks
 ML-DSA verification; the native root remains PQ. The tests include modified
 cards/signatures and untrusted-root rejection, not every A2A capability.
