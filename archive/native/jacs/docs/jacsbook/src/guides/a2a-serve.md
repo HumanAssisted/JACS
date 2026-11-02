@@ -1,7 +1,7 @@
 # Serve Your Agent Card
 
-These discovery helpers retain the legacy A2A `0.4.0` card shape. For the
-separate typed A2A 1.0 API and its limits, see the
+By default, these discovery helpers export the legacy A2A `0.4.0` card shape. For the
+explicit A2A 1.0 options and their limits, see the
 [current quickstart](https://github.com/HumanAssisted/JACS/blob/main/A2A_QUICKSTART.md).
 
 {{#include ../_snippets/node-registry-status.md}}
@@ -14,7 +14,7 @@ the extension descriptor. Configure the signed public interface for a service
 your host actually implements; a local discovery listener does not create that
 service or grant remote signing access.
 
-> **Prerequisites:** `pip install jacs[a2a-server]` (Python) or `npm install @hai.ai/jacs express` (Node.js).
+> **Prerequisites:** The current-source PQ examples require [source-built bindings](https://humanassisted.github.io/JACS/a2a.html#build-this-checkout), plus Python's `a2a-server` extra or Express for Node.js. Registry installation alone does not establish that these newer exports are available. Node.js snippets below run inside an async function.
 
 <div class="tabs">
 <div class="tab">

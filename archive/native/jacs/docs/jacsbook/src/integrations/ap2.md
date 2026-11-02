@@ -41,12 +41,12 @@ auto-issued. Grant it explicitly first (this requires the native root's
 signature):
 
 ```bash
-jacs agent issue-compat-binding \
+jacs-compat agent issue-compat-binding \
   --scopes jwks,did,a2a-agent-card,w3c-agent-identity,ap2-mandate
 
 # inline JSON, a file path, or '-' for stdin all work:
-jacs ap2 export-mandate --input checkout.json > export.json
-cat checkout.json | jacs ap2 export-mandate --input - > export.json
+jacs-compat ap2 export-mandate --input checkout.json > export.json
+cat checkout.json | jacs-compat ap2 export-mandate --input - > export.json
 ```
 
 The export carries the detached JWS, the checkout with
@@ -59,7 +59,7 @@ Any stock JOSE verifier can check the ES256 signature against the
 agent's JWKS — see the committed reference verifier:
 
 ```bash
-jacs agent export-jwks > jwks.json
+jacs-compat agent export-jwks > jwks.json
 npm install jose canonicalize
 node scripts/smoke/verify_ap2_jws.mjs export.json jwks.json
 ```
@@ -68,6 +68,6 @@ node scripts/smoke/verify_ap2_jws.mjs export.json jwks.json
 possession of the compatibility key only. To trace the mandate to the
 agent's native root, a JACS-aware relying party additionally verifies the
 native-root-signed compatibility key binding
-(`jacs agent export-compat-binding`) whose content hash the export
+(`jacs-compat agent export-compat-binding`) whose content hash the export
 references. Native JACS documents are never touched by this export —
 signing a mandate does not create or modify any `jacsSignature`.

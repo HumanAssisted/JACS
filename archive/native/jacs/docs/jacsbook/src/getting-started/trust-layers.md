@@ -34,10 +34,10 @@ Trust policies (`open`, `verified`, `strict`) control admission:
 | Policy | Requirement |
 |--------|------------|
 | `open` | Accept all agents without identity assurance |
-| `verified` | Valid same-origin Agent Card JWS plus a durable ES256 TOFU pin; proves origin/key continuity, not native identity |
-| `strict` | Explicitly trusted native root plus a valid binding for the exact identity, version, ES256 key, scope, and binding lifecycle |
+| `verified` | Valid same-origin Agent Card JWS plus a durable signing-key TOFU pin; proves origin/key continuity, not native identity |
+| `strict` | Explicitly trusted native root matching a directly signed card; explicit ES256 additionally requires a valid binding for identity, version, key, scope and lifecycle |
 
-See [A2A Interoperability](../integrations/a2a.md) for full details.
+These policies parse legacy cards, not A2A 1.0. See [A2A Interoperability](../integrations/a2a.md) for full details.
 
 ### Layer C: Trust Context (Attestation)
 

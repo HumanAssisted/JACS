@@ -6,7 +6,7 @@ Use MCP when the boundary is model-to-tool inside an application or local workst
 
 JACS offers three MCP integration surfaces:
 
-1. **Run `jacs mcp`** for local document verification without signing keys.
+1. **Run `jacs-compat mcp`** for local document verification without signing keys.
    Select `--profile local-sign` with an existing signed config to let the
    local client sign as that agent.
 2. **Wrap an existing MCP transport** when you already have an MCP server or client and want signed JSON-RPC.
@@ -16,13 +16,17 @@ JACS offers three MCP integration surfaces:
 
 | Runtime | Best starting point | What it gives you |
 |---|---|---|
-| Rust CLI | `jacs mcp` | Verification by default; explicit local signing of documents and Agreement-v2 artifacts, with optional scoped text/image tools |
+| Rust CLI | `jacs-compat mcp` | Verification by default; explicit local signing of documents and Agreement-v2 artifacts, with optional scoped text/image tools |
 | Python | `jacs.mcp` or `jacs.adapters.mcp` | Local SSE transport security or FastMCP tool registration |
 | Node.js | `@hai.ai/jacs/mcp` | Transport proxy or MCP tool registration for existing SDK-based servers |
 
 ## Important Constraints
 
-- **Python MCP wrappers are local-only.** `JACSMCPClient`, `JACSMCPServer`, and `jacs_call()` enforce loopback URLs.
+- **Signed transport wrappers are local-only.** Python uses loopback SSE;
+  Node allows stdio or loopback transports and rejects `localOnly: false`.
+- **Wrap both ends.** Signed carriers need matching JACS wrappers and independently
+  selected peer IDs/keys; a stock MCP client cannot authenticate them unaided.
+  Ordinary Rust tool servers and tool registration can use standard MCP clients.
 - **Unsigned fallback is off by default.** Both Python and Node fail closed unless you explicitly allow unsigned fallback.
 - **Node has two factories.** `createJACSTransportProxy()` takes a loaded `JacsClient` or `JacsAgent`; `createJACSTransportProxyAsync()` is the config-path variant.
 - **The native server's profiles do not configure the Python or Node adapters.**
@@ -33,14 +37,14 @@ JACS offers three MCP integration surfaces:
   checks integrity; it does not establish truth, identity, authorization,
   publication permission or Agreement policy acceptance.
 
-## 1. Ready-Made Server: `jacs mcp`
+## 1. Ready-Made Server: `jacs-compat mcp`
 
 Install the unified binary and start a verification-only server. No identity
 creation or private-key password is required:
 
 ```bash
-cargo install jacs-cli
-jacs mcp
+cargo install jacs-cli-compat --locked
+jacs-compat mcp
 ```
 
 Configure a compatible MCP client with:
@@ -49,7 +53,7 @@ Configure a compatible MCP client with:
 {
   "mcpServers": {
     "jacs": {
-      "command": "jacs",
+      "command": "jacs-compat",
       "args": ["mcp"]
     }
   }
@@ -60,12 +64,12 @@ The default `verify-only` profile exposes only `jacs_verify_document`; callers
 supply the public key and algorithm. An explicitly supplied `--config` or
 `JACS_CONFIG` loads public-only configuration without unlocking private keys.
 
-To sign, reuse an existing signed config, or run `jacs init` once in the
+To sign, reuse an existing signed config, or run `jacs-compat init` once in the
 directory where you want to keep the agent identity. Keep using its normal
 keychain/password source and select it explicitly:
 
 ```bash
-jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+jacs-compat mcp --profile local-sign --config /absolute/path/to/jacs.config.json
 ```
 
 Use those same arguments in the MCP client:
@@ -74,7 +78,7 @@ Use those same arguments in the MCP client:
 {
   "mcpServers": {
     "jacs": {
-      "command": "jacs",
+      "command": "jacs-compat",
       "args": ["mcp", "--profile", "local-sign", "--config", "/absolute/path/to/jacs.config.json"]
     }
   }
@@ -92,7 +96,7 @@ compiled. To add exactly five text/image tools, grant an existing content
 directory explicitly at process startup:
 
 ```bash
-JACS_MCP_BASE_DIR=/absolute/path/to/content jacs mcp --profile local-sign --config /absolute/path/to/jacs.config.json
+JACS_MCP_BASE_DIR=/absolute/path/to/content jacs-compat mcp --profile local-sign --config /absolute/path/to/jacs.config.json
 ```
 
 There is no implicit working-directory grant. File tools reject traversal and
@@ -114,7 +118,7 @@ The native server uses stdio only: stdout carries MCP JSON-RPC and diagnostics
 go to stderr. It uses RMCP 3.3.0, supporting date-versioned MCP `2026-07-28`
 and legacy `2025-11-25` initialization; these are distinct from SDK major
 versions such as the TypeScript SDK v2. See the
-[crate MCP README](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md)
+[crate MCP README](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md)
 for the complete local-signing and response-error contract.
 
 ## 2. Transport Security Around Your Existing MCP Code
@@ -171,7 +175,9 @@ const client = await JacsClient.quickstart({
 });
 
 const transport = new StdioServerTransport();
-const secureTransport = createJACSTransportProxy(transport, client, 'server');
+const secureTransport = createJACSTransportProxy(transport, client, 'server', {
+  allowedPeerAgentIds: ['CLIENT_AGENT_ID'], // Independently selected peer.
+});
 ```
 
 If you only have a config path:
@@ -183,6 +189,7 @@ const secureTransport = await createJACSTransportProxyAsync(
   transport,
   './jacs.config.json',
   'server',
+  { allowedPeerAgentIds: ['CLIENT_AGENT_ID'] },
 );
 ```
 
@@ -230,7 +237,7 @@ const client = await JacsClient.quickstart({
 registerJacsTools(server, client);
 ```
 
-Choose the native `jacs mcp` server for its explicit local-signing boundary.
+Choose the native `jacs-compat mcp` server for its explicit local-signing boundary.
 Tool registration in an existing Node or Python server is a separate
 integration; review that server's exposed operations and authorization.
 
@@ -247,12 +254,12 @@ same surface as the [`sign-text`](../guides/inline-text-signing.md) and
 - `jacs_verify_image` — verify the embedded image signature (permissive default; `strict` opt-in).
 - `jacs_extract_media_signature` — read out the embedded signature payload (decoded JSON by default; `raw_payload` opt-in for the base64url wire form).
 
-## Example Paths In This Repo
+## Examples
 
-- `jacspy/examples/mcp/server.py`
-- `jacspy/examples/mcp/client.py`
-- `jacsnpm/examples/mcp.stdio.server.js`
-- `jacsnpm/examples/mcp.stdio.client.js`
+Use the complete [Python MCP guide](../python/mcp.md) or
+[Node MCP guide](../nodejs/mcp.md) for matched peers and host-held secrets.
+The repository's historical example scripts are not a replacement for those
+current authentication requirements.
 
 ## Related Guides
 

@@ -46,8 +46,8 @@ Every API above signs **natively**: the output carries a JACS
 `jacsSignature` from the agent's selected native root (`pq2025` by default,
 or `ring-Ed25519` when explicitly selected). Separately, the CLI offers
 **targeted ecosystem exporters**
-(`jacs agent export-jwks`, `jacs ap2 export-mandate`,
-`jacs agreement-v2 export-vc`, the A2A agent card) that sign derived
+(`jacs-compat agent export-jwks`, `jacs-compat ap2 export-mandate`,
+`jacs-compat agreement-v2 export-vc`, the A2A agent card) that sign derived
 artifacts with the agent's ES256 compatibility key. Exports are one-way
 views: the native document never gains proof or projection fields, and an
 ES256 signature by itself proves possession of the compatibility key only

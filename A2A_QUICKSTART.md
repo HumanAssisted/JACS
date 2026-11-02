@@ -33,7 +33,7 @@ A2A task executor. Never expose an endpoint merely because it appears in a card.
 
 In current source, default discovery signs with the same persisted ML-DSA-87
 root key and publishes its RFC 9964 AKP JWK. No unrelated ephemeral key is
-created on export or restart. The Rust helper
+created on export or restart. The CLI
 `jacs-compat a2a serve --a2a-algorithm ES256` selects the compatibility
 path explicitly. `--algorithm` on quickstart selects the native identity
 algorithm; `--a2a-algorithm` separately selects the card signing algorithm. See
@@ -116,8 +116,7 @@ example says `jacs`:
 4. Consult the [A2A API reference](archive/native/jacs/docs/jacsbook/src/integrations/a2a.md)
    and [example index](examples/README.md).
 
-Those chapters can contain older version and ES256-default assumptions. Match
-the card model, signature representation and algorithm to the peer's supported
+Match the card model, signature representation and algorithm to the peer's supported
 profile. A public key supplied with a card does not establish external identity;
 apply your configured trust policy and authorization independently. Legacy
 `verified` policy establishes same-origin signature/key continuity; `strict`

@@ -7,7 +7,7 @@ JACS is an open source provenance layer for agent systems. Use it when an output
 Most deployments start in one of four places:
 
 - **Core signing**: sign JSON, files, Markdown/text, images, or Rust email payloads directly.
-- **MCP**: run `jacs mcp` as a local tool server, or add signing around an existing MCP transport.
+- **MCP**: run `jacs-compat mcp` as a local tool server, or add signing around an existing MCP transport.
 - **Frameworks**: add provenance at LangChain, LangGraph, FastAPI, Express, Koa, or Vercel AI SDK boundaries.
 - **A2A and agreements**: exchange signed artifacts or require multiple agents to sign off.
 
@@ -38,9 +38,9 @@ For platform workflows around verified documents, agent behavior, benchmarks, an
 ### Rust CLI and MCP server
 
 ```bash
-cargo install jacs-cli
-jacs quickstart --name my-agent --domain my-agent.example.com
-jacs mcp
+cargo install jacs-cli-compat --locked
+jacs-compat quickstart --name my-agent --domain my-agent.example.com
+jacs-compat mcp
 ```
 
 ### Python
@@ -59,9 +59,10 @@ npm install @hai.ai/jacs
 
 ### Go
 
-`go get` alone cannot link the CGo wrapper, and no matching native-library
-release existed at the 2026-07-09 baseline. Build the full repository by
-following [Go Installation and Quick Start](go/installation.md).
+`go get` needs the matching CGo shared library. Version 0.15.0 publishes both
+the semantic module tag and native libraries for macOS and Linux. Follow
+[Go Installation and Quick Start](go/installation.md) for the verified installer
+or a full-repository source build.
 
 ## What This Book Does Not Claim
 

@@ -1,97 +1,54 @@
-# Streaming Signing
+# Signing Streaming Output
 
-JACS uses a **buffer-then-sign** pattern for streaming outputs. Token streams from LLMs are accumulated in memory and signed once the stream completes. This is the correct approach for LLM outputs because:
+A signature authenticates the bytes it covers. Data displayed before its final
+signature arrives is provisional; do not treat it as verified output.
 
-1. **LLM responses are small.** A typical response is under 100KB of text. Buffering this costs nothing.
-2. **Signatures cover the complete output.** A partial signature over incomplete text is useless for verification.
-3. **Framework adapters handle this automatically.** If you use a JACS adapter, streaming signing just works.
+## Complete-response signing
 
-## How It Works by Framework
-
-### Vercel AI SDK (`streamText`)
-
-The `wrapStream` middleware accumulates `text-delta` chunks via a `TransformStream`. When the stream flushes, it signs the complete text and emits a `provider-metadata` chunk containing the provenance record.
-
-```typescript
-import { withProvenance } from '@hai.ai/jacs/vercel-ai';
-import { streamText } from 'ai';
-
-const model = withProvenance(openai('gpt-4o'), { client });
-const result = await streamText({ model, prompt: 'Explain trust.' });
-
-for await (const chunk of result.textStream) {
-  process.stdout.write(chunk); // stream to user in real time
-}
-// provenance is available after stream completes
-```
-
-### LangChain / LangGraph
-
-LangChain tools execute synchronously (or await async results) before returning to the model. JACS signs each tool result individually via `wrap_tool_call` or `signed_tool`. No special streaming handling is needed because the signing happens at the tool output boundary, not the token stream.
+For bounded text output, accumulate chunks and sign after successful completion.
+This application-level example accepts an async iterator of strings:
 
 ```python
-from jacs.adapters.langchain import jacs_signing_middleware
+from jacs.client import JacsClient
 
-agent = create_agent(
-    model="openai:gpt-4o",
-    tools=tools,
-    middleware=[jacs_signing_middleware(client=jacs_client)],
-)
-# Tool results are auto-signed before the model sees them
+async def signed_completion(chunks, client: JacsClient, max_bytes=1_000_000):
+    parts = []
+    size = 0
+    async for chunk in chunks:
+        size += len(chunk.encode("utf-8"))
+        if size > max_bytes:
+            raise ValueError("response exceeds signing buffer limit")
+        parts.append(chunk)
+    return client.sign_message({"response": "".join(parts)})
 ```
 
-### Express / Koa / FastAPI
+The caller decides how to display provisional chunks, handle cancellation and
+deliver the final signed document. Enforce a size limit appropriate to the host;
+LLM responses and tool streams are not guaranteed to fit in memory.
 
-HTTP middleware signs the response body before it is sent. For streaming HTTP responses (SSE, chunked encoding), sign the complete message content before streaming, or sign each event individually.
+## Framework boundaries
 
-```python
-# FastAPI: middleware signs JSON responses automatically
-from jacs.adapters.fastapi import JacsMiddleware
-app.add_middleware(JacsMiddleware)
-```
+- LangChain and LangGraph adapters sign completed tool results. They do not
+  authenticate every token in the model's output stream.
+- The Vercel AI adapter can attach provenance after stream completion; see its
+  [adapter guide](../nodejs/vercel-ai.md) for the current chunk contract.
+- HTTP JSON-signing middleware is not a generic SSE or chunked-response signing
+  protocol. For signed events, sign complete event payloads and verify them
+  before consumption.
 
-### Raw LLM APIs (No Framework Adapter)
+For per-event signing, also authenticate stream identity, ordering and completion
+under your application protocol. Independently valid events do not by themselves
+prove that none were removed, reordered or replayed. See
+[signed responses and events](../advanced/security.md#signed-response-and-event-contract)
+for the existing response envelope and replay-store requirements.
 
-If you're calling an LLM API directly without a framework adapter, accumulate the response yourself and sign it when complete:
+## Large files
 
-```python
-import jacs.simple as jacs
+Use the file-signing API for file provenance, but measure memory and I/O costs
+for your backend and embedding mode. This guide does not promise constant-memory
+hashing or automatic streaming of multi-gigabyte attachments. Chunking large
+artifacts needs an explicit manifest and completeness policy understood by both
+producer and verifier.
 
-jacs.quickstart(name="my-agent", domain="my-agent.example.com")
-
-# Accumulate streamed response
-chunks = []
-async for chunk in llm_stream("What is trust?"):
-    chunks.append(chunk)
-    print(chunk, end="")  # stream to user
-
-# Sign the complete response
-complete_text = "".join(chunks)
-signed = jacs.sign_message({"response": complete_text, "model": "gpt-4o"})
-```
-
-```javascript
-const jacs = require('@hai.ai/jacs/simple');
-await jacs.quickstart({ name: 'my-agent', domain: 'my-agent.example.com' });
-
-const chunks = [];
-for await (const chunk of llmStream('What is trust?')) {
-  chunks.push(chunk);
-  process.stdout.write(chunk);
-}
-
-const signed = await jacs.signMessage({
-  response: chunks.join(''),
-  model: 'gpt-4o',
-});
-```
-
-## When NOT to Buffer
-
-The buffer-then-sign pattern assumes the full content fits in memory. This is always true for LLM text responses. If you need to sign very large data (multi-GB files, video streams), use `sign_file` instead, which hashes the file on disk without loading it into memory.
-
-## See Also
-
-- [Vercel AI SDK Adapter](../nodejs/vercel-ai.md)
-- [LangChain Adapters](../python/adapters.md)
-- [Framework Adapters (Node.js)](../nodejs/langchain.md)
+See [Python adapters](../python/adapters.md) and
+[Node adapters](../nodejs/langchain.md).

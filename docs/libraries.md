@@ -1,18 +1,12 @@
 # Supported libraries and packages
 
-MCP is the recommended starting point for agent/tool integration. Direct
-libraries are supported integrations too. The native workspace's location at
-`archive/native` keeps its dependencies separate from the portable core; it
-does not deprecate the native Rust, Node.js, Python or Go packages.
-
-JACS 0.15.0 is published across all 17 Rust crates, native npm, browser npm,
-PyPI and Go. See the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-for platform coverage, verified artifacts and provenance. New native PQ DID/JWK
-and Agent Card exports described in the [identity guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
-are changes in this checkout; the 0.15.0 inventory does not establish their
-availability in published packages. This checkout requires **Python 3.11+**;
-Python 3.10 is no longer supported by the maintained source dependency set.
-The historical 0.15.0 inventory retains its original runtime observations.
+Start with MCP for agent/tool integration, or choose a direct library below.
+Native Rust, Node.js, Python and Go remain supported in their separate workspace.
+The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+records 0.15.0 packages, platforms and provenance. New
+[identity-standard exports](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
+are source changes, not evidence of a new release. Published Python wheels
+support 3.10–3.14; this checkout requires 3.11–3.14.
 
 | Integration | Package / installation | Reference |
 |---|---|---|
@@ -26,11 +20,6 @@ The historical 0.15.0 inventory retains its original runtime observations.
 | Android / iOS | `jacs-mobile` plus its platform host libraries | [Mobile guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md) |
 | Extended Rust CLI and MCP | `cargo install jacs-cli-compat --version 0.15.0 --locked`; executable `jacs-compat` | [Extended MCP profiles](https://github.com/HumanAssisted/JACS/blob/main/docs/native-mcp.md) |
 | Storage | `jacs-duckdb`, `jacs-redb`, `jacs-postgresql`, `jacs-surrealdb`, all 0.15.0 | [Storage guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/docs/jacsbook/src/advanced/storage.md) |
-
-`jacs-media` and `jacs-binding-core` remain the shared native media/binding
-layers. `jacs-mcp` and `jacs-mcp-compat` are distinct server libraries. The
-published `jacsnpm`, `jacspy` and `jacsgo` Rust crates implement their language
-boundaries; application users normally install their npm/PyPI/Go packages.
 
 ## Choose by capability
 

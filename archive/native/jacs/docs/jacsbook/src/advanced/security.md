@@ -1,11 +1,12 @@
 # Security Model
 
-JACS implements a comprehensive security model designed to ensure authenticity, integrity, and non-repudiation for all agent communications and documents.
+JACS verifies signed data under selected keys. Applications establish identity,
+trust and authorization around that cryptographic evidence.
 
 ## Security Model (v0.6.0+)
 
 - **Passwords**: The private key password can be provided via `JACS_PRIVATE_KEY_PASSWORD` environment variable, `JACS_PASSWORD_FILE`, or the OS keychain (macOS Keychain / Linux Secret Service). It is never stored in config files.
-- **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.
+- **Keys**: New private-key envelopes use AES-256-GCM with Argon2id. Legacy PBKDF2 envelopes remain readable; public keys and config may be stored on disk.
 - **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, `.`, `..`, null bytes, and Windows drive-prefixed paths.
 - **Trust ID canonicalization**: Trust-store operations normalize canonical agent docs (`jacsId` + `jacsVersion`) into a safe `UUID:VERSION_UUID` identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.
 - **Filesystem schema policy**: Local schema loading is disabled by default and requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`. When enabled, schema paths must remain within configured roots (`JACS_DATA_DIRECTORY` and/or `JACS_SCHEMA_DIRECTORY`) after normalized/canonical path checks.
@@ -45,19 +46,9 @@ Ed25519 can explicitly upgrade to `pq2025`, while PQ-to-Ed25519 downgrade is rej
 
 ### 2. Document Integrity
 
-All documents include cryptographic guarantees:
-
-- **Signature**: Cryptographic signature over specified fields
-- **Hash**: SHA-256 hash of document contents
-- **Version Tracking**: Immutable version history
-
-### 3. Non-Repudiation
-
-Signatures provide proof of origin:
-
-- Agents cannot deny signing a document
-- Timestamps record when signatures were made
-- Public keys enable independent verification
+Signatures and hashes protect the signed bytes under the selected public key.
+Version IDs do not establish a complete history, and signer-supplied timestamps
+do not prove an independent signing time or real-world authorship.
 
 ## Security Audit (`audit()`)
 
@@ -321,7 +312,7 @@ through purpose-built, schema-pinned paths — there is no generic
   public key; that proves possession of the compatibility key, not the
   agent's native identity. Tracing the export to that root additionally
   requires verifying the native-root-signed compatibility key
-  binding (`jacs agent export-compat-binding`).
+  binding (`jacs-compat agent export-compat-binding`).
 - **Native documents are never mutated.** Exports are derived views;
   the native `jacsSignature` keeps the agent's selected algorithm and the source document's
   bytes and verification are unchanged after every export. These are
@@ -347,17 +338,18 @@ jacs_keys/
 
 **Encryption at Rest**:
 
-Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-SHA256 (600,000 iterations). Never store the password in config files.
+New keys use the V2 AES-256-GCM/Argon2id envelope; PBKDF2 envelopes are read-only
+compatibility. Never store the password in config files.
 
 ```bash
 # Option 1: Environment variable (recommended for CI/servers)
 export JACS_PRIVATE_KEY_PASSWORD="secure-password"
 
 # Option 2: OS keychain (recommended for developer workstations)
-jacs keychain set --agent-id <YOUR_AGENT_UUID>
+jacs-compat keychain set --agent-id <YOUR_AGENT_UUID>
 ```
 
-> **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable or use the OS keychain.
+> **Important**: The CLI can prompt for the password during `jacs-compat init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable or use the OS keychain.
 
 **OS Keychain Integration**:
 
@@ -366,7 +358,7 @@ On macOS and Linux desktops, JACS can store and retrieve the private key passwor
 - **macOS**: Uses Security.framework (Keychain Access)
 - **Linux**: Uses the freedesktop.org D-Bus Secret Service API (GNOME Keyring, KDE Wallet, KeePassXC)
 
-Each password is keyed by agent ID, so multiple agents can coexist on the same machine without overwriting each other. Store your password once with `jacs keychain set --agent-id <ID>`, and all subsequent JACS operations will find it automatically. The password resolution order is:
+Each password is keyed by agent ID, so multiple agents can coexist on the same machine without overwriting each other. Store your password once with `jacs-compat keychain set --agent-id <ID>`, and all subsequent JACS operations will find it automatically. The password resolution order is:
 
 1. `JACS_PRIVATE_KEY_PASSWORD` env var (highest priority -- explicit always wins)
 2. `JACS_PASSWORD_FILE` / legacy `.jacs_password` file
@@ -386,9 +378,10 @@ Or in `jacs.config.json`:
 }
 ```
 
-The keychain stores the password under service name `jacs-private-key` with user `default`. Multiple agents on one machine can use agent-specific passwords via the `*_for_agent()` API variants.
+Keychain entries are selected by agent ID; a generic shared `default` entry is
+not the current per-agent password contract.
 
-> **Security note**: The OS keychain is encrypted at rest by the OS and unlocked by the user's login session. It is the same mechanism used by `git`, `ssh-agent`, `docker`, and other CLI tools. The `keychain` feature is optional and not compiled into the `jacs` core crate by default -- it is enabled by default only in `jacs-cli`.
+> **Security note**: The OS keychain is encrypted at rest by the OS and unlocked by the user's login session. It is the same mechanism used by `git`, `ssh-agent`, `docker`, and other CLI tools. The `keychain` feature is optional and not compiled into the `jacs` core crate by default -- it is enabled by default in `jacs-cli-compat`.
 
 **Password Entropy Requirements**:
 
@@ -421,11 +414,11 @@ Update agent version to rotate keys:
 3. Sign new version with old key
 4. Update configuration to use new keys
 
-Every rotation resolves to `pq2025`, including rotation of an
-Ed25519 agent — rotation is the designated
-Ed25519 → post-quantum migration path. Rotation also supersedes the
+Native rotation preserves the current algorithm unless explicitly overridden.
+Use `jacs-compat agent rotate-keys --algorithm pq2025` to upgrade Ed25519;
+a PQ identity cannot downgrade to Ed25519. Rotation also supersedes the
 ES256 compatibility key binding: re-issue it under the new native root
-(`jacs agent issue-compat-binding`) before the next ecosystem export.
+(`jacs-compat agent issue-compat-binding`) before the next ecosystem export.
 
 ## TLS Certificate Validation
 
@@ -433,35 +426,14 @@ JACS includes configurable TLS certificate validation for secure network communi
 
 ### Default Behavior (Development)
 
-By default, JACS warns about invalid TLS certificates but accepts them to facilitate development environments with self-signed certificates:
+TLS certificate validation is strict by default. `JACS_STRICT_TLS=false` is an
+explicit insecure development override for the schema-fetching client; do not
+use it in production. Omitting the variable or setting it to `true` retains
+certificate-chain validation. This setting does not describe every network
+client in the repository.
 
-```
-WARNING: Invalid TLS certificate detected. Set JACS_STRICT_TLS=true for production.
-```
-
-### Production Configuration
-
-For production deployments, enable strict TLS validation:
-
-```bash
-export JACS_STRICT_TLS=true
-```
-
-When enabled, JACS will:
-- Reject connections with invalid, expired, or self-signed certificates
-- Enforce proper certificate chain validation
-- Fail fast with clear error messages for certificate issues
-
-**Implementation**: Certificate validation logic is located in `jacs/src/schema/utils.rs`.
-
-### Security Implications
-
-| Mode | Behavior | Use Case |
-|------|----------|----------|
-| Default (dev) | Warn on invalid certs, allow connection | Local development, testing |
-| Strict (`JACS_STRICT_TLS=true`) | Reject invalid certs | Production, staging |
-
-For registry verification endpoints, `JACS_REGISTRY_URL` (legacy `HAI_API_URL`) must use HTTPS. HTTP is only allowed for localhost test endpoints.
+Registry verification requires HTTPS (`JACS_REGISTRY_URL`, legacy alias
+`HAI_API_URL`); localhost HTTP is restricted to test/development endpoints.
 
 ## Signature Timestamp Validation
 
@@ -579,27 +551,22 @@ JACS supports DNSSEC-validated identity verification:
 
 1. Agent publishes public key fingerprint in DNS TXT record
 2. Verifier queries DNS for `_v1.agent.jacs.<domain>.`
-3. DNSSEC validates the response authenticity
+3. Strict mode validates DNSSEC; optional modes have different guarantees
 4. Fingerprint is compared against agent's public key
 
 ### Configuration
 
-```json
-{
-  "jacs_agent_domain": "myagent.example.com",
-  "jacs_dns_validate": true,
-  "jacs_dns_strict": true
-}
+Select strict validation explicitly:
+
+```bash
+jacs-compat agent verify --require-strict-dns
 ```
 
-### Security Levels
-
-| Mode | Description |
-|------|-------------|
-| `jacs_dns_validate: false` | No DNS verification |
-| `jacs_dns_validate: true` | Attempt DNS verification, allow fallback |
-| `jacs_dns_strict: true` | Require DNSSEC validation |
-| `jacs_dns_required: true` | Fail if domain not present |
+For Rust, configure `AgentBuilder::dns_strict(true)` together with required
+DNS validation. Do not rely on a `jacs_dns_strict` JSON field being applied by
+the native loader. Persisted validate/required settings and domain presence
+control the ordinary defaults; verified claims force strict, required checks.
+See [DNS trust anchoring](dns-trust.md) for the full flag matrix.
 
 ## Trust Store Management
 
@@ -607,41 +574,15 @@ JACS maintains a trust store for managing trusted agent relationships.
 
 ### Trusting Agents
 
-Before trusting an agent, JACS performs public key hash verification:
-
-```python
-# Trust an agent after verifying their public key hash
-agent.trust_agent(agent_id, public_key_hash)
-```
+First enrollment requires a full self-signed agent document and an independently authenticated public key. Use `client.trust_agent_with_key(agent_json, public_key_pem)`; the older `trust_agent(agent_json)` only refreshes an enrolled identity. Follow the [runnable enrollment example](trust-store.md).
 
 ### Untrusting Agents
 
-The `untrust_agent()` method properly handles the case when an agent is not in the trust store:
-
-```python
-try:
-    agent.untrust_agent(agent_id)
-except AgentNotTrusted as e:
-    # Agent was not in the trust store
-    print(f"Agent {agent_id} was not trusted: {e}")
-```
+`untrust_agent()` persists a stable-identity distrust marker while retaining historical public documents and keys. It does not delete verification history. Application admission must honor the distrust state.
 
 ### Trust Store Security
 
-| Operation | Validation |
-|-----------|------------|
-| `trust_agent()` | UUID format validation, path traversal rejection, public key hash verification, self-signature verification before adding |
-| `untrust_agent()` | UUID format validation, path containment check, returns `AgentNotTrusted` error if agent not found |
-| `get_trusted_agent()` | UUID format validation, path containment check |
-| `is_trusted()` | UUID format validation, safe lookup without side effects |
-| Key cache (`load_public_key_from_cache`) | `require_relative_path_safe()` rejects traversal in `publicKeyHash` |
-| Key cache (`save_public_key_to_cache`) | `require_relative_path_safe()` rejects traversal in `publicKeyHash` |
-
-**Path Traversal Protection (v0.6.0)**: All trust store operations that construct file paths from agent IDs or key hashes use defense-in-depth:
-1. **UUID format validation**: Agent IDs must match `UUID:UUID` format (rejects special characters)
-2. **Path character rejection**: Explicit rejection of `..`, `/`, `\`, and null bytes
-3. **Path containment check**: For existing files, canonicalized paths are verified to stay within the trust store directory
-4. **`require_relative_path_safe()`**: Key hashes are validated to prevent traversal before constructing cache file paths
+Native trust operations validate identity/path inputs and verify enrollment signatures under the supplied key. Protect the OS/XDG `trusted_agents` directory from unauthorized writes. A matching self-signature or fetched fingerprint alone does not establish who owns the key or which actions it may authorize.
 
 ### Best Practices
 
@@ -651,33 +592,12 @@ except AgentNotTrusted as e:
 
 ## Agreement Security
 
-Multi-party agreements provide additional security:
-
-### Agreement Structure
-
-```json
-{
-  "jacsAgreement": {
-    "agentIDs": ["agent-1", "agent-2", "agent-3"],
-    "signatures": [
-      {
-        "agentID": "agent-1",
-        "signature": "...",
-        "responseType": "agree",
-        "date": "2024-01-15T10:00:00Z"
-      }
-    ]
-  },
-  "jacsAgreementHash": "hash-at-agreement-time"
-}
-```
-
-### Agreement Guarantees
-
-1. **Content Lock**: `jacsAgreementHash` ensures all parties agreed to same content
-2. **Individual Consent**: Each signature records explicit agreement
-3. **Response Types**: Support for agree, disagree, or reject
-4. **Timestamp**: Records when each party signed
+Legacy v1 sidecars inspect present payload signatures without authenticating
+participant, role, quorum, question or context policy. Native Agreement v2 also
+reports inspection only; mathematical validity is not consent-policy acceptance.
+See the [Agreement v2 boundary](../guides/agreement-v2.md). New portable consent
+uses [Agreement v3](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html),
+followed by application authorization.
 
 ## Request/Response Security
 
@@ -698,14 +618,15 @@ host's responsibility.
 
 | Algorithm | Type | Role |
 |-----------|------|------|
-| `pq2025` | Post-Quantum (FIPS-204 ML-DSA-87) | Default native root; every rotation resolves to it |
+| `pq2025` | Post-Quantum (FIPS-204 ML-DSA-87) | Default native root; cannot rotate down to Ed25519 |
 | `ring-Ed25519` | Elliptic Curve | Supported native creation, signing, and verification; user-facing input alias: `ed25519` |
 | ES256 | Elliptic Curve (P-256) | Compatibility key for targeted ecosystem exports only — never a valid native `jacsSignature` algorithm |
 
 ### Algorithm Selection
 
 Native JACS signing defaults to `pq2025`; explicit Ed25519 creation is
-supported without substitution. Rotation always converges to `pq2025`.
+supported without substitution. Routine rotation preserves the algorithm;
+an Ed25519-to-PQ upgrade is explicit.
 
 An ES256 content signature does **not** create native JACS trust:
 classical verification proves possession of the compatibility key only.
@@ -732,7 +653,7 @@ chmod 600 ./jacs_keys/private.pem
 export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
 
 # Option B: Use OS keychain (developer workstations)
-jacs keychain set --agent-id <AGENT_UUID>  # stores password securely in OS credential store
+jacs-compat keychain set --agent-id <AGENT_UUID>  # stores password securely in OS credential store
 
 # Option C: Disable keychain for headless/CI environments
 export JACS_KEYCHAIN_BACKEND=disabled
@@ -877,7 +798,7 @@ Enable observability for security auditing:
 
 ```bash
 # Create a new agent instead
-jacs quickstart --name replacement-agent --domain replacement.example.com
+jacs-compat quickstart --name replacement-agent --domain replacement.example.com
 ```
 
 #### "DNS fingerprint mismatch"
@@ -887,7 +808,7 @@ jacs quickstart --name replacement-agent --domain replacement.example.com
 **Solution**:
 1. Regenerate the DNS record with your current keys:
    ```bash
-   jacs dns-record
+   jacs-compat agent dns --domain example.com --provider plain
    ```
 2. Update your DNS TXT record with the new value
 3. Wait for DNS propagation (can take up to 48 hours)
@@ -899,7 +820,7 @@ jacs quickstart --name replacement-agent --domain replacement.example.com
 **Solution**:
 1. Enable DNSSEC with your domain registrar
 2. Publish DS records at the parent zone
-3. Or use `verified` with non-strict DNS (development only)
+3. Verified claims require strict DNSSEC; fix DNSSEC before verifying them.
 
 ### Claim Level Reference
 
@@ -920,18 +841,18 @@ jacs quickstart --name replacement-agent --domain replacement.example.com
 
 ```bash
 # Check your agent's current claim
-jacs info | grep jacsVerificationClaim
+jacs-compat agent verify
 
 # Verify DNS record is correct
-jacs dns-check
+jacs-compat agent verify --require-strict-dns
 
 # Test verification
-jacs verify --agent your-agent-id:version
+jacs-compat agent verify
 ```
 
 ## See Also
 
 - [Cryptographic Algorithms](crypto.md) - Algorithm details
-- [DNS Verification](../dns.md) - DNS-based identity
+- [DNS Verification](../rust/dns.md) - DNS-based identity
 - [Configuration](../schemas/configuration.md) - Security configuration
 - [Agreements](../rust/agreements.md) - Multi-party agreements

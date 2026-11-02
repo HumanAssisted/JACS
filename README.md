@@ -12,7 +12,7 @@ signed identity transition.
 
 ## Quick setup
 
-Install the CLI and start the local MCP server:
+Install the CLI with Rust 1.97 or newer and start the local MCP server:
 
 ```sh
 cargo install jacs-cli --locked
@@ -93,7 +93,7 @@ consumers. See [developer commands](docs/developer-commands.md),
 [shared Rust cache setup](docs/rust-cache.md), [development](DEVELOPMENT.md)
 and [releases](RELEASING.md).
 
-Private keys remain encrypted at rest and software-held while signing.
+Default PQ keys are encrypted at rest and software-held while signing.
 Hardware-backed custody does not imply hardware ML-DSA signing. Native private
 file operations enforce Unix owner-only permissions and fail closed where the
 required ACL adapter is unavailable. See [security](SECURITY.md) and the

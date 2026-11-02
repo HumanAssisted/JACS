@@ -28,7 +28,7 @@ Create a simple JSON document (`my-document.json`):
 Sign it with JACS:
 
 ```bash
-jacs document create -f my-document.json
+jacs-compat document create -f my-document.json
 ```
 
 This adds JACS headers and a signature, saves the document, and prints the
@@ -39,7 +39,7 @@ exact path. Pass `--json` for a machine-readable document key/path result.
 Process multiple documents at once:
 
 ```bash
-jacs document create -d ./documents/
+jacs-compat document create -d ./documents/
 ```
 
 ### With Custom Schema
@@ -47,20 +47,20 @@ jacs document create -d ./documents/
 Validate against a custom JSON schema:
 
 ```bash
-jacs document create -f my-document.json -s ./schemas/proposal.schema.json
+jacs-compat document create -f my-document.json -s ./schemas/proposal.schema.json
 ```
 
 ### Output Options
 
 ```bash
 # Save to specific file
-jacs document create -f my-document.json -o ./output/signed-doc.json
+jacs-compat document create -f my-document.json -o ./output/signed-doc.json
 
 # Print to stdout instead of saving
-jacs document create -f my-document.json --no-save
+jacs-compat document create -f my-document.json --no-save
 
 # Verbose output
-jacs document create -f my-document.json -v
+jacs-compat document create -f my-document.json -v
 ```
 
 ## Document Structure
@@ -126,20 +126,20 @@ The `jacsLevel` field indicates the document's purpose:
 
 ```bash
 # Attach a single file
-jacs document create -f my-document.json --attach ./report.pdf
+jacs-compat document create -f my-document.json --attach ./report.pdf
 
 # Attach a directory of files
-jacs document create -f my-document.json --attach ./attachments/
+jacs-compat document create -f my-document.json --attach ./attachments/
 ```
 
 ### Embed vs. Reference
 
 ```bash
 # Embed files directly in the document (larger document, self-contained)
-jacs document create -f my-document.json --attach ./files/ --embed true
+jacs-compat document create -f my-document.json --attach ./files/ --embed true
 
 # Reference files (smaller document, files stored separately)
-jacs document create -f my-document.json --attach ./files/ --embed false
+jacs-compat document create -f my-document.json --attach ./files/ --embed false
 ```
 
 ### Attachment Structure
@@ -164,7 +164,7 @@ Embedded attachments appear in the `jacsFiles` field:
 ### Basic Verification
 
 ```bash
-jacs document verify -f ./signed-document.json
+jacs-compat document verify -f ./signed-document.json
 ```
 
 Verification checks:
@@ -175,19 +175,19 @@ Verification checks:
 ### Verify with Schema
 
 ```bash
-jacs document verify -f ./document.json -s ./schema.json
+jacs-compat document verify -f ./document.json -s ./schema.json
 ```
 
 ### Verify Directory
 
 ```bash
-jacs document verify -d ./documents/
+jacs-compat document verify -d ./documents/
 ```
 
 ### Verbose Output
 
 ```bash
-jacs document verify -f ./document.json -v
+jacs-compat document verify -f ./document.json -v
 ```
 
 ## Updating Documents
@@ -195,7 +195,7 @@ jacs document verify -f ./document.json -v
 Updates create a new version while maintaining the same `jacsId`:
 
 ```bash
-jacs document update -f ./original.json -n ./modified.json
+jacs-compat document update -f ./original.json -n ./modified.json
 ```
 
 The update process:
@@ -208,7 +208,7 @@ The update process:
 ### Update with Attachments
 
 ```bash
-jacs document update -f ./original.json -n ./modified.json --attach ./new-file.pdf
+jacs-compat document update -f ./original.json -n ./modified.json --attach ./new-file.pdf
 ```
 
 ## Extracting Embedded Content
@@ -216,13 +216,13 @@ jacs document update -f ./original.json -n ./modified.json --attach ./new-file.p
 Extract attachments from a document:
 
 ```bash
-jacs document extract -f ./document-with-attachments.json
+jacs-compat document extract -f ./document-with-attachments.json
 ```
 
 Extract from multiple documents:
 
 ```bash
-jacs document extract -d ./documents/
+jacs-compat document extract -d ./documents/
 ```
 
 ## Document Payloads
@@ -278,14 +278,14 @@ Each version is a complete document that can be independently verified.
 
 ```bash
 # Use a specific agent's keys
-jacs document create -f ./document.json -a ./other-agent.json
+jacs-compat document create -f ./document.json -a ./other-agent.json
 ```
 
 ### Verify Document from Unknown Agent
 
 ```bash
 # Verify with strict DNS requirement
-jacs document verify -f ./document.json --require-strict-dns
+jacs-compat document verify -f ./document.json --require-strict-dns
 ```
 
 ## Best Practices
@@ -314,34 +314,34 @@ jacs document verify -f ./document.json --require-strict-dns
 
 ```bash
 # 1. Create document
-jacs document create -f ./proposal.json -o ./signed-proposal.json
+jacs-compat document create -f ./proposal.json -o ./signed-proposal.json
 
 # 2. Share the signed document
 # The recipient can verify it:
-jacs document verify -f ./signed-proposal.json
+jacs-compat document verify -f ./signed-proposal.json
 ```
 
 ### Track Document Changes
 
 ```bash
 # 1. Create initial version
-jacs document create -f ./contract-v1.json
+jacs-compat document create -f ./contract-v1.json
 
 # 2. Make changes and update
-jacs document update -f ./contract-v1.json -n ./contract-v2.json
+jacs-compat document update -f ./contract-v1.json -n ./contract-v2.json
 
 # 3. Continue updating
-jacs document update -f ./contract-v2.json -n ./contract-v3.json
+jacs-compat document update -f ./contract-v2.json -n ./contract-v3.json
 ```
 
 ### Process Multiple Documents
 
 ```bash
 # Create all documents in a directory
-jacs document create -d ./input-docs/
+jacs-compat document create -d ./input-docs/
 
 # Verify all documents
-jacs document verify -d ./signed-docs/
+jacs-compat document verify -d ./signed-docs/
 ```
 
 ## Next Steps

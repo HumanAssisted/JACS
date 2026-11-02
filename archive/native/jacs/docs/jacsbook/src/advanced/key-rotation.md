@@ -20,24 +20,22 @@ Cryptographic algorithms evolve. Key rotation enables:
 
 ### Migrating Ed25519 Agents to pq2025
 
-**Rotation always resolves to `pq2025`** — it is the designated migration path
-for Ed25519 agents:
+Native rotation without `--algorithm` preserves the current algorithm. Upgrade
+an Ed25519 identity explicitly:
 
 ```bash
-jacs agent rotate-keys
+jacs-compat agent rotate-keys --algorithm pq2025
 ```
 
-- An Ed25519 agent that rotates (with or without an `--algorithm`
-  argument) gets a `pq2025` root; the config is stamped `pq2025`; the
-  transition proof is signed by the old Ed25519 key, so the migration is
-  cryptographically authorized by the previous root.
-- Rotating **to** Ed25519 (or any non-PQ algorithm) is a typed error.
+- An Ed25519 identity can replace its key with Ed25519 or explicitly upgrade
+  to `pq2025`; the transition proof is signed by its previous key.
+- A `pq2025` identity cannot downgrade to Ed25519.
 - Until it rotates, an Ed25519 agent keeps signing normally with Ed25519.
 - Documents signed by the old Ed25519 key remain verifiable after migration
   (see Cross-Algorithm Verification in the Algorithm Selection Guide).
 - Rotation supersedes the ES256 **compatibility key binding**: the binding
   is signed by the native root, so after rotation ecosystem exports fail
-  with a "re-issue" error until `jacs agent issue-compat-binding` runs
+  with a "re-issue" error until `jacs-compat agent issue-compat-binding` runs
   under the new native root.
 - Rotation applies to the **native root** only — rotating the ES256
   compatibility key itself is out of scope in P2.
@@ -129,13 +127,11 @@ fn verify_signature(doc: &Document) -> Result<()> {
 
 ### Key Lookup Priority
 
-The verification system tries multiple sources:
-
-1. **Local cache by hash** - Fastest, key already stored locally
-2. **Trust store by version** - Most accurate for known agents
-3. **Trust store by hash** - Fallback for legacy entries
-4. **DNS lookup** - External verification, authoritative
-5. **Fail** - Key not found, verification impossible
+Native external-document verification uses the configured `JACS_KEY_RESOLUTION`
+sources (default `local,registry`). An opted-in `dns` source fetches the exact
+signed version's key over HTTPS and pins it to the raw-key DNS fingerprint, so
+old documents verify through DNS only while their fingerprint and exact-version
+key endpoint stay published.
 
 ## Key Rotation Process
 
@@ -147,36 +143,21 @@ The verification system tries multiple sources:
 4. **Update DNS records** to include new key fingerprint
 5. **Store old public key** for future verifications
 
-### Transition Signature
-
-The transition signature proves the key rotation was authorized by the holder of the old key:
-
-```
-JACS_KEY_ROTATION:{agent_id}:{old_key_hash}:{new_key_hash}:{timestamp}
-```
-
-This signed message:
-- Proves continuity of ownership
-- Provides an audit trail
-- Binds old and new keys together cryptographically
-
 ### CLI Commands
 
 ```bash
 # Rotate keys with default algorithm
-jacs agent rotate-keys
+jacs-compat agent rotate-keys
 
 # Rotate to post-quantum algorithm
-jacs agent rotate-keys --algorithm pq2025
+jacs-compat agent rotate-keys --algorithm pq2025
 
 # List key history (active and archived keys)
-jacs agent keys-list
+jacs-compat agent keys-list
 
 # Repair config after a crash during rotation
-jacs agent repair
+jacs-compat agent repair
 
-# Revoke a compromised key (Coming Soon)
-jacs agent keys revoke <key-hash>
 ```
 
 ### Transition Signature
@@ -218,16 +199,16 @@ JACS uses a write-ahead journal to recover from crashes during key rotation. Bef
 
 If the process crashes mid-rotation, the next agent load detects the journal and automatically repairs the config by re-signing it with the current key. No manual intervention is required for the common case.
 
-For manual recovery: `jacs agent repair`
+For manual recovery: `jacs-compat agent repair`
 
 ### Cross-Algorithm Rotation
 
-Rotation is a one-way migration to `pq2025`, not an arbitrary algorithm
-selector. An Ed25519 root can migrate to post-quantum signing:
+An Ed25519 root can explicitly upgrade to `pq2025`. Rotation without an
+override preserves the current algorithm; PQ-to-Ed25519 downgrade is rejected:
 
 ```bash
 # Rotate from Ed25519 to post-quantum
-jacs agent rotate-keys --algorithm pq2025
+jacs-compat agent rotate-keys --algorithm pq2025
 ```
 
 ```rust
@@ -247,106 +228,21 @@ const result = await client.rotateKeys({ algorithm: 'pq2025' });
 
 After cross-algorithm rotation, the config file's `jacs_agent_key_algorithm` field is updated atomically. Documents signed before the rotation remain verifiable using the archived old key.
 
-### Example Rotation Flow
+### Version transition
 
-```
-Time T0: Agent created
-  - jacsId: "abc-123"
-  - jacsVersion: "v1-uuid"
-  - jacsCurrentKeyHash: "hash-A"
-
-Time T1: Agent signs document D1
-  - D1.jacsSignature.agentVersion: "v1-uuid"
-  - D1.jacsSignature.publicKeyHash: "hash-A"
-
-Time T2: Key rotation
-  - New keys generated with hash-B
-  - jacsVersion: "v2-uuid"
-  - jacsKeyHistory: [{ hash: "hash-A", status: "rotated" }]
-  - jacsCurrentKeyHash: "hash-B"
-
-Time T3: Verify D1
-  - Extract agentVersion "v1-uuid" and hash "hash-A"
-  - Look up key: find "hash-A" with status "rotated"
-  - Verification succeeds (old key still valid for old docs)
-
-Time T4: Agent signs document D2
-  - D2.jacsSignature.agentVersion: "v2-uuid"
-  - D2.jacsSignature.publicKeyHash: "hash-B"
-```
+Rotation retains `jacsId`, assigns a new `jacsVersion` and `jacsVersionDate`,
+links `jacsPreviousVersion`, and embeds `jacsKeyRotationProof`. A document signed
+before rotation still identifies its original agent version and key hash.
+Retain that independently trusted public key to verify the older document;
+there is no on-document `jacsKeyHistory` revocation registry.
 
 ## Trust Store with Version History
 
-The trust store maintains a history of all public keys for each trusted agent.
+Retain independently trusted public keys for each exact `agent_id:version`.
+UUID versions are identifiers, not ordered ranges; do not infer key validity
+from UUID comparison.
 
-### TrustedAgent Structure
-
-```json
-{
-  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Example Agent",
-  "trusted_at": "2024-01-15T10:00:00Z",
-  "current_key_hash": "abc123...",
-  "domain": "agent.example.com",
-  "key_history": [
-    {
-      "public_key_hash": "xyz789...",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
-      "signing_algorithm": "ring-Ed25519",
-      "trusted_at": "2024-01-01T00:00:00Z",
-      "first_version": "11111111-1111-1111-1111-111111111111",
-      "last_version": "22222222-2222-2222-2222-222222222222",
-      "status": "rotated"
-    },
-    {
-      "public_key_hash": "abc123...",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
-      "signing_algorithm": "ring-Ed25519",
-      "trusted_at": "2024-01-15T10:00:00Z",
-      "first_version": "33333333-3333-3333-3333-333333333333",
-      "last_version": null,
-      "status": "active"
-    }
-  ]
-}
-```
-
-### Key Status Values
-
-| Status | Description |
-|--------|-------------|
-| `active` | Currently in use for signing |
-| `rotated` | Superseded by newer key, still valid for old signatures |
-| `revoked` | Compromised, signatures should not be trusted |
-| `expired` | Past validity period |
-
-### Looking Up Keys
-
-```rust
-impl TrustedAgent {
-    /// Get the public key that was active for a specific agent version
-    fn get_key_for_version(&self, version: &str) -> Option<&KeyEntry> {
-        self.key_history.iter().find(|entry| {
-            match (&entry.first_version, &entry.last_version) {
-                (Some(first), Some(last)) => {
-                    version >= first && version <= last
-                }
-                (Some(first), None) => {
-                    version >= first  // Current key
-                }
-                _ => false
-            }
-        })
-    }
-
-    /// Get the public key by its hash
-    fn get_key_by_hash(&self, hash: &str) -> Option<&KeyEntry> {
-        self.key_history.iter().find(|e| e.public_key_hash == hash)
-    }
-}
-```
-
-## DNS Support for Key Versions
+## DNS and key versions
 
 Agent-specific native lookup accepts overlapping fingerprints for one agent
 and records for multiple agents. Each record uses the actual format:
@@ -363,7 +259,8 @@ publish changes or provide an `--all-keys` export. The DNS record does not
 implement `ver`, `valid_until` or revocation semantics. Keep historical keys
 available and enforce revocation in application policy. There is no universal
 rotation interval of twice the TTL: account for caches and retained documents.
-See the [key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
+See [DNS trust anchoring](dns-trust.md) and the
+[key discovery guide](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)
 for signed-reference compatibility and verifier boundaries.
 
 ## Security Considerations
@@ -372,18 +269,10 @@ for signed-reference compatibility and verifier boundaries.
 
 When a key is compromised:
 
-1. **Mark as revoked** in the agent's key history
+1. **Revoke the key in the relying application's trust policy**
 2. **Update DNS** to remove discovery records for the compromised key; DNS has no revocation-status field
 3. **Reject revoked keys in verification policy**; cryptographic signature validity alone does not enforce revocation
 4. **Notify trusted peers** if possible
-
-### Overlap Period
-
-During rotation, both old and new keys may be valid:
-
-- New documents should be signed with the new key
-- Old documents remain verifiable with the old key
-- DNS may advertise both keys during transition
 
 ### Secure Deletion
 
@@ -415,7 +304,7 @@ After rotation:
 - [ ] Update DNS records
 - [ ] Securely delete old private key
 - [ ] Test signing with new key
-- [ ] Re-issue the compatibility key binding (`jacs agent issue-compat-binding`) if the agent has an ES256 compatibility key — ecosystem exports fail until the new native root signs a fresh binding
+- [ ] Re-issue the compatibility key binding (`jacs-compat agent issue-compat-binding`) if the agent has an ES256 compatibility key — ecosystem exports fail until the new native root signs a fresh binding
 
 ## See Also
 

@@ -55,7 +55,7 @@ The schema labels are `signer`, `witness`, `notary`, and `observer`; observers d
 
 Before the first agreement-v2 call you need a loaded agent with keys on disk and a config:
 
-- CLI: run `jacs quickstart --name my-agent --domain example.com` once. It creates `./jacs.config.json`, a key pair, and (if missing) a generated password under `./jacs_keys`. Set `JACS_PRIVATE_KEY_PASSWORD` or let quickstart manage it.
+- CLI: run `jacs-compat quickstart --name my-agent --domain example.com` once. It creates `./jacs.config.json`, a key pair, and (if missing) a generated password under `./jacs_keys`. Set `JACS_PRIVATE_KEY_PASSWORD` or let quickstart manage it.
 - Python / Node.js: load or create a `SimpleAgent` (`SimpleAgent.create_agent(...)` / `JacsSimpleAgent.create(...)`), or use `ephemeral()` for throwaway single-agent demos.
 
 Multiple distinct agents must share a `data_directory` (or exchange public keys out of band) so a verifier can resolve every signer's key. Ephemeral agents keep keys in memory only and cannot verify each other's signatures.
@@ -146,10 +146,10 @@ main();
 ## CLI
 
 ```bash
-jacs quickstart --name agent-a --domain example.com
-jacs agreement-v2 create --input agreement-input.json > agreement.json
-jacs agreement-v2 sign --agreement agreement.json --role signer > signed.json
-jacs agreement-v2 verify --agreement signed.json
+jacs-compat quickstart --name agent-a --domain example.com
+jacs-compat agreement-v2 create --input agreement-input.json > agreement.json
+jacs-compat agreement-v2 sign --agreement agreement.json --role signer > signed.json
+jacs-compat agreement-v2 verify --agreement signed.json
 ```
 
 The verify command emits the inspection report and exits non-zero because v2 does not produce an accepted policy verdict. This is the expected result even when the mathematical checks pass.
@@ -157,9 +157,9 @@ The verify command emits the inspection report and exits non-zero because v2 doe
 For branch handling:
 
 ```bash
-jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
-jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
-jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+jacs-compat agreement-v2 detect-conflict --base base.json --left left.json --right right.json
+jacs-compat agreement-v2 merge-transcript --base base.json --left left.json --right right.json
+jacs-compat agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
 ```
 
 ## Branch Merge and Conflicts
@@ -170,9 +170,9 @@ Two agents can emit successor versions from the same prior version. Resolve them
 - Any terms, party, policy, status, signature, controller, or link divergence is a real conflict and requires an explicit successor via `resolve-conflict` (CLI) or `resolveAgreementV2BranchConflict` / `resolve_agreement_v2_branch_conflict` (Node/Python).
 
 ```bash
-jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
-jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
-jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+jacs-compat agreement-v2 detect-conflict --base base.json --left left.json --right right.json
+jacs-compat agreement-v2 merge-transcript --base base.json --left left.json --right right.json
+jacs-compat agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
 ```
 
 ## Golden Example
@@ -223,15 +223,15 @@ V1 and v2 remain available for compatibility and inspection. Moving a payload to
 
 | v1 operation | v2 equivalent |
 |--------------|---------------|
-| `create_agreement` (binding) / `jacs document create-agreement` (CLI) | `create_agreement_v2` / `jacs agreement-v2 create` |
-| `sign_agreement` (binding) / `jacs document sign-agreement` (CLI) | `sign_agreement_v2` / `jacs agreement-v2 sign --role signer` |
-| `check_agreement` (binding) / `jacs document check-agreement` (CLI) | `verify_agreement_v2` / `jacs agreement-v2 verify` |
+| `create_agreement` (binding) / `jacs-compat document create-agreement` (CLI) | `create_agreement_v2` / `jacs-compat agreement-v2 create` |
+| `sign_agreement` (binding) / `jacs-compat document sign-agreement` (CLI) | `sign_agreement_v2` / `jacs-compat agreement-v2 sign --role signer` |
+| `check_agreement` (binding) / `jacs-compat document check-agreement` (CLI) | `verify_agreement_v2` / `jacs-compat agreement-v2 verify` |
 | `AgreementOptions.quorum` (M-of-N) | `signaturePolicy.partyQuorum` (`all`, `majority`, or integer M) |
 | `AgreementOptions.timeout` | `signaturePolicy.timeout` |
 | `AgreementOptions.required_algorithms` | `signaturePolicy.requiredAlgorithms` |
 | `AgreementOptions.minimum_strength` | `signaturePolicy.minimumStrength` |
 
-There is no v1 equivalent for v2 mutations (`apply_agreement_v2` / `jacs agreement-v2 apply`) or branch handling (`jacs agreement-v2 detect-conflict` / `merge-transcript` / `resolve-conflict`) - these are new in v2.
+There is no v1 equivalent for v2 mutations (`apply_agreement_v2` / `jacs-compat agreement-v2 apply`) or branch handling (`jacs-compat agreement-v2 detect-conflict` / `merge-transcript` / `resolve-conflict`) - these are new in v2.
 
 ### What stays the same
 
@@ -245,7 +245,7 @@ There is no v1 equivalent for v2 mutations (`apply_agreement_v2` / `jacs agreeme
 - A `transcript` with tamper evidence for each signature's covered prefix.
 - Branch merge / conflict resolution for concurrent successor versions.
 - A diagnostic report from `verify_agreement_v2`: `mathematicalChecksValid`, `expectedStatus`, errors, and chain coverage. The retained `valid` and `policyAccepted` fields are always false.
-- Fail-closed CLI: `jacs agreement-v2 verify` exits non-zero for v2 because no accepted policy verdict is produced.
+- Fail-closed CLI: `jacs-compat agreement-v2 verify` exits non-zero for v2 because no accepted policy verdict is produced.
 
 For the full v2 walkthrough, see the [Workflow](#workflow), [Python](#python), [Node.js](#nodejs), and [CLI](#cli) sections above and the [Rust core / legacy comparison](../rust/agreements.md).
 
@@ -276,17 +276,17 @@ The fixture `binding-core/tests/fixtures/agreement_v2_scenarios.json` is the por
 
 ## Exporting an Agreement as a Verifiable Credential
 
-`jacs agreement-v2 export-vc` (or `SimpleAgent::export_agreement_v2_as_vc` /
+`jacs-compat agreement-v2 export-vc` (or `SimpleAgent::export_agreement_v2_as_vc` /
 `export_agreement_v2_as_vc_json` in the bindings) projects an Agreement-v2
 document into a W3C Verifiable Credential 2.0 carrying an `ecdsa-jcs-2019`
 Data Integrity proof, signed with the agent's ES256 compatibility key:
 
 ```bash
 # the agreement-vc content scope is never auto-issued — grant it first
-jacs agent issue-compat-binding \
+jacs-compat agent issue-compat-binding \
   --scopes jwks,did,a2a-agent-card,w3c-agent-identity,agreement-vc
 
-jacs agreement-v2 export-vc --agreement agreement.json > vc_export.json
+jacs-compat agreement-v2 export-vc --agreement agreement.json > vc_export.json
 ```
 
 The VC's `@context` is `["https://www.w3.org/ns/credentials/v2",
@@ -301,7 +301,7 @@ The export is a derived view: the native agreement's bytes, `jacsSignature`
 A stock Data Integrity verifier can check the proof classically — see
 `scripts/smoke/verify_di_vc.mjs`. That proves possession of the ES256 key
 only; tracing the credential to the agent's native root requires the
-native-root-signed compatibility key binding (`jacs agent export-compat-binding`).
+native-root-signed compatibility key binding (`jacs-compat agent export-compat-binding`).
 Verifying incoming VCs is out of scope for JACS in P2.
 
 ## Troubleshooting

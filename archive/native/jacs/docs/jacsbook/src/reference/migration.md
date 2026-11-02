@@ -2,7 +2,7 @@
 
 {{#include ../_snippets/node-registry-status.md}}
 
-This guide covers migrating between JACS versions and common migration scenarios.
+Version-numbered sections below are historical migration notes, not the current install or API reference. Use the [package guide](https://humanassisted.github.io/JACS/packages.html) and current language chapters for supported calls, defaults and profiles. The algorithm migration section describes current explicit upgrades.
 
 ## Version Compatibility
 
@@ -20,7 +20,7 @@ Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existi
 
 | Domain | New surface |
 |--------|------------|
-| CLI | `jacs sign-text`, `jacs verify-text`, `jacs sign-image`, `jacs verify-image`, `jacs extract-media-signature` |
+| CLI | `jacs-compat sign-text`, `jacs-compat verify-text`, `jacs-compat sign-image`, `jacs-compat verify-image`, `jacs-compat extract-media-signature` |
 | Python (`jacs.simple` / `JacsClient`) | `sign_text`, `verify_text`, `sign_image`, `verify_image`, `extract_media_signature` |
 | Node (`@hai.ai/jacs/simple` / `JacsClient`) | `signText`, `verifyText`, `signImage`, `verifyImage`, `extractMediaSignature` |
 | Go (`jacsgo`) | `SignText`, `VerifyText`, `SignImage`, `VerifyImage`, `ExtractMediaSignature` |
@@ -58,7 +58,7 @@ Python / Node / Go bindings are unaffected — their error types are not exhaust
 
 `verify-text` and `verify-image` are **new commands** in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); `--strict` opts in to error-on-missing.
 
-No existing command (`jacs verify`, `jacs document verify`, etc.) changes its exit codes or its return shape.
+No existing command (`jacs-compat verify`, `jacs-compat document verify`, etc.) changes its exit codes or its return shape.
 
 ## Migrating Node.js from 0.6.x to 0.7.0
 
@@ -115,25 +115,32 @@ These methods remain synchronous without a `Sync` suffix because they use V8-thr
 
 ### Simplified API (Module-Level)
 
-The `@hai.ai/jacs/simple` module follows the same pattern:
+Historical module-level comparison; each block is a separate version-specific example.
+
+Before (v0.6.x):
 
 ```javascript
-// v0.6.x
 await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessage({ action: 'approve' });
+```
 
-// v0.7.0 async (recommended)
+After (v0.7.0 asynchronous API):
+
+```javascript
 await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve' });
+```
 
-// v0.7.0 sync
+Alternative (v0.7.0 synchronous API):
+
+```javascript
 jacs.quickstartSync({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 ```
 
 ### Pure Sync Functions (No Change)
 
-These functions do not call NAPI and remain unchanged (no suffix needed):
+Historical synchronous API list (current methods may call native code; consult the current API reference):
 
 - `hashString()`, `createConfig()`, `getPublicKey()`, `isLoaded()`, `exportAgent()`, `getAgentInfo()`
 - `getDnsRecord()`, `getWellKnownJson()`, `verifyStandalone()`
@@ -150,12 +157,7 @@ These functions do not call NAPI and remain unchanged (no suffix needed):
 
 ### Migration Notes
 
-**PBKDF2 Iteration Count**: New key encryptions use 600,000 iterations (up from 100,000). Existing encrypted keys are decrypted automatically via fallback. To upgrade existing keys, re-encrypt them:
-
-```bash
-# Re-generate keys to use the new iteration count
-jacs keygen
-```
+**Historical encryption change:** 0.5.2 increased PBKDF2 to 600,000 iterations. Current new writes use the V2 Argon2id/AES-GCM envelope and retain legacy reads. Use the current `jacs-compat key reencrypt` workflow to change at-rest encryption; generating a new signing key is a separate identity rotation.
 
 ### Deprecated Environment Variables
 
@@ -283,7 +285,7 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 3. **Verify Existing Documents:**
    ```bash
-   jacs document verify -d ./jacs_data/documents/
+   jacs-compat document verify -d ./jacs_data/documents/
    ```
 
 ## Migrating Storage Backends
@@ -318,7 +320,7 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 5. **Verify Migration:**
    ```bash
-   jacs document verify -d s3://my-jacs-bucket/data/documents/
+   jacs-compat document verify -d s3://my-jacs-bucket/data/documents/
    ```
 
 ### AWS S3 to Filesystem
@@ -338,7 +340,7 @@ Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `l
 
 3. **Verify Documents:**
    ```bash
-   jacs document verify -d ./jacs_data/documents/
+   jacs-compat document verify -d ./jacs_data/documents/
    ```
 
 ## Migrating Cryptographic Algorithms
@@ -349,14 +351,13 @@ Native JACS signing defaults to `pq2025` (ML-DSA-87 / FIPS-204). Explicit
 `ed25519` creation remains supported; agents using it continue to load and
 sign with the canonical `ring-Ed25519` label until they rotate.
 
-**Key rotation is the designated migration path.** Every rotation
-resolves to `pq2025` — with or without an explicit algorithm argument —
-so rotating an Ed25519 agent converges it to a post-quantum root.
-Rotating to any other algorithm is a typed error.
+**Key rotation is the designated migration path.** Rotation without an override preserves the current algorithm. Explicit
+Ed25519-to-`pq2025` upgrades are supported; PQ-to-Ed25519 downgrades are rejected.
+
 
 1. **Rotate Keys:**
    ```bash
-   jacs agent rotate-keys
+   jacs-compat agent rotate-keys --algorithm pq2025
    ```
 
 2. **Re-issue the Compatibility Key Binding (if present):**
@@ -365,7 +366,7 @@ Rotating to any other algorithm is a typed error.
    rotation supersedes it. Ecosystem exports fail with a "re-issue"
    error until a new binding is signed by the current native root:
    ```bash
-   jacs agent issue-compat-binding
+   jacs-compat agent issue-compat-binding
    ```
 
 3. **Re-sign Critical Documents (Optional):**
@@ -659,28 +660,28 @@ After any migration:
 
 1. **Verify Configuration:**
    ```bash
-   jacs config read
+   jacs-compat config read
    ```
 
 2. **Verify Agent:**
    ```bash
-   jacs agent verify
+   jacs-compat agent verify
    ```
 
 3. **Verify Sample Document:**
    ```bash
-   jacs document verify -f ./sample-doc.json
+   jacs-compat document verify -f ./sample-doc.json
    ```
 
 4. **Test Document Creation:**
    ```bash
    echo '{"test": true}' > test.json
-   jacs document create -f test.json
+   jacs-compat document create -f test.json
    ```
 
 5. **Verify Version:**
    ```bash
-   jacs version
+   jacs-compat --version
    ```
 
 ## Rollback Procedures
@@ -708,8 +709,8 @@ If migration fails:
 
 4. **Verify Rollback:**
    ```bash
-   jacs agent verify
-   jacs document verify -d ./jacs_data/documents/
+   jacs-compat agent verify
+   jacs-compat document verify -d ./jacs_data/documents/
    ```
 
 ## See Also

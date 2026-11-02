@@ -26,7 +26,7 @@ The primary attachment-mode APIs are:
 From a source checkout, run:
 
 ```bash
-JACS_KEYCHAIN_BACKEND=disabled JACS_ALLOW_NETWORK=false cargo run --locked -p jacs --no-default-features --example email_signing
+JACS_KEYCHAIN_BACKEND=disabled JACS_ALLOW_NETWORK=false cargo run --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --example email_signing
 ```
 
 The example creates two disposable `SimpleAgent::ephemeral` instances and a
@@ -117,7 +117,7 @@ let signed_eml = std::fs::read("incoming_signed.eml")?;
 let sender_public_key: Vec<u8> = /* fetch from local trust, DNS, or another trusted source */;
 
 // Any agent can verify — the sender's public key is passed explicitly
-let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
+let (agent, _) = SimpleAgent::ephemeral(None)?;
 let result = verify_email(&signed_eml, &agent, &sender_public_key)?;
 
 if result.valid {
@@ -148,7 +148,7 @@ before doing the content comparison:
 use jacs::email::{verify_email_document, verify_email_content};
 use jacs::simple::SimpleAgent;
 
-let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
+let (agent, _) = SimpleAgent::ephemeral(None)?;
 
 // Step 1: Verify the current JACS signature, then project its email DTO
 let (doc, parts) = verify_email_document(&signed_eml, &agent, &sender_public_key)?;

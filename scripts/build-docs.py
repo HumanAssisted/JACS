@@ -16,15 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "target/jacsbook"
 NATIVE = ROOT / "archive/native/jacs/docs/jacsbook"
 NOTICE = (
-    "> **Supported library reference.** Rust, Node.js, Python and Go "
-    "remain supported in a separate workspace. This chapter can contain historical "
-    "version or installation text; use the [current package guide]"
-    "(https://humanassisted.github.io/JACS/packages.html). "
-    "Extended CLI examples use `jacs-compat` in 0.15. See the "
-    "[current MCP guide](https://humanassisted.github.io/JACS/native-mcp.html) "
-    "for actual runtime profiles and the "
-    "[release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) "
-    "for published versions.\n\n"
+    "> **Native library reference.** Extended CLI examples use `jacs-compat`. "
+    "This source reference can include unreleased changes; see the "
+    "[package guide](https://humanassisted.github.io/JACS/packages.html) "
+    "for installation and [MCP profiles]"
+    "(https://humanassisted.github.io/JACS/native-mcp.html) for available tools.\n\n"
 )
 
 

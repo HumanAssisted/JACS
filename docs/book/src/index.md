@@ -34,3 +34,7 @@ portable MCP tool set; they remain in their own dependency workspace.
 
 For persistent native identity across DID documents and signed Agent Cards, see
 [DID and A2A identity](identity.md), including protocol and release boundaries.
+
+For native protocol integration, follow the [A2A how-to](a2a.md) or
+[W3C DID how-to](w3c-did.md). Both distinguish source exports from published
+packages and explain the verification and application responsibilities.

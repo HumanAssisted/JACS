@@ -23,7 +23,7 @@ const jacsTools = createJacsTools({ client });
 const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 ```
 
-The tool set includes 14 tools:
+The tool set includes 13 tools:
 
 - `jacs_sign`
 - `jacs_verify`
@@ -78,7 +78,9 @@ npm install @langchain/langgraph
 
 ## Strict Mode
 
-Pass `strict: true` when you want wrapper failures to throw instead of returning error-shaped output:
+Signed wrappers fail closed by default: signing failures withhold the output.
+The explicit `allowUnsignedOutput: true` compatibility option permits unsigned
+fallback; `strict: true` overrides it. Tool-operation error reporting is separate:
 
 ```typescript
 const jacsTools = createJacsTools({ client, strict: true });
@@ -86,8 +88,8 @@ const jacsTools = createJacsTools({ client, strict: true });
 
 ## Examples In This Repo
 
-- `jacsnpm/examples/langchain/basic-agent.ts`
-- `jacsnpm/examples/langchain/signing-callback.ts`
+- `archive/native/jacsnpm/examples/langchain/basic-agent.ts`
+- `archive/native/jacsnpm/examples/langchain/signing-callback.ts`
 
 ## When To Use MCP Instead
 

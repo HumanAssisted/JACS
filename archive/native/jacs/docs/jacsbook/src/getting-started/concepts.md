@@ -66,7 +66,11 @@ Agreements collect multiple signatures over the same document payload.
 }
 ```
 
-An agreement is complete when the required signatures and quorum rules are satisfied.
+This legacy sidecar permits signature inspection only: its participant list,
+roles, question, context and quorum are unauthenticated. A claimed completion
+status is not consent-policy acceptance. New portable consent uses Agreement
+v3; native Agreement v2 inspection likewise keeps `policyAccepted=false`.
+See the [agreement guide](multi-agent-agreement.md) for the version boundaries.
 
 ## Verification
 

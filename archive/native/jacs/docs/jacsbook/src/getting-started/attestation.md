@@ -1,19 +1,20 @@
 # What Is an Attestation?
 
-> **Signing says WHO. Attestation says WHO plus WHY.**
+> **Attestations bind a signer to claims and evidence references.**
 
 A JACS attestation is a cryptographically signed document that goes beyond
-proving *who* signed something. It records *why* a piece of data should be
-trusted -- the evidence, the claims, and the reasoning behind that trust.
+checking a signature. It records claims, evidence and the signer's stated
+reasoning. The relying application decides whether those claims are true and
+whether the signer and evidence are trusted.
 
 ## Signing vs. Attestation
 
 | | `sign_message()` | `create_attestation()` |
 |---|---|---|
-| **Proves** | Who signed it | Who signed it + why it's trustworthy |
+| **Checks** | Integrity under the selected key | Integrity plus bounded evidence and derivation checks |
 | **Contains** | Signature + hash | Signature + hash + subject + claims + evidence |
 | **Use case** | Data integrity | Trust decisions, audit trails, compliance |
-| **Verification** | Was it tampered with? | Was it tampered with? Are the claims valid? Is the evidence fresh? |
+| **Verification** | Was it tampered with? | Integrity, evidence digests, derivation and configured freshness limits |
 
 ## Key Concepts
 
@@ -49,7 +50,9 @@ Layer 0: JACS Core (sign, verify, agreements, storage)
 
 Attestations build *on top of* existing JACS signing. Every attestation is also
 a valid signed JACS document. You can verify an attestation with `verify()` for
-signature checks, or use `verify_attestation()` for the full trust evaluation.
+signature checks, or use `verify_attestation()` for evidence and derivation
+checks. Freshness is checked when `maxEvidenceAge` is configured; claim truth,
+identity and application authorization are not established by this report.
 
 ## Quick Example
 

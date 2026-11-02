@@ -2,7 +2,7 @@
 
 {{#include ../_snippets/node-registry-status.md}}
 
-Complete API documentation for the `@hai.ai/jacs` Node.js package.
+Native API reference for the `@hai.ai/jacs` Node.js package.
 
 ## Installation
 
@@ -10,7 +10,7 @@ Complete API documentation for the `@hai.ai/jacs` Node.js package.
 npm install @hai.ai/jacs
 ```
 
-## v0.7.0: Async-First API
+## Async and synchronous methods
 
 {{#include ../_snippets/node-async-first.md}}
 
@@ -21,7 +21,7 @@ const doc = await agent.createDocument(JSON.stringify(content));
 
 // Sync (blocks event loop)
 agent.loadSync('./jacs.config.json');
-const doc = agent.createDocumentSync(JSON.stringify(content));
+const syncDoc = agent.createDocumentSync(JSON.stringify(content));
 ```
 
 ## Core Module
@@ -69,7 +69,7 @@ const agent = new JacsAgent();
 const agentJson = await agent.load('./jacs.config.json');
 
 // Sync
-const agentJson = agent.loadSync('./jacs.config.json');
+const syncAgentJson = agent.loadSync('./jacs.config.json');
 
 console.log('Agent loaded:', JSON.parse(agentJson).jacsId);
 ```
@@ -114,7 +114,8 @@ Verify a document's signature and hash integrity.
 **Parameters:**
 - `documentString` (string): The signed document JSON string
 
-**Returns:** `Promise<boolean>` (async) or `boolean` (sync) -- True if the document is valid
+**Returns:** `Promise<boolean>` (async) or `boolean` (sync) — true on success.
+Invalid documents can reject/throw; handle errors rather than relying on false.
 
 **Example:**
 ```javascript
@@ -164,7 +165,10 @@ const updatedDoc = await agent.updateDocument(
 
 ### agent.createAgreement(...) / agent.createAgreementSync(...)
 
-Legacy sidecar API. Use Agreement v2 for new standalone consent workflows.
+Legacy sidecar API for mathematical signature inspection. The report keeps
+`complete`, `policy_authenticated`, and `policy_accepted` false: participant and
+role policy are not authenticated. Agreement v2 is also inspection-only; see
+[its guide](../guides/agreement-v2.md) before interpreting reports.
 
 Add an agreement requiring multiple agent signatures to a document.
 
@@ -347,9 +351,11 @@ const hash = hashString('data to hash');
 
 ---
 
-### createConfig(options)
+### createConfig(...fields)
 
-Create a JACS configuration JSON string programmatically.
+Create a JACS configuration JSON string using the positional arguments below.
+This does not generate keys or create an agent. Never persist a private-key
+password in the generated configuration.
 
 **Parameters:**
 - `jacsUseSecurity` (string, optional)
@@ -358,7 +364,7 @@ Create a JACS configuration JSON string programmatically.
 - `jacsAgentPrivateKeyFilename` (string, optional)
 - `jacsAgentPublicKeyFilename` (string, optional)
 - `jacsAgentKeyAlgorithm` (string, optional)
-- `jacsPrivateKeyPassword` (string, optional)
+- `jacsPrivateKeyPassword` (legacy slot; leave undefined)
 - `jacsAgentIdAndVersion` (string, optional)
 - `jacsDefaultStorage` (string, optional)
 
@@ -366,62 +372,26 @@ Create a JACS configuration JSON string programmatically.
 
 ---
 
-## HTTP Module
+## HTTP integration
 
-```javascript
-import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';
+Use `jacsMiddleware` from `@hai.ai/jacs/express` or `jacsKoaMiddleware` from
+`@hai.ai/jacs/koa` for signed document bodies. The old `/http` adapter calls
+removed root helpers. Request-bound authorization and pinned event verification
+use `JacsSimpleAgent` instance methods; see [HTTP](http.md).
+
+## MCP module
+
+```typescript
+createJACSTransportProxy(transport, loadedClientOrAgent, role, peerPolicy)
+createJACSTransportProxyAsync(transport, configPath, role, peerPolicy)
 ```
 
-### JACSExpressMiddleware(options)
-
-Express middleware for JACS request/response handling.
-
-**Parameters:**
-- `options.configPath` (string): Path to JACS configuration file
-
-**Returns:** Express middleware function
-
----
-
-### JACSKoaMiddleware(options)
-
-Koa middleware for JACS request/response handling.
-
-**Parameters:**
-- `options.configPath` (string): Path to JACS configuration file
-
-**Returns:** Koa middleware function
-
----
-
-## MCP Module
-
-```javascript
-import {
-  JACSTransportProxy,
-  createJACSTransportProxy,
-  createJACSTransportProxyAsync
-} from '@hai.ai/jacs/mcp';
-```
-
-### createJACSTransportProxy(transport, configPath, role)
-
-Factory function for creating a transport proxy.
-
-**Parameters:**
-- `transport`: The underlying MCP transport
-- `configPath` (string): Path to JACS configuration file
-- `role` (string): 'server' or 'client'
-
-**Returns:** JACSTransportProxy instance
-
----
-
-### createJACSTransportProxyAsync(transport, configPath, role)
-
-Async factory that waits for JACS to be fully loaded.
-
-**Returns:** Promise<JACSTransportProxy>
+The first returns `JACSTransportProxy`; the second returns a Promise after
+loading the agent. `role` is `'client'` or `'server'`. Configure
+`peerPolicy.expectedPeerAgentId` or `peerPolicy.allowedPeerAgentIds` on both
+ends and provision trusted verification keys. The transport is local-only.
+See [MCP integration](mcp.md) for actual SDK handlers, tool registration and
+failure behavior.
 
 ---
 
@@ -438,45 +408,21 @@ const hash: string = hashString('data');
 
 ---
 
-## Deprecated Functions
+## Root exports and legacy functions
 
-The following module-level functions are deprecated. Use `new JacsAgent()` and instance methods instead:
+Root exports include `JacsAgent`, `JacsSimpleAgent`, `hashString`, and the
+positional `createConfig` helper. Historical module-level entry points now
+have explicit names such as `legacyLoad` and `legacyCreateDocument`. The old
+`jacs.load()` and `jacs.createDocument()` globals are not exported.
 
-- `load()` -> Use `agent.load()` / `agent.loadSync()`
-- `signAgent()` -> Use `agent.signAgent()` / `agent.signAgentSync()`
-- `verifyString()` -> Use `agent.verifyString()` / `agent.verifyStringSync()`
-- `signString()` -> Use `agent.signString()` / `agent.signStringSync()`
-- `verifyAgent()` -> Use `agent.verifyAgent()` / `agent.verifyAgentSync()`
-- `updateAgent()` -> Use `agent.updateAgent()` / `agent.updateAgentSync()`
-- `verifyDocument()` -> Use `agent.verifyDocument()` / `agent.verifyDocumentSync()`
-- `updateDocument()` -> Use `agent.updateDocument()` / `agent.updateDocumentSync()`
-- `verifySignature()` -> Use `agent.verifySignature()` / `agent.verifySignatureSync()`
-- `createAgreement()` -> Use `agent.createAgreement()` / `agent.createAgreementSync()`
-- `signAgreement()` -> Use `agent.signAgreement()` / `agent.signAgreementSync()`
-- `createDocument()` -> Use `agent.createDocument()` / `agent.createDocumentSync()`
-- `checkAgreement()` -> Use `agent.checkAgreement()` / `agent.checkAgreementSync()`
-- `signRequest()` -> Use `agent.signRequest()` (V8-thread-only, sync)
-- `verifyResponse()` -> Use `agent.verifyResponse()` (V8-thread-only, sync)
-- `verifyResponseWithAgentId()` -> Use `agent.verifyResponseWithAgentId()` (V8-thread-only, sync)
+Use instance methods or the separate `@hai.ai/jacs/simple` module:
 
-**Migration Example:**
 ```javascript
-// Old (deprecated, v0.6.x)
-import jacs from '@hai.ai/jacs';
-jacs.load('./jacs.config.json');
-const doc = jacs.createDocument(JSON.stringify({ data: 'test' }));
-
-// New (v0.7.0, async)
 import { JacsAgent } from '@hai.ai/jacs';
+
 const agent = new JacsAgent();
 await agent.load('./jacs.config.json');
 const doc = await agent.createDocument(JSON.stringify({ data: 'test' }));
-
-// New (v0.7.0, sync)
-import { JacsAgent } from '@hai.ai/jacs';
-const agent = new JacsAgent();
-agent.loadSync('./jacs.config.json');
-const doc = agent.createDocumentSync(JSON.stringify({ data: 'test' }));
 ```
 
 ---

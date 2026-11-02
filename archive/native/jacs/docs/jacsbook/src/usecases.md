@@ -27,9 +27,9 @@ Use JACS when a README, design doc, policy, or release note needs visible conten
 - [Inline Text Signatures](guides/inline-text-signing.md)
 
 ```bash
-JACS_CONFIG=./reviewer-a.config.json jacs sign-text DESIGN.md
-JACS_CONFIG=./reviewer-b.config.json jacs sign-text DESIGN.md
-jacs verify-text DESIGN.md
+JACS_CONFIG=./reviewer-a.config.json jacs-compat sign-text DESIGN.md
+JACS_CONFIG=./reviewer-b.config.json jacs-compat sign-text DESIGN.md
+jacs-compat verify-text DESIGN.md
 ```
 
 **What JACS adds:**
@@ -47,9 +47,9 @@ Use JACS when a photo, chart, screenshot, or AI-generated image needs verifiable
 - [Image and Media Signatures](guides/media-signing.md)
 
 ```bash
-jacs sign-image photo.png --out signed.png
-jacs verify-image signed.png
-jacs extract-media-signature signed.png
+jacs-compat sign-image photo.png --out signed.png
+jacs-compat verify-image signed.png
+jacs-compat extract-media-signature signed.png
 ```
 
 **What JACS adds:**
@@ -85,17 +85,17 @@ Use JACS when an MCP client needs local document signing or supplied-key integri
 For keyless verification, install the CLI and start the explicit verification profile:
 
 ```bash
-cargo install jacs-cli
-jacs mcp --profile verify-only
+cargo install jacs-cli-compat --locked
+jacs-compat mcp --profile verify-only
 ```
 
-For document signing, configure a [password source](getting-started/quick-start.md#password-bootstrap)
+For document signing, configure a [password source](getting-started/quick-start.md#native-password-bootstrap)
 before creating an identity, or use an existing signing config. Then start the
 explicit signing profile:
 
 ```bash
-jacs quickstart --name mcp-agent --domain mcp-agent.example
-jacs mcp --profile local-sign --config ./jacs.config.json
+jacs-compat quickstart --name mcp-agent --domain mcp-agent.example
+jacs-compat mcp --profile local-sign --config ./jacs.config.json
 ```
 
 To also enable scoped text/image tools, prefix the final command with

@@ -33,14 +33,15 @@ facade can also depend on this core for compatibility.
 - **Not an observability layer.** No env-var-driven logging,
   no `tracing` subscriber wiring, no metrics export.
 - **Not a CLI or MCP server.** Those live in
-  [`jacs-cli`](../jacs-cli/README.md) and
-  [`jacs-mcp`](../jacs-mcp/README.md), both using this portable core.
+  [`jacs-cli`](https://github.com/HumanAssisted/JACS/blob/main/jacs-cli/README.md) and
+  [`jacs-mcp`](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md), both using this portable core.
 
 The active workspace builds the portable primitive and thin platform boundaries.
 Historical storage, A2A, email and other native integrations are retained in
-[`archive/native`](../archive/native/README.md), outside the active dependency
-graph and publication set. Build browser bindings from source; see the current
-[release status](../docs/release-status.md) before relying on registry packages.
+[`archive/native`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/README.md), outside the portable dependency
+graph and published from a separate workspace. All 17 Rust crates and both npm
+packages have a recorded 0.15.0 release. See [release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+for published artifacts; subsequent source changes require their own release evidence.
 
 ## Quick start
 
@@ -54,7 +55,7 @@ let outcome = agent.verify(&signed)?;
 assert!(outcome.valid);
 ```
 
-For multi-party agreements:
+For legacy v1 agreement signature inspection (not consent acceptance):
 
 ```rust,ignore
 use jacs_core::{CoreAgent, SigningAlgorithm, agreements};
@@ -79,8 +80,14 @@ let signers: Vec<(&str, &[u8], SigningAlgorithm)> = vec![
     (bob_id.as_str(),   bob.public_key(),   SigningAlgorithm::Pq2025),
 ];
 let outcome = agreements::verify(&doc, &signers)?;
-assert!(outcome.all_valid);
+assert!(outcome.all_valid); // Present mathematical signatures only.
+assert!(!outcome.policy_accepted);
 ```
+
+The legacy sidecar does not authenticate roles, participant lists, question,
+context or quorum. `all_valid` is not approval; `policy_accepted` remains false.
+New portable consent uses [`agreements::v3`](https://docs.rs/jacs-core/latest/jacs_core/agreements/v3/index.html)
+with independently supplied verification policy.
 
 ## Portable identities and platform signers
 
@@ -216,14 +223,14 @@ as malformed legacy PBKDF2 noise.
 
 ## Where to go next
 
-- [`jacs-mobile`](../jacs-mobile/README.md) — mobile bindings and biometric vaults.
-- [`jacs-cli`](../jacs-cli/README.md) and [`jacs-mcp`](../jacs-mcp/README.md) — thin host boundaries.
-- [`archive/native`](../archive/native/README.md) — historical native compatibility source.
-- [`jacs-wasm`](../jacs-wasm/README.md) — browser bindings that wrap `jacs-core` with a TypeScript API.
+- [`jacs-mobile`](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md) — mobile bindings and biometric vaults.
+- [`jacs-cli`](https://github.com/HumanAssisted/JACS/blob/main/jacs-cli/README.md) and [`jacs-mcp`](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md) — thin host boundaries.
+- [`archive/native`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/README.md) — historical native compatibility source.
+- [`jacs-wasm`](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) — browser bindings that wrap `jacs-core` with a TypeScript API.
 
 ## License
 
-Apache-2.0. See [`LICENSE-APACHE`](../LICENSE-APACHE).
+Apache-2.0. See [`LICENSE-APACHE`](https://github.com/HumanAssisted/JACS/blob/main/LICENSE-APACHE).
 
 ### Human identity and durable recovery
 

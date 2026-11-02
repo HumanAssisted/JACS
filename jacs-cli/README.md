@@ -54,9 +54,9 @@ Other failures exit nonzero and report sanitized diagnostics on stderr. Help and
 version output are text; operation results are JSON. `RUST_LOG` (or `LOG_LEVEL`)
 controls structured stderr logging without contaminating signed JSON or MCP frames.
 
-`mcp` defaults to verification only. In `local-sign`, rotation and re-encryption
-use the destination password supplied at startup through
-`JACS_NEW_PRIVATE_KEY_PASSWORD`; it is unavailable to tools. The server can only
+`mcp` defaults to verification only. In `local-sign`, rotation keeps the current
+password unless the host supplies `JACS_NEW_PRIVATE_KEY_PASSWORD` at startup;
+re-encryption requires that replacement password. Passwords are unavailable to tools. The server can only
 modify its explicitly configured vault. It has no HTTP transport or remote key
 lookup.
 
