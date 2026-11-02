@@ -207,7 +207,7 @@ jobs:
       - name: Validate WASM SPDX SBOM
         run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacs-wasm.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacs-wasm.spdx.json >/dev/null
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jacs-wasm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: |

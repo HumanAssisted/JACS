@@ -179,7 +179,7 @@ jobs:
         if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' || steps.build_wheel_manylinux.outcome == 'success' }}
         run: python3 scripts/check_native_crypto_linkage.py archive/native/jacspy/dist/*.whl
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ steps.build_wheel.outcome == 'success' || steps.build_wheel_zig.outcome == 'success' || steps.build_wheel_manylinux.outcome == 'success' }}
         with:
           name: wheels-${{ matrix.target }}
@@ -222,7 +222,7 @@ jobs:
           --notice-override "jacs-${VERSION}/jacs-core/THIRD-PARTY-NOTICES=jacs-core/THIRD-PARTY-NOTICES"
           archive/native/jacspy/dist/*.tar.gz
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sdist
           path: archive/native/jacspy/dist/*.tar.gz
@@ -271,7 +271,7 @@ jobs:
             sha256sum -- *.whl *.tar.gz | sort -k2 > "../jacspy-${VERSION}-sha256sums.txt"
           )
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jacspy-${{ needs.verify-version.outputs.version }}-release-bundle
           path: |

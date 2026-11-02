@@ -60,7 +60,7 @@ jobs:
           else
             python3 jacs-mobile/scripts/check-android-source.py
           fi
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-compiled-source
           path: jacs-mobile/generated/android-typecheck.jar
@@ -73,7 +73,7 @@ jobs:
         run: bash jacs-mobile/scripts/build-android-aar.sh --reuse-bindings
       - name: Run Android Keystore instrumentation on API 35
         run: bash jacs-mobile/scripts/run-android-instrumented.sh
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: android-instrumentation-results
@@ -82,7 +82,7 @@ jobs:
             jacs-mobile/generated/android-emulator.log
             jacs-mobile/generated/android-project/library/build/reports/androidTests/
             jacs-mobile/generated/android-project/library/build/outputs/apk/androidTest/debug/library-debug-androidTest.apk
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jacs-mobile-android-package
           path: |
@@ -117,7 +117,7 @@ jobs:
         run: bash jacs-mobile/scripts/build-ios-xcframework.sh --reuse-bindings
       - name: Run biometric lifecycle and Keychain tests in the iOS simulator
         run: bash jacs-mobile/scripts/check-ios-tests.sh
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jacs-mobile-ios-package
           path: |
