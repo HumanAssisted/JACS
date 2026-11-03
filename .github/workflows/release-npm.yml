@@ -168,6 +168,11 @@ jobs:
 
       - name: Install Zig
         if: ${{ matrix.use_zig }}
+        # Only experimental cross-build lanes use Zig, and their artifacts are
+        # never published. A Zig install failure must not fail the build job:
+        # `assemble-package` needs every leg, so it would skip publishing. The
+        # build step then fails under its own continue-on-error; nothing uploads.
+        continue-on-error: ${{ matrix.allow_failure }}
         uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2
         with:
           version: 0.13.0
