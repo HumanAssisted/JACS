@@ -1617,13 +1617,13 @@ dependencies = [
 
 [[package]]
 name = "img-parts"
-version = "0.3.3"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b4e24cfdc6f897b582508e3c382eaf5378076898f80500a80d10d761ae85e90"
+checksum = "f7a42493121865f9f19e49615f7f949e160cdb28caf739cfc6151a27c3e328bf"
 dependencies = [
  "bytes",
  "crc32fast",
- "miniz_oxide 0.8.9",
+ "miniz_oxide 0.9.1",
 ]
 
 [[package]]
@@ -1749,7 +1749,7 @@ dependencies = [
  "sha2 0.11.1",
  "signature",
  "similar",
- "strum 0.27.2",
+ "strum",
  "strum_macros",
  "tempfile",
  "thiserror",
@@ -1955,7 +1955,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "strum 0.28.0",
+ "strum",
  "unicode-general-category",
  "uuid-simd",
 ]
@@ -2149,6 +2149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
+ "serde",
  "simd-adler32",
 ]
 
@@ -3566,12 +3567,6 @@ dependencies = [
  "proc-macro2",
  "quote",
 ]
-
-[[package]]
-name = "strum"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 
 [[package]]
 name = "strum"
