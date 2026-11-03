@@ -200,6 +200,13 @@ jobs:
           # libc, perl/openssl-dev satisfy the vendored OpenSSL configure, and
           # RUSTUP_TOOLCHAIN keeps rustup from installing rust-toolchain.toml's
           # components. Digest pinned like the manylinux images.
+          #
+          # Call Cargo directly. This image ships Node 18, and @napi-rs/cli 3
+          # needs Node >= 20.17 (it imports util.styleText), so `npx napi build`
+          # fails before compiling. napi CLI 2 ran this exact cargo build for
+          # 0.15.0 and kept the image's RUSTFLAGS (-C target-feature=-crt-static),
+          # then copied the library to napi's platform file name. Only the
+          # x86_64-unknown-linux-musl lane uses this container.
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/build" -w /build/archive/native/jacsnpm \
             -e RUSTUP_TOOLCHAIN=1.97.0 -e CARGO_TARGET_DIR=/tmp/jacs-target \
@@ -207,7 +214,9 @@ jobs:
             sh -euxc '
               apk add --no-cache openssl-dev perl musl-dev
               rustup toolchain install 1.97.0 --profile minimal --target ${{ matrix.target }}
-              npx napi build --platform --release --features human-approval-vendored --target ${{ matrix.target }} -- --locked
+              cargo build --release --target ${{ matrix.target }} --features human-approval-vendored --locked
+              test -f /tmp/jacs-target/${{ matrix.target }}/release/libjacsnpm.so
+              cp /tmp/jacs-target/${{ matrix.target }}/release/libjacsnpm.so jacs.linux-x64-musl.node
             '
 
       - name: Build native module
