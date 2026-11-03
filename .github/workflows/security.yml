@@ -51,7 +51,12 @@ jobs:
           node-version: "20"
 
       - name: Install pinned schema documentation generator
-        run: npm install --global --ignore-scripts @adobe/jsonschema2md@8.0.2
+        # Pinning only the top-level package let npm re-resolve its markdown
+        # dependencies on every run. mdast-util-gfm-table 2.0.1 (2026-11-03)
+        # renders the generated tables with extra empty columns, so the docs
+        # regression failed on unchanged source. --before resolves the whole
+        # tree as it stood when the checked-in docs were generated.
+        run: npm install --global --ignore-scripts --before=2026-11-03T00:00:00Z @adobe/jsonschema2md@8.0.2
 
       - name: Test release and security policy contracts
         run: python -m unittest discover -s scripts/tests -p 'test_*.py'
