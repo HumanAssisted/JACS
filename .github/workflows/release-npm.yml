@@ -236,7 +236,7 @@ jobs:
         if: ${{ steps.build_native_module.outcome == 'success' || steps.build_native_module_alpine.outcome == 'success' }}
         run: python3 scripts/check_native_crypto_linkage.py archive/native/jacsnpm/*.node
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ steps.build_native_module.outcome == 'success' || steps.build_native_module_alpine.outcome == 'success' }}
         with:
           # Keep cross-build evidence, but only runtime-covered targets may
@@ -405,7 +405,7 @@ jobs:
       - name: Validate npm SPDX SBOM
         run: jq -e '.spdxVersion | startswith("SPDX-2.")' jacsnpm.spdx.json >/dev/null && jq -e '((.packages // []) | length) > 0' jacsnpm.spdx.json >/dev/null
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jacsnpm-${{ needs.verify-version.outputs.version }}-release-candidate
           path: |
@@ -739,7 +739,7 @@ jobs:
             release-evidence/jacsnpm.spdx.json
 
       - name: Publish durable npm release evidence
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_name }}
           name: JACS npm v${{ needs.verify-version.outputs.version }}

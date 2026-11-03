@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1054
+Third-party packages: 1046
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -73,9 +73,10 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: (MIT OR Apache-2.0) AND Unicode-3.0
-Used by 1 package(s):
+Used by 2 package(s):
 
   - unicode-ident 1.0.24 (https://github.com/dtolnay/unicode-ident)
+  - unicode-normalization 0.1.26 (https://github.com/unicode-rs/unicode-normalization)
 
 -------------------------------------------------------------------------------
 License expression: 0BSD OR MIT OR Apache-2.0
@@ -260,7 +261,7 @@ Used by 81 package(s):
   - utf8_iter 1.0.4 (https://github.com/hsivonen/utf8_iter)
   - utf8parse 0.2.2 (https://github.com/alacritty/vte)
   - uuid 1.23.5 (https://github.com/uuid-rs/uuid)
-  - uuid 1.26.1 (https://github.com/uuid-rs/uuid)
+  - uuid 1.29.0 (https://github.com/uuid-rs/uuid)
   - wnaf 0.14.1 (https://github.com/RustCrypto/elliptic-curves)
   - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
@@ -386,7 +387,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 199 package(s):
+Used by 200 package(s):
 
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -451,6 +452,7 @@ Used by 199 package(s):
   - hyper 1.10.1 (https://github.com/hyperium/hyper)
   - hyper 1.11.1 (https://github.com/hyperium/hyper)
   - hyper-util 0.1.20 (https://github.com/hyperium/hyper-util)
+  - hyper-util 0.1.21 (https://github.com/hyperium/hyper-util)
   - hyperlocal 0.9.1 (https://github.com/softprops/hyperlocal)
   - i_float 1.15.0 (https://github.com/iShape-Rust/iFloat)
   - i_key_sort 0.6.0 (https://github.com/iShape-Rust/iKeySort)
@@ -530,8 +532,8 @@ Used by 199 package(s):
   - rust_decimal 1.43.0 (https://github.com/paupino/rust-decimal)
   - schannel 0.1.29 (https://github.com/steffengy/schannel-rs)
   - schemars 0.9.0 (https://github.com/GREsau/schemars)
-  - schemars 1.2.2 (https://github.com/GREsau/schemars)
-  - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
+  - schemars 1.2.3 (https://github.com/GREsau/schemars)
+  - schemars_derive 1.2.3 (https://github.com/GREsau/schemars)
   - seize 0.5.1 (https://github.com/ibraheemdev/seize)
   - serde_json_canonicalizer 0.4.1 (https://github.com/evik42/serde-json-canonicalizer)
   - serial_test 3.5.0 (https://github.com/palfrey/serial_test/)
@@ -596,7 +598,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 487 package(s):
+Used by 477 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -621,7 +623,6 @@ Used by 487 package(s):
   - asn1-rs-derive 0.5.1 (https://github.com/rusticata/asn1-rs.git)
   - assert_cmd 2.2.2 (https://github.com/assert-rs/assert_cmd.git)
   - astral-tokio-tar 0.6.4 (https://github.com/astral-sh/tokio-tar)
-  - async-trait 0.1.89 (https://github.com/dtolnay/async-trait)
   - async-trait 0.1.92 (https://github.com/dtolnay/async-trait)
   - atomic-polyfill 1.0.3 (https://github.com/embassy-rs/atomic-polyfill)
   - backtrace 0.3.76 (https://github.com/rust-lang/backtrace-rs)
@@ -725,24 +726,15 @@ Used by 487 package(s):
   - flate2 1.1.9 (https://github.com/rust-lang/flate2-rs)
   - form_urlencoded 1.2.2 (https://github.com/servo/rust-url)
   - fraction 0.17.0 (https://github.com/dnsl48/fraction.git)
-  - futures 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-channel 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-channel 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-core 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-core 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-executor 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-executor 0.3.34 (https://github.com/rust-lang/futures-rs)
   - futures-intrusive 0.5.0 (https://github.com/Matthias247/futures-intrusive)
-  - futures-io 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-io 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-macro 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-macro 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-sink 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-sink 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-task 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-task 0.3.34 (https://github.com/rust-lang/futures-rs)
-  - futures-util 0.3.32 (https://github.com/rust-lang/futures-rs)
   - futures-util 0.3.34 (https://github.com/rust-lang/futures-rs)
   - geo 0.32.0 (https://github.com/georust/geo)
   - geo-types 0.7.19 (https://github.com/georust/geo)
@@ -791,7 +783,7 @@ Used by 487 package(s):
   - idna 1.1.0 (https://github.com/servo/rust-url/)
   - image 0.25.10 (https://github.com/image-rs/image)
   - image-webp 0.2.4 (https://github.com/image-rs/image-webp)
-  - img-parts 0.3.3 (https://github.com/paolobarbolini/img-parts)
+  - img-parts 0.4.1 (https://github.com/paolobarbolini/img-parts)
   - indenter 0.3.4 (https://github.com/yaahc/indenter)
   - inout 0.1.4 (https://github.com/RustCrypto/utils)
   - inout 0.2.2 (https://github.com/RustCrypto/utils)
@@ -812,8 +804,8 @@ Used by 487 package(s):
   - keyring 3.6.3 (https://github.com/hwchen/keyring-rs.git)
   - lazy_static 1.5.0 (https://github.com/rust-lang-nursery/lazy-static.rs)
   - lexicmp 0.2.0 (https://github.com/surrealdb/lexicmp)
-  - libc 0.2.186 (https://github.com/rust-lang/libc)
   - libc 0.2.189 (https://github.com/rust-lang/libc)
+  - libc 0.2.191 (https://github.com/rust-lang/libc)
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
   - log 0.4.33 (https://github.com/rust-lang/log)
   - log 0.4.34 (https://github.com/rust-lang/log)
@@ -877,11 +869,11 @@ Used by 487 package(s):
   - proc-macro2 1.0.106 (https://github.com/dtolnay/proc-macro2)
   - proc-macro2 1.0.107 (https://github.com/dtolnay/proc-macro2)
   - proptest 1.11.0 (https://github.com/proptest-rs/proptest)
-  - pyo3 0.29.2 (https://github.com/pyo3/pyo3)
-  - pyo3-build-config 0.29.2 (https://github.com/pyo3/pyo3)
-  - pyo3-ffi 0.29.2 (https://github.com/pyo3/pyo3)
-  - pyo3-macros 0.29.2 (https://github.com/pyo3/pyo3)
-  - pyo3-macros-backend 0.29.2 (https://github.com/pyo3/pyo3)
+  - pyo3 0.30.1 (https://github.com/pyo3/pyo3)
+  - pyo3-build-config 0.30.1 (https://github.com/pyo3/pyo3)
+  - pyo3-ffi 0.30.1 (https://github.com/pyo3/pyo3)
+  - pyo3-macros 0.30.1 (https://github.com/pyo3/pyo3)
+  - pyo3-macros-backend 0.30.1 (https://github.com/pyo3/pyo3)
   - quinn 0.11.11 (https://github.com/quinn-rs/quinn)
   - quinn-proto 0.11.18 (https://github.com/quinn-rs/quinn)
   - quinn-udp 0.5.15 (https://github.com/quinn-rs/quinn)

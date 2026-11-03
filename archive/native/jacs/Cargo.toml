@@ -62,7 +62,7 @@ moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
 sha2 = "0.11.0"
 phf = { version = "0.14.0", features = ["macros"] }
-strum = "0.27.1"
+strum = "0.28.0"
 strum_macros = "0.28.0"
 secrecy = "0.10.3"
 aes-gcm = "0.11.1"
