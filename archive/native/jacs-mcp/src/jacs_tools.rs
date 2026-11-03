@@ -23,8 +23,11 @@ use jacs::validation::require_relative_path_safe;
 use jacs_binding_core::AgentWrapper;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
+// rmcp 3.4 deprecated the `ServerInfo` alias and added `ServerConfig`. Both
+// name `InitializeResult`; using it directly keeps `-D warnings` release builds
+// passing without requiring the newer alias.
 use rmcp::model::{
-    CacheScope, Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
+    CacheScope, Implementation, InitializeResult, ServerCapabilities, Tool, ToolsCapability,
 };
 use rmcp::{ServerHandler, tool, tool_router};
 use sha2::{Digest, Sha256};
@@ -3225,8 +3228,8 @@ fn extract_media_error_envelope(message: &str, error: String) -> String {
 // return only profile-filtered tools, and call_tool to reject tools outside
 // the active profile before delegating to the router.
 impl ServerHandler for JacsMcpServer {
-    fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::default();
+    fn get_info(&self) -> InitializeResult {
+        let mut info = InitializeResult::default();
         let mut capabilities = ServerCapabilities::default();
         let mut tools = ToolsCapability::default();
         tools.list_changed = Some(false);
