@@ -51,10 +51,10 @@ full = client.verify_attestation(attestation.raw, full=True)
 print(full["valid"], full.get("evidence"), full.get("chain"))
 ```
 
-Inspect the complete report and errors before accepting it. Published 0.15.0
-packages check the signature with the loaded agent's key, so they cannot fully
-verify another agent's attestation. Current source resolves the signer's exact
-signed key: local verification uses own, enrolled or cached keys and stays
+Inspect the complete report and errors before accepting it. Packages before
+0.16.0 check the signature with the loaded agent's key, so they cannot fully
+verify another agent's attestation. Since 0.16.0, verification resolves the
+signer's exact signed key: local verification uses own, enrolled or cached keys and stays
 offline; full verification also follows the opt-in
 [key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md) settings.
 

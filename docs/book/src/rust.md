@@ -1,7 +1,7 @@
 # Rust libraries
 
-Use `jacs-core = "=0.15.0"` for the no-I/O portable protocol and crypto layer.
-Use `jacs = "=0.15.0"` for native filesystem, email, media, trust and integration
+Use `jacs-core = "=0.16.0"` for the no-I/O portable protocol and crypto layer.
+Use `jacs = "=0.16.0"` for native filesystem, email, media, trust and integration
 APIs; enable `a2a`, `agreements` or `attestation` as needed. Both packages are
 published and supported, with separate dependency graphs.
 

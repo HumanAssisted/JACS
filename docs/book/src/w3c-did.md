@@ -2,8 +2,9 @@
 
 JACS exports a DID Core document for its implemented `did:wba` method, using the
 persistent native signing key. It does not provide a general DID resolver or
-`did:web`/`did:key` exports. The commands below describe current source; published
-0.15.0 packages are a separate release baseline.
+`did:web`/`did:key` exports. The commands below describe current source; the
+published 0.16.0 packages are the first whose `did:wba` export uses the
+persistent ML-DSA-87 key.
 
 ## Build and create an identity
 

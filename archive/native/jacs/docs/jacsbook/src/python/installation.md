@@ -3,12 +3,12 @@
 Install the published native package:
 
 ```bash
-python -m pip install jacs==0.15.0
+python -m pip install jacs==0.16.0
 ```
 
-Published 0.15.0 wheels support Python 3.10–3.14 on macOS arm64/x86_64,
-Linux arm64/x86_64 glibc, and Linux x86_64 musl. This checkout requires
-Python 3.11–3.14. A compatible wheel needs no Rust compiler. See the
+Published 0.16.0 wheels support Python 3.11–3.14 on macOS arm64/x86_64,
+Linux arm64/x86_64 glibc, and Linux x86_64 musl; this checkout has the same
+Python requirement. A compatible wheel needs no Rust compiler. See the
 [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
 for platform evidence; later source changes are not automatically in the wheel.
 

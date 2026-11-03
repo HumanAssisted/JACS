@@ -18,7 +18,7 @@ Enable observability features in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-jacs = { version = "=0.15.0", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
+jacs = { version = "=0.16.0", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
 ```
 
 | Feature | Description |

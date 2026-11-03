@@ -13,9 +13,9 @@ or [extended profiles](https://github.com/HumanAssisted/JACS/blob/main/docs/nati
 
 | Surface | Package / guide |
 | --- | --- |
-| Native Rust | `cargo add jacs@=0.15.0`; [API and examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/README.md) |
-| Python | `python -m pip install jacs==0.15.0`; [Python guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/README.md) |
-| Node.js | `npm install --save-exact @hai.ai/jacs@0.15.0`; [Node guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md) |
+| Native Rust | `cargo add jacs@=0.16.0`; [API and examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/README.md) |
+| Python | `python -m pip install jacs==0.16.0`; [Python guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/README.md) |
+| Node.js | `npm install --save-exact @hai.ai/jacs@0.16.0`; [Node guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md) |
 | Go | [Module and matching CGo library setup](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsgo/README.md) |
 | Extended CLI and MCP | `cargo install jacs-cli-compat --locked`; [CLI](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-cli/README.md), [MCP](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md) |
 | Browser | Published `@hai.ai/jacs-wasm`; [browser guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) |
@@ -68,8 +68,9 @@ From the repository root, use `make build-jacspy`, `make build-jacsnpm`, or
 This checkout requires Rust 1.97 or newer. See the [developer guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md)
 and [shared cache setup](https://github.com/HumanAssisted/JACS/blob/main/docs/rust-cache.md) before substantial builds.
 
-The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records verified 0.15.0
-artifacts across all 17 Rust crates and all language packages. Later source
+The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records verified 0.16.0
+artifacts across 16 of the 17 Rust crates and all language packages; `jacs-surrealdb`
+remains at 0.15.0. Later source
 changes need separate release evidence. The [root release guide](https://github.com/HumanAssisted/JACS/blob/main/RELEASING.md)
 coordinates versions and publication order across both workspaces. SurrealDB
 and the unpublished observability example retain separate lockfiles.

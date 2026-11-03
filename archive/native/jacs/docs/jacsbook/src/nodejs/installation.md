@@ -8,7 +8,8 @@
 ## Requirements
 
 - Node.js 20 or newer.
-- Published addons: macOS x64/arm64 and Linux x64/arm64 for glibc and musl.
+- Published addons: macOS x64/arm64, Linux x64/arm64 for glibc and Linux x64
+  for musl.
   No native Windows addon is published; WSL needs a matching Linux build.
 - Source builds with NAPI-RS CLI 3: Node `^20.17.0`, `^22.13.0` or `>=23.5.0`,
   plus Rust 1.97 and a platform C toolchain.
@@ -16,7 +17,7 @@
 ## Installation
 
 ```bash
-npm install --save-exact @hai.ai/jacs@0.15.0
+npm install --save-exact @hai.ai/jacs@0.16.0
 ```
 
 The package includes prebuilt bindings. Its optional install script downloads a

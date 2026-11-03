@@ -16,9 +16,10 @@ For the CLI and MCP server:
 cargo install jacs-cli
 ```
 
-Version 0.15.0 has a recorded [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
-New DID/JWK and Agent Card behavior in this checkout is source work; see the
-[identity standards guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md) for that boundary.
+Version 0.16.0 has a recorded [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
+It is the first release in which DID/JWK and Agent Card exports reuse the
+persistent ML-DSA-87 identity; see the
+[identity standards guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md).
 
 ## What it does
 

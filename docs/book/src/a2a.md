@@ -8,8 +8,8 @@ skills and URL it advertises. The portable MCP server has no A2A transport.
 
 The binding build uses Python 3.11+, Rust 1.97 through rustup, a C compiler/linker, Make and Perl. On Linux, the default keychain build also needs `pkg-config` and D-Bus development headers (`libdbus-1-dev` on Debian/Ubuntu). The official JavaScript SDK smoke requires Node.js 24.7+ and npm.
 
-These instructions use current source, including direct ML-DSA-87 card signing.
-The published 0.15.0 inventory does not establish availability of these changes.
+These instructions use current source, including direct ML-DSA-87 card signing,
+which first shipped in the published 0.16.0 packages.
 From the repository root, with Rust 1.97+ and [native build prerequisites](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md):
 
 ```sh

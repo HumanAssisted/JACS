@@ -2,17 +2,16 @@
 
 Cryptographic identity, signing, and verification for AI agents from Python.
 
-This source version requires Python 3.11–3.14, including optional integrations.
-Published 0.15.0 wheels support Python 3.10–3.14; use the source requirement
-when building this checkout.
+Published 0.16.0 wheels and this source require Python 3.11–3.14, including
+optional integrations.
 
-> **Published 0.15.0:** `jacs` remains a supported native Python library.
+> **Published 0.16.0:** `jacs` remains a supported native Python library.
 > Wheel platforms, installed-package checks and provenance are recorded in the
 > [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md). Its separate native
 > workspace remains buildable through the root Makefile and CI.
 
 ```bash
-python -m pip install jacs==0.15.0
+python -m pip install jacs==0.16.0
 ```
 
 Supported wheels need no Rust toolchain.

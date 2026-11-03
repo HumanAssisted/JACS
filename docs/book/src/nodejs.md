@@ -1,7 +1,7 @@
 # Node.js library
 
 ```sh
-npm install --save-exact @hai.ai/jacs@0.15.0
+npm install --save-exact @hai.ai/jacs@0.16.0
 ```
 
 The package includes native bindings for the released platforms. It supports
