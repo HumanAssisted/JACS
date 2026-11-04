@@ -1,3 +1,17 @@
+## Unreleased
+
+### 2026-11-04 — Generated test and quickstart passwords meet the password policy
+
+- The native A2A fixture, the official Python and Node A2A SDK smokes and the
+  MCP-MIME and three-party agreement demos no longer fail intermittently on
+  their own generated passwords. Raw random hex or base64url can contain four
+  identical or five sequential characters, which the native password policy
+  rejects: about 0.70% of Rust fixture draws, 1.48% of each SDK smoke draw
+  (5.8% of native-bindings workflow runs) and 0.02% of demo identities. These
+  generators now put `-` after every third hex digit, which caps both runs at
+  three. A Rust regression test checks the construction against the real
+  validator. Test and example code only.
+
 ## 0.16.0
 
 (Released 2026-11-03; `jacs-surrealdb` stays at 0.15.0. See the

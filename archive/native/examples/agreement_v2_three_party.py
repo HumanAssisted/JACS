@@ -64,7 +64,10 @@ def assert_policy_unaccepted(report: dict) -> None:
 
 def main() -> None:
     base = tempfile.mkdtemp(prefix="jacs_agreement_v2_")
-    password = secrets.token_urlsafe(32)
+    # Raw random text can contain "0000" or "01234", which the native policy
+    # rejects; '-' after every third hex digit prevents both.
+    digits = secrets.token_hex(32)
+    password = "-".join(digits[i:i + 3] for i in range(0, len(digits), 3))
     demo_env = {
         "JACS_PRIVATE_KEY_PASSWORD": password,
         "JACS_KEYCHAIN_BACKEND": "disabled",
