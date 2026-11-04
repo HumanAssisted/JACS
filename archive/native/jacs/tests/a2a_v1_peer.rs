@@ -261,3 +261,32 @@ fn finite_v1_fixture_preserves_native_authority_and_legacy_contracts() {
         false
     );
 }
+
+#[test]
+fn synthetic_fixture_passwords_always_satisfy_the_native_policy() {
+    use jacs::crypt::aes_encrypt::check_password_strength;
+    // Raw `{:032x}` digits were rejected in about 0.7% of draws ("0000",
+    // "01234"). Never print a password; the policy error text omits it.
+    let assert_accepted = |password: &str| {
+        if let Err(error) = check_password_strength(password) {
+            panic!("synthetic fixture password violated the native policy: {error}");
+        }
+    };
+    // Deterministic worst cases at the Rust (32) and SDK smoke (64) lengths.
+    for unit in [
+        "0",
+        "f",
+        "0123456789abcdef",
+        "fedcba9876543210",
+        "1111222233334444",
+    ] {
+        for len in [32, 64] {
+            let digits = unit.repeat(len / unit.len());
+            assert_accepted(support::synthetic_password_from_hex(digits.as_str()).as_str());
+        }
+    }
+    // The generator the fixture actually uses.
+    for _ in 0..10_000 {
+        assert_accepted(support::synthetic_password().as_str());
+    }
+}
