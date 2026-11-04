@@ -1117,7 +1117,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jacs-cli"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "base64",
  "clap",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-core"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -1165,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-mcp"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "base64",
  "jacs-core",
@@ -1183,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-mobile"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "base64",
  "jacs-core",
@@ -1196,7 +1196,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-wasm"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "base64",
  "console_error_panic_hook",
@@ -1823,9 +1823,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "3.8.0"
+version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8be15815186873ea063bf005011d16c356804973489e40c39116ae3a2878d1f"
+checksum = "ece64e19631fc38758181e637c15509a2c2709ee53bfde1e1d58f9dc991f919e"
 dependencies = [
  "chrono",
  "futures",
@@ -2239,7 +2239,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys",

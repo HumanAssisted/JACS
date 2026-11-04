@@ -604,10 +604,66 @@
     "The first Go and WASM runs at 023ac063 (41712301140, 41712504419) failed in the release security gate before any GitHub release or npm publication: mdast-util-gfm-table 2.0.1 changed the generated schema tables. Both tags were recreated at 7377359d, which pins that dependency tree. The Go module had already been fetched by proxy.golang.org; see the next item.",
     "proxy.golang.org fetched jacsgo v0.16.0 while its tag pointed at 023ac063, and sum.golang.org recorded that module hash permanently. The recreated tag reproduces the hash only because the jacsgo tree and root LICENSE are identical at 7377359d. A direct fetch of the tag matches sum.golang.org; the proxy serves identical content, but its version metadata still names 023ac063."
   ],
+  "sdk_registry_compatibility": {
+    "observed_at": "2026-11-04T14:57:12Z",
+    "sdk_source_commit": "f36ec9d4e3d0a9aa2b2f8721f5d8252f44ff58f6",
+    "platform": "macOS arm64",
+    "rustc": "1.97.0",
+    "jacs_source": "crates.io; the SDK's [patch.crates-io] path overrides were removed, so no path or Git override applied",
+    "packages": {
+      "jacs": {
+        "version": "0.16.0",
+        "checksum": "ad64b8d0566b9b84a044f7ef3fd4e982e651e964478f6282097f21941633ecce"
+      },
+      "jacs-binding-core": {
+        "version": "0.16.0",
+        "checksum": "93c8f48acde6c33ce2a7ce80ce95465d1650adfb91184e080ae428678f7ea2b2"
+      },
+      "jacs-core": {
+        "version": "0.16.0",
+        "checksum": "06a753f4386afcb810f3350076444ba322384c59fd32a3954a731525f626f12f"
+      },
+      "jacs-mcp-compat": {
+        "version": "0.16.0",
+        "checksum": "161f2ce55191147f35a9ea79c19a9366c26636f2c13ecc31e583133755f5103a"
+      },
+      "jacs-media": {
+        "version": "0.16.0",
+        "checksum": "2854d7b6d3f76b5ff00184000ad9154ff07139bdcce02b8e31879cb4b4cbe196"
+      }
+    },
+    "package_checksums_match": "rust.published crates.io checksums in this record",
+    "third_party_lock_differences": {
+      "reason": "The SDK lock was resolved against JACS main, which moved to img-parts 0.4 and strum 0.28 after 0.16.0; the published 0.16.0 crates require the earlier versions.",
+      "added": {
+        "img-parts 0.3.3": "6b4e24cfdc6f897b582508e3c382eaf5378076898f80500a80d10d761ae85e90",
+        "strum 0.27.2": "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+      },
+      "removed": [
+        "img-parts 0.4.1",
+        "miniz_oxide 0.9.1"
+      ]
+    },
+    "tests": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "existing_suites": {
+        "jacs_remote_signing_round_trip": 4,
+        "local_media": 9
+      }
+    },
+    "coverage": [
+      "PQ remote-provider envelope signing and A2A verification",
+      "tampered envelope rejection",
+      "PNG/JPEG/WebP signing and extraction",
+      "opt-in robust PNG recovery after metadata loss",
+      "text signing and tamper rejection"
+    ]
+  },
   "remaining": {
     "wasm_bootstrap_token": "Revoke the temporary npm token from the 0.15.0 WASM bootstrap publication on npmjs.com.",
-    "crates_io_trusted_publishing": "Configure crates.io trusted publishers, enable CRATES_IO_TRUSTED_PUBLISHING_ENABLED and revoke CRATES_IO_TOKEN, as RELEASING.md describes.",
-    "sdk_registry_compatibility": "Repeat the SDK registry-compatibility run against the 0.16.0 crates.io packages; the 13 SDK tests in the 0.15.0 record do not cover 0.16.0."
+    "crates_io_trusted_publishing": "Configure crates.io trusted publishers, enable CRATES_IO_TRUSTED_PUBLISHING_ENABLED and revoke CRATES_IO_TOKEN, as RELEASING.md describes."
   },
   "limits": [
     "This record describes only observed published artifacts. Unfinished workflows do not establish publication.",

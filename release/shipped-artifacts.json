@@ -2,7 +2,7 @@
   "schema_version": 2,
   "observed_at": "2026-11-04",
   "review_baseline": "coordinated-portable-and-native-source",
-  "source_version": "0.16.0",
+  "source_version": "0.16.1",
   "historical_matrix": "archive/native/release/shipped-artifacts.json",
   "artifacts": {
     "crate": {

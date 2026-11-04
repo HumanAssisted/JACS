@@ -1,4 +1,24 @@
-## Unreleased
+## 0.16.1
+
+(unreleased)
+
+Release candidate; not yet published. See [release status](docs/release-status.md)
+for the artifacts actually shipped.
+
+- Python and Node quickstart without a configured password no longer fails,
+  about once in 16,800 runs, on a generated password the policy rejects.
+- Published package READMEs (crates.io, npm, PyPI and Go) install the version
+  they ship with; the 0.16.0 packages' READMEs named 0.15.0. `make bump-*` now
+  also updates the README install commands, and README prose no longer names a
+  published version.
+- Dependency updates since 0.16.0: pyo3 0.30 (`jacspy`), strum 0.28 (`jacs`),
+  img-parts 0.4 (`jacs-media`), uuid 1.29, schemars 1.2.3 and encoding_rs
+  0.8.44. rmcp stays at 3.7.0 in both workspaces.
+- Release workflows: upload-artifact v7, setup-python 7.1 and
+  action-gh-release 3.0.3 pins, and download-artifact v8.0.1 in the npm, PyPI
+  and Go releases. These are the first releases to run them. Experimental Zig
+  npm lanes no longer block publication.
+- `jacs-surrealdb` remains held at 0.15.0 on crates.io.
 
 ### 2026-11-04 — Generated test and quickstart passwords meet the password policy
 
