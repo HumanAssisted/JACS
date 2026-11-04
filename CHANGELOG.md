@@ -1,9 +1,7 @@
 ## 0.16.0
 
-(unreleased)
-
-Release candidate; not yet published. See [release status](docs/release-status.md)
-for the artifacts actually shipped.
+(Released 2026-11-03; `jacs-surrealdb` stays at 0.15.0. See the
+[verified artifacts](release/0.16.0-verification.json).)
 
 - **Breaking: strict inline email verification covers the whole message.**
   Rewritten links, MIME parts outside the signature, changed From/To/Cc display
