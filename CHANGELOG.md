@@ -5,6 +5,8 @@
 Release candidate; not yet published. See [release status](docs/release-status.md)
 for the artifacts actually shipped.
 
+- Python and Node quickstart without a configured password no longer fails,
+  about once in 16,800 runs, on a generated password the policy rejects.
 - Published package READMEs (crates.io, npm, PyPI and Go) install the version
   they ship with; the 0.16.0 packages' READMEs named 0.15.0. `make bump-*` now
   also updates the README install commands, and README prose no longer names a
@@ -17,6 +19,23 @@ for the artifacts actually shipped.
   and Go releases. These are the first releases to run them. Experimental Zig
   npm lanes no longer block publication.
 - `jacs-surrealdb` remains held at 0.15.0 on crates.io.
+
+### 2026-11-04 — Generated test and quickstart passwords meet the password policy
+
+- The native A2A fixture, the official Python and Node A2A SDK smokes and the
+  MCP-MIME and three-party agreement demos no longer fail intermittently on
+  their own generated passwords. Raw random hex or base64url can contain four
+  identical or five sequential characters, which the native password policy
+  rejects: about 0.70% of Rust fixture draws, 1.48% of each SDK smoke draw
+  (5.8% of native-bindings workflow runs) and 0.02% of demo identities. These
+  generators now put `-` after every third hex digit, which caps both runs at
+  three. A Rust regression test checks the construction against the real
+  validator. Test and example code only.
+- Python and Node quickstart without a configured password no longer fails,
+  about once in 16,800 runs, with a password-policy error the user did not
+  cause. The binding-core generator now checks each candidate against the
+  native policy, retries up to 16 times and fails closed with an error instead
+  of returning a password that agent creation rejects.
 
 ## 0.16.0
 

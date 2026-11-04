@@ -243,7 +243,11 @@ class McpSession:
 def create_identity(binary, directory):
     directory.mkdir(mode=0o700)
     password = directory / "password.txt"
-    password.write_text("Demo!9aA" + secrets.token_urlsafe(32), encoding="utf-8")
+    # Raw random text can contain "0000" or "01234", which the native policy
+    # rejects; '-' after every third hex digit prevents both.
+    digits = secrets.token_hex(32)
+    grouped = "-".join(digits[i:i + 3] for i in range(0, len(digits), 3))
+    password.write_text("Demo!9aA" + grouped, encoding="utf-8")
     password.chmod(0o600)
     env = isolated_env(directory, password)
     run_process(

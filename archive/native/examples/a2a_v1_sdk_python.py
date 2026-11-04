@@ -46,7 +46,11 @@ def fixture(messaging_url):
     temp_parent = Path(tempfile.gettempdir()).resolve(strict=True)
     with tempfile.TemporaryDirectory(prefix="jacs-python-a2a-sdk-", dir=temp_parent) as temp:
         # A process-local, generated secret; never a command argument or output.
-        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "Synthetic!9aA" + secrets.token_hex(32)
+        # Raw hex can contain "0000" or "01234", which the native policy rejects;
+        # '-' after every third digit prevents both (jacs/examples/support/a2a_v1.rs).
+        digits = secrets.token_hex(32)
+        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "Synthetic!9aA" + "-".join(
+            digits[i:i + 3] for i in range(0, len(digits), 3))
         try:
             with JacsClient.quickstart(
                 name="Public Python café 雪", domain="example.test",
