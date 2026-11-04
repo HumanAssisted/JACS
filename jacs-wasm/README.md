@@ -2,7 +2,7 @@
 
 **JACS sign + verify in the browser. No backend required.**
 
-> **Published 0.16.0:** npm artifacts, provenance and installed-browser checks
+> **Release evidence:** npm artifacts, provenance and installed-browser checks
 > are recorded in [release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md). This README also
 > describes the current source API; later changes in this checkout are not
 > evidence of a new published release.
@@ -25,7 +25,7 @@ or platform integrations. Imports retain and verify their declared algorithm.
 ## Install
 
 ```sh
-npm install --save-exact @hai.ai/jacs-wasm@0.16.0
+npm install --save-exact @hai.ai/jacs-wasm@0.16.1
 ```
 
 For the current source API, follow the

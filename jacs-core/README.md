@@ -39,9 +39,8 @@ facade can also depend on this core for compatibility.
 The active workspace builds the portable primitive and thin platform boundaries.
 Historical storage, A2A, email and other native integrations are retained in
 [`archive/native`](https://github.com/HumanAssisted/JACS/blob/main/archive/native/README.md), outside the portable dependency
-graph and published from a separate workspace. Sixteen of the 17 Rust crates and
-both npm packages have a recorded 0.16.0 release; `jacs-surrealdb` remains at
-0.15.0. See [release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+graph and published from a separate workspace. crates.io keeps `jacs-surrealdb`
+at 0.15.0 while its release is held. See [release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
 for published artifacts; subsequent source changes require their own release evidence.
 
 ## Quick start

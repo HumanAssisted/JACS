@@ -4,13 +4,14 @@ The public module remains `github.com/HumanAssisted/JACS/jacsgo`.
 The Go source here is synchronized from the retained native compatibility API;
 its Rust library builds separately from `archive/native/jacsgo/lib`.
 
-Version 0.16.0 is published and verified. In a module importing this package,
+[Release status](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records each verified
+version. In a module importing this package,
 install the module and its checksum-verified native library:
 
 ```sh
-go get github.com/HumanAssisted/JACS/jacsgo@v0.16.0
+go get github.com/HumanAssisted/JACS/jacsgo@v0.16.1
 go mod vendor
-go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.16.0 -version v0.16.0
+go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.16.1 -version v0.16.1
 ```
 
 Place `libjacsgo.dylib` (macOS) or `libjacsgo.so` (Linux) beside the deployed

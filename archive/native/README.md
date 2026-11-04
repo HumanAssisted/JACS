@@ -13,9 +13,9 @@ or [extended profiles](https://github.com/HumanAssisted/JACS/blob/main/docs/nati
 
 | Surface | Package / guide |
 | --- | --- |
-| Native Rust | `cargo add jacs@=0.16.0`; [API and examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/README.md) |
-| Python | `python -m pip install jacs==0.16.0`; [Python guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/README.md) |
-| Node.js | `npm install --save-exact @hai.ai/jacs@0.16.0`; [Node guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md) |
+| Native Rust | `cargo add jacs@=0.16.1`; [API and examples](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/README.md) |
+| Python | `python -m pip install jacs==0.16.1`; [Python guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/README.md) |
+| Node.js | `npm install --save-exact @hai.ai/jacs@0.16.1`; [Node guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md) |
 | Go | [Module and matching CGo library setup](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsgo/README.md) |
 | Extended CLI and MCP | `cargo install jacs-cli-compat --locked`; [CLI](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-cli/README.md), [MCP](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-mcp/README.md) |
 | Browser | Published `@hai.ai/jacs-wasm`; [browser guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) |
@@ -58,8 +58,8 @@ and application policy.
 Current source pins SurrealDB 3.3.4 and carries unpublished dependency backports.
 See [source backports and release blockers](https://github.com/HumanAssisted/JACS/blob/main/archive/native/SECURITY_AUDIT.md#source-backports-and-release-blockers-after-the-2026-10-27-updates).
 Repository patches are not published fixes for downstream crates.io consumers,
-so 0.16.0 does not publish `jacs-surrealdb`. crates.io keeps 0.15.0, which
-requires `jacs` 0.15.
+so no release since 0.15.0 publishes `jacs-surrealdb`. crates.io keeps 0.15.0,
+which requires `jacs` 0.15.
 
 ## Build and release
 
@@ -68,8 +68,8 @@ From the repository root, use `make build-jacspy`, `make build-jacsnpm`, or
 This checkout requires Rust 1.97 or newer. See the [developer guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/DEVELOPMENT.md)
 and [shared cache setup](https://github.com/HumanAssisted/JACS/blob/main/docs/rust-cache.md) before substantial builds.
 
-The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records verified 0.16.0
-artifacts across 16 of the 17 Rust crates and all language packages; `jacs-surrealdb`
+The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records verified
+artifacts for each published version; `jacs-surrealdb`
 remains at 0.15.0. Later source
 changes need separate release evidence. The [root release guide](https://github.com/HumanAssisted/JACS/blob/main/RELEASING.md)
 coordinates versions and publication order across both workspaces. SurrealDB

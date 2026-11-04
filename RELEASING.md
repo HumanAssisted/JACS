@@ -1,6 +1,6 @@
 # Releasing JACS
 
-The coordinated source version is **0.16.0**. MCP is the primary documented
+The coordinated source version is **0.16.1**. MCP is the primary documented
 integration; Rust, Node, Python, Go and browser packages all remain supported
 release surfaces. Consult [release status](docs/release-status.md) and the
 [0.16.0 verification record](release/0.16.0-verification.json) (the latest
@@ -21,7 +21,7 @@ the same alignment check without the listing.
 
 The bump helper updates the coordinated sources and lockfile identities. It
 preserves observations of already published versions and never publishes.
-**Do not bump again for this release: the source is already 0.16.0.**
+**Do not bump again for this release: the source is already 0.16.1.**
 
 ```sh
 make build-jacsnpm       # Native @hai.ai/jacs tarball
@@ -41,7 +41,7 @@ compatibility executable is `jacs-compat`. The primary CLI remains `jacs` from
 
 `HELD_CRATES` in [the release catalog](scripts/release_catalog.py) lists crates
 that keep their source version aligned but are not packaged or published, with
-the reason. For 0.16.0 it holds `jacs-surrealdb`: its lock pins unpublished
+the reason. For 0.16.1 it holds `jacs-surrealdb`: its lock pins unpublished
 jsonwebtoken and object_store backports, so crates.io keeps 0.15.0. A held crate
 is excluded from candidate preparation, its own lock, the publish steps,
 retries and registry parity; the generated release table names it with its
@@ -54,7 +54,7 @@ Holding a crate does not remove its security gate. Every release workflow's
 `scripts/check-security-exceptions.py` at the tagged commit. That check fails
 after any review date in `archive/native/SECURITY_AUDIT.md`. The SurrealDB
 exceptions RUSTSEC-2023-0071, RUSTSEC-2023-0089 and RUSTSEC-2025-0141 are due
-2026-11-26. Finish every 0.16.0 tag by then, including retries, which re-push
+2026-11-26. Finish every 0.16.1 tag by then, including retries, which re-push
 the original tag. Otherwise complete a fresh reachability review and renew the
 dates in the release commit before tagging. Review dates are deadlines, not
 automatic renewals.
@@ -127,7 +127,7 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
 
 - **crates.io:** `release-crate.yml` publishes every crate in
   [the ordered release catalog](scripts/release_catalog.py) except those in
-  `HELD_CRATES` (16 for 0.16.0), including WASM, mobile, bindings and the
+  `HELD_CRATES` (16 for 0.16.1), including WASM, mobile, bindings and the
   DuckDB, PostgreSQL and Redb storage backends. Configure each crate's trusted
   publisher for `HumanAssisted/JACS`, `release-crate.yml`, and the
   `crates-io` environment. Keep the protected `CRATES_IO_TOKEN` migration credential for
@@ -143,7 +143,7 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
   `github.com/HumanAssisted/JACS/jacsgo`; its `jacsgo/vVERSION` tag is also the
   Go submodule version tag. No separate Go registry token is needed.
 
-## Release 0.16.0, one step at a time
+## Release 0.16.1, one step at a time
 
 1. Confirm the intended version:
 
@@ -190,7 +190,7 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
    ```
 
    Every catalogued crate except the held ones is prepared before the first
-   upload (16 for 0.16.0); registry dependencies publish in catalog order.
+   upload (16 for 0.16.1); registry dependencies publish in catalog order.
    Exact archive checksums, audits, SPDX SBOMs and durable attested evidence
    remain mandatory.
 
@@ -265,15 +265,15 @@ an unreleased Go tag only to a commit with an identical `jacsgo/` tree and root
 
 | Surface | Tag |
 |---|---|
-| All released Rust crates | `crate/v0.16.0` |
-| CLI binaries | `cli/v0.16.0` |
-| Native npm | `npm/v0.16.0` |
-| Python | `pypi/v0.16.0` |
-| Go module/native libraries | `jacsgo/v0.16.0` |
-| Browser npm | `wasm-v0.16.0` |
+| All released Rust crates | `crate/v0.16.1` |
+| CLI binaries | `cli/v0.16.1` |
+| Native npm | `npm/v0.16.1` |
+| Python | `pypi/v0.16.1` |
+| Go module/native libraries | `jacsgo/v0.16.1` |
+| Browser npm | `wasm-v0.16.1` |
 
 A source build is not a published release. Check workflow completion, exact
-registry bytes and provenance before describing 0.16.0 as shipped. Mobile
+registry bytes and provenance before describing 0.16.1 as shipped. Mobile
 XCFramework/AAR builds remain separate from app-store/Maven/Swift repository
 publication and physical-device acceptance. Actual HAI deployment is separate
 from source compatibility qualification.
