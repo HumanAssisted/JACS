@@ -16,9 +16,9 @@ libraries provide those documented exports; an application supplies its own
 messaging handler and identity/authorization policy.
 
 The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-records published 0.15.0 packages. New direct-PQ DID/JWK and Agent Card behavior
-in this checkout is **source work**. The A2A and DID how-tos therefore start with
-source builds. A public key fetched alongside a signature is not an independent
+records published 0.16.0 packages, the first release whose source includes the
+direct-PQ DID/JWK and Agent Card behavior. The A2A and DID how-tos build from
+source so that they track this checkout. A public key fetched alongside a signature is not an independent
 trust anchor, and a valid signature is not permission to act.
 
 See the [standards evidence](https://github.com/HumanAssisted/JACS/blob/main/docs/research/pq-identity-standards.md)

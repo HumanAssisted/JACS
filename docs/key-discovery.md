@@ -1,7 +1,8 @@
 # Key discovery and verification
 
-This guide describes the **current native source**, not a capability guaranteed
-by published 0.15.0 packages. The portable CLI and MCP remain local cryptographic
+This guide describes the **current native source**. Release 0.16.0 is the first
+published release with its opt-in DNS/HTTPS and exact-version key-service
+resolution across verifiers. The portable CLI and MCP remain local cryptographic
 interfaces. See [release status](release-status.md) and the
 [DID/A2A identity guide](identity-standards.md) for the separate integration surfaces.
 

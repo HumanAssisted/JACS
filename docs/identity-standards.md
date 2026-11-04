@@ -3,9 +3,9 @@
 Use the same persistent native JACS signing key for identity and discovery.
 A `pq2025` identity holds a final-FIPS-204 ML-DSA-87 key; exporting a public
 representation or restarting a service does not create another root key.
-Rotation is a deliberate identity update. This page describes **this checkout**;
-the [published 0.15.0 artifacts](release-status.md) do not establish availability
-of these new exports in an installed package.
+Rotation is a deliberate identity update. This page describes **this checkout**.
+[Release 0.16.0](release-status.md) is the first published release in which
+these exports reuse the persistent ML-DSA-87 identity.
 
 ## Run the native integration
 

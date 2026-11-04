@@ -99,11 +99,12 @@ example upgrades legacy discovery or implements every A2A capability. See the
 
 ## Release scope
 
-Version 0.15.0 is [published](docs/release-status.md), but the new native PQ
-DID/JWK/Agent Card behavior described above is a source change. Installing
-`jacs==0.15.0`, `@hai.ai/jacs@0.15.0` or `jacs-cli-compat@0.15.0` does not
-prove it contains these changes. Use [package guidance](docs/libraries.md) for
-released integrations and the source build above for this implementation.
+Version 0.16.0 is [published](docs/release-status.md) and is the first release
+whose source includes the native PQ DID/JWK/Agent Card behavior described above.
+Earlier packages, such as `jacs==0.15.0`, `@hai.ai/jacs@0.15.0` or
+`jacs-cli-compat@0.15.0`, predate it. Use
+[package guidance](docs/libraries.md) for released integrations, and the source
+build above to track this checkout.
 
 ## Integrate and verify
 

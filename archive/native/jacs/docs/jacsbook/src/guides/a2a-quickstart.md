@@ -1,6 +1,6 @@
 # A2A Quickstart
 
-Start with the [A2A how-to](https://humanassisted.github.io/JACS/a2a.html) for source installation, local discovery, A2A 1.0 export and a real official-SDK message exchange. Current source adds capabilities beyond the published 0.15.0 baseline; see the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
+Start with the [A2A how-to](https://humanassisted.github.io/JACS/a2a.html) for source installation, local discovery, A2A 1.0 export and a real official-SDK message exchange. Direct PQ A2A signing first shipped in the published 0.16.0 packages; see the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md).
 
 | Guide | Task |
 |-------|------|
@@ -33,6 +33,6 @@ The wire payload is `signed["a2aArtifact"]`; `jacsType` is `a2a-result` here. Ex
 - **No agent loaded:** create/load a client before signing or discovery assessment. Different local agents need different `config_path`/`configPath` values.
 - **Missing skills:** provide skills before generating signed discovery. Post-signing overrides are rejected.
 - **Missing signer key:** native key resolution defaults to `local,registry`; set `JACS_KEY_RESOLUTION=local` for offline lookup. Opt-in DNS discovery fetches the key over HTTPS and accepts it only if it matches the DNS fingerprint ([key discovery](https://github.com/HumanAssisted/JACS/blob/main/docs/key-discovery.md)). Obtaining a key is separate from trusting it.
-- **Python installation:** published 0.15.0 wheels support Python 3.10–3.14; current source requires 3.11–3.14. The `a2a-server` extra adds FastAPI and uvicorn.
+- **Python installation:** published 0.16.0 wheels and current source require Python 3.11–3.14. The `a2a-server` extra adds FastAPI and uvicorn.
 
 Continue with [trust-store enrollment](../advanced/trust-store.md) and [the A2A reference](../integrations/a2a.md).

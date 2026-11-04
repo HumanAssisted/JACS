@@ -3,7 +3,7 @@
 ## Browser
 
 ```sh
-npm install --save-exact @hai.ai/jacs-wasm@0.15.0
+npm install --save-exact @hai.ai/jacs-wasm@0.16.0
 ```
 
 Use the [browser guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md)

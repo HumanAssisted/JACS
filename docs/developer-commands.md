@@ -43,8 +43,8 @@ Coordinated `make check-versions` replaces per-package version checks.
 Generate a formula only for an already published CLI, with its reviewed commit:
 
 ```sh
-make homebrew-formula VERSION=0.15.0 \
-  SOURCE_COMMIT=10c16ba07d56b872e9c6c6ddd83a45af7bd8f94a
+make homebrew-formula VERSION=0.16.0 \
+  SOURCE_COMMIT=6acf3b959a9c7e7d5d2f34c2536340c2122dbb8c
 ```
 
 The generator verifies all 12 CLI release assets, their checksums, hosted-runner

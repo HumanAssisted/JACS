@@ -5,7 +5,7 @@ web page needs to create a browser-local JACS agent, sign JSON, verify
 signed JACS documents, or collect multi-party agreement signatures
 without calling a backend service.
 
-> **Published 0.15.0:** See the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
+> **Published 0.16.0:** See the [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
 > for provenance and installed-browser checks. Later source APIs require a
 > separate release record; use a local build for current checkout behavior.
 
@@ -16,7 +16,7 @@ trust lookup, no MCP server, and no CLI process.
 ## Install
 
 ```sh
-npm install --save-exact @hai.ai/jacs-wasm@0.15.0
+npm install --save-exact @hai.ai/jacs-wasm@0.16.0
 ```
 
 To build this checkout instead:

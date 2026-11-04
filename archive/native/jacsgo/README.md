@@ -2,7 +2,7 @@
 
 Cryptographic identity, signing, and verification for AI agents — from Go.
 
-**Published 0.15.0:** The Go bindings remain supported and use CGo. The semantic
+**Published 0.16.0:** The Go bindings remain supported and use CGo. The semantic
 module tag and matching macOS/Linux native libraries are published and verified;
 see the [release inventory](../../../docs/release-status.md).
 
@@ -10,7 +10,7 @@ see the [release inventory](../../../docs/release-status.md).
 shared library. In a module that imports `github.com/HumanAssisted/JACS/jacsgo`:
 
 ```bash
-JACSGO_VERSION=v0.15.0
+JACSGO_VERSION=v0.16.0
 go get "github.com/HumanAssisted/JACS/jacsgo@${JACSGO_VERSION}"
 go mod vendor
 go run "github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@${JACSGO_VERSION}" \
@@ -152,12 +152,12 @@ require Rust. Building the native library from source requires the full JACS
 repository and Rust 1.97; the nested Go module alone does not contain its Rust
 path dependencies.
 
-## Published 0.15.0 native targets
+## Published 0.16.0 native targets
 
 | Go target | Release runner | Status |
 |---|---|---|
 | `darwin/arm64` | `macos-latest` | Published and verified |
-| `darwin/amd64` | `macos-14` | Published and verified |
+| `darwin/amd64` | `macos-15-intel` | Published and verified |
 | `linux/amd64` (glibc) | `ubuntu-latest` | Published and verified |
 | `linux/arm64` (glibc) | `ubuntu-24.04-arm` | Published and verified |
 | Windows | — | No prebuilt library; unsupported by the current CGo directives |

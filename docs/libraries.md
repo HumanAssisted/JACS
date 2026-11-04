@@ -3,23 +3,24 @@
 Start with MCP for agent/tool integration, or choose a direct library below.
 Native Rust, Node.js, Python and Go remain supported in their separate workspace.
 The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-records 0.15.0 packages, platforms and provenance. New
+records 0.16.0 packages, platforms and provenance. 0.16.0 is the first release
+in which the
 [identity-standard exports](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md)
-are source changes, not evidence of a new release. Published Python wheels
-support 3.10–3.14; this checkout requires 3.11–3.14.
+reuse the persistent ML-DSA-87 identity.
+Published Python wheels support CPython 3.11–3.14.
 
 | Integration | Package / installation | Reference |
 |---|---|---|
-| Portable CLI and MCP | `cargo install jacs-cli --version 0.15.0 --locked` | [CLI](https://github.com/HumanAssisted/JACS/blob/main/jacs-cli/README.md), [MCP](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md) |
-| Portable Rust primitives | `jacs-core = "=0.15.0"` | [Core API](https://github.com/HumanAssisted/JACS/blob/main/jacs-core/README.md) |
-| Rust integration library | `jacs = "=0.15.0"`, optional `a2a`, `agreements`, `attestation` features | [Rust library](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/docs/jacsbook/src/rust/library.md) |
-| Native Node.js | `npm install --save-exact @hai.ai/jacs@0.15.0` | [Node guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md) |
-| Python | `python -m pip install jacs==0.15.0` | [Python guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/README.md) |
-| Go with CGo | `github.com/HumanAssisted/JACS/jacsgo@v0.15.0`, plus its matching native library | [Go installation](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsgo/README.md) |
-| Browser | `npm install --save-exact @hai.ai/jacs-wasm@0.15.0` | [Browser guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) |
+| Portable CLI and MCP | `cargo install jacs-cli --version 0.16.0 --locked` | [CLI](https://github.com/HumanAssisted/JACS/blob/main/jacs-cli/README.md), [MCP](https://github.com/HumanAssisted/JACS/blob/main/jacs-mcp/README.md) |
+| Portable Rust primitives | `jacs-core = "=0.16.0"` | [Core API](https://github.com/HumanAssisted/JACS/blob/main/jacs-core/README.md) |
+| Rust integration library | `jacs = "=0.16.0"`, optional `a2a`, `agreements`, `attestation` features | [Rust library](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/docs/jacsbook/src/rust/library.md) |
+| Native Node.js | `npm install --save-exact @hai.ai/jacs@0.16.0` | [Node guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsnpm/README.md) |
+| Python | `python -m pip install jacs==0.16.0` | [Python guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacspy/README.md) |
+| Go with CGo | `github.com/HumanAssisted/JACS/jacsgo@v0.16.0`, plus its matching native library | [Go installation](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacsgo/README.md) |
+| Browser | `npm install --save-exact @hai.ai/jacs-wasm@0.16.0` | [Browser guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-wasm/README.md) |
 | Android / iOS | `jacs-mobile` plus its platform host libraries | [Mobile guide](https://github.com/HumanAssisted/JACS/blob/main/jacs-mobile/README.md) |
-| Extended Rust CLI and MCP | `cargo install jacs-cli-compat --version 0.15.0 --locked`; executable `jacs-compat` | [Extended MCP profiles](https://github.com/HumanAssisted/JACS/blob/main/docs/native-mcp.md) |
-| Storage | `jacs-duckdb`, `jacs-redb`, `jacs-postgresql`, `jacs-surrealdb`, all 0.15.0 | [Storage guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/docs/jacsbook/src/advanced/storage.md) |
+| Extended Rust CLI and MCP | `cargo install jacs-cli-compat --version 0.16.0 --locked`; executable `jacs-compat` | [Extended MCP profiles](https://github.com/HumanAssisted/JACS/blob/main/docs/native-mcp.md) |
+| Storage | `jacs-duckdb`, `jacs-redb` and `jacs-postgresql` 0.16.0; `jacs-surrealdb` 0.15.0, for use with `jacs` 0.15 only | [Storage guide](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs/docs/jacsbook/src/advanced/storage.md) |
 
 ## Choose by capability
 
