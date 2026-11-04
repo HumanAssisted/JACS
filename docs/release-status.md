@@ -28,10 +28,10 @@ native compatibility packages retain their separate workspace.
 The per-crate observations in
 [`release/shipped-artifacts.json`](../release/shipped-artifacts.json) distinguish
 every published package from the coordinated source version. Source validation
-alone does not establish publication. The 13 SDK envelope and media tests
-against the actual crates.io packages in the
-[0.15.0 record](../release/0.15.0-verification.json) have not been repeated for
-0.16.0.
+alone does not establish publication. The SDK's 13 envelope and media tests
+also pass against the published 0.16.0 crates.io packages, with no path or Git
+override (`sdk_registry_compatibility` in the
+[verification record](../release/0.16.0-verification.json)).
 
 <!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->
 | Surface | Shipped version/status | Prebuilt targets | CI/runtime evidence and limits |
