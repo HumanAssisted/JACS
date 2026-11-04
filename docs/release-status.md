@@ -1,46 +1,47 @@
 # Release status
 
 The release inventory was observed
-2026-09-21 against source version 0.15.0.
+2026-11-04 against source version 0.16.0.
 
 This inventory describes those recorded release artifacts, not every subsequent
-change in this repository. The new native PQ DID/JWK and Agent Card exports in
-the [identity guide](identity-standards.md) are source changes; their publication
-requires a separate release record.
+change in this repository. Source changes after the recorded release commits
+require a separate release record.
 
-Source version 0.16.0 is a release candidate, not a published release. The
-SurrealDB backend's lock contains source-only jsonwebtoken and object_store
-backports, which are not published fixes available to downstream crates.io
-consumers. The [release process](../RELEASING.md) rejects unpublished third-party
-dependencies during candidate preparation, packaging and publication, so
-`jacs-surrealdb` is held from 0.16.0 and remains at 0.15.0. See the
+Source version **0.16.0 is published and verified** across 16 of the 17 Rust
+crates, CLI binaries, native npm, Python, Go and WASM npm. The
+[verification record](../release/0.16.0-verification.json) records exact public
+artifacts, checksums, provenance, installed-consumer checks and the three release
+commits, which differ only in two CI workflow files. The SurrealDB backend's lock
+contains source-only jsonwebtoken and object_store backports, which are not
+published fixes available to downstream crates.io consumers. The
+[release process](../RELEASING.md) rejects unpublished third-party dependencies
+during candidate preparation, packaging and publication, so `jacs-surrealdb` was
+held from 0.16.0 and remains at 0.15.0; use it only with `jacs` 0.15. See the
 [source backports and release blockers](../archive/native/SECURITY_AUDIT.md#source-backports-and-release-blockers-after-the-2026-10-27-updates)
-for the current dependency status. This does not change the historical release
-inventory below.
+for the current dependency status.
 
-Source version **0.15.0 is published and verified** across all 17 Rust crates,
-CLI binaries, native npm, Python, Go and WASM npm. The
-[verification record](../release/0.15.0-verification.json) records exact public
-artifacts, checksums, provenance and installed-consumer checks. The initial WASM
-publication used its bootstrap token; trusted-publisher setup and removal of that
-temporary credential are tracked separately in the record. MCP remains the primary
-documented integration; native compatibility packages retain their separate workspace.
+`@hai.ai/jacs-wasm` 0.16.0 is the package's first publication through its npm
+trusted publisher; the 0.15.0 bootstrap credential is removed from CI, and the
+record tracks its revocation. MCP remains the primary documented integration;
+native compatibility packages retain their separate workspace.
 
 The per-crate observations in
 [`release/shipped-artifacts.json`](../release/shipped-artifacts.json) distinguish
 every published package from the coordinated source version. Source validation
-alone does not establish publication. The SDK also passes 13 envelope and media
-tests using the actual crates.io packages without local JACS overrides.
+alone does not establish publication. The 13 SDK envelope and media tests
+against the actual crates.io packages in the
+[0.15.0 record](../release/0.15.0-verification.json) have not been repeated for
+0.16.0.
 
 <!-- BEGIN GENERATED SHIPPED ARTIFACT MATRIX -->
 | Surface | Shipped version/status | Prebuilt targets | CI/runtime evidence and limits |
 |---|---|---|---|
-| Rust (17 portable and native crates) | crates.io `0.15.0`; published verified | portable Rust and isolated native compatibility crates; storage backends | All 17 registry archives match the source-bound attested candidate checksums. The checksum manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI; 13 SDK envelope/media tests also pass against the actual registry packages. |
-| CLI (`jacs-cli`) | crates.io and GitHub Releases `0.15.0`; published verified | macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc; Windows x86_64 | All five CLI archives, checksum files and SPDX inventory pass exact public-asset and hosted GitHub attestation verification. The published macOS arm64 binary passes PQ signing/verification, custody, rotation and verify-only MCP tests. |
-| Node.js (`@hai.ai/jacs`) | npm `0.15.0`; published verified | macOS arm64/x86_64; Linux arm64/x86_64 glibc and musl | The exact registry tarball matches its source-bound attested SHA-256 candidate checksum. Registry signatures/provenance, CJS/ESM PQ signing, tamper rejection, public exports, signing-input helpers and installed CLI checks pass; the durable SBOM is attested. |
-| Python (`jacs`) | PyPI `0.15.0`; published verified | macOS arm64/x86_64; Linux arm64/x86_64 glibc; Linux x86_64 musl; source distribution | Five wheels and the source distribution match the source-bound attested candidate checksums and all six pass PEP 740 verification. Published-wheel checks pass on Python 3.10–3.14 after index propagation; fresh macOS PQ signing, tamper rejection and human-approval proof checks pass. |
-| Go (`github.com/HumanAssisted/JACS/jacsgo`) | Go module proxy and GitHub Releases `0.15.0`; published verified | macOS arm64/amd64; Linux arm64/amd64 | The semantic Go module tag and four native libraries are public. All 12 exact release assets pass checksum and hosted attestation verification. External consumers pass on all four targets; a fresh macOS arm64 consumer also passes after moving the build tree and clearing its environment. |
-| Browser (`@hai.ai/jacs-wasm`) | npm `0.15.0`; published verified | browser WASM (Chromium verified) | The registry tarball matches its source-bound attested candidate checksum and has verified npm signature/provenance. The registry-installed browser package passes PQ sign/verify and tamper tests. Its durable checksum and SPDX SBOM are attested; trusted-publisher credential migration is tracked separately. |
+| Rust (17 portable and native crates) | crates.io `0.16.0`; published verified; except `jacs-surrealdb` held at `0.15.0` | portable Rust and isolated native compatibility crates; storage backends | All 16 published registry archives, downloaded and hashed, match their crates.io checksums and the source-bound attested candidate manifest. The manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI. Publication used the crates.io token fallback, not trusted publishing. |
+| CLI (`jacs-cli`) | crates.io and GitHub Releases `0.16.0`; published verified | macOS arm64; macOS x86_64; Linux x86_64 glibc; Linux arm64 glibc; Windows x86_64 | All 12 public assets (five archives, their checksum files, the manifest and SPDX inventory) pass exact-inventory, checksum and hosted GitHub attestation verification. The published macOS arm64 binary passes PQ signing/verification, tamper rejection, custody, re-encryption, rotation and verify-only MCP tests. |
+| Node.js (`@hai.ai/jacs`) | npm `0.16.0`; published verified | macOS arm64/x86_64; Linux arm64/x86_64 glibc; Linux x86_64 musl | The exact registry tarball matches its source-bound attested SHA-256 candidate checksum and was published through npm trusted publishing with SLSA provenance. Registry signature/provenance audit, CJS/ESM loading, CommonJS PQ signing with tamper and wrong-key rejection, public human-approval proof and CI postinstall/CLI shim checks pass; the durable SBOM is attested. No Linux arm64 musl binary ships. |
+| Python (`jacs`) | PyPI `0.16.0`; published verified | macOS arm64/x86_64; Linux arm64/x86_64 glibc; Linux x86_64 musl; source distribution | Five abi3 wheels for CPython 3.11 and newer and the source distribution match the source-bound attested candidate checksums, and all six pass PEP 740 verification. Published-wheel checks pass on Python 3.11–3.14; fresh macOS PQ signing, tamper rejection and human-approval proof checks pass. |
+| Go (`github.com/HumanAssisted/JACS/jacsgo`) | Go module proxy and GitHub Releases `0.16.0`; published verified | macOS arm64/amd64; Linux arm64/amd64 | The semantic Go module tag and four native libraries are public; a direct fetch of the tag matches sum.golang.org. All 12 exact release assets pass checksum and hosted attestation verification bound to the release commit. External consumers pass on all four targets; a fresh macOS arm64 consumer also passes after moving the build tree and clearing its environment. |
+| Browser (`@hai.ai/jacs-wasm`) | npm `0.16.0`; published verified | browser WASM (Chromium verified) | The registry tarball matches its source-bound attested candidate checksum. It is the package's first publication through its npm trusted publisher, with SLSA provenance. npm signature/provenance audit passes, and the registry-installed package passes PQ signing, verification and identity-transfer tamper tests in Chromium. Its durable checksum and SPDX SBOM are attested. |
 <!-- END GENERATED SHIPPED ARTIFACT MATRIX -->
 
 The release catalog includes portable crates, native compatibility crates,

@@ -3,7 +3,7 @@
 The coordinated source version is **0.16.0**. MCP is the primary documented
 integration; Rust, Node, Python, Go and browser packages all remain supported
 release surfaces. Consult [release status](docs/release-status.md) and the
-[0.15.0 verification record](release/0.15.0-verification.json) (the latest
+[0.16.0 verification record](release/0.16.0-verification.json) (the latest
 published release) for observed publication and installation evidence,
 separately from source versions.
 
@@ -101,25 +101,22 @@ npm trust github @hai.ai/jacs --repo HumanAssisted/JACS --file release-npm.yml -
 
 `@hai.ai/jacs-wasm` has existed since 0.15.0. That first release used a
 one-time bootstrap token, because npm requires an existing package before a
-trusted publisher can be registered. `release/0.15.0-verification.json` records
-the trusted publisher as awaiting configuration. Bootstrap mode
+trusted publisher can be registered. Its trusted publisher, with the same
+organization, repository and environment and **`release-wasm.yml`**, was
+configured on 2026-11-03; 0.16.0 was its first OIDC publication, and
+`release/0.16.0-verification.json` records the switch. The bootstrap variable
+and secret are removed from the `npm` environment. Bootstrap mode
 (`JACS_NPM_WASM_BOOTSTRAP=true` with the `NPM_WASM_BOOTSTRAP_TOKEN` secret) now
 always fails, because the workflow requires the package to return HTTP 404.
-Without a trusted publisher, OIDC publication fails after every gate passes.
-Before pushing `wasm-v0.16.0`:
+Without a trusted publisher, OIDC publication fails after every gate passes. To
+inspect or recreate it, use the npm website or an interactive 2FA session, and
+name the package explicitly; without a name, `npm trust list` reads the
+`package.json` in the current directory:
 
-1. Confirm or configure the package's trusted publisher, using the npm website
-   or an interactive 2FA session, with the same organization, repository and
-   environment and **`release-wasm.yml`**:
-
-   ```sh
-   npm trust github @hai.ai/jacs-wasm --repo HumanAssisted/JACS --file release-wasm.yml --env npm --allow-publish
-   ```
-
-2. Remove the `JACS_NPM_WASM_BOOTSTRAP` variable and the
-   `NPM_WASM_BOOTSTRAP_TOKEN` secret from the `npm` environment, and revoke
-   that temporary token in npm.
-3. After publication, record the switch in the 0.16.0 verification record.
+```sh
+npm trust list @hai.ai/jacs-wasm
+npm trust github @hai.ai/jacs-wasm --repo HumanAssisted/JACS --file release-wasm.yml --env npm --allow-publish
+```
 
 The npm CLI refuses publisher-setting changes authenticated only by a granular
 token that bypasses 2FA. Use the website or an interactive 2FA session for those
@@ -223,8 +220,8 @@ and [npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
    make release-jacsgo
    ```
 
-10. Release browser npm and wait for **Release @hai.ai/jacs-wasm**. First
-    confirm its trusted publisher and remove bootstrap mode (see [npm](#npm)):
+10. Release browser npm and wait for **Release @hai.ai/jacs-wasm**. It
+    publishes through its trusted publisher (see [npm](#npm)):
 
     ```sh
     make release-jacs-wasm
@@ -254,6 +251,17 @@ Every release target has a corresponding `plan-release-*`, `plan-retry-*` and
 release inventories before proposing retries. An unavailable registry or an
 unverifiable existing asset fails closed. Retries preserve the original tag's
 source identity; they never move a published version to new source.
+
+An npm post-publish smoke can install within seconds of the registry indexing a
+new version and receive HTTP 404 for its tarball. In 0.16.0 both npm tarballs
+served about four minutes after indexing. Wait until the tarball serves, then
+rerun only the failed jobs with `gh run rerun <run-id> --failed`; that repeats
+the smoke and durable-evidence jobs, not publication.
+
+proxy.golang.org can fetch a pushed `jacsgo/vVERSION` tag before its workflow
+finishes, and sum.golang.org then records that module hash permanently. Re-point
+an unreleased Go tag only to a commit with an identical `jacsgo/` tree and root
+`LICENSE`; otherwise, release a new version.
 
 | Surface | Tag |
 |---|---|

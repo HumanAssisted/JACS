@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "observed_at": "2026-09-21",
+  "observed_at": "2026-11-04",
   "review_baseline": "coordinated-portable-and-native-source",
   "source_version": "0.16.0",
   "historical_matrix": "archive/native/release/shipped-artifacts.json",
@@ -8,36 +8,36 @@
     "crate": {
       "package": "jacs-core, jacs-media, jacs, jacs-binding-core, jacs-mcp, jacs-cli, jacs-mcp-compat, jacs-cli-compat, jacs-wasm, jacs-mobile, jacsnpm, jacspy, jacsgo, jacs-duckdb, jacs-postgresql, jacs-redb, jacs-surrealdb",
       "registry": "crates.io",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "status": "published-verified",
       "platforms": [
         "portable Rust and isolated native compatibility crates; storage backends"
       ],
-      "evidence": "All 17 registry archives match the source-bound attested candidate checksums. The checksum manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI; 13 SDK envelope/media tests also pass against the actual registry packages.",
+      "evidence": "All 16 published registry archives, downloaded and hashed, match their crates.io checksums and the source-bound attested candidate manifest. The manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI. Publication used the crates.io token fallback, not trusted publishing.",
       "versions": {
-        "jacs-core": "0.15.0",
-        "jacs-media": "0.15.0",
-        "jacs": "0.15.0",
-        "jacs-binding-core": "0.15.0",
-        "jacs-mcp": "0.15.0",
-        "jacs-cli": "0.15.0",
-        "jacs-mcp-compat": "0.15.0",
-        "jacs-cli-compat": "0.15.0",
-        "jacs-wasm": "0.15.0",
-        "jacs-mobile": "0.15.0",
-        "jacsnpm": "0.15.0",
-        "jacspy": "0.15.0",
-        "jacsgo": "0.15.0",
-        "jacs-duckdb": "0.15.0",
-        "jacs-postgresql": "0.15.0",
-        "jacs-redb": "0.15.0",
+        "jacs-core": "0.16.0",
+        "jacs-media": "0.16.0",
+        "jacs": "0.16.0",
+        "jacs-binding-core": "0.16.0",
+        "jacs-mcp": "0.16.0",
+        "jacs-cli": "0.16.0",
+        "jacs-mcp-compat": "0.16.0",
+        "jacs-cli-compat": "0.16.0",
+        "jacs-wasm": "0.16.0",
+        "jacs-mobile": "0.16.0",
+        "jacsnpm": "0.16.0",
+        "jacspy": "0.16.0",
+        "jacsgo": "0.16.0",
+        "jacs-duckdb": "0.16.0",
+        "jacs-postgresql": "0.16.0",
+        "jacs-redb": "0.16.0",
         "jacs-surrealdb": "0.15.0"
       }
     },
     "cli": {
       "package": "jacs-cli",
       "registry": "crates.io and GitHub Releases",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "status": "published-verified",
       "platforms": [
         "macOS arm64",
@@ -46,33 +46,34 @@
         "Linux arm64 glibc",
         "Windows x86_64"
       ],
-      "evidence": "All five CLI archives, checksum files and SPDX inventory pass exact public-asset and hosted GitHub attestation verification. The published macOS arm64 binary passes PQ signing/verification, custody, rotation and verify-only MCP tests."
+      "evidence": "All 12 public assets (five archives, their checksum files, the manifest and SPDX inventory) pass exact-inventory, checksum and hosted GitHub attestation verification. The published macOS arm64 binary passes PQ signing/verification, tamper rejection, custody, re-encryption, rotation and verify-only MCP tests."
     },
     "wasm": {
       "package": "@hai.ai/jacs-wasm",
       "registry": "npm",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "status": "published-verified",
       "platforms": [
         "browser WASM (Chromium verified)"
       ],
-      "evidence": "The registry tarball matches its source-bound attested candidate checksum and has verified npm signature/provenance. The registry-installed browser package passes PQ sign/verify and tamper tests. Its durable checksum and SPDX SBOM are attested; trusted-publisher credential migration is tracked separately."
+      "evidence": "The registry tarball matches its source-bound attested candidate checksum. It is the package's first publication through its npm trusted publisher, with SLSA provenance. npm signature/provenance audit passes, and the registry-installed package passes PQ signing, verification and identity-transfer tamper tests in Chromium. Its durable checksum and SPDX SBOM are attested."
     },
     "npm": {
       "package": "@hai.ai/jacs",
       "registry": "npm",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "status": "published-verified",
       "platforms": [
         "macOS arm64/x86_64",
-        "Linux arm64/x86_64 glibc and musl"
+        "Linux arm64/x86_64 glibc",
+        "Linux x86_64 musl"
       ],
-      "evidence": "The exact registry tarball matches its source-bound attested SHA-256 candidate checksum. Registry signatures/provenance, CJS/ESM PQ signing, tamper rejection, public exports, signing-input helpers and installed CLI checks pass; the durable SBOM is attested."
+      "evidence": "The exact registry tarball matches its source-bound attested SHA-256 candidate checksum and was published through npm trusted publishing with SLSA provenance. Registry signature/provenance audit, CJS/ESM loading, CommonJS PQ signing with tamper and wrong-key rejection, public human-approval proof and CI postinstall/CLI shim checks pass; the durable SBOM is attested. No Linux arm64 musl binary ships."
     },
     "python": {
       "package": "jacs",
       "registry": "PyPI",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "status": "published-verified",
       "platforms": [
         "macOS arm64/x86_64",
@@ -80,20 +81,27 @@
         "Linux x86_64 musl",
         "source distribution"
       ],
-      "evidence": "Five wheels and the source distribution match the source-bound attested candidate checksums and all six pass PEP 740 verification. Published-wheel checks pass on Python 3.10\u20133.14 after index propagation; fresh macOS PQ signing, tamper rejection and human-approval proof checks pass."
+      "evidence": "Five abi3 wheels for CPython 3.11 and newer and the source distribution match the source-bound attested candidate checksums, and all six pass PEP 740 verification. Published-wheel checks pass on Python 3.11\u20133.14; fresh macOS PQ signing, tamper rejection and human-approval proof checks pass."
     },
     "go": {
       "package": "github.com/HumanAssisted/JACS/jacsgo",
       "registry": "Go module proxy and GitHub Releases",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "status": "published-verified",
       "platforms": [
         "macOS arm64/amd64",
         "Linux arm64/amd64"
       ],
-      "evidence": "The semantic Go module tag and four native libraries are public. All 12 exact release assets pass checksum and hosted attestation verification. External consumers pass on all four targets; a fresh macOS arm64 consumer also passes after moving the build tree and clearing its environment."
+      "evidence": "The semantic Go module tag and four native libraries are public; a direct fetch of the tag matches sum.golang.org. All 12 exact release assets pass checksum and hosted attestation verification bound to the release commit. External consumers pass on all four targets; a fresh macOS arm64 consumer also passes after moving the build tree and clearing its environment."
     }
   },
-  "source_commit": "10c16ba07d56b872e9c6c6ddd83a45af7bd8f94a",
-  "verification_record": "release/0.15.0-verification.json"
+  "source_commits": {
+    "rust": "6acf3b959a9c7e7d5d2f34c2536340c2122dbb8c",
+    "cli": "6acf3b959a9c7e7d5d2f34c2536340c2122dbb8c",
+    "npm": "023ac0631eceb45e0baa7939620c89cb6988b1b1",
+    "python": "023ac0631eceb45e0baa7939620c89cb6988b1b1",
+    "go": "7377359d3f15b4d614a7732305c88659288729f4",
+    "wasm": "7377359d3f15b4d614a7732305c88659288729f4"
+  },
+  "verification_record": "release/0.16.0-verification.json"
 }
