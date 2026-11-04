@@ -11,6 +11,11 @@
   generators now put `-` after every third hex digit, which caps both runs at
   three. A Rust regression test checks the construction against the real
   validator. Test and example code only.
+- Python and Node quickstart without a configured password no longer fails,
+  about once in 16,800 runs, with a password-policy error the user did not
+  cause. The binding-core generator now checks each candidate against the
+  native policy, retries up to 16 times and fails closed with an error instead
+  of returning a password that agent creation rejects.
 
 ## 0.16.0
 

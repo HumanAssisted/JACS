@@ -720,7 +720,7 @@ fn resolve_password_context(
     Ok((resolve_path_from_cwd("./jacs_keys")?, agent_id))
 }
 
-fn generate_private_key_password_value() -> String {
+fn generate_private_key_password_value() -> BindingResult<String> {
     use rand::Rng;
 
     const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -731,18 +731,28 @@ fn generate_private_key_password_value() -> String {
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+";
 
     let mut rng = rand::rng();
-    let mut password = String::with_capacity(32);
+    // About 1 in 16,800 uniform draws contains 4+ identical or 5+ sequential
+    // characters, which the native policy rejects. Retry against the real
+    // validator; fail closed rather than return a password quickstart rejects.
+    for _ in 0..16 {
+        let mut password = String::with_capacity(32);
 
-    password.push(UPPER[rng.random_range(0..UPPER.len())] as char);
-    password.push(LOWER[rng.random_range(0..LOWER.len())] as char);
-    password.push(DIGITS[rng.random_range(0..DIGITS.len())] as char);
-    password.push(SPECIAL[rng.random_range(0..SPECIAL.len())] as char);
+        password.push(UPPER[rng.random_range(0..UPPER.len())] as char);
+        password.push(LOWER[rng.random_range(0..LOWER.len())] as char);
+        password.push(DIGITS[rng.random_range(0..DIGITS.len())] as char);
+        password.push(SPECIAL[rng.random_range(0..SPECIAL.len())] as char);
 
-    for _ in 4..32 {
-        password.push(ALL[rng.random_range(0..ALL.len())] as char);
+        for _ in 4..32 {
+            password.push(ALL[rng.random_range(0..ALL.len())] as char);
+        }
+
+        if jacs::crypt::aes_encrypt::check_password_strength(&password).is_ok() {
+            return Ok(password);
+        }
     }
-
-    password
+    Err(BindingCoreError::generic(
+        "Failed to generate a private key password that meets JACS requirements",
+    ))
 }
 
 fn persist_password_file(key_directory: &Path, password: &str) -> BindingResult<()> {
@@ -3408,7 +3418,7 @@ pub fn quickstart_private_key_password(
         return Ok(existing);
     }
 
-    let password = generate_private_key_password_value();
+    let password = generate_private_key_password_value()?;
     if truthy_env_var("JACS_SAVE_PASSWORD_FILE") {
         let (resolved_key_directory, _agent_id) =
             resolve_password_context(config_path, key_directory)?;
@@ -3630,6 +3640,20 @@ mod tests {
             .to_path_buf();
         let dir = workspace.join("jacs/tests/fixtures/cross-language");
         if dir.exists() { Some(dir) } else { None }
+    }
+
+    #[test]
+    fn generated_quickstart_passwords_satisfy_the_native_policy() {
+        // Without the in-generator check about 1 in 16,825 draws is rejected,
+        // so 100,000 draws (about 3 s unoptimized) catch its removal with
+        // probability above 99.7%. Never print the generated value.
+        for _ in 0..100_000 {
+            let password = generate_private_key_password_value().expect("generated password");
+            assert!(
+                jacs::crypt::aes_encrypt::check_password_strength(&password).is_ok(),
+                "generated quickstart password violated the native policy"
+            );
+        }
     }
 
     #[test]
