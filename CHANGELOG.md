@@ -1,3 +1,14 @@
+## Unreleased
+
+### 2026-11-05 — Keep unchanged native builds fresh
+
+- Correct the native agreement schema guard's path to portable core after the
+  archive move. Published crates no longer watch an absent sibling, avoiding
+  repeated JACS and downstream recompilation on unchanged Cargo invocations.
+- Preserve schema equality checks and fail closed on missing or unreadable
+  schema copies. Six small Cargo regressions execute the actual build script;
+  the repository's dependency, release, licensing and policy checks pass.
+
 ## 0.16.0
 
 (Released 2026-11-03; `jacs-surrealdb` stays at 0.15.0. See the

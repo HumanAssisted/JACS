@@ -10,20 +10,29 @@ fn main() {
     // the workspace build if the jacs copy drifts. It is skipped automatically in
     // the published-crate context where the jacs-core sibling is absent.
     {
-        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
+        let manifest_dir =
+            PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Cargo sets CARGO_MANIFEST_DIR"));
         let jacs_copy = manifest_dir.join("schemas/agreement/v2/agreement.schema.json");
-        let core_copy =
-            manifest_dir.join("../jacs-core/schemas/agreement/v2/agreement.schema.json");
+        // Native compatibility moved to archive/native; portable core remains
+        // at the repository root. Never watch an absent published-crate sibling:
+        // Cargo treats a missing rerun-if-changed input as dirty on every build.
+        let core_dir = manifest_dir.join("../../../jacs-core");
+        let core_copy = core_dir.join("schemas/agreement/v2/agreement.schema.json");
+        let jacs_bytes = fs::read(&jacs_copy)
+            .unwrap_or_else(|error| panic!("cannot read '{}': {error}", jacs_copy.display()));
         println!("cargo:rerun-if-changed={}", jacs_copy.display());
-        println!("cargo:rerun-if-changed={}", core_copy.display());
-        if core_copy.exists() && jacs_copy.exists() {
-            let core_bytes = fs::read(&core_copy).unwrap_or_default();
-            let jacs_bytes = fs::read(&jacs_copy).unwrap_or_default();
+        if core_dir
+            .try_exists()
+            .unwrap_or_else(|error| panic!("cannot inspect '{}': {error}", core_dir.display()))
+        {
+            let core_bytes = fs::read(&core_copy)
+                .unwrap_or_else(|error| panic!("cannot read '{}': {error}", core_copy.display()));
+            println!("cargo:rerun-if-changed={}", core_copy.display());
             if core_bytes != jacs_bytes {
                 panic!(
                     "agreement v2 schema drift: '{}' (source of truth) differs from '{}'. \
 Copy jacs-core's schema over the jacs copy: \
-cp jacs-core/schemas/agreement/v2/agreement.schema.json jacs/schemas/agreement/v2/agreement.schema.json",
+cp jacs-core/schemas/agreement/v2/agreement.schema.json archive/native/jacs/schemas/agreement/v2/agreement.schema.json",
                     core_copy.display(),
                     jacs_copy.display()
                 );
