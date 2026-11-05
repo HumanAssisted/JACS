@@ -1,0 +1,590 @@
+{
+  "schema_version": 1,
+  "version": "0.16.1",
+  "source_commits": {
+    "rust": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "cli": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "npm": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "python": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "go": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "wasm": "b74cc064b4af5848d291810ec849e3a9552c05ba"
+  },
+  "source_commit_differences": [],
+  "observed_at": "2026-11-04T23:57:00Z",
+  "publication_complete": true,
+  "rust": {
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/crate/v0.16.1",
+    "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/41893335937",
+    "workflow_completion": "success",
+    "attempt": 1,
+    "source_ref": "refs/tags/crate/v0.16.1",
+    "source_commit": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "published": {
+      "jacs-core": {
+        "version": "0.16.1",
+        "checksum": "66495e0fdd1bbf3acea1de9230f1e711342cdd589cc9006a7ca50997f8ed1491",
+        "created_at": "2026-11-04T19:50:44.175161Z",
+        "size": 240084,
+        "registry_archive_verified": true
+      },
+      "jacs-media": {
+        "version": "0.16.1",
+        "checksum": "e4153f79247c1888873107670e35d96db1a5ad5bf57e6a402688d47947e5dbf9",
+        "created_at": "2026-11-04T19:50:48.621565Z",
+        "size": 74289,
+        "registry_archive_verified": true
+      },
+      "jacs": {
+        "version": "0.16.1",
+        "checksum": "2882a2ed68675c2a2007904b9f18608ca76c5a0ca0c77bf7d420da097e4a6a52",
+        "created_at": "2026-11-04T19:51:26.047195Z",
+        "size": 879150,
+        "registry_archive_verified": true
+      },
+      "jacs-binding-core": {
+        "version": "0.16.1",
+        "checksum": "50bd27a0b2a6a6e2edd94b668c3a8e16c53a692eed0e7e856e363d850ff7214f",
+        "created_at": "2026-11-04T19:51:53.205781Z",
+        "size": 183656,
+        "registry_archive_verified": true
+      },
+      "jacs-mcp": {
+        "version": "0.16.1",
+        "checksum": "7a02602fec2ad4b00f4a8d2dbb706aee198fd29233ff58159cdac4e49a6d663b",
+        "created_at": "2026-11-04T19:52:07.967252Z",
+        "size": 53063,
+        "registry_archive_verified": true
+      },
+      "jacs-cli": {
+        "version": "0.16.1",
+        "checksum": "e2370eba44e985bad241277aabb925d0d3d0c4f642fd94ec32a84b88bcfa569f",
+        "created_at": "2026-11-04T19:52:15.338863Z",
+        "size": 62645,
+        "registry_archive_verified": true
+      },
+      "jacs-mcp-compat": {
+        "version": "0.16.1",
+        "checksum": "cfecb321106bc74baff1230a11230639a59ae4abbd2eba9c2cd0ed457f748eeb",
+        "created_at": "2026-11-04T19:52:53.015413Z",
+        "size": 192295,
+        "registry_archive_verified": true
+      },
+      "jacs-cli-compat": {
+        "version": "0.16.1",
+        "checksum": "601089967422e608e8be7c3cbf20958a700a32b9ce758be4df50173160360d8e",
+        "created_at": "2026-11-04T19:53:30.226014Z",
+        "size": 154415,
+        "registry_archive_verified": true
+      },
+      "jacs-wasm": {
+        "version": "0.16.1",
+        "checksum": "58bd4633d38eec6308cd1e52af98907dfa943ae165c9e76db3288b9305ba0126",
+        "created_at": "2026-11-04T19:53:44.514959Z",
+        "size": 127430,
+        "registry_archive_verified": true
+      },
+      "jacs-mobile": {
+        "version": "0.16.1",
+        "checksum": "3398994e08591f909d50989edf9e5b9dc7f192781a072ceaeee46bb3cc629f47",
+        "created_at": "2026-11-04T19:53:59.209629Z",
+        "size": 120315,
+        "registry_archive_verified": true
+      },
+      "jacsnpm": {
+        "version": "0.16.1",
+        "checksum": "18ae682142890d5d6259b997edda9a589e1558c654d51f6e4b6fe6f08469c4dd",
+        "created_at": "2026-11-04T19:54:32.912689Z",
+        "size": 113703,
+        "registry_archive_verified": true
+      },
+      "jacspy": {
+        "version": "0.16.1",
+        "checksum": "cdf5583ffdb9cee68f1316afbd2a623d959110f2f4ff18334e67be18e960d7c3",
+        "created_at": "2026-11-04T19:55:04.550985Z",
+        "size": 250161,
+        "registry_archive_verified": true
+      },
+      "jacsgo": {
+        "version": "0.16.1",
+        "checksum": "ce8c90875b514632e1072f47ab513e640bbbdbd3a594fe61c9b7654255d1446d",
+        "created_at": "2026-11-04T19:55:26.681349Z",
+        "size": 99074,
+        "registry_archive_verified": true
+      },
+      "jacs-duckdb": {
+        "version": "0.16.1",
+        "checksum": "83fc093b14c7487349232d4568248a6435784887a5a43ffe28d961bfe12bd407",
+        "created_at": "2026-11-04T19:55:52.273899Z",
+        "size": 91878,
+        "registry_archive_verified": true
+      },
+      "jacs-postgresql": {
+        "version": "0.16.1",
+        "checksum": "6e9e262e998100979801fd8e5754826974b9706ccd5fce31d54b53d31edb8aca",
+        "created_at": "2026-11-04T19:56:19.047922Z",
+        "size": 96341,
+        "registry_archive_verified": true
+      },
+      "jacs-redb": {
+        "version": "0.16.1",
+        "checksum": "47bec5bfb29b22792647453cc147362ae5922b9607a5ba7c702c4200ea3db132",
+        "created_at": "2026-11-04T19:56:36.096377Z",
+        "size": 86413,
+        "registry_archive_verified": true
+      }
+    },
+    "held": {
+      "jacs-surrealdb": {
+        "version": "0.15.0",
+        "checksum": "7c5a98e5fa77573144da6cfa2e2626d4e0d30236f18d3e750031d8b72665305e",
+        "reason": "HELD_CRATES: its lock pins source-only jsonwebtoken and object_store backports. crates.io has no 0.16.0 or 0.16.1; use it only with jacs 0.15."
+      }
+    },
+    "publication_path": "CRATES_IO_TOKEN migration fallback. crates.io trusted publishing is not enabled, so no 0.16.1 version record carries a trusted-publisher binding (trustpub_data is null for all 16).",
+    "evidence_assets": [
+      {
+        "name": "jacs-rust-0.16.1-sha256sums.txt",
+        "size": 1440,
+        "digest": "sha256:da05a3cf52e2bacea0947ee2bf92c4075299639a50f2d5d208983a3381d215f1",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/crate/v0.16.1/jacs-rust-0.16.1-sha256sums.txt"
+      },
+      {
+        "name": "jacs-rust-packages.spdx.json",
+        "size": 12744019,
+        "digest": "sha256:e8c083eb87d16af1d60b336821cf9e2cd17cda7871c0f3cb8706a6a047f87eec",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/crate/v0.16.1/jacs-rust-packages.spdx.json"
+      },
+      {
+        "name": "pre-publish-rust-candidates.spdx.json",
+        "size": 12775109,
+        "digest": "sha256:fa902176624fda54596c3eb3c68bcd3194a46b15a2729806233f6b62c3a98643",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/crate/v0.16.1/pre-publish-rust-candidates.spdx.json"
+      }
+    ],
+    "verification": [
+      "16 of the 17 catalogued crates are published at 0.16.1, none yanked; HELD_CRATES keeps jacs-surrealdb at 0.15.0, and crates.io has no 0.16.1 for it.",
+      "All 16 downloaded registry archives hash to their crates.io checksums and to the entries of the attested checksum manifest, which lists exactly those 16 archives.",
+      "The three public evidence assets pass hosted GitHub attestations bound to release-crate.yml, refs/tags/crate/v0.16.1 and source digest b74cc064; a control requiring 7377359d fails for each.",
+      "The publish job's verify-and-publish step passed for each of the 16 crates on the first attempt.",
+      "CI's clean registry consumer, a fresh Cargo project in the publish job, builds jacs-core =0.16.1 from crates.io and verifies a PQ signature."
+    ]
+  },
+  "cli": {
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/cli/v0.16.1",
+    "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/41902185653",
+    "workflow_completion": "success",
+    "attempt": 1,
+    "source_ref": "refs/tags/cli/v0.16.1",
+    "source_commit": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "verification": [
+      "Exact 12-asset public inventory: five archives, a checksum file for each, sha256sums.txt and the SPDX inventory.",
+      "scripts/verify_github_release_attestations.py verifies every checksum and every asset's GitHub attestation for release-cli.yml and refs/tags/cli/v0.16.1 on hosted runners.",
+      "The macOS arm64 archive's attestation also enforces source digest b74cc064; a negative control with another digest fails.",
+      "The published macOS arm64 binary reports jacs 0.16.1 and passes scripts/smoke-portable-cli.py: PQ verification, tamper rejection, verify-only MCP over stdio, create/sign/verify, permissions, re-encryption, wrong-password rejection and rotation.",
+      "The archive's LICENSE-APACHE and THIRD-PARTY-NOTICES are byte-identical to the source commit's files."
+    ],
+    "assets": [
+      {
+        "name": "jacs-cli-0.16.1-darwin-arm64.tar.gz",
+        "size": 2530958,
+        "digest": "sha256:90c4a81ce05de94eb1b1f2dcd69be48a09bbf32478e4c72ba72c8b32a6741f77",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-darwin-arm64.tar.gz"
+      },
+      {
+        "name": "jacs-cli-0.16.1-darwin-arm64.tar.gz.sha256",
+        "size": 102,
+        "digest": "sha256:0028d290ad428a0b2a775bfab7fea4ac7d4cd13260cd7f58fdea236ab2670ac4",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-darwin-arm64.tar.gz.sha256"
+      },
+      {
+        "name": "jacs-cli-0.16.1-darwin-x64.tar.gz",
+        "size": 2633737,
+        "digest": "sha256:2e740e1193d29aec4e2e69122daceebd7398e6fa628c0866ae98fa741730f0ad",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-darwin-x64.tar.gz"
+      },
+      {
+        "name": "jacs-cli-0.16.1-darwin-x64.tar.gz.sha256",
+        "size": 100,
+        "digest": "sha256:f0b4430fdf54fa77d67d1374b5570b24c231b817b7019446c6ed3dd62dd16d32",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-darwin-x64.tar.gz.sha256"
+      },
+      {
+        "name": "jacs-cli-0.16.1-linux-arm64.tar.gz",
+        "size": 2811200,
+        "digest": "sha256:4acd040fa4bee4c604c4ac6d5171350f58c82709908e55ad27afe364ba3dc266",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-linux-arm64.tar.gz"
+      },
+      {
+        "name": "jacs-cli-0.16.1-linux-arm64.tar.gz.sha256",
+        "size": 101,
+        "digest": "sha256:5c0b0186f683b7489ae9e4de27b2f6f71207a170c4464b9d39cae3320443e7b7",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-linux-arm64.tar.gz.sha256"
+      },
+      {
+        "name": "jacs-cli-0.16.1-linux-x64.tar.gz",
+        "size": 3074063,
+        "digest": "sha256:4a36dd63d3c7e39905ddb6bf02f1a511d85a768fa1a85425da2089c7062b8841",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-linux-x64.tar.gz"
+      },
+      {
+        "name": "jacs-cli-0.16.1-linux-x64.tar.gz.sha256",
+        "size": 99,
+        "digest": "sha256:d8335f80df9af319aaeef8b5ad2b325d6aa8bdbf8682726de1908492d336b11a",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-linux-x64.tar.gz.sha256"
+      },
+      {
+        "name": "jacs-cli-0.16.1-windows-x64.zip",
+        "size": 2478745,
+        "digest": "sha256:2e1cf470e1fa9313c9dec78881064c2b75e45b443af29b65800f3109b1d6daa5",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-windows-x64.zip"
+      },
+      {
+        "name": "jacs-cli-0.16.1-windows-x64.zip.sha256",
+        "size": 99,
+        "digest": "sha256:5499aff1f4631ff28b888aca8189f58c3394a7f72c22e3720332ae9194375eb4",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-windows-x64.zip.sha256"
+      },
+      {
+        "name": "jacs-cli.spdx.json",
+        "size": 778,
+        "digest": "sha256:bd50b7b6305752f5fec9b7e27b11c02d7a0f36d6b3a91de6febe2e7bcc070ff6",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli.spdx.json"
+      },
+      {
+        "name": "sha256sums.txt",
+        "size": 501,
+        "digest": "sha256:255b7122a4c29e361da88169f3fe3da68d2835773fe0df6739a595c4f223e229",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/sha256sums.txt"
+      }
+    ]
+  },
+  "npm": {
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/npm/v0.16.1",
+    "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/41905815266",
+    "workflow_completion": "success",
+    "attempt": 2,
+    "publish_attempt": 1,
+    "source_ref": "refs/tags/npm/v0.16.1",
+    "source_commit": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "evidence_assets": [
+      {
+        "name": "hai.ai-jacs-0.16.1.tgz.sha256",
+        "size": 89,
+        "digest": "sha256:8a1612383ca650ed65da358675dbc6a84856c802f5042c3d1b2bf08e7a6c7d8b",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/npm/v0.16.1/hai.ai-jacs-0.16.1.tgz.sha256"
+      },
+      {
+        "name": "jacsnpm.spdx.json",
+        "size": 2411,
+        "digest": "sha256:2b34ec8c0a0c3e7b8a66d84b22cfe8c56d75a6eea32c17e4429815697d97f152",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/npm/v0.16.1/jacsnpm.spdx.json"
+      }
+    ],
+    "registry": {
+      "shasum": "2cda6d32d0b11c85e792ce8333a0e25071392932",
+      "tarball": "https://registry.npmjs.org/@hai.ai/jacs/-/jacs-0.16.1.tgz",
+      "fileCount": 62,
+      "integrity": "sha512-xARykUCfQiOIlQD3PKjrAXDko/+l06ASpnGxxKbaFwBDNwv5od5WAah++XmGsZjaUNRM4Z8GrYNcQdcyEgBipw==",
+      "signatures": [
+        {
+          "sig": "MEQCIBJ7qaFwa30qG2zRUzbeVl7il7X5N8V6T+TCscy9hu84AiBFKfKDXTQhmgykHTo3O5DCZ+olhcOmDBHSJoVO3HlroA==",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        },
+        {
+          "sig": "MEUCIQCnYefJiHE90dw3JbLDkfOOIVfsnVjnjRtyfXkvOMvXgAIgLobAXccKj+37mtQMHblKwRWbPPnKAzGdaizIIOV43l4=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@hai.ai%2fjacs@0.16.1",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 178958452
+    },
+    "registry_sha256": "2da4ca5155b312b725d9a93438ff00eb3e8b31352623fd3078a9a5ece2885feb",
+    "publisher": {
+      "name": "GitHub Actions",
+      "trustedPublisher": {
+        "id": "github",
+        "oidcConfigId": "1c161643-50f2-48c8-a90d-65483732d2cd"
+      }
+    },
+    "native_binaries": [
+      "jacs.darwin-arm64.node",
+      "jacs.darwin-x64.node",
+      "jacs.linux-arm64-gnu.node",
+      "jacs.linux-x64-gnu.node",
+      "jacs.linux-x64-musl.node"
+    ],
+    "verification": [
+      "The registry tarball's SHA-256 matches the attested candidate checksum; its SHA-1 and SHA-512 match the registry dist metadata.",
+      "Published through npm trusted publishing (OIDC) from release-npm.yml. Its SLSA v1 provenance names run 41905815266 attempt 1 at b74cc064 and passes gh attestation verify; a control requiring 7377359d fails.",
+      "Both public evidence assets, from attempt 2 of the run, pass hosted GitHub attestations bound to release-npm.yml, refs/tags/npm/v0.16.1 and source digest b74cc064.",
+      "A fresh macOS arm64 installation's files are identical to the verified tarball, and npm audit signatures verifies its registry signature and attestation.",
+      "That installation loads through CJS and ESM. Both sign and verify with pq2025, a tampered document is rejected, and the public human-approval proof verifies with wrong-context rejection. In a second fresh installation, another ephemeral agent rejects the first agent's pq2025 signature.",
+      "CI post-publish smoke passes the registry package's postinstall and installed CLI shim, CJS/ESM signing and signature/provenance audit on Linux x86_64."
+    ]
+  },
+  "python": {
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/pypi/v0.16.1",
+    "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/41913219989",
+    "workflow_completion": "success",
+    "attempt": 1,
+    "source_ref": "refs/tags/pypi/v0.16.1",
+    "source_commit": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "requires_python": "<3.15,>=3.11",
+    "evidence_assets": [
+      {
+        "name": "jacspy-0.16.1-sha256sums.txt",
+        "size": 654,
+        "digest": "sha256:a90d5d023f8b3e56afa3ba2eb6906aca50fbabf5bd31754294d0ad9a49c2786f",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/pypi/v0.16.1/jacspy-0.16.1-sha256sums.txt"
+      },
+      {
+        "name": "jacspy.spdx.json",
+        "size": 753,
+        "digest": "sha256:41132cb72f84c80bb8cd5dd8fa40d663b57e3767384d174e112219cd03f43aaa",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/pypi/v0.16.1/jacspy.spdx.json"
+      }
+    ],
+    "distributions": [
+      {
+        "filename": "jacs-0.16.1-cp311-abi3-macosx_10_12_x86_64.whl",
+        "sha256": "1726f2ca47d21c22a5091f3dacce3fe25afe77592055b118d32d71f46b9db41e",
+        "url": "https://files.pythonhosted.org/packages/4d/b8/be9245fd8b89cc2efde65e29e1857ef029b6f3de648e7736f82ceb44e086/jacs-0.16.1-cp311-abi3-macosx_10_12_x86_64.whl",
+        "size": 12250394
+      },
+      {
+        "filename": "jacs-0.16.1-cp311-abi3-macosx_11_0_arm64.whl",
+        "sha256": "63a38ac82ddff7e0c4d00dab3f9f58668d6905007c654b9690a14384498621a0",
+        "url": "https://files.pythonhosted.org/packages/41/0b/48242ef31ce1030c6eae29f815e345e5933c08ccf8d67410d82550419697/jacs-0.16.1-cp311-abi3-macosx_11_0_arm64.whl",
+        "size": 11908782
+      },
+      {
+        "filename": "jacs-0.16.1-cp311-abi3-manylinux_2_28_aarch64.whl",
+        "sha256": "02f8978071a60f7b95aef1c6a3047c0d55c531932ca9ee8cf2816787e6e6ac2f",
+        "url": "https://files.pythonhosted.org/packages/1c/a5/5516339b748a673567f4e1f4118b3c7dc40b00648de168585d5c898bb285/jacs-0.16.1-cp311-abi3-manylinux_2_28_aarch64.whl",
+        "size": 13504921
+      },
+      {
+        "filename": "jacs-0.16.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+        "sha256": "79d5b479435dba5aa7d5af9eaea309a08d3b3f7e7da566d2381d59e6564a2804",
+        "url": "https://files.pythonhosted.org/packages/f1/b3/0241ee94be8f8f4cafa8868c45b857e1ba6e39ce6b783aed5024f76f82c2/jacs-0.16.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+        "size": 13285038
+      },
+      {
+        "filename": "jacs-0.16.1-cp311-abi3-musllinux_1_2_x86_64.whl",
+        "sha256": "308fe159b1ba7f64e95ff84cd13dce8ed9e803ca730d735b4af6a26b391cb3a6",
+        "url": "https://files.pythonhosted.org/packages/67/e9/0391033e9a01c7f3006d7a37f14dcbc88f76b0ad56b0b746bbf92358258a/jacs-0.16.1-cp311-abi3-musllinux_1_2_x86_64.whl",
+        "size": 11918695
+      },
+      {
+        "filename": "jacs-0.16.1.tar.gz",
+        "sha256": "caa94a47069d8e202f7ad585890311d2238318e93a57048f928993c725b92cc7",
+        "url": "https://files.pythonhosted.org/packages/6a/6e/af370615cb11fc3cf100215029d13af323d72a56efae6e268faafdc25d64/jacs-0.16.1.tar.gz",
+        "size": 1795822
+      }
+    ],
+    "verification": [
+      "Both public evidence assets pass hosted GitHub attestations bound to release-pypi.yml, refs/tags/pypi/v0.16.1 and source digest b74cc064.",
+      "All six distribution digests match the attested candidate manifest by filename, with none missing or extra.",
+      "All six pass PEP 740 verification for HumanAssisted/JACS with the repository's pinned verifier; their signing certificate names release-pypi.yml, refs/tags/pypi/v0.16.1, commit b74cc064 and run 41913219989.",
+      "CI installs the wheel from PyPI on Linux x86_64 with Python 3.11, 3.12, 3.13 and 3.14 and passes the candidate and public human-approval smokes.",
+      "A fresh macOS arm64 Python 3.14 installation of the hash-checked arm64 wheel passes pq2025 signing, tamper rejection, the client API and public human-approval proof verification. In a second fresh installation from PyPI, another ephemeral agent rejects the first agent's pq2025 signature."
+    ]
+  },
+  "go": {
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/jacsgo/v0.16.1",
+    "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/41920382539",
+    "workflow_completion": "success",
+    "attempt": 1,
+    "source_ref": "refs/tags/jacsgo/v0.16.1",
+    "source_commit": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "module": {
+      "path": "github.com/HumanAssisted/JACS/jacsgo",
+      "version": "v0.16.1",
+      "sum": "h1:sh31cRIAiha3slWLTsAinmXUci21QnnM+W/FokxrgOs=",
+      "go_mod_sum": "h1:NkZ6ufJBAg4k+LJMdNjgR26c/h53jVjhvwDcFqagolc=",
+      "sumdb_record": 70807084,
+      "proxy_origin": "b74cc064b4af5848d291810ec849e3a9552c05ba"
+    },
+    "verification": [
+      "All 12 exact public assets (four native libraries, a checksum file for each, jacsgo-v0.16.1-sha256sums.txt, the SPDX inventory, LICENSE-APACHE and THIRD-PARTY-NOTICES) pass checksum and GitHub attestation verification for release-jacsgo.yml and refs/tags/jacsgo/v0.16.1 on hosted runners.",
+      "One SLSA v1 attestation from run 41920382539 attempt 1 covers all 12 asset digests. It also passes with source digest b74cc064; a control requiring 7377359d fails.",
+      "sum.golang.org record 70807084 holds the module and go.mod hashes for jacsgo v0.16.1. A direct fetch of the tag (GOPROXY=direct) resolves b74cc064 and reproduces both hashes, and proxy.golang.org's version metadata names the same commit.",
+      "A fresh macOS arm64 consumer fetches v0.16.1 directly, installs libjacsgo after matching it to the release's jacsgo-v0.16.1-sha256sums.txt, which the attestation check above covers, builds with vendored module sources, and runs after its build tree has moved, with an empty environment.",
+      "That consumer passes public human-approval proof verification with wrong-context rejection and verifies its pq2025 signature.",
+      "The release workflow's external consumers pass on darwin arm64/amd64 and linux arm64/amd64 with Go 1.26.10."
+    ],
+    "assets": [
+      {
+        "name": "LICENSE-APACHE",
+        "size": 10781,
+        "digest": "sha256:4cc3390a2c5dd039e15a49ee1dde93ccd8e07d13bf1e50e11a4e4dafe024fbdd",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/LICENSE-APACHE"
+      },
+      {
+        "name": "THIRD-PARTY-NOTICES",
+        "size": 132740,
+        "digest": "sha256:31a2e5e265d81345d12332061ebc42c957f277669ef587cfaeaadea4e4a9cbff",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/THIRD-PARTY-NOTICES"
+      },
+      {
+        "name": "jacsgo-v0.16.1-darwin-amd64.dylib",
+        "size": 32844240,
+        "digest": "sha256:2638b82f73a39db6352c35088952583e9a66005df797fdc8ffeaeab2fa418fd9",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-darwin-amd64.dylib"
+      },
+      {
+        "name": "jacsgo-v0.16.1-darwin-amd64.dylib.sha256",
+        "size": 100,
+        "digest": "sha256:1eab649715dc38e19064cde534a992c4cdf28e460a072b6f3d0c1274cb39bd24",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-darwin-amd64.dylib.sha256"
+      },
+      {
+        "name": "jacsgo-v0.16.1-darwin-arm64.dylib",
+        "size": 29499344,
+        "digest": "sha256:c2bc4b43a20a6358bae3c91bf6fe12b485dfc8c81b87c1445e06ee7c3a6e1598",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-darwin-arm64.dylib"
+      },
+      {
+        "name": "jacsgo-v0.16.1-darwin-arm64.dylib.sha256",
+        "size": 100,
+        "digest": "sha256:f46e09ea2e2ed7bfa2e510dc4b6e73b22a488282843c622f790ade5ba4ba7f83",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-darwin-arm64.dylib.sha256"
+      },
+      {
+        "name": "jacsgo-v0.16.1-linux-amd64.so",
+        "size": 38103056,
+        "digest": "sha256:cfea8d2f78ad93b9ec3439c44609918b86e527614efcc822801433a2dd1263ad",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-linux-amd64.so"
+      },
+      {
+        "name": "jacsgo-v0.16.1-linux-amd64.so.sha256",
+        "size": 96,
+        "digest": "sha256:7ef5af8bce68c75f716ac02b7665881979fc5da1742cc1505d06f71c8fbca354",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-linux-amd64.so.sha256"
+      },
+      {
+        "name": "jacsgo-v0.16.1-linux-arm64.so",
+        "size": 34955184,
+        "digest": "sha256:32e899f30618c3feabadb1adccc62757217f9d2e0d1719dc55ebb938bab06953",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-linux-arm64.so"
+      },
+      {
+        "name": "jacsgo-v0.16.1-linux-arm64.so.sha256",
+        "size": 96,
+        "digest": "sha256:b556852ac44ec751bbe7e51b07ed06c76fc1cf54f4e2d3f0837d8e62dcf7e706",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-linux-arm64.so.sha256"
+      },
+      {
+        "name": "jacsgo-v0.16.1-sha256sums.txt",
+        "size": 392,
+        "digest": "sha256:d12ce35a649bd9ecb0fc69d5aba3dc99dc275ba2df85fe5e2c164776b2d9da5a",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo-v0.16.1-sha256sums.txt"
+      },
+      {
+        "name": "jacsgo.spdx.json",
+        "size": 2044,
+        "digest": "sha256:cbcbf5625e0b758e316920d3d316609fbfaaff07fc215770b71e060b233f5438",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/jacsgo/v0.16.1/jacsgo.spdx.json"
+      }
+    ]
+  },
+  "wasm": {
+    "status": "published-verified",
+    "release": "https://github.com/HumanAssisted/JACS/releases/tag/wasm-v0.16.1",
+    "workflow_run": "https://github.com/HumanAssisted/JACS/actions/runs/41935510943",
+    "workflow_completion": "success",
+    "attempt": 1,
+    "publish_attempt": 1,
+    "source_ref": "refs/tags/wasm-v0.16.1",
+    "source_commit": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "registry": {
+      "shasum": "51ffe71427177869e063c52bce266f9b779a120d",
+      "tarball": "https://registry.npmjs.org/@hai.ai/jacs-wasm/-/jacs-wasm-0.16.1.tgz",
+      "fileCount": 13,
+      "integrity": "sha512-gn92h1Bf3ZHAEgLAZdx9Hb2t7DY+zpp7c4ps/DvaWPwFKNTf7nL+Zovq+xTe/xkF9bJBuFZGM8gZixudf3yl/Q==",
+      "signatures": [
+        {
+          "sig": "MEUCIA99Do9NfmonyVjd6RCEHOqynMDMrKurywS3c6aHwW+GAiEAnYiZ1Xl8ZkWXfsOX+xZdji6kzMqL9qRfcvz5dAu5vf4=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        },
+        {
+          "sig": "MEQCIBz5aKrWhF9NpG+s0X8w9nGi8fYuvioPr9cqZzHb/D94AiAytJWEFjXYTu5EulDQaHR2rUU8aT4pzX1KCFDMVAg0bw==",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@hai.ai%2fjacs-wasm@0.16.1",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 6800470
+    },
+    "registry_sha256": "72e63a296750f4c5903a5212d094cbf3d6030e74db54a25234bf7f34d7296315",
+    "publisher": {
+      "name": "GitHub Actions",
+      "trustedPublisher": {
+        "id": "github",
+        "oidcConfigId": "bd4c6af5-0655-4435-8899-60ba69b7a7db"
+      }
+    },
+    "evidence_assets": [
+      {
+        "name": "hai.ai-jacs-wasm-0.16.1.tgz.sha256",
+        "size": 94,
+        "digest": "sha256:8b3372e41169ad302942c2340f56f5885332388237f6b0a54b6c97600a17f0d5",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/wasm-v0.16.1/hai.ai-jacs-wasm-0.16.1.tgz.sha256"
+      },
+      {
+        "name": "jacs-wasm.spdx.json",
+        "size": 913,
+        "digest": "sha256:7ad935b35778177837d2aaa1787002bb0f3fd8481037e801e602c19223f2fb2d",
+        "browser_download_url": "https://github.com/HumanAssisted/JACS/releases/download/wasm-v0.16.1/jacs-wasm.spdx.json"
+      }
+    ],
+    "verification": [
+      "The registry tarball's SHA-256 matches the attested candidate checksum; its SHA-1 and SHA-512 match the registry dist metadata.",
+      "Published through the package's npm trusted publisher (OIDC) from release-wasm.yml. The registry records _npmUser GitHub Actions with oidcConfigId bd4c6af5, the configuration the maintainer created for HumanAssisted/JACS, release-wasm.yml and the npm environment, which holds no variables or secrets.",
+      "Its SLSA v1 provenance, from attempt 1 of run 41935510943, passes gh attestation verify against the downloaded tarball for release-wasm.yml, refs/tags/wasm-v0.16.1 and source digest b74cc064 on a hosted runner; a control requiring 7377359d fails.",
+      "Both public evidence assets pass hosted GitHub attestations from the same attempt, bound to release-wasm.yml, refs/tags/wasm-v0.16.1 and source digest b74cc064.",
+      "A fresh macOS arm64 installation is identical to the verified tarball, and npm audit signatures verifies its registry signature and attestation.",
+      "The registry-installed package passes the Vite browser smoke in Chromium, locally on macOS arm64 and in CI's post-publish job: default pq2025 signing and verification, then identity transfer for ed25519, ES256 and pq2025 with pinned-import tamper and wrong-identity rejection, re-encryption and a pq2025 worker."
+    ]
+  },
+  "credential_migration": {
+    "wasm_trusted_publisher": "@hai.ai/jacs-wasm 0.16.1 was published through the trusted publisher configured for 0.16.0.",
+    "bootstrap_token_revocation": "A maintainer action on npmjs.com, not observable from this repository; see remaining.",
+    "native_npm_publisher": "@hai.ai/jacs 0.16.1 was published through its trusted publisher.",
+    "crates_io": "Trusted publishing is not enabled. 0.16.1 used the CRATES_IO_TOKEN migration fallback."
+  },
+  "release_incidents": [
+    "Run 41905815266 attempt 1: npm accepted @hai.ai/jacs 0.16.1 at 20:54:57Z, but its registry publication time is 21:05:20Z. The post-publish smoke's wait expired at 21:00:09Z with the version still unavailable, which also skipped durable evidence. After the version served, attempt 2 reran only the failed jobs; publication was not repeated. The WASM smoke had no such delay."
+  ],
+  "remaining": {
+    "wasm_bootstrap_token": "Revoke the temporary npm token from the 0.15.0 WASM bootstrap publication on npmjs.com.",
+    "crates_io_trusted_publishing": "Configure crates.io trusted publishers, enable CRATES_IO_TRUSTED_PUBLISHING_ENABLED and revoke CRATES_IO_TOKEN, as RELEASING.md describes."
+  },
+  "limits": [
+    "This record describes only observed published artifacts. Unfinished workflows do not establish publication.",
+    "Mobile bundle delivery, deployed HAI email/API acceptance, Homebrew and documentation deployment are separate.",
+    "The SDK registry-compatibility run in release/0.16.0-verification.json exercised the 0.16.0 crates and was not repeated for 0.16.1.",
+    "The 0.16.1 GitHub releases are mutable; integrity rests on the attestations and registry checksums recorded here.",
+    "The CLI, npm, Python, Go and WASM SPDX documents are syft directory-root inventories that list no dependency packages. Go's lists its four libraries and npm's its five native binaries with all-zero SHA-1 placeholders; the CLI, Python and WASM documents list no files. They are attested evidence files, not dependency inventories.",
+    "All six release tags are unsigned; b74cc064 is a GitHub-signed merge commit. Every release shows target_commitish main, but its tag identifies the release commit, and the hosted attestations bind the artifacts to it.",
+    "Local execution covered macOS arm64 artifacts only. Other targets rely on their CI jobs plus checksum and attestation verification; the Windows custody branch was not exercised.",
+    "The CI crate consumer is a fresh Cargo project that shares the publish runner's Cargo home; the downloaded-archive comparison, not that consumer, establishes registry byte integrity.",
+    "No Linux arm64 musl npm binary or musllinux aarch64 wheel is published.",
+    "Browser checks exercised Chromium only.",
+    "Local Go checks used go1.27.3; the release workflow pins Go 1.26.10."
+  ]
+}

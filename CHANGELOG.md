@@ -1,9 +1,7 @@
 ## 0.16.1
 
-(unreleased)
-
-Release candidate; not yet published. See [release status](docs/release-status.md)
-for the artifacts actually shipped.
+(Released 2026-11-04; `jacs-surrealdb` stays at 0.15.0. See the
+[verified artifacts](release/0.16.1-verification.json).)
 
 - Python and Node quickstart without a configured password no longer fails,
   about once in 16,800 runs, on a generated password the policy rejects.

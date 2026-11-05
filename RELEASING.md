@@ -3,7 +3,7 @@
 The coordinated source version is **0.16.1**. MCP is the primary documented
 integration; Rust, Node, Python, Go and browser packages all remain supported
 release surfaces. Consult [release status](docs/release-status.md) and the
-[0.16.0 verification record](release/0.16.0-verification.json) (the latest
+[0.16.1 verification record](release/0.16.1-verification.json) (the latest
 published release) for observed publication and installation evidence,
 separately from source versions.
 
@@ -254,9 +254,11 @@ source identity; they never move a published version to new source.
 
 An npm post-publish smoke can install within seconds of the registry indexing a
 new version and receive HTTP 404 for its tarball. In 0.16.0 both npm tarballs
-served about four minutes after indexing. Wait until the tarball serves, then
-rerun only the failed jobs with `gh run rerun <run-id> --failed`; that repeats
-the smoke and durable-evidence jobs, not publication.
+served about four minutes after indexing. In 0.16.1 the native npm version
+itself appeared about ten minutes after `npm publish` succeeded, outlasting the
+smoke's wait. Wait until the tarball serves, then rerun only the failed jobs with
+`gh run rerun <run-id> --failed`; that repeats the smoke and durable-evidence
+jobs, not publication.
 
 proxy.golang.org can fetch a pushed `jacsgo/vVERSION` tag before its workflow
 finishes, and sum.golang.org then records that module hash permanently. Re-point
