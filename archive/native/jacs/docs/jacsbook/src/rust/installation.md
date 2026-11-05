@@ -31,7 +31,7 @@ For portable cryptography without I/O:
 
 ```toml
 [dependencies]
-jacs-core = "=0.16.0"
+jacs-core = "=0.16.1"
 serde_json = "1"
 ```
 
@@ -39,7 +39,7 @@ For native identity, storage and integrations:
 
 ```toml
 [dependencies]
-jacs = "=0.16.0"
+jacs = "=0.16.1"
 serde_json = "1"
 ```
 
@@ -51,7 +51,7 @@ by default. Select only the features your integration needs. The
 ## Publication and platforms
 
 The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-records 0.16.0 across 16 of the 17 Rust crates (`jacs-surrealdb` stays at 0.15.0),
+records 0.16.1 across 16 of the 17 Rust crates (`jacs-surrealdb` stays at 0.15.0),
 CLI archives and language packages.
 Cargo builds libraries from source. CLI archives cover macOS arm64/x86_64,
 Linux glibc arm64/x86_64 and Windows x86_64; this does not imply Windows Python,
