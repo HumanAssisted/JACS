@@ -54,7 +54,7 @@ see [extended profiles](https://humanassisted.github.io/JACS/native-mcp.html).
 ## Python
 
 ```bash
-python -m pip install jacs==0.16.0
+python -m pip install jacs==0.16.1
 ```
 
 ```python
@@ -71,7 +71,7 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 {{#include ../_snippets/node-registry-status.md}}
 
 ```bash
-npm install --save-exact @hai.ai/jacs@0.16.0
+npm install --save-exact @hai.ai/jacs@0.16.1
 ```
 
 ```javascript

@@ -17,7 +17,7 @@
 ## Installation
 
 ```bash
-npm install --save-exact @hai.ai/jacs@0.16.0
+npm install --save-exact @hai.ai/jacs@0.16.1
 ```
 
 The package includes prebuilt bindings. Its optional install script downloads a

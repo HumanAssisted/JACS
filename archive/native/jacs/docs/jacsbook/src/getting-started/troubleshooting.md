@@ -6,7 +6,7 @@ Common issues and solutions when installing or using JACS.
 
 ### pip install fails
 
-Published 0.16.0 wheels and this source checkout require Python 3.11–3.14. If no pre-built wheel exists for your platform, install the Rust toolchain and build from source:
+Published 0.16.1 wheels and this source checkout require Python 3.11–3.14. If no pre-built wheel exists for your platform, install the Rust toolchain and build from source:
 
 ```bash
 pip install maturin
@@ -22,7 +22,7 @@ with the documented Node and Rust toolchains.
 
 ### Alpine Linux / musl libc
 
-Published 0.16.0 includes a Python musllinux x86_64 wheel and an npm musl
+Published 0.16.1 includes a Python musllinux x86_64 wheel and an npm musl
 x86_64 addon; neither has a musl arm64 build. CLI archives are glibc-only; the Python/npm CLI shims
 reject musl even when library APIs work. Match the artifact to architecture
 and libc; see [deployment compatibility](deployment.md).

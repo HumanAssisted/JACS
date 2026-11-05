@@ -1,13 +1,13 @@
 # Go library
 
-The published module is `github.com/HumanAssisted/JACS/jacsgo@v0.16.0`.
+The published module is `github.com/HumanAssisted/JACS/jacsgo@v0.16.1`.
 It requires CGo, a C toolchain and the version-matched shared library.
 In a module that imports `github.com/HumanAssisted/JACS/jacsgo`:
 
 ```sh
-go get github.com/HumanAssisted/JACS/jacsgo@v0.16.0
+go get github.com/HumanAssisted/JACS/jacsgo@v0.16.1
 go mod vendor
-go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.16.0 -version v0.16.0
+go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.16.1 -version v0.16.1
 ```
 
 The installer verifies the native library's checksum and places it in the

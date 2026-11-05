@@ -9,14 +9,14 @@ from `jacs-cli-compat`; Go MCP examples are demos.
 
 ## Install
 
-Version 0.16.0 publishes the Go module and matching macOS/Linux native
+Version 0.16.1 publishes the Go module and matching macOS/Linux native
 libraries. `go get` alone does not provide the CGo library. In a module that
 imports `github.com/HumanAssisted/JACS/jacsgo`:
 
 ```bash
-go get github.com/HumanAssisted/JACS/jacsgo@v0.16.0
+go get github.com/HumanAssisted/JACS/jacsgo@v0.16.1
 go mod vendor
-go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.16.0 -version v0.16.0
+go run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v0.16.1 -version v0.16.1
 ```
 
 The installer writes a checksum-verified library into the vendored package's
