@@ -2,28 +2,28 @@
 class Jacs < Formula
   desc "Portable signed JSON and verify-only MCP server"
   homepage "https://github.com/HumanAssisted/JACS"
-  version "0.16.0"
+  version "0.16.1"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.0/jacs-cli-0.16.0-darwin-arm64.tar.gz"
-      sha256 "6d2faafa27972761b09a6a8501c69b608998d34a6757b277f79e6055798e84ad"
+      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-darwin-arm64.tar.gz"
+      sha256 "90c4a81ce05de94eb1b1f2dcd69be48a09bbf32478e4c72ba72c8b32a6741f77"
     end
     on_intel do
-      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.0/jacs-cli-0.16.0-darwin-x64.tar.gz"
-      sha256 "c6009e14873966b78a431fd44ba985d4c7d1d6e74cfce9916add7f82e8b333ee"
+      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-darwin-x64.tar.gz"
+      sha256 "2e740e1193d29aec4e2e69122daceebd7398e6fa628c0866ae98fa741730f0ad"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.0/jacs-cli-0.16.0-linux-arm64.tar.gz"
-      sha256 "a44abce7e5641f761880667cc465a4a35c39e35e81b14e6b1e4b1060ff7b587b"
+      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-linux-arm64.tar.gz"
+      sha256 "4acd040fa4bee4c604c4ac6d5171350f58c82709908e55ad27afe364ba3dc266"
     end
     on_intel do
-      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.0/jacs-cli-0.16.0-linux-x64.tar.gz"
-      sha256 "290a4fc0d7140aef1c761a9d4ce67ccac05e7c9788ad0cfbae1e0ee6817cedad"
+      url "https://github.com/HumanAssisted/JACS/releases/download/cli/v0.16.1/jacs-cli-0.16.1-linux-x64.tar.gz"
+      sha256 "4a36dd63d3c7e39905ddb6bf02f1a511d85a768fa1a85425da2089c7062b8841"
     end
   end
 
