@@ -1,3 +1,18 @@
+## Unreleased
+
+### 2026-11-05 — Keep unchanged native builds fresh
+
+- Correct the native agreement schema guard's path to portable core after the
+  archive move. Published package roots watch only their own schema, avoiding
+  repeated recompilation and comparison with unrelated ancestor directories.
+- Seven Cargo regressions preserve schema equality and unreadable-input checks.
+  Native candidate and iOS validation use supported `macos-latest` runners,
+  preserving all platform gates after GitHub retired macOS 14.
+- Remove the stale atomic-polyfill ignore and backport wasmtimer's pinning to
+  maintained primitives. Current audits pass with 29 actual WASM tests and no
+  new exception. The [source-only backport](archive/native/jacs-surrealdb/vendor/README.md)
+  retains SurrealDB's existing publication hold.
+
 ## 0.16.1
 
 (Released 2026-11-04; `jacs-surrealdb` stays at 0.15.0. See the

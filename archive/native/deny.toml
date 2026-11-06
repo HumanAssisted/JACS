@@ -290,11 +290,6 @@ ignore = [
     # Owner: JACS storage maintainers. Reviewed 2026-10-27 in SECURITY_AUDIT.md.
     # Review by: 2026-11-26.
     "RUSTSEC-2023-0071",
-    # atomic-polyfill is unmaintained in the standalone SurrealDB geometry
-    # graph; it has no reported vulnerability and is not cryptographic code.
-    # Owner: JACS storage maintainers. Reviewed 2026-10-27 in SECURITY_AUDIT.md.
-    # Review by: 2026-11-26.
-    "RUSTSEC-2023-0089",
     # bincode 2.0.1 is unmaintained in SurrealDB's surrealmx graph; no
     # exploitable flaw is reported and JACS has no direct bincode use.
     # Owner: JACS storage maintainers. Reviewed 2026-10-27 in SECURITY_AUDIT.md.

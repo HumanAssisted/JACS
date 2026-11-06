@@ -1,6 +1,6 @@
 # Temporary source dependency backports
 
-These two packages are complete copies of their published crates.io archives,
+These three packages are complete copies of their published crates.io archives,
 with the narrow changes below. They preserve their upstream licenses and public
 test fixtures. `Cargo.toml.orig` and `.cargo_vcs_info.json` remain unchanged.
 The normalized `Cargo.toml` files are the manifests Cargo actually builds.
@@ -25,6 +25,7 @@ The original archive checksums are:
 | --- | --- |
 | jsonwebtoken 10.4.0 | `eba32bfb4ffdeaca3e34431072faf01745c9b26d25504aa7a6cf5684334fc4fc` |
 | object_store 0.13.2 | `622acbc9100d3c10e2ee15804b0caa40e55c933d5aa53814cd520805b7958a49` |
+| wasmtimer 0.4.3 | `1c598d6b99ea013e35844697fc4670d08339d5cda15588f193c6beedd12f644b` |
 
 `object_store` raises only its optional `quick-xml` requirement from 0.39 to
 0.41, following upstream commit
@@ -52,6 +53,17 @@ WASM enables the appropriate JavaScript entropy features for both getrandom
 0.2 and the new 0.4 dependency. The latter is optional with `rust_crypto`.
 The AWS-LC backend, EdDSA and RSA implementations remain unchanged.
 
+`wasmtimer` removes its unmaintained pin-utils dependency following
+[RUSTSEC-2026-0441's migration guidance](https://rustsec.org/advisories/RUSTSEC-2026-0441.html).
+This is a local backport, not a merged upstream change. `Timeout<F>` uses
+`pin-project-lite` for structural projection, preserving support for `!Unpin`
+futures and polling the future before its deadline. `Interval` uses standard
+`Pin::new` for its already-Unpin `Sleep` field. Timer scheduling, public APIs
+and the original MIT license are unchanged. The dependency was already in the
+SurrealDB graph; its adapter lock changes only wasmtimer's source and removes
+pin-utils. The vendor's separate test lock is refreshed, including the old
+futures-util version that also depended on pin-utils.
+
 Each vendor is an independent Cargo workspace. Its checked-in test lockfile
 was refreshed and audited so CI can reproduce upstream tests without relying
 on the adapter's different dependency graph. The only existing vulnerability
@@ -72,20 +84,29 @@ cargo check --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwe
 cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/object_store/Cargo.toml --all-features --lib deserde_
 cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/object_store/Cargo.toml --all-features --lib to_xml
 cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/object_store/Cargo.toml --all-features --lib test_delegated_key_response
+cargo check --locked --manifest-path archive/native/jacs-surrealdb/Cargo.toml --target wasm32-unknown-unknown -p wasmtimer
+cd archive/native/jacs-surrealdb/vendor/wasmtimer
+wasm-pack test --node . --locked --all-features --test web --test backport_pin
 ```
 
 The added ECDSA tests verify independent RFC 6979 Appendix A.2.5/A.2.6
 ES256/ES384 vectors, both high-S and low-S signatures, tampering and invalid
 length rejection, signature widths, and independently decoded P-384 JWK
 coordinates. The same tests run against both backends. These vectors and all
-upstream fixture private keys are public test material.
+upstream fixture private keys are public test material. The wasmtimer check
+executes all 24 upstream WASM tests plus five added pinning regressions in
+Node: address stability, completion, expiry, cancellation/drop, ready-future
+precedence and ownership through getters/`into_inner`. Its independent lock
+uses wasm-bindgen 0.2.128; wasm-pack selects the matching test runner. The
+timer-only check separately validates the adapter's exact production lock
+(including wasm-bindgen 0.2.126) without compiling SurrealDB.
 
 Local validation also ran the complete RustCrypto suite, the AWS-LC integration
 suite, RustCrypto without PEM, all 189 available object_store library tests
 (four upstream tests ignored), and all 37 JACS SurrealDB conformance/storage
-tests. The object_store published archive includes its inline library tests;
+tests before the wasmtimer follow-up. The object_store published archive includes its inline library tests;
 its separately declared `tests/get_range_file.rs` was not included upstream,
-so use `--lib` for this vendored copy. Security CI audits the adapter and both
+so use `--lib` for this vendored copy. Security CI audits the adapter and all
 vendor test lockfiles; cargo-deny checks the adapter's resolved licenses and
 advisories. JACS's notice inventory includes these path dependencies as
 third-party packages.

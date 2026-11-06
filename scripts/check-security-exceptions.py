@@ -44,9 +44,9 @@ DOCUMENTED_EXCEPTIONS = BLOCKING_IGNORES | {
     "RUSTSEC-2023-0089",
     "RUSTSEC-2025-0141",
 }
-CARGO_DENY_IGNORES = {
-    advisory for advisory in DOCUMENTED_EXCEPTIONS if advisory.startswith("RUSTSEC-")
-}
+# atomic-polyfill remains a tracked whole-lock cargo-audit warning, but is not
+# in cargo-deny's selected graph. Do not restore its stale ignore there.
+CARGO_DENY_IGNORES = BLOCKING_IGNORES | {"RUSTSEC-2025-0141"}
 
 
 SURREAL_BACKEND_SHA256 = "06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa"

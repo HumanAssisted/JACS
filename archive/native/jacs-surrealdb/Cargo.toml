@@ -33,6 +33,7 @@ default = []
 [patch.crates-io]
 jsonwebtoken = { path = "vendor/jsonwebtoken" }
 object_store = { path = "vendor/object_store" }
+wasmtimer = { path = "vendor/wasmtimer" }
 
 [workspace]
 resolver = "3"

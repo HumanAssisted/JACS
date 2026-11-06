@@ -102,6 +102,19 @@ jobs:
           workspaces: |
             archive/native/jacs-surrealdb/vendor/jsonwebtoken
             archive/native/jacs-surrealdb/vendor/object_store
+            archive/native/jacs-surrealdb/vendor/wasmtimer
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+      - name: Install wasm-pack for actual WASM timer regressions
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+        with:
+          version: 'v0.12.1'
+      - name: Preserve timer behavior and pinned futures in WebAssembly
+        working-directory: archive/native/jacs-surrealdb/vendor/wasmtimer
+        run: wasm-pack test --node . --locked --all-features --test web --test backport_pin
+      - name: Check the timer with the adapter's exact WASM dependency graph
+        run: cargo check --locked --manifest-path archive/native/jacs-surrealdb/Cargo.toml --target wasm32-unknown-unknown -p wasmtimer
       - name: Preserve JWT ECDSA behavior with RustCrypto
         run: |
           cargo test --locked --manifest-path archive/native/jacs-surrealdb/vendor/jsonwebtoken/Cargo.toml --no-default-features --features rust_crypto,use_pem --test lib ecdsa::

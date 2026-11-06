@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1046
+Third-party packages: 1045
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -598,7 +598,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 477 package(s):
+Used by 476 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -855,7 +855,6 @@ Used by 477 package(s):
   - pest_derive 2.9.1 (https://github.com/pest-parser/pest)
   - pest_generator 2.9.1 (https://github.com/pest-parser/pest)
   - pest_meta 2.9.1 (https://github.com/pest-parser/pest)
-  - pin-utils 0.1.0 (https://github.com/rust-lang-nursery/pin-utils)
   - pkg-config 0.3.33 (https://github.com/rust-lang/pkg-config-rs)
   - pkg-config 0.3.34 (https://github.com/rust-lang/pkg-config-rs)
   - png 0.18.1 (https://github.com/image-rs/image-png)
