@@ -201,6 +201,27 @@ def readme_footer_edit(text, current, new, pattern, label):
     return replace_once(pattern, rf"\g<1>{new}\3", text, label)
 
 
+# Install commands in shipped READMEs name the package's own source version so
+# each published README installs the release it was packaged with.
+README_INSTALL_LINES = (
+    ("archive/native/README.md", "`cargo add jacs@={version}`"),
+    ("archive/native/README.md", "`python -m pip install jacs=={version}`"),
+    ("archive/native/README.md", "`npm install --save-exact @hai.ai/jacs@{version}`"),
+    ("archive/native/jacsnpm/README.md", "npm install --save-exact @hai.ai/jacs@{version}\n"),
+    ("archive/native/jacspy/README.md", "python -m pip install jacs=={version}\n"),
+    ("jacs-wasm/README.md", "npm install --save-exact @hai.ai/jacs-wasm@{version}\n"),
+    ("jacsgo/README.md", "go get github.com/HumanAssisted/JACS/jacsgo@v{version}\n"),
+    ("jacsgo/README.md", "jacsgo/cmd/jacsgo-install@v{version} -version v{version}\n"),
+)
+
+
+def install_line_edit(text, current, new, template, label):
+    old, updated = template.format(version=current), template.format(version=new)
+    require(text.count(old) == 1, f"{label}: expected one {old.strip()!r} install command")
+    require(updated not in text, f"{label}: install command already names {new}")
+    return text.replace(old, updated, 1)
+
+
 def python_project_edit(text, current, new):
     parsed = tomllib.loads(text)
     project = parsed.get("project", {})
@@ -277,6 +298,10 @@ def prepare(root, bump):
     edits[root / relative] = android_version_edit(read(relative), current, new)
     for relative, pattern in README_FOOTERS.items():
         edits[root / relative] = readme_footer_edit(read(relative), current, new, pattern, relative)
+    for relative, template in README_INSTALL_LINES:
+        path = root / relative
+        text = edits[path] if path in edits else read(relative)
+        edits[path] = install_line_edit(text, current, new, template, relative)
     # Align the source candidate without changing observed registry versions,
     # publication status, checksums, or provenance from previous releases.
     relative = "release/shipped-artifacts.json"

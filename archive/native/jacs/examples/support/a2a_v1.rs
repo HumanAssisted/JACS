@@ -5,8 +5,34 @@ use jacs::compatibility::exports;
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs::verification::{ExpectedSigner, NonSigningVerifier};
 use serde_json::{Value, json};
+use zeroize::Zeroizing;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// Synthetic process-local password that always satisfies the native policy.
+///
+/// Raw random hex can contain "0000" or "01234", which the policy rejects
+/// (4+ identical or 5+ sequential characters; crypt/constants.rs). A '-'
+/// after every third digit bounds both runs at three, because '-' is neither
+/// equal nor code-point adjacent to a hex digit. The Python and Node A2A SDK
+/// smokes use the same construction over 64 digits.
+pub fn synthetic_password_from_hex(digits: &str) -> Zeroizing<String> {
+    // Sized up front so pushes never reallocate and leave unwiped copies.
+    let mut password = Zeroizing::new(String::with_capacity(13 + 2 * digits.len()));
+    password.push_str("Synthetic!9aA");
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            password.push('-');
+        }
+        password.push(digit);
+    }
+    password
+}
+
+pub fn synthetic_password() -> Zeroizing<String> {
+    let digits = Zeroizing::new(format!("{:032x}", rand::random::<u128>()));
+    synthetic_password_from_hex(digits.as_str())
+}
 
 pub fn fixture(url: &str) -> Result<Value> {
     let scratch = tempfile::tempdir()?;
@@ -16,14 +42,14 @@ pub fn fixture(url: &str) -> Result<Value> {
     let config = scratch_root.join("jacs.config.json");
     let keys = scratch_root.join("keys");
     let data = scratch_root.join("data");
-    let password = format!("Synthetic!9aA{:032x}", rand::random::<u128>());
+    let password = synthetic_password();
     let (sender, info) = SimpleAgent::create_with_params(
         CreateAgentParams::builder()
             .name("Synthetic café 雪 🦀")
             .description("Finite local report exchange — no inferred authority")
             .domain("example.test")
             .algorithm("ed25519")
-            .password(&password)
+            .password(password.as_str())
             .config_path(config.to_str().ok_or("config path")?)
             .key_directory(keys.to_str().ok_or("key path")?)
             .data_directory(data.to_str().ok_or("data path")?)
@@ -31,7 +57,7 @@ pub fn fixture(url: &str) -> Result<Value> {
     )?;
     let mut core = Agent::from_config(
         jacs::config::Config::from_file(config.to_str().ok_or("config path")?)?,
-        Some(&password),
+        Some(password.as_str()),
     )?;
     let key_dir = keys.to_str().ok_or("key path")?;
     let projection = v1::project_agent_card(&core, url)?;

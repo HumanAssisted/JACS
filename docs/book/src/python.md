@@ -2,7 +2,7 @@
 
 ```sh
 python -m venv .venv
-.venv/bin/python -m pip install jacs==0.16.0
+.venv/bin/python -m pip install jacs==0.16.1
 ```
 
 Use the native Python library directly in services, tools and framework

@@ -5,7 +5,7 @@ For the primary ready-made JACS tool server, install `jacs-cli` and run
 integrations below serve different purposes. Install their optional dependency:
 
 ```bash
-python -m pip install "jacs[mcp]==0.16.0"
+python -m pip install "jacs[mcp]==0.16.1"
 ```
 
 When building this checkout, use its `mcp` extra and source Python requirements.

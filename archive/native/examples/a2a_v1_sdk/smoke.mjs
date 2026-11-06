@@ -42,7 +42,9 @@ async function fixture(messagingUrl) {
     await sender.create({
       name: 'SDK café 雪 🦀', description: 'Finite independently verified report',
       domain: 'example.test', algorithm: 'pq2025', defaultStorage: 'fs',
-      password: `Synthetic!9aA${randomBytes(32).toString('hex')}`,
+      // Raw hex can contain "0000" or "01234", which the native policy rejects;
+      // '-' after every third digit prevents both (jacs/examples/support/a2a_v1.rs).
+      password: `Synthetic!9aA${randomBytes(32).toString('hex').match(/.{1,3}/g).join('-')}`,
       configPath: join(work, 'jacs.config.json'),
       keyDirectory: join(work, 'keys'), dataDirectory: join(work, 'data'),
     });

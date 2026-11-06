@@ -1,6 +1,6 @@
 [package]
 name = "jacs-mobile"
-version = "0.16.0"
+version = "0.16.1"
 edition = "2024"
 rust-version = "1.97"
 description = "JACS portable UniFFI bindings for Android, iOS and React Native"
@@ -12,7 +12,7 @@ repository = "https://github.com/HumanAssisted/JACS"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
-jacs-core = { version = "0.16.0", path = "../jacs-core" }
+jacs-core = { version = "0.16.1", path = "../jacs-core" }
 # Runtime scaffolding only. UniFFI's default `cargo-metadata` feature names the
 # binding generator as a weak optional dependency, which Cargo then locks.
 # The generator lives in the unpublished tools/jacs-mobile-bindgen crate.

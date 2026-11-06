@@ -1,7 +1,7 @@
 # Deployment Compatibility
 
 The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-records verified 0.16.0 packages, platforms, checksums and provenance. Prebuilt,
+records verified 0.16.1 packages, platforms, checksums and provenance. Prebuilt,
 CI-tested and runtime-tested coverage differ; source compilation alone does not
 establish them. Later source changes need separate release evidence.
 
@@ -19,8 +19,8 @@ establish them. Later source changes need separate release evidence.
 ### Windows
 
 The observed Windows prebuilt is the x86_64 CLI only. Do not infer Windows
-Python or Node support from the CLI artifact: PyPI `0.16.0` has no Windows
-wheel, npm `0.16.0` has no Windows `.node` binary, and the Go bindings have no
+Python or Node support from the CLI artifact: PyPI `0.16.1` has no Windows
+wheel, npm `0.16.1` has no Windows `.node` binary, and the Go bindings have no
 Windows CGo linker directive or native asset. The browser/WASM source may be
 portable at the WebAssembly level, but no Windows browser runtime lane was
 recorded.
@@ -32,9 +32,9 @@ recorded.
 - Python glibc wheels are tagged `manylinux_2_28`; systems with glibc older
   than 2.28 cannot use those wheels. The observed musllinux wheel is x86_64
   only.
-- Node `0.16.0` ships glibc x86_64 and arm64 binaries and a musl x86_64 binary;
+- Node `0.16.1` ships glibc x86_64 and arm64 binaries and a musl x86_64 binary;
   there is no musl arm64 binary.
-- CLI `0.16.0` ships glibc Linux x86_64 and arm64 archives. No musl CLI archive
+- CLI `0.16.1` ships glibc Linux x86_64 and arm64 archives. No musl CLI archive
   is recorded in the shipped inventory.
 - A source build is a separate claim. It may work on additional targets when
   the required compiler, linker, libc headers, Rust dependencies, and system
@@ -52,7 +52,7 @@ silently falling back to an undocumented source build:
 
 ```dockerfile
 FROM --platform=linux/amd64 python:3.12-alpine
-RUN python -m pip install --only-binary=:all: "jacs==0.16.0"
+RUN python -m pip install --only-binary=:all: "jacs==0.16.1"
 ENV JACS_KEYCHAIN_BACKEND=disabled
 WORKDIR /app
 COPY . /app

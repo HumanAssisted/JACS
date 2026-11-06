@@ -60,9 +60,9 @@ signed artifacts, explicit A2A 1.0 Node/Python APIs and current SDK examples.
 
 | Integration | Install / guide |
 | --- | --- |
-| Native Rust | `jacs = "=0.16.0"`; [library guide](archive/native/jacs/docs/jacsbook/src/rust/library.md) |
-| Node.js | `npm install --save-exact @hai.ai/jacs@0.16.0` |
-| Python | `python -m pip install jacs==0.16.0` |
+| Native Rust | `jacs = "=0.16.1"`; [library guide](archive/native/jacs/docs/jacsbook/src/rust/library.md) |
+| Node.js | `npm install --save-exact @hai.ai/jacs@0.16.1` |
+| Python | `python -m pip install jacs==0.16.1` |
 | Go | [CGo and native library setup](archive/native/jacsgo/README.md) |
 | Browser | [WASM package and encrypted storage](jacs-wasm/README.md) |
 | Extended CLI / MCP | `cargo install jacs-cli-compat --locked`; executable `jacs-compat`; [profiles](docs/native-mcp.md) |
@@ -72,9 +72,9 @@ Native packages remain supported in the separate
 not retire those APIs. See [all packages and platform coverage](docs/libraries.md)
 and [examples](examples/README.md).
 
-**Published packages and this checkout can differ.** Version 0.16.0 has a
-recorded [release inventory](docs/release-status.md). It is the first release
-whose source includes the native PQ identity exports described in the
+**Published packages and this checkout can differ.** Version 0.16.1 has a
+recorded [release inventory](docs/release-status.md). Version 0.16.0 is the first
+release whose source includes the native PQ identity exports described in the
 [identity integration guide](docs/identity-standards.md). Later changes in this
 checkout are source work until a new release record lists them.
 

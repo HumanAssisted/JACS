@@ -8,14 +8,14 @@ Add JACS to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-jacs = "=0.16.0"
+jacs = "=0.16.1"
 ```
 
 ### Feature Flags
 
 ```toml
 [dependencies]
-jacs = { version = "=0.16.0", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
+jacs = { version = "=0.16.1", features = ["otlp-logs", "otlp-metrics", "otlp-tracing"] }
 ```
 
 | Feature | Description |

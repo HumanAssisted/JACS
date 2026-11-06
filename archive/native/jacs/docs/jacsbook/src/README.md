@@ -59,7 +59,7 @@ npm install @hai.ai/jacs
 
 ### Go
 
-`go get` needs the matching CGo shared library. Version 0.16.0 publishes both
+`go get` needs the matching CGo shared library. Each release publishes both
 the semantic module tag and native libraries for macOS and Linux. Follow
 [Go Installation and Quick Start](go/installation.md) for the verified installer
 or a full-repository source build.

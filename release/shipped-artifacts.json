@@ -2,42 +2,42 @@
   "schema_version": 2,
   "observed_at": "2026-11-04",
   "review_baseline": "coordinated-portable-and-native-source",
-  "source_version": "0.16.0",
+  "source_version": "0.16.1",
   "historical_matrix": "archive/native/release/shipped-artifacts.json",
   "artifacts": {
     "crate": {
       "package": "jacs-core, jacs-media, jacs, jacs-binding-core, jacs-mcp, jacs-cli, jacs-mcp-compat, jacs-cli-compat, jacs-wasm, jacs-mobile, jacsnpm, jacspy, jacsgo, jacs-duckdb, jacs-postgresql, jacs-redb, jacs-surrealdb",
       "registry": "crates.io",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "status": "published-verified",
       "platforms": [
         "portable Rust and isolated native compatibility crates; storage backends"
       ],
       "evidence": "All 16 published registry archives, downloaded and hashed, match their crates.io checksums and the source-bound attested candidate manifest. The manifest and both SPDX inventories pass hosted GitHub attestation verification. A clean registry consumer passes in CI. Publication used the crates.io token fallback, not trusted publishing.",
       "versions": {
-        "jacs-core": "0.16.0",
-        "jacs-media": "0.16.0",
-        "jacs": "0.16.0",
-        "jacs-binding-core": "0.16.0",
-        "jacs-mcp": "0.16.0",
-        "jacs-cli": "0.16.0",
-        "jacs-mcp-compat": "0.16.0",
-        "jacs-cli-compat": "0.16.0",
-        "jacs-wasm": "0.16.0",
-        "jacs-mobile": "0.16.0",
-        "jacsnpm": "0.16.0",
-        "jacspy": "0.16.0",
-        "jacsgo": "0.16.0",
-        "jacs-duckdb": "0.16.0",
-        "jacs-postgresql": "0.16.0",
-        "jacs-redb": "0.16.0",
+        "jacs-core": "0.16.1",
+        "jacs-media": "0.16.1",
+        "jacs": "0.16.1",
+        "jacs-binding-core": "0.16.1",
+        "jacs-mcp": "0.16.1",
+        "jacs-cli": "0.16.1",
+        "jacs-mcp-compat": "0.16.1",
+        "jacs-cli-compat": "0.16.1",
+        "jacs-wasm": "0.16.1",
+        "jacs-mobile": "0.16.1",
+        "jacsnpm": "0.16.1",
+        "jacspy": "0.16.1",
+        "jacsgo": "0.16.1",
+        "jacs-duckdb": "0.16.1",
+        "jacs-postgresql": "0.16.1",
+        "jacs-redb": "0.16.1",
         "jacs-surrealdb": "0.15.0"
       }
     },
     "cli": {
       "package": "jacs-cli",
       "registry": "crates.io and GitHub Releases",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "status": "published-verified",
       "platforms": [
         "macOS arm64",
@@ -51,17 +51,17 @@
     "wasm": {
       "package": "@hai.ai/jacs-wasm",
       "registry": "npm",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "status": "published-verified",
       "platforms": [
         "browser WASM (Chromium verified)"
       ],
-      "evidence": "The registry tarball matches its source-bound attested candidate checksum. It is the package's first publication through its npm trusted publisher, with SLSA provenance. npm signature/provenance audit passes, and the registry-installed package passes PQ signing, verification and identity-transfer tamper tests in Chromium. Its durable checksum and SPDX SBOM are attested."
+      "evidence": "The registry tarball matches its source-bound attested candidate checksum. It was published through its npm trusted publisher, with SLSA provenance. npm signature/provenance audit passes, and the registry-installed package passes PQ signing, verification and identity-transfer tamper tests in Chromium. Its durable checksum and SPDX SBOM are attested."
     },
     "npm": {
       "package": "@hai.ai/jacs",
       "registry": "npm",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "status": "published-verified",
       "platforms": [
         "macOS arm64/x86_64",
@@ -73,7 +73,7 @@
     "python": {
       "package": "jacs",
       "registry": "PyPI",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "status": "published-verified",
       "platforms": [
         "macOS arm64/x86_64",
@@ -86,7 +86,7 @@
     "go": {
       "package": "github.com/HumanAssisted/JACS/jacsgo",
       "registry": "Go module proxy and GitHub Releases",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "status": "published-verified",
       "platforms": [
         "macOS arm64/amd64",
@@ -96,12 +96,12 @@
     }
   },
   "source_commits": {
-    "rust": "6acf3b959a9c7e7d5d2f34c2536340c2122dbb8c",
-    "cli": "6acf3b959a9c7e7d5d2f34c2536340c2122dbb8c",
-    "npm": "023ac0631eceb45e0baa7939620c89cb6988b1b1",
-    "python": "023ac0631eceb45e0baa7939620c89cb6988b1b1",
-    "go": "7377359d3f15b4d614a7732305c88659288729f4",
-    "wasm": "7377359d3f15b4d614a7732305c88659288729f4"
+    "rust": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "cli": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "npm": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "python": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "go": "b74cc064b4af5848d291810ec849e3a9552c05ba",
+    "wasm": "b74cc064b4af5848d291810ec849e3a9552c05ba"
   },
-  "verification_record": "release/0.16.0-verification.json"
+  "verification_record": "release/0.16.1-verification.json"
 }

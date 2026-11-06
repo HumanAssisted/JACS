@@ -2,7 +2,7 @@
 
 Cryptographic identity, signing, and verification for AI agents — from Go.
 
-**Published 0.16.0:** The Go bindings remain supported and use CGo. The semantic
+**Published 0.16.1:** The Go bindings remain supported and use CGo. The semantic
 module tag and matching macOS/Linux native libraries are published and verified;
 see the [release inventory](../../../docs/release-status.md).
 
@@ -10,7 +10,7 @@ see the [release inventory](../../../docs/release-status.md).
 shared library. In a module that imports `github.com/HumanAssisted/JACS/jacsgo`:
 
 ```bash
-JACSGO_VERSION=v0.16.0
+JACSGO_VERSION=v0.16.1
 go get "github.com/HumanAssisted/JACS/jacsgo@${JACSGO_VERSION}"
 go mod vendor
 go run "github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@${JACSGO_VERSION}" \
@@ -152,7 +152,7 @@ require Rust. Building the native library from source requires the full JACS
 repository and Rust 1.97; the nested Go module alone does not contain its Rust
 path dependencies.
 
-## Published 0.16.0 native targets
+## Published 0.16.1 native targets
 
 | Go target | Release runner | Status |
 |---|---|---|

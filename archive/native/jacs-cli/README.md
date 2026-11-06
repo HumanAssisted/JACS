@@ -26,7 +26,7 @@ the native PQ identity. ES256 ecosystem exports are explicit and require a
 native-root-signed compatibility binding. See the
 [identity standards guide](https://github.com/HumanAssisted/JACS/blob/main/docs/identity-standards.md) for commands,
 scopes and peer support. The
-[release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records 0.16.0, the first published release with these exports.
+[release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md) records the published versions; 0.16.0 is the first published release with these exports.
 
 AP2 mandates and Agreement-v2 credential exports use the explicit ES256
 compatibility path and content scopes; they do not imply independent trust or
@@ -134,4 +134,4 @@ covers headless password setup.
 - [MCP Integration](https://humanassisted.github.io/JACS/integrations/mcp.html)
 - [JACS on crates.io](https://crates.io/crates/jacs-cli-compat)
 
-Source version 0.16.0 | [Apache-2.0](https://github.com/HumanAssisted/JACS/blob/main/archive/native/LICENSE-APACHE)
+Source version 0.16.1 | [Apache-2.0](https://github.com/HumanAssisted/JACS/blob/main/archive/native/LICENSE-APACHE)

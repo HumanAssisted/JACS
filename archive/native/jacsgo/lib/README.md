@@ -7,7 +7,7 @@ shared library consumed through CGo; Go applications use the
 `go get` alone does not install a matching native library. Use the Go installer
 or build the native library from the full repository with `make build-jacsgo`.
 The [release inventory](https://github.com/HumanAssisted/JACS/blob/main/docs/release-status.md)
-records 0.16.0 artifacts for macOS arm64/amd64 and Linux arm64/amd64. New source
+records published artifacts for macOS arm64/amd64 and Linux arm64/amd64. New source
 changes require separate release evidence. Current source builds require Rust
 1.97+, Go and a platform C toolchain.
 

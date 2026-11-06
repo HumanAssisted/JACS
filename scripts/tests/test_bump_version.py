@@ -16,6 +16,13 @@ README_FOOTERS = (
     ('archive/native/jacs/README.md', '**Source version**: '),
     ('archive/native/jacs-cli/README.md', 'Source version '),
 )
+INSTALL_READMES = {
+    'archive/native/README.md': '| Rust | `cargo add jacs@={v}` |\n| Python | `python -m pip install jacs=={v}` |\n| Node | `npm install --save-exact @hai.ai/jacs@{v}` |\n',
+    'archive/native/jacsnpm/README.md': 'npm install --save-exact @hai.ai/jacs@{v}\n',
+    'archive/native/jacspy/README.md': 'python -m pip install jacs=={v}\n',
+    'jacs-wasm/README.md': 'npm install --save-exact @hai.ai/jacs-wasm@{v}\n',
+    'jacsgo/README.md': 'go get github.com/HumanAssisted/JACS/jacsgo@v{v}\ngo run github.com/HumanAssisted/JACS/jacsgo/cmd/jacsgo-install@v{v} -version v{v}\n',
+}
 
 ARCHIVE_LOCKS = (
     "archive/native/Cargo.lock",
@@ -85,6 +92,8 @@ class BumpVersionTests(unittest.TestCase):
         self.write('archive/native/untouched.txt', 'ARCHIVED SENTINEL\n')
         for relative, prefix in README_FOOTERS:
             self.write(relative, f'# Fixture\n\nSource version is in the footer.\n\n{prefix}0.13.0 | [Apache-2.0](LICENSE)\n')
+        for relative, template in INSTALL_READMES.items():
+            self.write(relative, '# Fixture\n\n' + template.format(v='0.13.0'))
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -151,7 +160,9 @@ class BumpVersionTests(unittest.TestCase):
                 for relative, prefix in README_FOOTERS:
                     self.assertEqual((self.root / relative).read_text(),
                                      before[relative].decode().replace(f'{prefix}0.13.0 |', f'{prefix}{expected} |'))
-                editable_archive = {*ARCHIVE_LOCKS, *CRATE_MANIFESTS.values(), *(relative for relative, _ in README_FOOTERS), 'archive/native/jacsnpm/package.json', 'archive/native/jacsnpm/package-lock.json', 'archive/native/jacspy/pyproject.toml', 'archive/native/jacspy/uv.lock', 'archive/native/jacs-mcp/contract/jacs-mcp-contract.json'}
+                for relative, template in INSTALL_READMES.items():
+                    self.assertEqual((self.root / relative).read_text(), '# Fixture\n\n' + template.format(v=expected))
+                editable_archive = {*ARCHIVE_LOCKS, *CRATE_MANIFESTS.values(), *(relative for relative, _ in README_FOOTERS), *INSTALL_READMES, 'archive/native/jacsnpm/package.json', 'archive/native/jacsnpm/package-lock.json', 'archive/native/jacspy/pyproject.toml', 'archive/native/jacspy/uv.lock', 'archive/native/jacs-mcp/contract/jacs-mcp-contract.json'}
                 for relative in CRATE_MANIFESTS.values():
                     self.assertEqual(tomllib.loads((self.root / relative).read_text())['package']['version'], expected)
                 python = tomllib.loads((self.root / 'archive/native/jacspy/pyproject.toml').read_text())['project']
@@ -198,6 +209,8 @@ class BumpVersionTests(unittest.TestCase):
             ('archive/native/jacs-surrealdb/Cargo.lock', 'name = "jacs-core"\nversion = "0.13.0"', 'name = "jacs-core"\nversion = "0.12.0"'),
             ('archive/native/jacs/README.md', '**Source version**: 0.13.0', '**Source version**: 0.12.0'),
             ('archive/native/jacs-cli/README.md', 'Source version 0.13.0 |', 'Source version 0.13.0 |\nSource version 0.13.0 |'),
+            ('archive/native/jacspy/README.md', 'jacs==0.13.0', 'jacs==0.12.0'),
+            ('jacsgo/README.md', 'jacsgo@v0.13.0\n', 'jacsgo@v0.13.0\ngo get github.com/HumanAssisted/JACS/jacsgo@v0.13.0\n'),
         ]
         for filename, old, new in cases:
             with self.subTest(filename=filename, invalid=new):

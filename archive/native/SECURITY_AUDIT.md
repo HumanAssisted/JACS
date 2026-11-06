@@ -63,7 +63,7 @@ still resolve the vulnerable upstream versions. Rust release preparation,
 packaging and publication explicitly reject these unpublished dependencies.
 Compatible published fixes are required before a crates.io release can qualify;
 the source backports must not be represented as already published fixes.
-Release 0.16.0 therefore holds `jacs-surrealdb` (`HELD_CRATES` in
+Releases since 0.16.0 therefore hold `jacs-surrealdb` (`HELD_CRATES` in
 `scripts/release_catalog.py`): its source version stays aligned, but its lock is
 outside the release candidate and crates.io keeps 0.15.0 until those fixes exist.
 

@@ -67,7 +67,7 @@ Used by 1 package(s):
 License expression: Apache-2.0
 Used by 4 package(s):
 
-  - rmcp 3.8.0 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rmcp 3.7.0 (https://github.com/modelcontextprotocol/rust-sdk/)
   - rpassword 7.5.4 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
   - unicode-general-category 1.1.0 (https://github.com/yeslogic/unicode-general-category)
