@@ -40,24 +40,31 @@ Removing the stale ignore cleared that diagnostic while retaining the
 whole-lock cargo-audit warning, its review deadline and the existing
 exact-parent checks. No dependency or platform coverage was removed.
 
-The same audit now fails on [RUSTSEC-2026-0441](https://rustsec.org/advisories/RUSTSEC-2026-0441.html),
+The same audit exposed [RUSTSEC-2026-0441](https://rustsec.org/advisories/RUSTSEC-2026-0441.html),
 issued November 5 for unmaintained `pin-utils`. The separate SurrealDB lock
-reaches `pin-utils 0.1.0` through `wasmtimer 0.4.3` on WASM; the native Darwin
-dependency tree does not contain it. This is a maintenance advisory, with no
+reached `pin-utils 0.1.0` through `wasmtimer 0.4.3` on WASM; the native Darwin
+dependency tree did not contain it. This is a maintenance advisory, with no
 patched version or reported exploitable flaw. The current
 [crates.io version list](https://crates.io/api/v1/crates/wasmtimer) still ends at
 0.4.3, and [upstream's manifest](https://github.com/whizsid/wasmtimer-rs/blob/master/Cargo.toml)
 still enables pin-utils for its Tokio support. Upgrading pin-utils to 0.1.1
 would not resolve an advisory covering every version.
 
-The required audit remains blocked until a compatible upstream replacement or
-a separately reviewed backport with WASM validation removes that dependency.
-No new ignore was added. SurrealDB's existing release hold below still applies.
+A narrow [source backport](jacs-surrealdb/vendor/README.md) now replaces
+wasmtimer's pin-utils projections with `pin-project-lite` and standard `Pin`.
+The SurrealDB lock removes pin-utils without upgrading SurrealDB or changing
+any other dependency version. All 24 upstream WASM tests and five added
+pinning/cancellation regressions pass in Node, including address-stable
+`!Unpin` futures, expiry and simultaneous readiness. Current all-feature
+SurrealDB cargo-deny advisory/license checks pass; the separate timer test
+lock also passes cargo-audit and cargo-deny. CI retains these WASM executions
+and audits. No ignore or platform exclusion was added. SurrealDB's existing
+release hold below still applies; the backport is not a published fix.
 
 ### Source backports and release blockers after the 2026-10-27 updates
 
 The SurrealDB source lock removes the following vulnerable transitive versions
-using narrow backports to two vendored dependencies. Their original licenses,
+using narrow backports to three vendored dependencies. Their original licenses,
 upstream tests and source provenance are retained in `jacs-surrealdb/vendor`.
 No new advisory exception has been added.
 
@@ -65,12 +72,13 @@ No new advisory exception has been added.
 |---|---|---|
 | `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | Backport the P-256/P-384 0.14 migration from jsonwebtoken PR #551 to compatible jsonwebtoken 10.4.0, preserving its public signature traits. The source lock now uses `crypto-bigint 0.7.10`. Upgrading to the published jsonwebtoken 11.1 alone would not fix this path. |
 | `quick-xml 0.39.4` | RUSTSEC-2026-0194 / RUSTSEC-2026-0195 | Backport the `quick-xml 0.41` dependency migration to compatible object_store 0.13.2 without changing SurrealDB's cloud backend API or feature set. |
+| `pin-utils 0.1.0` | RUSTSEC-2026-0441 | Replace wasmtimer 0.4.3's field projections with maintained pin-project-lite and standard Pin; preserve its timer API and execute upstream and added tests in WASM. |
 
 The crypto path is target-specific to SurrealDB's WASM RustCrypto backend;
 complete-lock audits continue to cover it even on native Linux. Existing RSA,
 atomic-polyfill and bincode dispositions above remain separately enforced.
 
-Both vendored crates retain separate, locked upstream test graphs, which CI
+All vendored crates retain separate, locked upstream test graphs, which CI
 audits continuously. The object_store test lock has no advisory waiver. The
 JWT test lock shares only the existing RSA advisory disposition and its
 2026-11-26 deadline: upstream RSA regression tests use public synthetic private

@@ -39,6 +39,27 @@ def make_target_block(text: str, name: str) -> str:
 
 class ReleaseCandidatePreflightTests(unittest.TestCase):
 
+    def test_timer_backport_executes_wasm_and_audits_its_test_lock(self) -> None:
+        backports = job_block(workflow_text("rust.yml"), "dependency-backports")
+        self.assertIn("targets: wasm32-unknown-unknown", backports)
+        self.assertIn("working-directory: archive/native/jacs-surrealdb/vendor/wasmtimer", backports)
+        self.assertIn("wasm-pack test --node . --locked --all-features --test web --test backport_pin", backports)
+        self.assertIn("cargo check --locked --manifest-path archive/native/jacs-surrealdb/Cargo.toml --target wasm32-unknown-unknown -p wasmtimer", backports)
+        security = workflow_text("security.yml")
+        self.assertIn("cargo audit --file archive/native/jacs-surrealdb/vendor/wasmtimer/Cargo.lock", security)
+        self.assertIn("cargo deny --manifest-path archive/native/jacs-surrealdb/vendor/wasmtimer/Cargo.toml --all-features check --config deny.toml advisories licenses", security)
+
+    def test_apple_binding_gates_keep_supported_runners_and_platform_coverage(self) -> None:
+        native = job_block(workflow_text("native-bindings.yml"), "candidates")
+        self.assertRegex(native, r"(?m)^        os: \[ubuntu-latest, macos-latest\]$")
+        self.assertIn("runs-on: ${{ matrix.os }}", native)
+        mobile = workflow_text("mobile-bindings.yml")
+        ios = job_block(mobile, "ios-source")
+        self.assertRegex(ios, r"(?m)^    runs-on: macos-latest$")
+        self.assertIn("build-ios-xcframework.sh --reuse-bindings", ios)
+        self.assertIn("check-ios-tests.sh", ios)
+        self.assertIn("run-android-instrumented.sh", job_block(mobile, "android-source"))
+
 
     def test_every_executable_release_job_has_an_explicit_timeout(self) -> None:
         workflows = (

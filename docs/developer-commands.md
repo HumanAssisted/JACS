@@ -33,6 +33,13 @@ These commands restore access to retained suites; adding a shortcut does not
 establish that every optional backend or historical fixture suite has passed.
 The release workflows remain the evidence for the published candidates.
 
+Native Node/Python/Go candidates and iOS binding validation use GitHub's
+`macos-latest` runner, matching portable validation and the macOS release jobs.
+GitHub [retired macOS 14 runners on November 2, 2026](https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement/);
+jobs using that label fail before any build or test can start. Runner changes
+still require the installed-package and iOS simulator gates to pass; a passing
+portable Rust job alone does not qualify those surfaces.
+
 Automatic disk deletion, local credential-based `publish-*` commands and tag
 deletion are not restored. The shared-cache guide covers deliberate cleanup;
 the CI release commands preserve candidate verification and immutable retries.

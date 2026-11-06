@@ -5,13 +5,13 @@
 - Correct the native agreement schema guard's path to portable core after the
   archive move. Published package roots watch only their own schema, avoiding
   repeated recompilation and comparison with unrelated ancestor directories.
-- Preserve schema equality checks and fail closed on missing or unreadable
-  schema copies. Seven small Cargo regressions execute the actual build script;
-  the repository's dependency, release, licensing and policy checks pass.
-- Remove the stale atomic-polyfill cargo-deny ignore. The current SurrealDB
-  audit remains blocked by the newly issued pin-utils maintenance advisory;
-  [remediation status](archive/native/SECURITY_AUDIT.md#2026-11-05-audit-follow-up)
-  is documented without adding an exception.
+- Seven Cargo regressions preserve schema equality and unreadable-input checks.
+  Native candidate and iOS validation use supported `macos-latest` runners,
+  preserving all platform gates after GitHub retired macOS 14.
+- Remove the stale atomic-polyfill ignore and backport wasmtimer's pinning to
+  maintained primitives. Current audits pass with 29 actual WASM tests and no
+  new exception. The [source-only backport](archive/native/jacs-surrealdb/vendor/README.md)
+  retains SurrealDB's existing publication hold.
 
 ## 0.16.1
 

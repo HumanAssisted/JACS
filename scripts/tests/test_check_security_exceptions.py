@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import importlib.util
+import hashlib
+import json
 import tempfile
 import tomllib
 import unittest
@@ -18,6 +20,23 @@ REVIEWED_CLARIFICATIONS = ROOT / "scripts/third_party_license_clarifications.tom
 
 
 class SecurityExceptionPolicyTests(unittest.TestCase):
+    def test_vendor_sources_and_patches_match_reviewed_provenance(self) -> None:
+        vendor = ROOT / "jacs-surrealdb/vendor"
+        provenance = json.loads((vendor / "provenance.json").read_text())
+        for package in provenance["packages"]:
+            with self.subTest(package=package["name"]):
+                patch = (vendor / package["patch_file"]).read_bytes()
+                self.assertEqual(hashlib.sha256(patch).hexdigest(), package["patch_sha256"])
+                for name, digest in package["source_files_sha256"].items():
+                    source = (vendor / package["name"] / name).read_bytes()
+                    self.assertEqual(hashlib.sha256(source).hexdigest(), digest, name)
+
+    def test_timer_backport_removes_pin_utils_from_both_locked_graphs(self) -> None:
+        for relative in ("Cargo.lock", "vendor/wasmtimer/Cargo.lock"):
+            with self.subTest(lock=relative):
+                lock = tomllib.loads((ROOT / "jacs-surrealdb" / relative).read_text())
+                self.assertNotIn("pin-utils", {p["name"] for p in lock["package"]})
+
     def test_active_graph_has_no_exception_contract(self) -> None:
         active = SCRIPT.parents[1]
         policy = tomllib.loads((active / "deny.toml").read_text())
