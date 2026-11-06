@@ -10,7 +10,7 @@ bounded exposure statement, and a review date.
 | Advisory | Surface and reachability | Disposition | Owner | Review by |
 |---|---|---|---|---|
 | RUSTSEC-2023-0071 | The separate SurrealDB lock includes `rsa 0.9.10` through `jsonwebtoken` for WASM; native targets use AWS-LC. The in-memory JACS adapter does not invoke JWT authentication or RSA private-key operations. The vendored JWT test lock exercises RSA against public upstream fixtures only. | Ignore only in the SurrealDB lock and its exact `vendor/jsonwebtoken/Cargo.lock` audit. Remove when upstream removes `rsa` or a constant-time release exists. | JACS storage maintainers | 2026-11-26 |
-| RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless` for embedded targets; it is absent from the native Linux build and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. | JACS storage maintainers | 2026-11-26 |
+| RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless` for embedded targets; it is absent from the native Linux build and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. The stale cargo-deny ignore was removed on 2026-11-05 because its selected graph does not encounter the advisory. | JACS storage maintainers | 2026-11-26 |
 | RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is required by SurrealDB's `surrealmx 0.27.0` persistence code. The JACS adapter opens only an in-memory database without a persistence path. The advisory reports maintenance status, not an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-11-26 |
 
 Any new advisory fails CI. Review dates are deadlines, not automatic renewals.
@@ -31,6 +31,28 @@ so the existing archive-only audit waiver and exact-parent checks remain.
 Recheck these assumptions if the backend, targets, authentication, or
 persistence configuration changes; this review does not claim the RSA flaw is
 fixed or waive any new advisory.
+
+### 2026-11-05 audit follow-up
+
+The all-features cargo-deny audit reported `advisory-not-detected` for the
+atomic-polyfill ignore: that advisory is absent from its selected graph.
+Removing the stale ignore cleared that diagnostic while retaining the
+whole-lock cargo-audit warning, its review deadline and the existing
+exact-parent checks. No dependency or platform coverage was removed.
+
+The same audit now fails on [RUSTSEC-2026-0441](https://rustsec.org/advisories/RUSTSEC-2026-0441.html),
+issued November 5 for unmaintained `pin-utils`. The separate SurrealDB lock
+reaches `pin-utils 0.1.0` through `wasmtimer 0.4.3` on WASM; the native Darwin
+dependency tree does not contain it. This is a maintenance advisory, with no
+patched version or reported exploitable flaw. The current
+[crates.io version list](https://crates.io/api/v1/crates/wasmtimer) still ends at
+0.4.3, and [upstream's manifest](https://github.com/whizsid/wasmtimer-rs/blob/master/Cargo.toml)
+still enables pin-utils for its Tokio support. Upgrading pin-utils to 0.1.1
+would not resolve an advisory covering every version.
+
+The required audit remains blocked until a compatible upstream replacement or
+a separately reviewed backport with WASM validation removes that dependency.
+No new ignore was added. SurrealDB's existing release hold below still applies.
 
 ### Source backports and release blockers after the 2026-10-27 updates
 
