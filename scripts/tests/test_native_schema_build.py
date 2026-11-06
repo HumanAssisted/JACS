@@ -45,6 +45,16 @@ class NativeSchemaBuildTests(unittest.TestCase):
         self.core.parent.mkdir(parents=True)
         self.core.write_bytes(self.native.read_bytes())
 
+    def use_published_layout(self):
+        # Cargo builds an extracted package with its manifest at the package
+        # root, not under the repository's archive/native/jacs directory.
+        package = self.root / 'registry/src/index.crates.io-fixture/jacs-0.0.0'
+        package.parent.mkdir(parents=True)
+        self.crate.rename(package)
+        self.crate = package
+        self.native = package / SCHEMA
+        self.core = package.parents[2] / 'jacs-core' / SCHEMA
+
     def check(self, *, failure=None):
         child = subprocess.Popen(['cargo', 'check', '--offline', '--message-format', 'json'],
                                  cwd=self.crate, env=self.env, stdout=subprocess.PIPE,
@@ -87,12 +97,22 @@ class NativeSchemaBuildTests(unittest.TestCase):
         self.assertTrue(self.check())
 
     def test_published_layout_without_portable_core_stays_fresh(self):
+        self.use_published_layout()
         self.assertFalse(self.core.parent.exists())
         self.assertFalse(self.check())
-        self.assertTrue(self.check(), 'absent source-tree sibling must not be watched')
+        self.assertTrue(self.check(), 'absent repository schema must not be watched')
         self.native.write_bytes(b'{"schema":"published update"}\n')
         self.assertFalse(self.check())
         self.assertTrue(self.check())
+
+    def test_published_layout_ignores_unrelated_ancestor_portable_core(self):
+        self.use_published_layout()
+        self.add_core()
+        self.core.write_bytes(b'{"schema":"unrelated ancestor"}\n')
+        self.assertFalse(self.check(), 'packaged crates must not inspect unrelated ancestors')
+        self.assertTrue(self.check())
+        self.core.unlink()
+        self.assertTrue(self.check(), 'unrelated ancestor schema must not be watched')
 
     def test_existing_core_directory_with_missing_schema_fails_closed(self):
         self.add_core()
@@ -100,6 +120,7 @@ class NativeSchemaBuildTests(unittest.TestCase):
         self.check(failure='cannot read')
 
     def test_native_schema_must_be_readable_even_without_portable_core(self):
+        self.use_published_layout()
         self.native.unlink()
         self.check(failure='cannot read')
 

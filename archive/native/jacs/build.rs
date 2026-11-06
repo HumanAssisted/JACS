@@ -7,23 +7,25 @@ fn main() {
     // separately published crates that each ship their own copy of
     // schemas/agreement/v2/agreement.schema.json (cross-crate include_str! would
     // break `cargo package`). jacs-core is the source of truth; this guard fails
-    // the workspace build if the jacs copy drifts. It is skipped automatically in
-    // the published-crate context where the jacs-core sibling is absent.
+    // the workspace build if the jacs copy drifts. Published crates check only
+    // their own copy; their package root has no repository-relative core path.
     {
         let manifest_dir =
             PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("Cargo sets CARGO_MANIFEST_DIR"));
         let jacs_copy = manifest_dir.join("schemas/agreement/v2/agreement.schema.json");
         // Native compatibility moved to archive/native; portable core remains
-        // at the repository root. Never watch an absent published-crate sibling:
+        // at the repository root. Only resolve it in that repository layout:
+        // an extracted package could have an unrelated ancestor named jacs-core.
         // Cargo treats a missing rerun-if-changed input as dirty on every build.
         let core_dir = manifest_dir.join("../../../jacs-core");
         let core_copy = core_dir.join("schemas/agreement/v2/agreement.schema.json");
         let jacs_bytes = fs::read(&jacs_copy)
             .unwrap_or_else(|error| panic!("cannot read '{}': {error}", jacs_copy.display()));
         println!("cargo:rerun-if-changed={}", jacs_copy.display());
-        if core_dir
-            .try_exists()
-            .unwrap_or_else(|error| panic!("cannot inspect '{}': {error}", core_dir.display()))
+        if manifest_dir.ends_with("archive/native/jacs")
+            && core_dir
+                .try_exists()
+                .unwrap_or_else(|error| panic!("cannot inspect '{}': {error}", core_dir.display()))
         {
             let core_bytes = fs::read(&core_copy)
                 .unwrap_or_else(|error| panic!("cannot read '{}': {error}", core_copy.display()));

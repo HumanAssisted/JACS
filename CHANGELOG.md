@@ -3,10 +3,10 @@
 ### 2026-11-05 — Keep unchanged native builds fresh
 
 - Correct the native agreement schema guard's path to portable core after the
-  archive move. Published crates no longer watch an absent sibling, avoiding
-  repeated JACS and downstream recompilation on unchanged Cargo invocations.
+  archive move. Published package roots watch only their own schema, avoiding
+  repeated recompilation and comparison with unrelated ancestor directories.
 - Preserve schema equality checks and fail closed on missing or unreadable
-  schema copies. Six small Cargo regressions execute the actual build script;
+  schema copies. Seven small Cargo regressions execute the actual build script;
   the repository's dependency, release, licensing and policy checks pass.
 
 ## 0.16.0
