@@ -128,7 +128,7 @@ jacs-binding-core = { path = "../binding-core" }
 # synthesizers — re-add as a dev-only dependency.
 serde_json_canonicalizer = "0.4.1"
 color-eyre = "0.6"
-criterion = "0.6.0"
+criterion = "0.8.2"
 mdbook = "0.4.48"
 assert_cmd = "2.0"
 predicates = "3.1"
