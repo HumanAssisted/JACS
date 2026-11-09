@@ -157,7 +157,7 @@ version = "0.12"
 version = "2.1"
 
 [dependencies.quick-xml]
-version = "0.41.0"
+version = "0.42.0"
 features = [
     "serialize",
     "overlapped-lists",
