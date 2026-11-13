@@ -3,7 +3,7 @@ FROM quay.io/pypa/manylinux_2_28_aarch64@sha256:d2380d927972b39b86041530b86c02c4
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/opt/python/cp311-cp311/bin:/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.97.0 \
+    RUST_VERSION=1.100.0 \
     RUSTUP_VERSION=1.29.0 \
     RUSTUP_INIT_SHA256=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792
 

@@ -133,9 +133,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 2026-07-09
         with:
-          # Exact version: rust-toolchain.toml pins 1.97.0, which rustup treats as a
-          # different install from the partial "1.97"; extra targets must land there.
-          toolchain: "1.97.0"
+          # Match rust-toolchain.toml exactly so extra targets land in the
+          # toolchain Cargo selects for repository builds.
+          toolchain: "1.100.0"
           targets: ${{ matrix.target }}
 
       - name: Build binaries

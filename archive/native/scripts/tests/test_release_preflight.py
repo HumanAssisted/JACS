@@ -637,7 +637,7 @@ class ExecutableSupplyChainTests(unittest.TestCase):
             text = (ROOT / "jacspy" / name).read_text()
             with self.subTest(dockerfile=name):
                 self.assertEqual(text.splitlines()[0], image)
-                self.assertIn("RUST_VERSION=1.97.0", text)
+                self.assertIn("RUST_VERSION=1.100.0", text)
                 self.assertIn("RUSTUP_VERSION=1.29.0", text)
                 self.assertIn(f"RUSTUP_INIT_SHA256={rustup_sha256}", text)
                 self.assertIn(rustup_binary, text)

@@ -108,7 +108,7 @@ class ReleaseCandidatePreflightTests(unittest.TestCase):
 
     def test_release_rust_builds_pin_toolchain_and_lock_resolution(self) -> None:
         publish = job_block(workflow_text("release-crate.yml"), "publish")
-        self.assertIn('toolchain: "1.97.0"', publish)
+        self.assertIn('toolchain: "1.100.0"', publish)
         self.assertIn('RUSTFLAGS: "-D warnings"', publish)
         self.assertIn("scripts/rust_release.py package", publish)
         helper = (ROOT / "scripts/rust_release.py").read_text()
