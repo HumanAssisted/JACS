@@ -163,11 +163,10 @@ p256 = { version = "0.14", features = ["pkcs8", "pem"] }
 # base58btc for Multikey (publicKeyMultibase) encoding of the ES256 key —
 # already in the tree transitively.
 bs58 = "0.5"
-# SQLite storage via sqlx (optional). PostgreSQL has been extracted to jacs-postgresql.
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
-# rusqlite (sync SQLite bindings, optional -- lightweight alternative to sqlx SQLite)
-# Kept aligned with sqlx's libsqlite3-sys to avoid links conflicts.
-rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
+# rusqlite (sync SQLite bindings, optional). PostgreSQL has been extracted to jacs-postgresql.
+# 0.41 bundles SQLite 3.54.1 (RUSTSEC-2026-0459). Default features stay off: the
+# backend uses no statement cache, and the wasm SQLite FFI is not a native path.
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"], optional = true }
 # SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
 # DuckDB storage has been extracted to the `jacs-duckdb` crate.
 # Redb storage has been extracted to the `jacs-redb` crate.
@@ -199,9 +198,6 @@ human-approval-vendored = ["human-approval", "dep:openssl", "openssl/vendored"]
 
 # Lightweight sync SQLite backend (rusqlite, no tokio needed) — the default.
 sqlite = ["dep:rusqlite"]
-
-# Async SQLite backend via sqlx (requires tokio runtime).
-sqlx-sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 # PostgreSQL storage backend has been extracted to the `jacs-postgresql` crate.
 # SurrealDB storage backend has been extracted to the `jacs-surrealdb` crate.

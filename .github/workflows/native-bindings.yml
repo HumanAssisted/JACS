@@ -63,7 +63,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # Exact patched toolchain; a minor-only selector can reuse stale runner caches.
-          go-version: "1.26.10"
+          go-version: "1.26.11"
           cache-dependency-path: archive/native/jacsgo/go.sum
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:

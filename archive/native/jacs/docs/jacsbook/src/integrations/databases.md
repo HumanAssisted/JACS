@@ -9,7 +9,6 @@ Database-backed storage is a **Rust-core story**, not a unified cross-language p
 Current Rust feature flags include:
 
 - `sqlite` for the built-in `rusqlite` document backend
-- `sqlx-sqlite` for the async SQLite variant
 - extracted crates such as `jacs-postgresql`, `jacs-duckdb`, `jacs-redb`, and `jacs-surrealdb`
 
 ## What To Do In Practice

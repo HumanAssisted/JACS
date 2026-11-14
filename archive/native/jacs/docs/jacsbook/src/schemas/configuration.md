@@ -98,7 +98,7 @@ Specifies where documents are stored:
 | `memory` | In-memory storage |
 | `aws` | AWS S3; requires a build with the `s3` feature |
 | `rusqlite` | Indexed SQLite; requires the `sqlite` feature |
-| `sqlite` | SQLx SQLite storage; requires the `sqlx-sqlite` feature |
+| `sqlite` | Same indexed SQLite backend as `rusqlite`; requires the `sqlite` feature |
 
 ```json
 {

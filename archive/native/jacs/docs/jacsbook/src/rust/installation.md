@@ -44,8 +44,7 @@ serde_json = "1"
 ```
 
 Native optional features include `a2a`, `agreements`, `attestation`, `s3`,
-`sqlx-sqlite`, `otlp-logs`, `otlp-metrics` and `otlp-tracing`; SQLite is enabled
-by default. Select only the features your integration needs. The
+`otlp-logs`, `otlp-metrics` and `otlp-tracing`; SQLite is enabled by default. Select only the features your integration needs. The
 [library guide](library.md) covers the native API.
 
 ## Publication and platforms

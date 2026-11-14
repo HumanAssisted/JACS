@@ -1,5 +1,31 @@
 ## Unreleased
 
+### 2026-11-13 — Patch audited dependencies
+
+- rmcp 3.9.0 in both workspaces (RUSTSEC-2026-0462); root `jacs-mcp` now
+  requires it. quinn-proto 0.11.19 and quinn-udp 0.5.16 (RUSTSEC-2026-0523,
+  RUSTSEC-2026-0524, RUSTSEC-2026-0538) in the native, SurrealDB and
+  observability locks; ammonia 4.1.9 (RUSTSEC-2026-0533) in the native and
+  SurrealDB locks. dnspython 2.9.2 and opentelemetry-api 1.45.2
+  (GHSA-vvf4-9x63-8xvv, GHSA-mf5v-w3w3-f6cg) in the Python locks. Only these
+  versions change; notices are regenerated.
+- **Breaking: `jacs` no longer has the `sqlx-sqlite` feature or its async
+  `SqliteStorage` backend.** No sqlx release accepts a `libsqlite3-sys` that
+  bundles patched SQLite. Use `RusqliteStorage` from the default `sqlite`
+  feature instead; it uses the same `jacs_document` table. The `sqlite` and
+  `rusqlite` storage settings and `sqlite://` paths already used rusqlite and
+  keep working. PostgreSQL support through sqlx is unchanged.
+- rusqlite 0.41.1 bundles SQLite 3.54.1, which clears RUSTSEC-2026-0459
+  (libsqlite3-sys) in the native and observability locks. The rusqlite backend
+  needed no code change; its SQLite tests pass unchanged, and the former sqlx
+  backend's file-based tests now run against it.
+- RUSTSEC-2026-0454 (surrealdb-core) remains open in the separate SurrealDB
+  lock: its fix needs SurrealDB 4.
+- Go candidate and release jobs use Go 1.26.11. The Go source scan found
+  GO-2026-6859 (`net/http`) in the 1.26.10 standard library.
+- The workspace lock and Python audits pass; rmcp 3.9.0 checks with
+  `-D warnings` on Rust 1.97, and `make check` passes.
+
 ### 2026-11-05 — Keep unchanged native builds fresh
 
 - Correct the native agreement schema guard's path to portable core after the
