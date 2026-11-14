@@ -128,7 +128,7 @@ features = ["ecdsa"]
 optional = true
 
 [dependencies.pem]
-version = "3"
+version = "4"
 optional = true
 
 [dependencies.rand]
