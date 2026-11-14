@@ -21,6 +21,8 @@
   backend's file-based tests now run against it.
 - RUSTSEC-2026-0454 (surrealdb-core) remains open in the separate SurrealDB
   lock: its fix needs SurrealDB 4.
+- Go candidate and release jobs use Go 1.26.11. The Go source scan found
+  GO-2026-6859 (`net/http`) in the 1.26.10 standard library.
 - The workspace lock and Python audits pass; rmcp 3.9.0 checks with
   `-D warnings` on Rust 1.97, and `make check` passes.
 
