@@ -23,7 +23,6 @@ assert!(result.valid);
 | Feature | Default | What it enables |
 |---------|---------|----------------|
 | `sqlite` | Yes | Sync SQLite storage backend (rusqlite) |
-| `sqlx-sqlite` | No | Async SQLite storage backend (sqlx + tokio) |
 | `s3` | No | AWS S3 storage; enables the cloud HTTP/XML dependency graph |
 | `a2a` | No | Agent-to-Agent protocol support |
 | `agreements` | No | Multi-agent agreement signing with quorum and timeouts |
@@ -45,7 +44,6 @@ Storage guarantees:
 |---------|-------|---------|
 | Filesystem | built-in | (always available) |
 | SQLite (rusqlite) | built-in (`sqlite` feature) | `cargo add jacs --features sqlite` |
-| SQLite (sqlx) | built-in (`sqlx-sqlite` feature) | `cargo add jacs --features sqlx-sqlite` |
 | AWS S3 | built-in (`s3` feature) | `cargo add jacs --features s3` |
 | PostgreSQL | `jacs-postgresql` | `cargo add jacs-postgresql` |
 | DuckDB | `jacs-duckdb` | `cargo add jacs-duckdb` |

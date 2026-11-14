@@ -722,16 +722,6 @@ impl From<jacs_core::CoreError> for JacsError {
     }
 }
 
-#[cfg(feature = "sqlx-sqlite")]
-impl From<sqlx::Error> for JacsError {
-    fn from(err: sqlx::Error) -> Self {
-        JacsError::DatabaseError {
-            operation: "sqlite".to_string(),
-            reason: err.to_string(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

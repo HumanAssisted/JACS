@@ -10,8 +10,7 @@
 //! | Filesystem | `fs` | (always) | Documents as JSON files on disk. Default. |
 //! | Memory | `memory` | (always) | In-memory store for testing. |
 //! | AWS S3 | `aws` | `s3` | Object storage via `object_store` crate. |
-//! | SQLite (sync) | `rusqlite` | `sqlite` (default) | Local indexed storage via rusqlite. |
-//! | SQLite (async) | `sqlite` | `sqlx-sqlite` | Async indexed storage via sqlx + tokio. |
+//! | SQLite | `rusqlite` | `sqlite` (default) | Local indexed storage via rusqlite. |
 //!
 //! # External Backend Crates
 //!
@@ -87,11 +86,6 @@ pub mod jenv;
 pub mod database_traits;
 #[cfg(not(target_arch = "wasm32"))]
 pub use database_traits::DatabaseDocumentTraits;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
-pub mod sqlite;
-#[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
-pub use sqlite::SqliteStorage;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub mod rusqlite_storage;
@@ -294,7 +288,7 @@ pub struct MultiStorage {
 /// FS, Memory, and WebLocal are always available. AWS construction requires
 /// the `s3` feature; keeping the enum variant available preserves config-file
 /// parsing and lets disabled builds return an actionable error.
-/// SQLite variants require their respective feature flags.
+/// The rusqlite variant requires the `sqlite` feature.
 ///
 /// PostgreSQL, SurrealDB, DuckDB, and Redb have been extracted to
 /// standalone crates (`jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`,
@@ -310,9 +304,6 @@ pub enum StorageType {
     #[cfg(target_arch = "wasm32")]
     #[strum(serialize = "local")]
     WebLocal,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
-    #[strum(serialize = "sqlite")]
-    Sqlite,
     #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
     #[strum(serialize = "rusqlite")]
     Rusqlite,
@@ -695,13 +686,6 @@ impl MultiStorage {
                         source: Box::new(std::io::Error::other("Web local storage not loaded")),
                     })
             }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
-            StorageType::Sqlite => Err(ObjectStoreError::Generic {
-                store: "MultiStorage",
-                source: Box::new(std::io::Error::other(
-                    "SQLite storage does not use ObjectStore. Use SqliteStorage or DocumentService directly.",
-                )),
-            }),
             #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
             StorageType::Rusqlite => Err(ObjectStoreError::Generic {
                 store: "MultiStorage",

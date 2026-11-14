@@ -38,7 +38,6 @@
 //! | Feature | Default | Description |
 //! |---------|---------|-------------|
 //! | `sqlite` | Yes | Sync SQLite backend via rusqlite |
-//! | `sqlx-sqlite` | No | Async SQLite backend via sqlx + tokio |
 //! | `a2a` | No | Agent-to-Agent protocol |
 //! | `agreements` | No | Multi-agent agreement signing |
 //! | `attestation` | No | Evidence-based attestation |

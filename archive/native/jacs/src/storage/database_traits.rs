@@ -14,7 +14,7 @@
 //!
 //! # Implementations
 //!
-//! - **Built-in:** `SqliteStorage` (sqlx), `RusqliteStorage` (rusqlite)
+//! - **Built-in:** `RusqliteStorage` (rusqlite)
 //! - **Extracted crates:** `jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`, `jacs-redb`
 //!
 //! # Append-Only Model

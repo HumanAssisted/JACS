@@ -1,6 +1,6 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 
-//! SQLite-specific integration tests beyond the conformance suite.
+//! SQLite (rusqlite) integration tests beyond the conformance suite.
 //!
 //! Tests cover:
 //! - File-based SQLite (not just in-memory)
@@ -16,7 +16,7 @@
 use jacs::agent::document::JACSDocument;
 use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
-use jacs::storage::sqlite::SqliteStorage;
+use jacs::storage::rusqlite_storage::RusqliteStorage;
 use serde_json::json;
 use tempfile::TempDir;
 
@@ -43,12 +43,10 @@ fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str
 }
 
 /// Create a file-based SQLite storage in a temp directory.
-async fn create_file_sqlite(tmpdir: &TempDir) -> SqliteStorage {
+fn create_file_sqlite(tmpdir: &TempDir) -> RusqliteStorage {
     let db_path = tmpdir.path().join("test.db");
     let db_path_str = db_path.to_str().expect("valid path");
-    let storage = SqliteStorage::new_async(db_path_str, Some(5))
-        .await
-        .expect("Failed to create file-based SQLite");
+    let storage = RusqliteStorage::new(db_path_str).expect("Failed to create file-based SQLite");
     storage.run_migrations().expect("Failed to run migrations");
     storage
 }
@@ -56,7 +54,7 @@ async fn create_file_sqlite(tmpdir: &TempDir) -> SqliteStorage {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_file_based_storage() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
-    let storage = create_file_sqlite(&tmpdir).await;
+    let storage = create_file_sqlite(&tmpdir);
 
     let doc = make_test_doc("file-1", "v1", "agent", None);
     storage.store_document(&doc).expect("store failed");
@@ -74,9 +72,7 @@ async fn test_sqlite_file_persistence() {
 
     // Write with one connection
     {
-        let storage = SqliteStorage::new_async(&db_path_str, Some(1))
-            .await
-            .expect("Failed to create SQLite");
+        let storage = RusqliteStorage::new(&db_path_str).expect("Failed to create SQLite");
         storage.run_migrations().expect("migrations failed");
         storage
             .store_document(&make_test_doc("persist-1", "v1", "agent", None))
@@ -85,9 +81,7 @@ async fn test_sqlite_file_persistence() {
 
     // Read with a fresh connection
     {
-        let storage = SqliteStorage::new_async(&db_path_str, Some(1))
-            .await
-            .expect("Failed to reopen SQLite");
+        let storage = RusqliteStorage::new(&db_path_str).expect("Failed to reopen SQLite");
         let doc = storage.get_document("persist-1:v1").expect("get failed");
         assert_eq!(doc.id, "persist-1");
     }
@@ -95,9 +89,7 @@ async fn test_sqlite_file_persistence() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_raw_contents_preserves_json() {
-    let storage = SqliteStorage::in_memory_async()
-        .await
-        .expect("in-memory SQLite");
+    let storage = RusqliteStorage::in_memory().expect("in-memory SQLite");
     storage.run_migrations().expect("migrations failed");
 
     let doc = make_test_doc("preserve-1", "v1", "artifact", None);
@@ -114,9 +106,7 @@ async fn test_sqlite_raw_contents_preserves_json() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_large_document() {
-    let storage = SqliteStorage::in_memory_async()
-        .await
-        .expect("in-memory SQLite");
+    let storage = RusqliteStorage::in_memory().expect("in-memory SQLite");
     storage.run_migrations().expect("migrations failed");
 
     // Create a document with a large data payload (~100KB)
@@ -145,9 +135,7 @@ async fn test_sqlite_concurrent_reads() {
     let db_path_str = db_path.to_str().expect("valid path").to_string();
 
     // Set up the database with some data
-    let storage = SqliteStorage::new_async(&db_path_str, Some(5))
-        .await
-        .expect("Failed to create SQLite");
+    let storage = RusqliteStorage::new(&db_path_str).expect("Failed to create SQLite");
     storage.run_migrations().expect("migrations failed");
 
     for i in 0..10 {
@@ -162,9 +150,7 @@ async fn test_sqlite_concurrent_reads() {
         let path = db_path_str.clone();
         let key = format!("conc-{}:v1", i);
         handles.push(tokio::spawn(async move {
-            let s = SqliteStorage::new_async(&path, Some(1))
-                .await
-                .expect("Failed to open SQLite for read");
+            let s = RusqliteStorage::new(&path).expect("Failed to open SQLite for read");
             s.get_document(&key).expect("concurrent read failed")
         }));
     }
@@ -177,9 +163,7 @@ async fn test_sqlite_concurrent_reads() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_query_by_field_with_json_extract() {
-    let storage = SqliteStorage::in_memory_async()
-        .await
-        .expect("in-memory SQLite");
+    let storage = RusqliteStorage::in_memory().expect("in-memory SQLite");
     storage.run_migrations().expect("migrations failed");
 
     let mut doc_a = make_test_doc("jqf-a", "v1", "config", None);
@@ -199,9 +183,7 @@ async fn test_sqlite_query_by_field_with_json_extract() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_multiple_versions_ordering() {
-    let storage = SqliteStorage::in_memory_async()
-        .await
-        .expect("in-memory SQLite");
+    let storage = RusqliteStorage::in_memory().expect("in-memory SQLite");
     storage.run_migrations().expect("migrations failed");
 
     // Insert versions with delays to ensure different timestamps
@@ -230,9 +212,7 @@ async fn test_sqlite_multiple_versions_ordering() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_count_accuracy() {
-    let storage = SqliteStorage::in_memory_async()
-        .await
-        .expect("in-memory SQLite");
+    let storage = RusqliteStorage::in_memory().expect("in-memory SQLite");
     storage.run_migrations().expect("migrations failed");
 
     // Start with zero
@@ -253,9 +233,7 @@ async fn test_sqlite_count_accuracy() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sqlite_special_characters_in_data() {
-    let storage = SqliteStorage::in_memory_async()
-        .await
-        .expect("in-memory SQLite");
+    let storage = RusqliteStorage::in_memory().expect("in-memory SQLite");
     storage.run_migrations().expect("migrations failed");
 
     let mut doc = make_test_doc("special-1", "v1", "agent", None);
