@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1043
+Third-party packages: 1042
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -468,7 +468,7 @@ Used by 200 package(s):
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
   - libredox 0.1.18 (https://gitlab.redox-os.org/redox-os/libredox.git)
   - libredox 0.1.23 (https://gitlab.redox-os.org/redox-os/libredox.git)
-  - libsqlite3-sys 0.30.1 (https://github.com/rusqlite/rusqlite)
+  - libsqlite3-sys 0.39.1 (https://github.com/rusqlite/rusqlite)
   - lindera 6.2.0 (https://github.com/lindera/lindera)
   - lindera-dictionary 6.2.0 (https://github.com/lindera/lindera)
   - lz4 1.28.1 (https://github.com/10xGenomics/lz4-rs)
@@ -527,7 +527,7 @@ Used by 200 package(s):
   - rkyv_derive 0.8.18 (https://github.com/rkyv/rkyv)
   - rmp 0.8.15 (https://github.com/3Hren/msgpack-rust)
   - rmp-serde 1.3.1 (https://github.com/3Hren/msgpack-rust)
-  - rusqlite 0.32.1 (https://github.com/rusqlite/rusqlite)
+  - rusqlite 0.41.1 (https://github.com/rusqlite/rusqlite)
   - rust_decimal 1.43.0 (https://github.com/paupino/rust-decimal)
   - schannel 0.1.29 (https://github.com/steffengy/schannel-rs)
   - schemars 0.9.0 (https://github.com/GREsau/schemars)
@@ -597,7 +597,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 475 package(s):
+Used by 474 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -753,7 +753,6 @@ Used by 475 package(s):
   - hashbrown 0.16.1 (https://github.com/rust-lang/hashbrown)
   - hashbrown 0.17.1 (https://github.com/rust-lang/hashbrown)
   - hashlink 0.10.0 (https://github.com/kyren/hashlink)
-  - hashlink 0.9.1 (https://github.com/kyren/hashlink)
   - heapless 0.6.1 (https://github.com/japaric/heapless)
   - heapless 0.7.17 (https://github.com/japaric/heapless)
   - heapless 0.8.0 (https://github.com/rust-embedded/heapless)

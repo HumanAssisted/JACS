@@ -164,8 +164,9 @@ p256 = { version = "0.14", features = ["pkcs8", "pem"] }
 # already in the tree transitively.
 bs58 = "0.5"
 # rusqlite (sync SQLite bindings, optional). PostgreSQL has been extracted to jacs-postgresql.
-# Kept aligned with sqlx's libsqlite3-sys to avoid links conflicts.
-rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
+# 0.41 bundles SQLite 3.54.1 (RUSTSEC-2026-0459). Default features stay off: the
+# backend uses no statement cache, and the wasm SQLite FFI is not a native path.
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"], optional = true }
 # SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
 # DuckDB storage has been extracted to the `jacs-duckdb` crate.
 # Redb storage has been extracted to the `jacs-redb` crate.

@@ -9,9 +9,18 @@
   SurrealDB locks. dnspython 2.9.2 and opentelemetry-api 1.45.2
   (GHSA-vvf4-9x63-8xvv, GHSA-mf5v-w3w3-f6cg) in the Python locks. Only these
   versions change; notices are regenerated.
-- RUSTSEC-2026-0459 (libsqlite3-sys) and RUSTSEC-2026-0454 (surrealdb-core)
-  remain open: their fixes need rusqlite 0.41 without the sqlx SQLite backend,
-  and SurrealDB 4.
+- **Breaking: `jacs` no longer has the `sqlx-sqlite` feature or its async
+  `SqliteStorage` backend.** No sqlx release accepts a `libsqlite3-sys` that
+  bundles patched SQLite. Use `RusqliteStorage` from the default `sqlite`
+  feature instead; it uses the same `jacs_document` table. The `sqlite` and
+  `rusqlite` storage settings and `sqlite://` paths already used rusqlite and
+  keep working. PostgreSQL support through sqlx is unchanged.
+- rusqlite 0.41.1 bundles SQLite 3.54.1, which clears RUSTSEC-2026-0459
+  (libsqlite3-sys) in the native and observability locks. The rusqlite backend
+  needed no code change; its SQLite tests pass unchanged, and the former sqlx
+  backend's file-based tests now run against it.
+- RUSTSEC-2026-0454 (surrealdb-core) remains open in the separate SurrealDB
+  lock: its fix needs SurrealDB 4.
 - The workspace lock and Python audits pass; rmcp 3.9.0 checks with
   `-D warnings` on Rust 1.97, and `make check` passes.
 
