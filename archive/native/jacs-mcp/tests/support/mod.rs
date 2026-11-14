@@ -103,29 +103,38 @@ pub fn prepare_temp_workspace_ed25519() -> (PathBuf, PathBuf) {
 /// Requires `cargo build -p jacs-cli-compat` in the native workspace first.
 pub fn jacs_cli_bin() -> PathBuf {
     let current_exe = std::env::current_exe().expect("current_exe");
-    let mut target_dir = current_exe
+    let mut test_dir = current_exe
         .parent()
-        .and_then(Path::parent)
-        .expect("target dir for integration test binary")
+        .expect("directory of the integration test binary")
         .to_path_buf();
     // Cargo can place integration-test executables in a separate build
     // directory while keeping the CLI in the final target directory. Preserve
     // the profile (and target triple, when present) while mapping between them.
     if let (Some(build_dir), Some(output_dir)) = (
         std::env::var_os("CARGO_BUILD_BUILD_DIR"),
-        std::env::var_os("CARGO_BUILD_TARGET_DIR").or_else(|| std::env::var_os("CARGO_TARGET_DIR")),
+        // Cargo reads CARGO_TARGET_DIR before the build.target-dir setting.
+        std::env::var_os("CARGO_TARGET_DIR").or_else(|| std::env::var_os("CARGO_BUILD_TARGET_DIR")),
     ) {
-        if let Ok(relative) = target_dir.strip_prefix(build_dir) {
-            target_dir = PathBuf::from(output_dir).join(relative);
+        if let Ok(relative) = test_dir.strip_prefix(build_dir) {
+            test_dir = PathBuf::from(output_dir).join(relative);
         }
     }
-    let bin = target_dir.join(format!("jacs-compat{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        bin.exists(),
-        "jacs-compat binary not found at {}. Run `cargo build -p jacs-cli-compat` in archive/native first.",
-        bin.display()
-    );
-    bin
+    // Cargo keeps the CLI in `<target>/<profile>/` but does not promise how far
+    // below it a test executable sits: `<profile>/deps/` through Cargo 1.99,
+    // `<profile>/build/<package>/<hash>/out/` since 1.100. Take the nearest
+    // directory above the test executable that holds the CLI.
+    let name = format!("jacs-compat{}", std::env::consts::EXE_SUFFIX);
+    test_dir
+        .ancestors()
+        .take(6)
+        .map(|dir| dir.join(&name))
+        .find(|bin| bin.is_file())
+        .unwrap_or_else(|| {
+            panic!(
+                "jacs-compat binary not found in or above {}. Run `cargo build -p jacs-cli-compat` in archive/native first.",
+                test_dir.display()
+            )
+        })
 }
 
 pub fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Output, PathBuf) {

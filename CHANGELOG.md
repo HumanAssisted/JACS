@@ -9,6 +9,9 @@
 - Preserve the Rust 1.97 package minimum, dependency locks, package versions
   and published artifact records. Platform and release candidate gates remain
   required before shipping artifacts built with the new compiler.
+- Cargo 1.100 no longer puts test executables in `target/<profile>/deps`. The
+  native MCP process tests found the compatibility CLI by that depth and
+  failed; they now search upward from the test executable for it.
 
 ### 2026-11-13 — Patch audited dependencies
 
