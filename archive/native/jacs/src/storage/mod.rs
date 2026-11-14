@@ -267,7 +267,7 @@ where
 /// Multi-backend storage abstraction that delegates to filesystem, in-memory, S3, or SQLite.
 ///
 /// You pick **one** backend at construction via a storage-type string (`"fs"`, `"memory"`,
-/// `"aws"`, `"sqlite"`, `"rusqlite"`, or `"local"` on wasm32). All file operations are
+/// `"aws"`, `"rusqlite"`, or `"local"` on wasm32). All file operations are
 /// then routed to that backend through the [`ObjectStore`] trait.
 #[derive(Debug, Clone)]
 pub struct MultiStorage {
