@@ -1,5 +1,18 @@
 ## Unreleased
 
+### 2026-11-13 — Pin development and release builds to Rust 1.100.0
+
+- Align the portable and native workspace toolchains, active CI/release jobs
+  and manylinux Python builders on Rust 1.100.0. Mobile jobs install their
+  cross-compilation targets into that exact toolchain instead of floating
+  stable. Toolchain-only changes trigger native, WASM and mobile validation.
+- Preserve the Rust 1.97 package minimum, dependency locks, package versions
+  and published artifact records. Platform and release candidate gates remain
+  required before shipping artifacts built with the new compiler.
+- Cargo 1.100 no longer puts test executables in `target/<profile>/deps`. The
+  native MCP process tests found the compatibility CLI by that depth and
+  failed; they now search upward from the test executable for it.
+
 ### 2026-11-13 — Patch audited dependencies
 
 - rmcp 3.9.0 in both workspaces (RUSTSEC-2026-0462); root `jacs-mcp` now

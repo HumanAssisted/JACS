@@ -153,9 +153,9 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          # Exact version: rust-toolchain.toml pins 1.97.0, which rustup treats as a
-          # different install from the partial "1.97"; extra targets must land there.
-          toolchain: "1.97.0"
+          # Match rust-toolchain.toml exactly so extra targets land in the
+          # toolchain Cargo selects for repository builds.
+          toolchain: "1.100.0"
           target: ${{ matrix.target }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -214,11 +214,11 @@ jobs:
           # x86_64-unknown-linux-musl lane uses this container.
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/build" -w /build/archive/native/jacsnpm \
-            -e RUSTUP_TOOLCHAIN=1.97.0 -e CARGO_TARGET_DIR=/tmp/jacs-target \
+            -e RUSTUP_TOOLCHAIN=1.100.0 -e CARGO_TARGET_DIR=/tmp/jacs-target \
             ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine@sha256:caac2d1b9194eada0c69e669e72763869701351d8957ab805cc45a43999d8be2 \
             sh -euxc '
               apk add --no-cache openssl-dev perl musl-dev
-              rustup toolchain install 1.97.0 --profile minimal --target ${{ matrix.target }}
+              rustup toolchain install 1.100.0 --profile minimal --target ${{ matrix.target }}
               cargo build --release --target ${{ matrix.target }} --features human-approval-vendored --locked
               test -f /tmp/jacs-target/${{ matrix.target }}/release/libjacsnpm.so
               cp /tmp/jacs-target/${{ matrix.target }}/release/libjacsnpm.so jacs.linux-x64-musl.node

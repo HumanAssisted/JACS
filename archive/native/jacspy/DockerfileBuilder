@@ -3,13 +3,13 @@ FROM quay.io/pypa/manylinux_2_28_x86_64@sha256:65140ef21cef92d0c13d001708afd7d30
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/opt/python/cp311-cp311/bin:/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.97.0 \
+    RUST_VERSION=1.100.0 \
     RUSTUP_VERSION=1.29.0 \
     RUSTUP_INIT_SHA256=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
 
 # Override the repository rust-toolchain.toml at run time so rustup uses the
 # preinstalled minimal toolchain instead of lazily installing its components.
-ENV RUSTUP_TOOLCHAIN=1.97.0
+ENV RUSTUP_TOOLCHAIN=1.100.0
 
 # perl-core supplies Time::Piece and friends that OpenSSL's Configure needs
 # when the human-approval-vendored feature builds OpenSSL from source.

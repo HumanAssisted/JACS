@@ -112,9 +112,9 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          # Exact version: rust-toolchain.toml pins 1.97.0, which rustup treats as a
-          # different install from the partial "1.97"; extra targets must land there.
-          toolchain: "1.97.0"
+          # Match rust-toolchain.toml exactly so extra targets land in the
+          # toolchain Cargo selects for repository builds.
+          toolchain: "1.100.0"
           target: ${{ matrix.target }}
 
       - name: Install musl toolchain
@@ -151,7 +151,7 @@ jobs:
         continue-on-error: ${{ matrix.allow_failure }}
         run: |
           # archive/native/jacspy/Dockerfile and archive/native/jacspy/DockerfileBuilder pin the manylinux_2_28
-          # image digest, rustup, Rust 1.97.0 and maturin 1.5.0 (contract-tested).
+          # image digest, rustup, Rust 1.100.0 and maturin 1.5.0 (contract-tested).
           docker build --file "archive/native/jacspy/${{ matrix.manylinux_dockerfile }}" --tag jacs-manylinux-builder archive/native/jacspy
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work" \
@@ -204,7 +204,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          toolchain: "1.97.0"
+          toolchain: "1.100.0"
 
       - name: Install maturin
         run: pip install "maturin==1.5.0"
@@ -426,7 +426,7 @@ jobs:
           python-version: '3.11'
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          toolchain: "1.97.0"
+          toolchain: "1.100.0"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jacspy-${{ needs.verify-version.outputs.version }}-release-bundle

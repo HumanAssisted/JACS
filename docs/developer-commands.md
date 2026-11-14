@@ -5,6 +5,25 @@ cache as described in the [shared Rust cache guide](rust-cache.md) before substa
 commands select `archive/native/Cargo.toml`; they do not add native dependencies
 to the five portable crates. SurrealDB retains its own Cargo workspace.
 
+Repository builds use Rust **1.100.0**, pinned in both the portable and native
+workspaces and their active CI/release jobs. Install it through rustup:
+
+```sh
+rustup toolchain install 1.100.0 --profile minimal --component clippy --component rustfmt
+rustup show active-toolchain
+rustc --version
+cargo --version
+```
+
+Keep rustup's `cargo` and `rustc` proxies ahead of Homebrew Rust on `PATH` so
+the repository pins apply. `rustup default 1.100.0` also selects this version
+outside pinned repositories; existing toolchains remain available via
+`cargo +1.97.0`. The declared package minimum remains Rust 1.97. No package
+version or published artifact changes with this compiler update. Native,
+browser, mobile and release candidate validation still qualify their own
+outputs before publication; earlier release evidence describes its original
+compiler and artifacts.
+
 | Work | Root command | Prerequisites and scope |
 |---|---|---|
 | Portable CLI | `make build` or `make build-jacs` | Rust; builds without installing over a user binary |

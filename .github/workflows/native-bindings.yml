@@ -6,6 +6,7 @@ on:
       - "archive/native/**"
       - "jacsgo/**"
       - "jacs-core/**"
+      - "rust-toolchain.toml"
       - "scripts/native_bindings*"
       - "scripts/smoke/verify_human_approval*"
       - "scripts/check_native_crypto_linkage.py"
@@ -20,6 +21,7 @@ on:
       - "archive/native/**"
       - "jacsgo/**"
       - "jacs-core/**"
+      - "rust-toolchain.toml"
       - "scripts/native_bindings*"
       - "scripts/smoke/verify_human_approval*"
       - "scripts/check_native_crypto_linkage.py"
@@ -53,7 +55,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          toolchain: "1.97.0"
+          toolchain: "1.100.0"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
