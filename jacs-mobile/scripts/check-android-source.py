@@ -99,6 +99,10 @@ def main() -> None:
         "ai.hai.jacs.platform.WrappingKeyPolicySmokeKt",
     ], check=True)
     print(f"PASS: generated Kotlin and Android adapter compiled against {api.name}")
+    subprocess.run([
+        java, "-ea", "-cp", classpath([output, stdlib, jna, api]),
+        "ai.hai.jacs.platform.ProvisioningSmokeKt",
+    ], check=True)
     print(f"Output: {output}")
     print("This check does not exercise device Keystore, biometrics, or native AAR packaging.")
 

@@ -17,7 +17,7 @@ class JacsVaultException(val code: Code, cause: Throwable? = null) :
 internal class JacsVaultState<S> {
     class Ticket internal constructor(val generation: Long) {
         val cancelled = AtomicBoolean(false)
-        internal var cipher: Any? = null
+        internal var operation: Any? = null
         internal var authenticated = false
     }
     data class Invalidated<S>(val ticket: Ticket?, val session: S?)
@@ -40,13 +40,13 @@ internal class JacsVaultState<S> {
         if (pending !== ticket) return false
         return ticket.cancelled.compareAndSet(false, true)
     }
-    @Synchronized fun bindCipher(ticket: Ticket, cipher: Any): Boolean {
-        if (!current(ticket) || ticket.cipher != null) return false
-        ticket.cipher = cipher
+    @Synchronized fun bindOperation(ticket: Ticket, operation: Any): Boolean {
+        if (!current(ticket) || ticket.operation != null) return false
+        ticket.operation = operation
         return true
     }
-    @Synchronized fun authenticate(ticket: Ticket, cipher: Any?): Boolean {
-        if (!current(ticket) || ticket.authenticated || ticket.cipher == null || ticket.cipher !== cipher)
+    @Synchronized fun authenticate(ticket: Ticket, operation: Any?): Boolean {
+        if (!current(ticket) || ticket.authenticated || ticket.operation == null || ticket.operation !== operation)
             return false
         ticket.authenticated = true
         return true
@@ -63,7 +63,7 @@ internal class JacsVaultState<S> {
     @Synchronized fun finish(ticket: Ticket): Boolean {
         if (!current(ticket)) return false
         pending = null
-        ticket.cipher = null
+        ticket.operation = null
         return true
     }
     @Synchronized fun mutate(ticket: Ticket, action: () -> Unit) {
@@ -76,7 +76,7 @@ internal class JacsVaultState<S> {
         if (permanently) closed = true
         val result = Invalidated(pending, session)
         pending?.cancelled?.set(true)
-        pending?.cipher = null
+        pending?.operation = null
         pending = null
         session = null
         return result

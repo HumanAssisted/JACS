@@ -28,10 +28,12 @@ val request = vault.create("Create your private identity", object : JacsVaultCal
 // Optional: request.cancel() is thread-safe and idempotent.
 ```
 
-- `create(title, callback)` creates a PQ key, authenticates the exact AES
-  `CryptoObject`, persists encrypted material, and opens an owned session.
-  Existing records are never replaced.
-- `unlock(title, callback)` reloads the record, validates the existing AES key's
+- `create(title, callback)` authenticates one exact HMAC `CryptoObject`, creates
+  a PQ key, persists encrypted material, clears the original signer, reads the
+  exact persisted record back and imports it with the original public identity
+  pinned. Only that independently reopened session is returned. Existing records
+  are never replaced.
+- `unlock(title, callback)` reloads the record, validates its existing root key's
   full authentication policy, prompts, then imports the encrypted PQ identity.
 - `signMessageJson(...)` and `buildRequestAuthHeader(...)` use the owned session.
   No method exposes an unlocked `MobileAgent` that can escape lifecycle locking.
@@ -63,24 +65,51 @@ finish the request. Enrollment changes or device lock changes may invalidate
 the wrapping key. Recover from a separately authorized encrypted transfer;
 never silently replace that key and pretend the old ciphertext was recovered.
 
-The wrapping key is AES-256/GCM, non-exportable, with strong-biometric-only
-per-use authentication and biometric-enrollment invalidation. Policy validation
-accepts exactly `-1` (the documented `KeyInfo` value) or `0` for per-use
-authentication. [Android 15's Keystore2 implementation](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/keystore/java/android/security/keystore2/AndroidKeyStoreSecretKeyFactorySpi.java)
-returns `0` when the authentication timeout tag is absent; creation also
-expresses per-use authentication as timeout `0`. Positive time windows and other
-negative values remain rejected, with all other policy checks unchanged.
-AAD is sent only after authorization. The wrapper
-does not claim StrongBox or hardware-backed PQ signing: the portable PQ key is
-unlocked in Rust memory. JVM/FFI strings cannot be reliably zeroed, so wrapping
-password copies stay scoped to import/export; mutable password buffers are wiped.
+New records use a non-exportable HMAC-SHA256 root generated in AndroidKeyStore,
+under the application alias with `.hmac-v2` appended. The root requires a fresh
+strong-biometric operation each time, has no authentication time window, and is
+invalidated by biometric enrollment changes. Validation additionally requires
+Keystore-generated provenance; an imported or weaker existing key is rejected
+without replacement. There is no claim that every Android implementation is
+hardware-backed or StrongBox-backed.
+
+The public descriptor is byte `2` followed by 32 random salt bytes. The MAC input
+is the ASCII domain `JACS-ANDROID-VAULT-PASSWORD-V2` plus a zero byte, a four-byte
+big-endian UTF-8 alias byte length, the alias bytes, and the complete descriptor.
+Standard Base64 of the 32-byte MAC output is the ephemeral password for the
+existing JACS encrypted-agent envelope. Neither identity nor ciphertext enters
+this derivation, so staged identity rotation retains its existing password.
+Creation uses that password only within one authenticated operation to export,
+persist, and independently reopen. Exact persisted record equality also checks
+the descriptor: silently accepting a changed salt would break the next unlock.
+Subsequent unlocks use a new authenticated MAC operation. No raw root key bytes
+enter application memory.
+
+Version 1 AES-256/GCM records and their original alias remain readable and
+rotatable without migration or fallback. AES AAD is sent only after authorization.
+Both formats require strong-biometric-only, per-use authentication and enrollment
+invalidation. Policy validation accepts exactly `-1` (documented `KeyInfo`) or `0`
+(the Android 15 Keystore2 representation when the timeout tag is absent); positive
+authentication windows and other negative values are rejected. Unknown descriptor
+versions fail closed. Interrupted creation can retain an orphan generated alias;
+it is validated and reused, never silently replaced. Committed ciphertext remains
+after cancellation or readback failure, but no unlocked session is published.
+Deletion selects only the persisted scheme's alias and checks its key algorithm,
+so application aliases containing `.hmac-v2` cannot erase another vault's root.
+If the record is missing or unreadable, explicit deletion removes ciphertext but
+retains unknown orphan aliases instead of guessing ownership.
+
+The portable PQ key is unlocked in Rust memory. JVM/FFI strings cannot be reliably
+zeroed; envelope password copies remain scoped to import/export, and mutable MAC
+outputs and Base64 password buffers are wiped. The descriptor and salt are public.
 
 ## Verification
 
 The existing `check-android-source.py` compiles all vault/adaptor source against
 Android API classes and runs independent DER checks plus 255 state cases,
 including 250 cancellation/completion races, and nine authentication-duration
-policy cases. The package script also compiles
+policy cases, plus descriptor isolation, independent HMAC vectors, persisted
+readback corruption and MAC callback ownership checks. The package script also compiles
 an instrumentation APK from `tests/android-instrumented`, using test-only
 AndroidX runner dependencies. On an already provisioned API 30+ emulator/device:
 

@@ -1,5 +1,20 @@
 ## Unreleased
 
+### 2026-11-15 — Reopen persisted mobile identities within provisioning
+
+- Android provisioning uses a generated, non-exportable, per-use biometric
+  HMAC-SHA256 root to derive the existing encrypted-agent envelope password.
+  It clears the original signer, reads back and checks the persisted record,
+  then imports with the original public identity pinned in the same ceremony.
+  Existing AES records remain readable and rotatable; unknown descriptors,
+  weaker key policies and altered readback fail closed.
+- iOS provisioning reads the exact Keychain record back with the same
+  authenticated context after clearing the original signer. A failed readback
+  retains the encrypted record but never returns the original unlocked signer.
+- Keep the generic vault API and published package versions unchanged. These
+  are unreleased platform-adapter changes; physical sensor qualification and
+  consumer artifact validation remain separate from host/source tests.
+
 ### 2026-11-13 — Pin development and release builds to Rust 1.100.0
 
 - Align the portable and native workspace toolchains, active CI/release jobs

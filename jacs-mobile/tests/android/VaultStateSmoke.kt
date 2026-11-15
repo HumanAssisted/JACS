@@ -16,7 +16,7 @@ fun main() {
         val ticket = state.begin(false, true)
         expectCode(JacsVaultException.Code.BUSY) { state.begin(false) }
         val cipher = Any()
-        check(state.bindCipher(ticket, cipher))
+        check(state.bindOperation(ticket, cipher))
         check(!state.authenticate(ticket, null))
         check(!state.authenticate(ticket, Any()))
         check(state.authenticate(ticket, cipher))
@@ -36,7 +36,7 @@ fun main() {
         val state = JacsVaultState<String>()
         val ticket = state.begin(false, true)
         val cipher = Any()
-        if (stage >= 1) check(state.bindCipher(ticket, cipher))
+        if (stage >= 1) check(state.bindOperation(ticket, cipher))
         if (stage >= 2) check(state.authenticate(ticket, cipher))
         check(state.cancel(ticket))
         check(!state.current(ticket))
@@ -54,7 +54,7 @@ fun main() {
         val state = JacsVaultState<String>()
         val ticket = state.begin(false, true)
         val cipher = Any()
-        state.bindCipher(ticket, cipher); state.authenticate(ticket, cipher)
+        state.bindOperation(ticket, cipher); state.authenticate(ticket, cipher)
         state.invalidate(true)
         check(!state.install(ticket, "late completion after close"))
         expectCode(JacsVaultException.Code.CLOSED) { state.begin(false) }
@@ -64,7 +64,7 @@ fun main() {
         val state = JacsVaultState<String>()
         val ticket = state.begin(false, true)
         val cipher = Any()
-        state.bindCipher(ticket, cipher); state.authenticate(ticket, cipher)
+        state.bindOperation(ticket, cipher); state.authenticate(ticket, cipher)
         val start = CountDownLatch(1)
         val cancelled = Thread { start.await(); state.invalidate() }
         val completed = Thread { start.await(); state.install(ticket, "candidate"); state.finish(ticket) }
