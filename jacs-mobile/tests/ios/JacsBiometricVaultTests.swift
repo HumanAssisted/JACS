@@ -9,7 +9,9 @@ private final class FakeAuthorization: JacsBiometricAuthorizing {
     var domainState: Data? = Data([1, 2, 3])
     var callback: ((Result<Void, JacsBiometricError>) -> Void)?
     var invalidations = 0
+    var authentications = 0
     func authenticate(reason: String, completion: @escaping (Result<Void, JacsBiometricError>) -> Void) {
+        authentications += 1
         callback = completion
     }
     func invalidate() { invalidations += 1 }
@@ -20,15 +22,24 @@ private final class FakeStore: JacsVaultRecordStore {
     var records: [String: Data] = [:]
     var addError: JacsBiometricError?
     var reads = 0
+    var readError: JacsBiometricError?
+    var readTransform: ((Data) -> Data)?
+    var onRead: (() -> Void)?
+    var addedAuthorization: JacsBiometricAuthorizing?
+    var readAuthorization: JacsBiometricAuthorizing?
     func add(_ data: Data, account: String, authorization: JacsBiometricAuthorizing) throws {
         if let error = addError { throw error }
         guard records[account] == nil else { throw JacsBiometricError.alreadyExists }
         records[account] = data
+        addedAuthorization = authorization
     }
     func read(account: String, authorization: JacsBiometricAuthorizing) throws -> Data {
         reads += 1
+        readAuthorization = authorization
+        onRead?()
+        if let error = readError { throw error }
         guard let data = records[account] else { throw JacsBiometricError.notFoundOrEnrollmentChanged }
-        return data
+        return readTransform?(data) ?? data
     }
     func delete(account: String) throws { records.removeValue(forKey: account) }
     var replaceError: JacsBiometricError?
@@ -73,11 +84,13 @@ private final class FakeFactory: JacsVaultAgentFactory {
     var created: [FakeAgent] = []
     var restored: [FakeAgent] = []
     var serializedMaterial = "encrypted-pq-material"
+    var restoreError: JacsBiometricError?
     func create() throws -> JacsSessionAgent {
         let agent = FakeAgent(); created.append(agent); return agent
     }
     func createHuman() throws -> JacsSessionAgent { try create() }
     func restore(materialJSON: String, password: String) throws -> JacsSessionAgent {
+        if let error = restoreError { throw error }
         XCTAssertEqual(materialJSON, "encrypted-pq-material")
         XCTAssertEqual(Data(base64Encoded: password)?.count, 32)
         let agent = FakeAgent(); restored.append(agent); return agent
@@ -127,6 +140,96 @@ final class JacsBiometricVaultTests: XCTestCase {
         auth.succeed()
         wait(for: [done], timeout: 20)
         return try XCTUnwrap(outcome).get()
+    }
+
+    func testProvisionReadsPersistedRecordWithSameAuthorizationAfterClearingSource() {
+        store.onRead = {
+            XCTAssertEqual(self.factory.created.count, 1)
+            XCTAssertTrue(self.factory.created.allSatisfy { $0.cleared })
+        }
+        let session = createSession()
+        XCTAssertEqual(auth.authentications, 1)
+        XCTAssertEqual(store.reads, 1)
+        XCTAssertTrue(store.addedAuthorization === auth)
+        XCTAssertTrue(store.readAuthorization === auth)
+        XCTAssertEqual(factory.restored.count, 1)
+        session.close()
+    }
+
+    func testProvisionReadFailureReturnsNoSessionButKeepsRecordForFreshUnlock() {
+        store.readError = .keychainStatus(-36)
+        let failed = expectation(description: "persisted read failed")
+        vault.createHuman(account: "agent", reason: "Create") {
+            if case .failure(.keychainStatus(-36)) = $0 {} else { XCTFail("unverified session escaped") }
+            failed.fulfill()
+        }
+        auth.succeed()
+        wait(for: [failed], timeout: 5)
+        XCTAssertNotNil(store.records["agent"])
+        XCTAssertTrue(factory.created.allSatisfy { $0.cleared })
+        XCTAssertTrue(factory.restored.isEmpty)
+        store.readError = nil
+        auth = FakeAuthorization()
+        let unlocked = expectation(description: "fresh authenticated resume")
+        vault.unlock(account: "agent", reason: "Resume") {
+            if case .success(let session) = $0 { session.close() } else { XCTFail("saved record lost") }
+            unlocked.fulfill()
+        }
+        auth.succeed()
+        wait(for: [unlocked], timeout: 5)
+        XCTAssertEqual(auth.authentications, 1)
+    }
+
+    func testProvisionRejectsChangedReadbackFieldsBeforeImport() throws {
+        for field in ["account", "biometricDomain", "wrappingPassword", "materialJSON"] {
+            store.readTransform = { data in
+                var value = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+                value[field] = "substituted"
+                return try! JSONSerialization.data(withJSONObject: value)
+            }
+            auth = FakeAuthorization()
+            let failed = expectation(description: "changed \(field) refused")
+            vault.create(account: field, reason: "Create") {
+                if case .failure(.invalidStoredRecord) = $0 {} else { XCTFail("changed persisted record accepted") }
+                failed.fulfill()
+            }
+            auth.succeed()
+            wait(for: [failed], timeout: 5)
+            XCTAssertNotNil(store.records[field])
+            XCTAssertTrue(factory.restored.isEmpty)
+            XCTAssertTrue(factory.created.allSatisfy { $0.cleared })
+        }
+    }
+
+    func testProvisionCancelledDuringReadbackKeepsLockedRecordWithoutImport() {
+        let failed = expectation(description: "readback cancellation")
+        let operation = vault.create(account: "agent", reason: "Create") {
+            if case .failure(.cancelled) = $0 {} else { XCTFail("late readback session escaped") }
+            failed.fulfill()
+        }
+        store.onRead = { operation.cancel() }
+        auth.succeed()
+        wait(for: [failed], timeout: 5)
+        worker.sync {}; callbacks.sync {}
+        XCTAssertNotNil(store.records["agent"])
+        XCTAssertTrue(factory.restored.isEmpty)
+        XCTAssertTrue(factory.created.allSatisfy { $0.cleared })
+    }
+
+    func testProvisionImportFailureNeverReturnsOriginalSigner() {
+        factory.restoreError = .identityMismatch
+        let failed = expectation(description: "persisted import refused")
+        vault.create(account: "agent", reason: "Create") {
+            if case .failure(.identityMismatch) = $0 {} else { XCTFail("original signer bypassed failed import") }
+            failed.fulfill()
+        }
+        auth.succeed()
+        wait(for: [failed], timeout: 5)
+        XCTAssertEqual(store.reads, 1)
+        XCTAssertNotNil(store.records["agent"])
+        XCTAssertEqual(factory.created.count, 1)
+        XCTAssertTrue(factory.created[0].cleared)
+        XCTAssertTrue(factory.restored.isEmpty)
     }
 
     func testOwnedRotationPersistsCandidateAndReconcilesExactCommit() throws {

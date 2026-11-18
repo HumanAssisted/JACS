@@ -62,6 +62,13 @@ race after the atomic save: in that case a **complete, locked record** remains.
 Unlock the same account to recover it; retrying creation returns `alreadyExists`.
 No partially persisted wrapping secret/material pair is possible.
 
+Provisioning clears the source signer after encrypted export, then reads the
+saved record with the same freshly authenticated context. It requires an exact
+match to the committed bytes before importing the persisted envelope into the
+returned session. This adds no second authorization request or reuse window.
+A readback failure returns no session and preserves the record for a later
+freshly authenticated unlock. It never substitutes an in-memory-only signer.
+
 Enrollment changes, passcode removal, device loss or lost Keychain records can
 make the identity unrecoverable on that device. Keep an explicitly protected
 recovery/transfer export if recovery is required. Do not silently create a new

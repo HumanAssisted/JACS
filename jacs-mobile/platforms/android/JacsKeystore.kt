@@ -2,6 +2,7 @@ package ai.hai.jacs.platform
 
 import ai.hai.jacs.*
 import android.os.Build
+import android.hardware.biometrics.BiometricPrompt
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
@@ -18,6 +19,7 @@ import java.security.spec.ECGenParameterSpec
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
+import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -28,15 +30,152 @@ import javax.crypto.spec.GCMParameterSpec
 internal fun isPerUseAuthenticationDuration(seconds: Int): Boolean = seconds == -1 || seconds == 0
 
 /** Default custody path for transferable ML-DSA-87 (pq2025) identities.
- * Biometrics gate the AES wrapping key; ML-DSA signing stays in portable Rust.
- * Android API 30+. All AES operations require a BiometricPrompt CryptoObject.
- * Persist only WrappedMaterial; its secret is encrypted with a non-exportable
- * AndroidKeyStore AES key. The JACS signing key remains transferable ciphertext.
+ * Biometrics gate a generated, non-exportable HMAC root; ML-DSA stays in Rust.
+ * Android API 30+. Each derivation requires a fresh BiometricPrompt CryptoObject.
+ * Version 1 AES records remain readable. Persist only WrappedMaterial: encrypted
+ * transferable identity plus a public, versioned local-password descriptor.
  */
 class JacsKeystore(private val alias: String) {
     data class WrappedMaterial(val materialJson: String, val wrappedSecret: ByteArray,
         val pendingMaterialJson: String? = null)
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    private val derivationAlias = rootAlias(alias)
+
+    /** A fresh operation, never an authentication window or reusable MAC result. */
+    internal sealed class Authentication {
+        abstract val operation: Any
+        abstract fun cryptoObject(): BiometricPrompt.CryptoObject
+        abstract fun matches(result: BiometricPrompt.CryptoObject?): Boolean
+        class Decrypt(val cipher: Cipher) : Authentication() {
+            override val operation: Any get() = cipher
+            override fun cryptoObject() = BiometricPrompt.CryptoObject(cipher)
+            override fun matches(result: BiometricPrompt.CryptoObject?) = result?.cipher === cipher
+        }
+        class Derive(val mac: Mac, descriptor: ByteArray) : Authentication() {
+            private val frozenDescriptor = descriptor.copyOf()
+            override val operation: Any get() = mac
+            override fun cryptoObject() = BiometricPrompt.CryptoObject(mac)
+            override fun matches(result: BiometricPrompt.CryptoObject?) = result?.mac === mac
+            fun descriptor() = frozenDescriptor.copyOf()
+            fun requireDescriptor(actual: ByteArray) {
+                if (!frozenDescriptor.contentEquals(actual))
+                    throw JacsVaultException(JacsVaultException.Code.INTEGRITY)
+            }
+        }
+    }
+
+    /** New roots are generated inside Keystore; raw root key bytes never enter the app.
+     * Call only while no record exists, holding the record owner's lock, which serializes
+     * creation and all subsequent persistence. An orphan root left by an interrupted
+     * ceremony is validated and reused; a weaker or imported one is rejected, not replaced.
+     * One that Keystore reports permanently invalidated protects no record and can never
+     * authorize again, so it is replaced once, and only while it is this vault's HMAC key.
+     */
+    internal fun prepareProvision(): Authentication.Derive {
+        require(Build.VERSION.SDK_INT >= 30)
+        val descriptor = byteArrayOf(2) + ByteArray(32).also { SecureRandom().nextBytes(it) }
+        if (store.containsAlias(derivationAlias)) {
+            try { return prepareDerivation(descriptor) }
+            catch (error: android.security.keystore.KeyPermanentlyInvalidatedException) {
+                if (!deleteOwnKey(derivationAlias)) throw error
+            }
+        }
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, "AndroidKeyStore").apply {
+            init(KeyGenParameterSpec.Builder(derivationAlias, KeyProperties.PURPOSE_SIGN)
+                .setKeySize(256).setDigests(KeyProperties.DIGEST_SHA256)
+                .setUserAuthenticationRequired(true)
+                .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+                .setInvalidatedByBiometricEnrollment(true).build())
+            generateKey()
+        }
+        return prepareDerivation(descriptor)
+    }
+
+    internal fun validatedDerivationKey(): SecretKey {
+        try {
+            val key = store.getKey(derivationAlias, null) as? SecretKey
+                ?: throw JacsVaultException(JacsVaultException.Code.KEY_INVALIDATED)
+            val info = SecretKeyFactory.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, "AndroidKeyStore")
+                .getKeySpec(key, KeyInfo::class.java) as KeyInfo
+            if (key.algorithm != KeyProperties.KEY_ALGORITHM_HMAC_SHA256 || info.keySize != 256 ||
+                info.origin != KeyProperties.ORIGIN_GENERATED || info.purposes != KeyProperties.PURPOSE_SIGN ||
+                info.digests.toSet() != setOf(KeyProperties.DIGEST_SHA256) ||
+                !info.isUserAuthenticationRequired || info.userAuthenticationType != KeyProperties.AUTH_BIOMETRIC_STRONG ||
+                !isPerUseAuthenticationDuration(info.userAuthenticationValidityDurationSeconds) ||
+                !info.isInvalidatedByBiometricEnrollment || info.isUserAuthenticationValidWhileOnBody)
+                throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
+            return key
+        } catch (error: JacsVaultException) { throw error }
+        catch (error: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            throw JacsVaultException(JacsVaultException.Code.KEY_INVALIDATED, error)
+        } catch (error: Exception) { throw JacsVaultException(JacsVaultException.Code.KEY_POLICY, error) }
+    }
+
+    /** Mac.init stays outside validatedDerivationKey's error mapping, so the unwrapped
+     * KeyPermanentlyInvalidatedException reaches prepareProvision's one-time replacement. */
+    private fun prepareDerivation(descriptor: ByteArray): Authentication.Derive {
+        derivationInput(alias, descriptor) // Reject malformed versions before accessing a key.
+        return Authentication.Derive(Mac.getInstance("HmacSHA256").apply { init(validatedDerivationKey()) }, descriptor)
+    }
+
+    internal fun prepareOpen(descriptor: ByteArray): Authentication = when (descriptor.firstOrNull()) {
+        1.toByte() -> Authentication.Decrypt(prepareUnlock(descriptor))
+        2.toByte() -> prepareDerivation(descriptor)
+        else -> throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
+    }
+
+    /** The same ephemeral envelope password may serve only this authenticated ceremony.
+     * JVM/FFI strings cannot be reliably wiped; mutable outputs are always cleared.
+     */
+    internal fun <T> withProvisionPassword(auth: Authentication.Derive, operation: (String) -> T): T {
+        val bytes = auth.mac.doFinal(derivationInput(alias, auth.descriptor()))
+        var encoded: ByteArray? = null
+        try {
+            if (bytes.size != 32) throw JacsVaultException(JacsVaultException.Code.INTEGRITY)
+            encoded = Base64.getEncoder().encode(bytes)
+            return operation(String(encoded, Charsets.UTF_8))
+        } finally { bytes.fill(0); encoded?.fill(0) }
+    }
+
+    internal fun <T> withOpenedPassword(wrapped: WrappedMaterial, auth: Authentication, operation: (String) -> T): T =
+        when (auth) {
+            is Authentication.Decrypt -> withUnlockedPassword(wrapped, auth.cipher, operation)
+            is Authentication.Derive -> { auth.requireDescriptor(wrapped.wrappedSecret); withProvisionPassword(auth, operation) }
+        }
+
+    internal fun open(wrapped: WrappedMaterial, auth: Authentication): MobileAgent =
+        withOpenedPassword(wrapped, auth) { MobileAgent.importEncryptedAgent(materialFromJson(wrapped.materialJson), it) }
+
+    companion object {
+        internal fun validateDescriptor(descriptor: ByteArray) {
+            val valid = when (descriptor.firstOrNull()) {
+                1.toByte() -> descriptor.size in 29..4096
+                2.toByte() -> descriptor.size == 33
+                else -> false
+            }
+            if (!valid) throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
+        }
+
+        /** Stable across key rotation: never include changing identity or ciphertext here. */
+        internal fun derivationInput(alias: String, descriptor: ByteArray): ByteArray {
+            if (descriptor.size != 33 || descriptor[0] != 2.toByte() || alias.isBlank() || alias.length > 200)
+                throw JacsVaultException(JacsVaultException.Code.INVALID_RECORD)
+            val domain = "JACS-ANDROID-VAULT-PASSWORD-V2\u0000".toByteArray(Charsets.US_ASCII)
+            val owner = alias.toByteArray(Charsets.UTF_8)
+            return ByteBuffer.allocate(domain.size + 4 + owner.size + descriptor.size)
+                .put(domain).putInt(owner.size).put(owner).put(descriptor).array()
+        }
+
+        /** A vault creates AES keys only at its alias and HMAC roots only at rootAlias(alias).
+         * One application alias can be another plus ".hmac-v2", so a name alone may be another
+         * vault's key, but an entry alias with its key algorithm has exactly one owner. */
+        internal fun rootAlias(alias: String) = "$alias.hmac-v2"
+        internal fun ownsKey(alias: String, entry: String, algorithm: String?): Boolean = when (algorithm) {
+            KeyProperties.KEY_ALGORITHM_AES -> entry == alias
+            KeyProperties.KEY_ALGORITHM_HMAC_SHA256 -> entry == rootAlias(alias)
+            else -> false
+        }
+    }
 
     /** Loading an existing alias never silently weakens the required policy. */
     fun ensureWrappingKey() {
@@ -139,7 +278,29 @@ class JacsKeystore(private val alias: String) {
         } finally { password.fill(0) }
     }
 
-    fun deleteWrappingKey() { store.deleteEntry(alias) }
+    /** Legacy low-level AES API: never delete a different vault's HMAC root. */
+    fun deleteWrappingKey() {
+        if (!deleteOwnKey(alias)) throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
+    }
+
+    /** A readable record's scheme owns exactly one alias; any other key there fails closed.
+     * Without a readable record the caller has already erased the ciphertext, so this
+     * vault's own keys protect nothing: remove them and silently keep any other entry. */
+    internal fun deleteRecordKey(descriptor: ByteArray?) {
+        if (descriptor == null) { deleteOwnKey(alias); deleteOwnKey(derivationAlias); return }
+        validateDescriptor(descriptor)
+        if (!deleteOwnKey(if (descriptor[0] == 1.toByte()) alias else derivationAlias))
+            throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
+    }
+
+    /** Deletes [entry] only while it holds this vault's key (see ownsKey). Returns false,
+     * deleting nothing, when a key this vault cannot own occupies the alias. */
+    private fun deleteOwnKey(entry: String): Boolean {
+        val key = store.getKey(entry, null) ?: return true
+        if (!ownsKey(alias, entry, key.algorithm)) return false
+        store.deleteEntry(entry)
+        return true
+    }
 }
 
 /** Explicit classical-compatibility option, not the default identity mode.

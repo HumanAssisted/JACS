@@ -563,8 +563,6 @@ public final class JacsBiometricVault {
                     Self.recordMutationLock.lock(); defer { Self.recordMutationLock.unlock() }
                     let agent: JacsSessionAgent
                     if let create = create {
-                        let source = try create()
-                        defer { source.clear() }
                         var random = Data(count: 32)
                         defer { random.resetBytes(in: 0..<random.count) }
                         let status = random.withUnsafeMutableBytes {
@@ -572,18 +570,33 @@ public final class JacsBiometricVault {
                         }
                         guard status == errSecSuccess else { throw JacsBiometricError.keychainStatus(status) }
                         let password = random.base64EncodedString()
-                        let materialJSON = try factory.serialize(source.export(password))
+                        let materialJSON = try { () throws -> String in
+                            let source = try create()
+                            defer { source.clear() }
+                            return try factory.serialize(source.export(password))
+                        }()
                         var encoded = try JSONEncoder().encode(Record(version: 1, account: account,
                             biometricDomain: domain, wrappingPassword: password, materialJSON: materialJSON))
                         defer { encoded.resetBytes(in: 0..<encoded.count) }
                         guard encoded.count <= Self.maximumRecordBytes else {
                             throw JacsBiometricError.invalidStoredRecord
                         }
+                        try operation.mutateIfPending {
+                            try store.add(encoded, account: account, authorization: auth)
+                        }
+                        // Reuse only this operation's authenticated context. A
+                        // successful write alone does not prove persisted custody.
+                        var readback = try store.read(account: account, authorization: auth)
+                        defer { readback.resetBytes(in: 0..<readback.count) }
                         guard operation.isPending else { return }
-                        try store.add(encoded, account: account, authorization: auth)
-                        // Import from the exact encrypted bytes just committed;
-                        // the caller's original handle is always relocked.
-                        agent = try factory.restore(materialJSON: materialJSON, password: password)
+                        // Exact equality pins every field, including the identity,
+                        // password and biometric domain, to the generated record.
+                        guard readback == encoded,
+                              let record = try? JSONDecoder().decode(Record.self, from: readback) else {
+                            throw JacsBiometricError.invalidStoredRecord
+                        }
+                        agent = try factory.restore(materialJSON: record.materialJSON,
+                            password: record.wrappingPassword)
                     } else {
                         var encoded = try store.read(account: account, authorization: auth)
                         defer { encoded.resetBytes(in: 0..<encoded.count) }

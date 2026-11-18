@@ -16,7 +16,6 @@ import java.io.*
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 import javax.crypto.AEADBadTagException
-import javax.crypto.Cipher
 
 interface JacsVaultCallback<T> {
     fun onSuccess(value: T)
@@ -122,17 +121,29 @@ class JacsBiometricVault(
         worker.execute {
             try {
                 if (records.exists()) throw JacsVaultException(JacsVaultException.Code.ALREADY_EXISTS)
-                keystore.ensureWrappingKey()
-                val cipher = keystore.prepareProtect()
-                main.post { promptAgent(ticket, title, cipher, callback) {
-                    val agent = createAgent()
-                    try {
+                val auth = keystore.prepareProvision()
+                main.post { promptAgent(ticket, title, auth, callback) {
+                    keystore.withProvisionPassword(auth) { password ->
+                        val agent = createAgent()
+                        val wrapped: JacsKeystore.WrappedMaterial
+                        val identity: MobilePublicIdentity
+                        val publicKey: ByteArray
+                        try {
+                            if (!state.current(ticket)) throw JacsVaultException(JacsVaultException.Code.CANCELLED)
+                            identity = agent.describe()
+                            publicKey = agent.publicKey()
+                            wrapped = JacsKeystore.WrappedMaterial(materialToJson(agent.exportEncryptedAgent(password)), auth.descriptor())
+                            state.mutate(ticket) { records.writeNew(wrapped) }
+                        } finally { clear(agent) }
+                        // Reopen only persisted bytes. A retained password alone would
+                        // conceal a corrupted derivation salt until the next unlock.
+                        val readback = records.read()
+                        requireProvisionReadback(wrapped, readback)
+                        auth.requireDescriptor(readback.wrappedSecret)
                         if (!state.current(ticket)) throw JacsVaultException(JacsVaultException.Code.CANCELLED)
-                        val wrapped = keystore.finishProtect(agent, cipher)
-                        if (!state.current(ticket)) throw JacsVaultException(JacsVaultException.Code.CANCELLED)
-                        records.writeNew(wrapped)
-                        agent
-                    } catch (error: Exception) { clear(agent); throw error }
+                        MobileAgent.importPinned(materialFromJson(readback.materialJson), password,
+                            org.json.JSONObject(identity.agentJson).getString("jacsId"), publicKey, MobileAlgorithm.PQ2025)
+                    }
                 } }
             } catch (error: Exception) { fail(ticket, callback, error) }
         }
@@ -142,8 +153,8 @@ class JacsBiometricVault(
         begin(false, true, callback) { ticket -> worker.execute {
             try {
                 val wrapped = records.read()
-                val cipher = keystore.prepareUnlock(wrapped.wrappedSecret)
-                main.post { promptAgent(ticket, title, cipher, callback) { keystore.finishUnlock(wrapped, cipher) } }
+                val auth = keystore.prepareOpen(wrapped.wrappedSecret)
+                main.post { promptAgent(ticket, title, auth, callback) { keystore.open(wrapped, auth) } }
             } catch (error: Exception) { fail(ticket, callback, error) }
         } }
 
@@ -268,16 +279,16 @@ class JacsBiometricVault(
         return material
     }
 
-    /** One fresh biometric decrypt, using the same bound Cipher and existing
+    /** One fresh biometric operation, using the same bound operation and existing
      * wrapping secret. Both Rust signers are cleared before callback delivery. */
     private fun <T> rotationOperation(title: String, callback: JacsVaultCallback<T>,
         operation: (JacsKeystore.WrappedMaterial, MobileAgent, String) -> Pair<JacsKeystore.WrappedMaterial, T>): JacsVaultRequest =
         begin(false, false, callback) { ticket -> worker.execute {
             try {
                 val wrapped = records.read()
-                val cipher = keystore.prepareUnlock(wrapped.wrappedSecret)
-                main.post { prompt(ticket, title, cipher, callback, {
-                    keystore.withUnlockedPassword(wrapped, cipher) { password ->
+                val auth = keystore.prepareOpen(wrapped.wrappedSecret)
+                main.post { prompt(ticket, title, auth, callback, {
+                    keystore.withOpenedPassword(wrapped, auth) { password ->
                         val agent = MobileAgent.importEncryptedAgent(materialFromJson(wrapped.materialJson), password)
                         try {
                             val (updated, value) = operation(wrapped, agent, password)
@@ -306,15 +317,19 @@ class JacsBiometricVault(
      * encrypted record remains available for the next biometric unlock. */
     fun lock() { requireMain(); invalidate(JacsVaultException.Code.CANCELLED) }
 
-    /** Explicit local erase. Clear the record before deleting its wrapping key;
-     * a storage failure retains the key so retry/recovery remains possible. */
+    /** Explicit local erase. Clear the record before deleting its Keystore keys;
+     * a storage failure retains the keys so retry/recovery remains possible. */
     fun delete(callback: JacsVaultCallback<Unit>): JacsVaultRequest {
         lock()
         return begin(false, false, callback) { ticket -> worker.execute {
             try {
                 if (!state.current(ticket)) return@execute
+                // An unreadable/missing record has no trustworthy scheme. After its
+                // ciphertext is erased, remove only keys this vault owns by alias and
+                // algorithm, never those of a vault whose alias shares our suffix.
+                val descriptor = try { records.read().wrappedSecret } catch (_: Exception) { null }
                 records.delete()
-                keystore.deleteWrappingKey()
+                keystore.deleteRecordKey(descriptor)
                 main.post { complete(ticket, callback, Unit) }
             } catch (error: Exception) { fail(ticket, callback, error) }
         } }
@@ -357,9 +372,9 @@ class JacsBiometricVault(
         }
     }
 
-    private fun promptAgent(ticket: JacsVaultState.Ticket, title: String, cipher: Cipher,
+    private fun promptAgent(ticket: JacsVaultState.Ticket, title: String, auth: JacsKeystore.Authentication,
         callback: JacsVaultCallback<JacsVaultIdentity>, open: () -> MobileAgent) {
-        prompt(ticket, title, cipher, callback, {
+        prompt(ticket, title, auth, callback, {
             val agent = open()
             try { Pair(agent, JacsVaultIdentity(agent.exportAgentJson(), agent.getPublicKeyBase64())) }
             catch (error: Exception) { clear(agent); throw error }
@@ -369,7 +384,7 @@ class JacsBiometricVault(
         }, { dispose(it.first) })
     }
 
-    private fun <T, R> prompt(ticket: JacsVaultState.Ticket, title: String, cipher: Cipher,
+    private fun <T, R> prompt(ticket: JacsVaultState.Ticket, title: String, auth: JacsKeystore.Authentication,
         callback: JacsVaultCallback<R>, open: () -> T, deliver: (T) -> Unit,
         discard: (T) -> Unit = {}) {
         if (!state.current(ticket)) return
@@ -380,7 +395,7 @@ class JacsBiometricVault(
         if (availability != null) {
             fail(ticket, callback, JacsVaultException(availability)); return
         }
-        if (!state.bindCipher(ticket, cipher)) return
+        if (!state.bindOperation(ticket, auth.operation)) return
         val cancellation = CancellationSignal()
         prompts[ticket] = cancellation
         try {
@@ -390,7 +405,7 @@ class JacsBiometricVault(
                 .setNegativeButton("Cancel", activity.mainExecutor) { _, _ ->
                     if (state.owns(ticket)) invalidate(JacsVaultException.Code.CANCELLED)
                 }
-                .build().authenticate(BiometricPrompt.CryptoObject(cipher), cancellation, activity.mainExecutor,
+                .build().authenticate(auth.cryptoObject(), cancellation, activity.mainExecutor,
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationFailed() { /* Nonterminal: platform allows retry. */ }
                         override fun onAuthenticationError(code: Int, message: CharSequence) {
@@ -398,7 +413,7 @@ class JacsBiometricVault(
                         }
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                             if (!state.current(ticket)) return
-                            if (!state.authenticate(ticket, result.cryptoObject?.cipher)) {
+                            if (!auth.matches(result.cryptoObject) || !state.authenticate(ticket, auth.operation)) {
                                 fail(ticket, callback, JacsVaultException(JacsVaultException.Code.INTEGRITY)); return
                             }
                             prompts.remove(ticket)
@@ -495,6 +510,13 @@ class JacsBiometricVault(
     }
 }
 
+/** A corrupted public derivation descriptor must not be masked by a retained password. */
+internal fun requireProvisionReadback(expected: JacsKeystore.WrappedMaterial, actual: JacsKeystore.WrappedMaterial) {
+    if (expected.materialJson != actual.materialJson || !expected.wrappedSecret.contentEquals(actual.wrappedSecret)
+        || expected.pendingMaterialJson != actual.pendingMaterialJson)
+        throw JacsVaultException(JacsVaultException.Code.INTEGRITY)
+}
+
 /** App-private, backup-excluded, atomic ciphertext record. A restored record on
  * another device cannot recover its non-exportable Keystore wrapping key. */
 internal class EncryptedRecordStore(directory: File, alias: String) : AutoCloseable {
@@ -530,7 +552,8 @@ internal class EncryptedRecordStore(directory: File, alias: String) : AutoClosea
         requireOwner()
         val material = wrapped.materialJson.toByteArray(Charsets.UTF_8)
         val pending = wrapped.pendingMaterialJson?.toByteArray(Charsets.UTF_8)
-        require(material.size in 1..MAX_MATERIAL && wrapped.wrappedSecret.size in 29..4096)
+        require(material.size in 1..MAX_MATERIAL)
+        JacsKeystore.validateDescriptor(wrapped.wrappedSecret)
         require(pending == null || pending.size in 1..MAX_MATERIAL)
         val stream = file.startWrite()
         try {
@@ -552,6 +575,7 @@ internal class EncryptedRecordStore(directory: File, alias: String) : AutoClosea
                 val material = ByteArray(size).also { input.readFully(it) }
                 val secretSize = input.readInt(); require(secretSize in 29..4096)
                 val secret = ByteArray(secretSize).also { input.readFully(it) }
+                JacsKeystore.validateDescriptor(secret)
                 val pending = if (magic == STAGED_MAGIC) {
                     val pendingSize = input.readInt(); require(pendingSize in 1..MAX_MATERIAL)
                     String(ByteArray(pendingSize).also { input.readFully(it) }, Charsets.UTF_8)

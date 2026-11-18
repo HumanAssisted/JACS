@@ -15,6 +15,15 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RotationPersistenceTest {
     @Test fun persistedCandidateSurvivesReopenAndAtomicPromotionKeepsOldUntilAcceptance() {
+        // Legacy AES envelopes and v2 derivation descriptors both retain custody
+        // metadata unchanged while the identity/ciphertext rotates.
+        for (descriptor in listOf(byteArrayOf(1) + ByteArray(44) { 1 },
+            byteArrayOf(2) + ByteArray(32) { 2 })) {
+            exerciseRotation(descriptor)
+        }
+    }
+
+    private fun exerciseRotation(descriptor: ByteArray) {
         val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
             "rotation-${UUID.randomUUID()}").apply { mkdirs() }
         val password = "android-rotation-test-local-envelope-secret"
@@ -24,7 +33,7 @@ class RotationPersistenceTest {
             val original = old.exportEncryptedAgent(password)
             val candidate = old.prepareKeyRotation(password)
             // Synthetic wrapped-secret bytes exercise the file container only.
-            val wrapped = JacsKeystore.WrappedMaterial(materialToJson(original), ByteArray(45) { 1 })
+            val wrapped = JacsKeystore.WrappedMaterial(materialToJson(original), descriptor)
             EncryptedRecordStore(directory, "test").use { records ->
                 records.writeNew(wrapped)
                 records.replace(wrapped.copy(pendingMaterialJson = materialToJson(candidate)))
@@ -35,6 +44,7 @@ class RotationPersistenceTest {
             old.clearSecrets()
             EncryptedRecordStore(directory, "test").use { records ->
                 val persisted = records.read()
+                assertArrayEquals(descriptor, persisted.wrappedSecret)
                 assertEquals(materialToJson(candidate), persisted.pendingMaterialJson)
                 val agent = MobileAgent.importEncryptedAgent(materialFromJson(persisted.materialJson), password)
                 active = agent
@@ -58,6 +68,7 @@ class RotationPersistenceTest {
             EncryptedRecordStore(directory, "test").use { records ->
                 assertEquals(materialToJson(candidate), records.read().materialJson)
                 assertNull(records.read().pendingMaterialJson)
+                assertArrayEquals(descriptor, records.read().wrappedSecret)
             }
         } finally {
             active?.clearSecrets(); active?.close(); old.clearSecrets(); old.close(); directory.deleteRecursively()
