@@ -198,9 +198,6 @@ class ProvisioningKeystoreTest {
                 first.ensureWrappingKey()
                 first.prepareProvision()
                 second.prepareProvision()
-                first.deleteRecordKey(null)
-                assertEquals("AES", first.validatedWrappingKey().algorithm)
-                assertEquals("HmacSHA256", first.validatedDerivationKey().algorithm)
                 first.deleteRecordKey(byteArrayOf(1) + ByteArray(60))
                 assertFalse(store.containsAlias(alias))
                 assertEquals("HmacSHA256", first.validatedDerivationKey().algorithm)
@@ -221,6 +218,98 @@ class ProvisioningKeystoreTest {
             assertNull("Vault must succeed", error)
             assertEquals(1, calls)
             return value!!
+        }
+    }
+
+    private fun startHost(): VaultRecoveryTestActivity {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = instrumentation.startActivitySync(Intent(instrumentation.targetContext,
+            VaultRecoveryTestActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as VaultRecoveryTestActivity
+        assertTrue(activity.focused.await(10, TimeUnit.SECONDS))
+        return activity
+    }
+
+    private fun unauthenticatedKey(entry: String, algorithm: String) {
+        val spec = if (algorithm == "AES") KeyGenParameterSpec.Builder(entry,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setKeySize(256)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build()
+        else KeyGenParameterSpec.Builder(entry, KeyProperties.PURPOSE_SIGN).setKeySize(256)
+            .setDigests(KeyProperties.DIGEST_SHA256).build()
+        KeyGenerator.getInstance(algorithm, "AndroidKeyStore").run { init(spec); generateKey() }
+    }
+
+    /** Public delete with no record. Ownership is the alias with its key algorithm, not the
+     * key policy, so unauthenticated keys stand in for orphans and no enrollment is needed. */
+    @Test fun deletingWithoutRecordRemovesOwnOrphansAndKeepsOtherOwnersKeys() {
+        // Each alias extends the previous one by ".hmac-v2". The vault under test is
+        // names[1]: its parent's root and its child's legacy key can occupy its own names.
+        val base = "jacs-orphan-test-${UUID.randomUUID()}"
+        val names = (0..3).map { base + ".hmac-v2".repeat(it) }
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = startHost()
+        var vault: JacsBiometricVault? = null
+        fun delete() {
+            val deleted = Capture<Unit>()
+            instrumentation.runOnMainSync { vault!!.delete(deleted) }
+            deleted.await()
+        }
+        try {
+            instrumentation.runOnMainSync { vault = JacsBiometricVault(activity, names[1]) }
+            unauthenticatedKey(names[0], "AES")        // parent's legacy key
+            unauthenticatedKey(names[1], "AES")        // own legacy key
+            unauthenticatedKey(names[2], "HmacSHA256") // own orphan root
+            unauthenticatedKey(names[3], "HmacSHA256") // child's root
+            delete()
+            assertFalse("Own legacy key must be removed", store.containsAlias(names[1]))
+            assertFalse("Own orphan root must be removed", store.containsAlias(names[2]))
+            assertEquals("AES", store.getKey(names[0], null)?.algorithm)
+            assertEquals("HmacSHA256", store.getKey(names[3], null)?.algorithm)
+            unauthenticatedKey(names[1], "HmacSHA256") // parent's root under our legacy name
+            unauthenticatedKey(names[2], "AES")        // child's legacy key under our root name
+            delete()
+            assertEquals("HmacSHA256", store.getKey(names[1], null)?.algorithm)
+            assertEquals("AES", store.getKey(names[2], null)?.algorithm)
+        } finally {
+            instrumentation.runOnMainSync { vault?.close(); activity.finish() }
+            names.forEach { store.deleteEntry(it) }
+        }
+    }
+
+    @Test fun publicCreateAfterOrphanRootCleanupUsesFreshRoot() {
+        assumeTrue("Explicit task emulator authorization required",
+            InstrumentationRegistry.getArguments().getString("jacsSyntheticBiometric") == "true")
+        enrolled()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = startHost()
+        val alias = "jacs-orphan-create-${UUID.randomUUID()}"
+        val root = JacsKeystore.rootAlias(alias)
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        var vault: JacsBiometricVault? = null
+        fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
+        try {
+            JacsKeystore(alias).prepareProvision() // the root an interrupted ceremony leaves
+            assertTrue(store.containsAlias(root))
+            main { vault = JacsBiometricVault(activity, alias) }
+            val cleared = Capture<Unit>()
+            main { vault!!.delete(cleared) }
+            cleared.await()
+            assertFalse("Delete without a record must remove the orphan root", store.containsAlias(root))
+            val created = Capture<JacsVaultIdentity>()
+            main { vault!!.createHuman("Create after orphan cleanup test", created) }
+            val identity = created.await()
+            assertEquals("HmacSHA256", JacsKeystore(alias).validatedDerivationKey().algorithm)
+            val signed = Capture<String>()
+            main { vault!!.signDocumentJson("{\"purpose\":\"after-orphan-cleanup\"}", signed) }
+            val key = java.util.Base64.getDecoder().decode(identity.publicKeyBase64)
+            assertTrue(verifyWithKey(signed.await(), key, MobileAlgorithm.PQ2025).valid)
+            val erased = Capture<Unit>()
+            main { vault!!.delete(erased) }
+            erased.await()
+            assertFalse("Deleting the new record must remove its root", store.containsAlias(root))
+        } finally {
+            main { vault?.close(); activity.finish() }
+            store.deleteEntry(root)
         }
     }
 

@@ -44,8 +44,10 @@ val request = vault.create("Create your private identity", object : JacsVaultCal
   callback)` verifies the authenticated registration's identity/key pin, rejects
   non-PQ material, and stores it behind a fresh biometric-protected local secret.
 - `lock()` is the logout/relock operation. It retains ciphertext for future
-  unlocks. `delete(callback)` explicitly erases the encrypted record and wrapping
-  key. `close()` is terminal and releases the activity registration and worker.
+  unlocks. `delete(callback)` explicitly erases the encrypted record, then the
+  Keystore key its scheme uses or, if no record is readable, this vault's own
+  orphan keys (see below). `close()` is terminal and releases the activity
+  registration and worker.
 
 The owner activity stopping automatically locks and cancels pending operations;
 destruction closes the vault. Recreate it for a new activity. Cancellation,
@@ -91,13 +93,25 @@ Both formats require strong-biometric-only, per-use authentication and enrollmen
 invalidation. Policy validation accepts exactly `-1` (documented `KeyInfo`) or `0`
 (the Android 15 Keystore2 representation when the timeout tag is absent); positive
 authentication windows and other negative values are rejected. Unknown descriptor
-versions fail closed. Interrupted creation can retain an orphan generated alias;
-it is validated and reused, never silently replaced. Committed ciphertext remains
-after cancellation or readback failure, but no unlocked session is published.
-Deletion selects only the persisted scheme's alias and checks its key algorithm,
-so application aliases containing `.hmac-v2` cannot erase another vault's root.
-If the record is missing or unreadable, explicit deletion removes ciphertext but
-retains unknown orphan aliases instead of guessing ownership.
+versions fail closed. Committed ciphertext remains after cancellation or readback
+failure, but no unlocked session is published.
+
+Interrupted creation can leave an orphan root with no record. Provisioning runs
+only while no record exists; it validates and reuses that root, and rejects a
+weaker or imported one without replacing it. If Keystore reports the orphan
+permanently invalidated, as after a biometric enrollment change, it protects no
+ciphertext and can never authorize again: provisioning deletes it and generates a
+fresh root once, before the same single prompt. Transient failures such as a
+cancelled prompt, lockout or an unavailable sensor never replace a root.
+
+A vault creates AES keys only at its alias and HMAC roots only at its alias plus
+`.hmac-v2`. An application alias can extend another by `.hmac-v2`, so deletion
+checks each key's alias and algorithm together, which have exactly one owner.
+With a readable record, `delete` removes only the persisted scheme's key and fails
+with `KEY_POLICY` if another algorithm occupies its alias. With a missing or
+unreadable record, it removes the AES key at the alias and the HMAC root at its
+`.hmac-v2` alias where each holds that algorithm, and keeps any other entry. Keys
+are removed only after the record is erased; a storage failure leaves them.
 
 The portable PQ key is unlocked in Rust memory. JVM/FFI strings cannot be reliably
 zeroed; envelope password copies remain scoped to import/export, and mutable MAC
@@ -109,7 +123,8 @@ The existing `check-android-source.py` compiles all vault/adaptor source against
 Android API classes and runs independent DER checks plus 255 state cases,
 including 250 cancellation/completion races, and nine authentication-duration
 policy cases, plus descriptor isolation, independent HMAC vectors, persisted
-readback corruption and MAC callback ownership checks. The package script also compiles
+readback corruption, MAC callback ownership and Keystore key ownership across
+`.hmac-v2` alias chains. The package script also compiles
 an instrumentation APK from `tests/android-instrumented`, using test-only
 AndroidX runner dependencies. On an already provisioned API 30+ emulator/device:
 
@@ -119,7 +134,8 @@ gradle --project-dir jacs-mobile/generated/android-project :library:connectedDeb
 
 These device tests exercise fresh wrapping-key policy acceptance when strong
 biometrics are enrolled (otherwise that check skips), real AndroidKeyStore rejection of weak aliases,
-missing-key failure, real Rust PQ material and Android atomic-record persistence.
+missing-key failure, orphan-key deletion that keeps suffixed owners' keys, real
+Rust PQ material and Android atomic-record persistence.
 They do not forge biometric authorization or claim to verify a real sensor.
 For sensor acceptance on a device with enrolled strong biometrics: create,
 relock/unlock, cancel and background during each prompt, cancel during Argon2

@@ -317,16 +317,16 @@ class JacsBiometricVault(
      * encrypted record remains available for the next biometric unlock. */
     fun lock() { requireMain(); invalidate(JacsVaultException.Code.CANCELLED) }
 
-    /** Explicit local erase. Clear the record before deleting its wrapping key;
-     * a storage failure retains the key so retry/recovery remains possible. */
+    /** Explicit local erase. Clear the record before deleting its Keystore keys;
+     * a storage failure retains the keys so retry/recovery remains possible. */
     fun delete(callback: JacsVaultCallback<Unit>): JacsVaultRequest {
         lock()
         return begin(false, false, callback) { ticket -> worker.execute {
             try {
                 if (!state.current(ticket)) return@execute
-                // An unreadable/missing record has no trustworthy scheme. Erase
-                // its ciphertext but preserve unknown aliases rather than deleting
-                // a different vault whose application alias shares our suffix.
+                // An unreadable/missing record has no trustworthy scheme. After its
+                // ciphertext is erased, remove only keys this vault owns by alias and
+                // algorithm, never those of a vault whose alias shares our suffix.
                 val descriptor = try { records.read().wrappedSecret } catch (_: Exception) { null }
                 records.delete()
                 keystore.deleteRecordKey(descriptor)

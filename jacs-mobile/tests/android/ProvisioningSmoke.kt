@@ -53,5 +53,24 @@ fun main() {
     check(!state.authenticate(ticket, mac))
     state.invalidate()
     check(!state.install(ticket, "late persisted import"))
-    println("PASS: provisioning descriptor isolation, persisted readback corruption, and MAC callback ownership")
+
+    // Every key a vault creates (AES at its alias, HMAC at its root alias) has exactly one
+    // owner, even where application aliases extend each other by ".hmac-v2". Deletion and
+    // provisioning repair act only on owned keys, so neither can reach another vault's key.
+    val vaults = listOf("v", "w.x").flatMap { base -> (0..4).map { base + ".hmac-v2".repeat(it) } }
+    var ownership = 0
+    for (owner in vaults) {
+        for ((entry, algorithm) in listOf(owner to "AES", JacsKeystore.rootAlias(owner) to "HmacSHA256")) {
+            for (vault in vaults) {
+                check(JacsKeystore.ownsKey(vault, entry, algorithm) == (vault == owner)) { "$vault owns $entry ($algorithm)" }
+                ownership++
+            }
+        }
+    }
+    check(JacsKeystore.rootAlias("v") == "v.hmac-v2")
+    for (other in listOf("EC", "HmacSHA512", "aes", null)) {
+        check(!JacsKeystore.ownsKey("v", "v", other) && !JacsKeystore.ownsKey("v", "v.hmac-v2", other))
+    }
+    println("PASS: provisioning descriptor isolation, persisted readback corruption, MAC callback ownership, " +
+        "and $ownership Keystore ownership cases across .hmac-v2 alias chains")
 }

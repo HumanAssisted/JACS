@@ -39,7 +39,7 @@ class JacsKeystore(private val alias: String) {
     data class WrappedMaterial(val materialJson: String, val wrappedSecret: ByteArray,
         val pendingMaterialJson: String? = null)
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-    private val derivationAlias = "$alias.hmac-v2"
+    private val derivationAlias = rootAlias(alias)
 
     /** A fresh operation, never an authentication window or reusable MAC result. */
     internal sealed class Authentication {
@@ -65,22 +65,30 @@ class JacsKeystore(private val alias: String) {
     }
 
     /** New roots are generated inside Keystore; raw root key bytes never enter the app.
-     * Retain an orphan root after interruption rather than replacing an existing alias.
-     * The record owner's lock serializes creation and all subsequent persistence.
+     * Call only while no record exists, holding the record owner's lock, which serializes
+     * creation and all subsequent persistence. An orphan root left by an interrupted
+     * ceremony is validated and reused; a weaker or imported one is rejected, not replaced.
+     * One that Keystore reports permanently invalidated protects no record and can never
+     * authorize again, so it is replaced once, and only while it is this vault's HMAC key.
      */
     internal fun prepareProvision(): Authentication.Derive {
         require(Build.VERSION.SDK_INT >= 30)
-        if (!store.containsAlias(derivationAlias)) {
-            KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, "AndroidKeyStore").apply {
-                init(KeyGenParameterSpec.Builder(derivationAlias, KeyProperties.PURPOSE_SIGN)
-                    .setKeySize(256).setDigests(KeyProperties.DIGEST_SHA256)
-                    .setUserAuthenticationRequired(true)
-                    .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-                    .setInvalidatedByBiometricEnrollment(true).build())
-                generateKey()
+        val descriptor = byteArrayOf(2) + ByteArray(32).also { SecureRandom().nextBytes(it) }
+        if (store.containsAlias(derivationAlias)) {
+            try { return prepareDerivation(descriptor) }
+            catch (error: android.security.keystore.KeyPermanentlyInvalidatedException) {
+                if (!deleteOwnKey(derivationAlias)) throw error
             }
         }
-        return prepareDerivation(byteArrayOf(2) + ByteArray(32).also { SecureRandom().nextBytes(it) })
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, "AndroidKeyStore").apply {
+            init(KeyGenParameterSpec.Builder(derivationAlias, KeyProperties.PURPOSE_SIGN)
+                .setKeySize(256).setDigests(KeyProperties.DIGEST_SHA256)
+                .setUserAuthenticationRequired(true)
+                .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+                .setInvalidatedByBiometricEnrollment(true).build())
+            generateKey()
+        }
+        return prepareDerivation(descriptor)
     }
 
     internal fun validatedDerivationKey(): SecretKey {
@@ -154,6 +162,16 @@ class JacsKeystore(private val alias: String) {
             val owner = alias.toByteArray(Charsets.UTF_8)
             return ByteBuffer.allocate(domain.size + 4 + owner.size + descriptor.size)
                 .put(domain).putInt(owner.size).put(owner).put(descriptor).array()
+        }
+
+        /** A vault creates AES keys only at its alias and HMAC roots only at rootAlias(alias).
+         * One application alias can be another plus ".hmac-v2", so a name alone may be another
+         * vault's key, but an entry alias with its key algorithm has exactly one owner. */
+        internal fun rootAlias(alias: String) = "$alias.hmac-v2"
+        internal fun ownsKey(alias: String, entry: String, algorithm: String?): Boolean = when (algorithm) {
+            KeyProperties.KEY_ALGORITHM_AES -> entry == alias
+            KeyProperties.KEY_ALGORITHM_HMAC_SHA256 -> entry == rootAlias(alias)
+            else -> false
         }
     }
 
@@ -260,24 +278,26 @@ class JacsKeystore(private val alias: String) {
 
     /** Legacy low-level AES API: never delete a different vault's HMAC root. */
     fun deleteWrappingKey() {
-        val key = store.getKey(alias, null) ?: return
-        if (key.algorithm != KeyProperties.KEY_ALGORITHM_AES)
-            throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
-        store.deleteEntry(alias)
+        if (!deleteOwnKey(alias)) throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
     }
 
-    /** The persisted scheme owns exactly one alias. With no readable record,
-     * leave orphan aliases intact: a suffix can also be another vault's name. */
+    /** A readable record's scheme owns exactly one alias; any other key there fails closed.
+     * Without a readable record the caller has already erased the ciphertext, so this
+     * vault's own keys protect nothing: remove them and silently keep any other entry. */
     internal fun deleteRecordKey(descriptor: ByteArray?) {
-        if (descriptor == null) return
+        if (descriptor == null) { deleteOwnKey(alias); deleteOwnKey(derivationAlias); return }
         validateDescriptor(descriptor)
-        if (descriptor[0] == 1.toByte()) deleteWrappingKey()
-        else {
-            val key = store.getKey(derivationAlias, null) ?: return
-            if (key.algorithm != KeyProperties.KEY_ALGORITHM_HMAC_SHA256)
-                throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
-            store.deleteEntry(derivationAlias)
-        }
+        if (!deleteOwnKey(if (descriptor[0] == 1.toByte()) alias else derivationAlias))
+            throw JacsVaultException(JacsVaultException.Code.KEY_POLICY)
+    }
+
+    /** Deletes [entry] only while it holds this vault's key (see ownsKey). Returns false,
+     * deleting nothing, when a key this vault cannot own occupies the alias. */
+    private fun deleteOwnKey(entry: String): Boolean {
+        val key = store.getKey(entry, null) ?: return true
+        if (!ownsKey(alias, entry, key.algorithm)) return false
+        store.deleteEntry(entry)
+        return true
     }
 }
 

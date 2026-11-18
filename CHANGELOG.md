@@ -8,6 +8,18 @@
   then imports with the original public identity pinned in the same ceremony.
   Existing AES records remain readable and rotatable; unknown descriptors,
   weaker key policies and altered readback fail closed.
+- New Android records use descriptor version 2, which earlier clients cannot
+  unlock: they report `INVALID_RECORD`. Do not roll a device back to an earlier
+  client after version 2 provisioning.
+- Android `delete` erases the record before any key. With a readable record it
+  removes only that scheme's key. With no readable record it removes the AES key
+  at the alias and the HMAC root at `<alias>.hmac-v2` where each holds that
+  algorithm, so a vault whose alias extends another by `.hmac-v2` keeps its
+  keys. `deleteWrappingKey` refuses a non-AES entry with `KEY_POLICY`.
+- Android provisioning, which runs only without a record, replaces an orphan
+  root once when Keystore reports it permanently invalidated. A cancelled setup
+  followed by a biometric enrollment change previously left such a root, which
+  then failed every later creation and restore with `KEY_INVALIDATED`.
 - iOS provisioning reads the exact Keychain record back with the same
   authenticated context after clearing the original signer. A failed readback
   retains the encrypted record but never returns the original unlocked signer.
