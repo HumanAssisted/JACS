@@ -111,6 +111,8 @@ class JacsKeystore(private val alias: String) {
         } catch (error: Exception) { throw JacsVaultException(JacsVaultException.Code.KEY_POLICY, error) }
     }
 
+    /** Mac.init stays outside validatedDerivationKey's error mapping, so the unwrapped
+     * KeyPermanentlyInvalidatedException reaches prepareProvision's one-time replacement. */
     private fun prepareDerivation(descriptor: ByteArray): Authentication.Derive {
         derivationInput(alias, descriptor) // Reject malformed versions before accessing a key.
         return Authentication.Derive(Mac.getInstance("HmacSHA256").apply { init(validatedDerivationKey()) }, descriptor)

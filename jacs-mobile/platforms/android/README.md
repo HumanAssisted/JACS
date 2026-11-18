@@ -137,9 +137,31 @@ biometrics are enrolled (otherwise that check skips), real AndroidKeyStore rejec
 missing-key failure, orphan-key deletion that keeps suffixed owners' keys, real
 Rust PQ material and Android atomic-record persistence.
 They do not forge biometric authorization or claim to verify a real sensor.
+
+Replacing an invalidated orphan root needs a real enrollment change, which CI
+cannot make. Two opt-in phases cover it on an emulator or device with enrolled
+strong biometrics. The connected Gradle task uninstalls the test APK afterwards,
+and its Keystore keys with it, so install the APK once and run both phases:
+
+```sh
+adb install -r -t jacs-mobile/generated/android-project/library/build/outputs/apk/androidTest/debug/library-debug-androidTest.apk
+test=ai.hai.jacs.platform.ProvisioningKeystoreTest
+runner=ai.hai.jacs.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -e jacsEnrollmentChangePhase 1 \
+    -e class "$test#enrollmentChangePhase1CancelledCreateLeavesRoot" "$runner"
+# Enroll another fingerprint, then authenticate once when phase 2 prompts.
+adb shell am instrument -w -e jacsEnrollmentChangePhase 2 \
+    -e class "$test#enrollmentChangePhase2ReplacesInvalidatedRootBeforeOnePrompt" "$runner"
+```
+
+Phase 1 cancels a public create, which leaves a valid root and no record. Phase 2
+fails unless that root is now permanently invalidated, then expects create to
+succeed after exactly one prompt, sign, and delete the new root.
+
 For sensor acceptance on a device with enrolled strong biometrics: create,
 relock/unlock, cancel and background during each prompt, cancel during Argon2
-work, change enrollment then unlock (expect invalidation), verify signing fails
-after logout, and complete a pinned encrypted transfer into another runtime.
+work, change enrollment then unlock (expect invalidation), cancel setup, change
+enrollment and set up again (expect one prompt and success), verify signing
+fails after logout, and complete a pinned encrypted transfer into another runtime.
 Keep any emulator enrollment automation separate from assertions about physical
 sensor behavior. No HAI API or app integration is required or included.

@@ -19,7 +19,9 @@
 - Android provisioning, which runs only without a record, replaces an orphan
   root once when Keystore reports it permanently invalidated. A cancelled setup
   followed by a biometric enrollment change previously left such a root, which
-  then failed every later creation and restore with `KEY_INVALIDATED`.
+  then failed every later creation and restore with `KEY_INVALIDATED`. An
+  opt-in instrumented test, run in two phases around an enrollment change,
+  checks the replacement and its single prompt.
 - iOS provisioning reads the exact Keychain record back with the same
   authenticated context after clearing the original signer. A failed readback
   retains the encrypted record but never returns the original unlocked signer.

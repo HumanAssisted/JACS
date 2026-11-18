@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.CancellationSignal
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.security.keystore.UserNotAuthenticatedException
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -17,8 +18,10 @@ import java.security.KeyStore
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.KeyGenerator
 import javax.crypto.Mac
+import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -311,6 +314,83 @@ class ProvisioningKeystoreTest {
             main { vault?.close(); activity.finish() }
             store.deleteEntry(root)
         }
+    }
+
+    private val enrollmentChangePhase get() =
+        InstrumentationRegistry.getArguments().getString("jacsEnrollmentChangePhase")
+    private val enrollmentChangeAlias = "jacs-enrollment-change-test"
+
+    /** Opt-in phase 1 of 2: -e jacsEnrollmentChangePhase 1. A cancelled public create leaves a
+     * valid root and no record. Keep this APK installed, enroll another biometric, run phase 2. */
+    @Test fun enrollmentChangePhase1CancelledCreateLeavesRoot() {
+        assumeTrue("Opt-in enrollment change, phase 1", enrollmentChangePhase == "1")
+        enrolled()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = startHost()
+        val root = JacsKeystore.rootAlias(enrollmentChangeAlias)
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        var vault: JacsBiometricVault? = null
+        fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
+        try {
+            main { vault = JacsBiometricVault(activity, enrollmentChangeAlias) }
+            val cleared = Capture<Unit>()
+            main { vault!!.delete(cleared) } // whatever an earlier run left
+            cleared.await()
+            val cancelled = Capture<JacsVaultIdentity>()
+            main { vault!!.createHuman("Enrollment change test", cancelled).cancel() }
+            assertTrue(cancelled.done.await(10, TimeUnit.SECONDS))
+            assertEquals(JacsVaultException.Code.CANCELLED, cancelled.error?.code)
+            // The serial worker runs this after the cancelled create's provisioning step.
+            val inspected = Capture<JacsVaultInspection>()
+            main { vault!!.inspect(inspected) }
+            assertEquals(JacsVaultRecordState.ABSENT, inspected.await().state)
+            assertTrue("A cancelled create leaves its root", store.containsAlias(root))
+            // Still valid: only the enrollment change between phases invalidates it.
+            Mac.getInstance("HmacSHA256").init(JacsKeystore(enrollmentChangeAlias).validatedDerivationKey())
+        } finally { main { vault?.close(); activity.finish() } }
+    }
+
+    /** Opt-in phase 2 of 2: -e jacsEnrollmentChangePhase 2, after the enrollment change. The
+     * orphan root is permanently invalidated; create replaces it before its only prompt. */
+    @Test fun enrollmentChangePhase2ReplacesInvalidatedRootBeforeOnePrompt() {
+        assumeTrue("Opt-in enrollment change, phase 2", enrollmentChangePhase == "2")
+        enrolled()
+        val root = JacsKeystore.rootAlias(enrollmentChangeAlias)
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        assertTrue("Run phase 1 first", store.containsAlias(root))
+        assertThrows("Change enrollment after phase 1", KeyPermanentlyInvalidatedException::class.java) {
+            Mac.getInstance("HmacSHA256").init(store.getKey(root, null) as SecretKey)
+        }
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = startHost()
+        val focusLosses = AtomicInteger() // each prompt is a focused system window
+        var vault: JacsBiometricVault? = null
+        fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
+        try {
+            main {
+                vault = JacsBiometricVault(activity, enrollmentChangeAlias)
+                activity.window.decorView.viewTreeObserver.addOnWindowFocusChangeListener {
+                    if (!it) focusLosses.incrementAndGet()
+                }
+            }
+            val inspected = Capture<JacsVaultInspection>()
+            main { vault!!.inspect(inspected) }
+            assertEquals(JacsVaultRecordState.ABSENT, inspected.await().state)
+            val created = Capture<JacsVaultIdentity>()
+            main { vault!!.createHuman("Create after enrollment change test", created) }
+            val identity = created.await()
+            assertEquals("Exactly one prompt", 1, focusLosses.get())
+            // The replacement root is valid under the new enrollment.
+            Mac.getInstance("HmacSHA256").init(JacsKeystore(enrollmentChangeAlias).validatedDerivationKey())
+            val signed = Capture<String>()
+            main { vault!!.signDocumentJson("{\"purpose\":\"after-enrollment-change\"}", signed) }
+            val key = java.util.Base64.getDecoder().decode(identity.publicKeyBase64)
+            assertTrue(verifyWithKey(signed.await(), key, MobileAlgorithm.PQ2025).valid)
+            val erased = Capture<Unit>()
+            main { vault!!.delete(erased) }
+            erased.await()
+            assertFalse("Deleting the new record must remove its root", store.containsAlias(root))
+        } finally { main { vault?.close(); activity.finish() } }
     }
 
     @Test fun publicVaultProvisionReadbackAndFreshUnlockRetainIdentity() {
