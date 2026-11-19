@@ -40,6 +40,14 @@ val request = vault.create("Create your private identity", object : JacsVaultCal
 - `createTransfer(callback)` generates the six-word transfer code in Rust,
   exports encrypted material, and locks **before** returning code and ciphertext.
   Display the code locally; upload only ciphertext. No transport is included.
+- `createRecovery(callback)` exports a 128-bit recovery code and its encrypted
+  material from the session, and also locks before the callback.
+- `createRecovery(callback, lockAfter = false)` and `createTransfer(callback,
+  lockAfter = false)` opt out of that relock: the session stays installed, so
+  the export and the signatures that follow share one biometric prompt. Call
+  `lock()` in a `finally` once those operations finish. Activity stop,
+  destruction and cancelling a pending request still invalidate the session as
+  they do by default. Java callers keep the one-argument methods, which relock.
 - `receive(materialJson, transferCode, expectedAgentId, expectedPublicKey, title,
   callback)` verifies the authenticated registration's identity/key pin, rejects
   non-PQ material, and stores it behind a fresh biometric-protected local secret.
@@ -124,7 +132,8 @@ Android API classes and runs independent DER checks plus 255 state cases,
 including 250 cancellation/completion races, and nine authentication-duration
 policy cases, plus descriptor isolation, independent HMAC vectors, persisted
 readback corruption, MAC callback ownership and Keystore key ownership across
-`.hmac-v2` alias chains. The package script also compiles
+`.hmac-v2` alias chains. It also checks that Java keeps the one-argument
+`createRecovery` and `createTransfer` overloads. The package script also compiles
 an instrumentation APK from `tests/android-instrumented`, using test-only
 AndroidX runner dependencies. On an already provisioned API 30+ emulator/device:
 
@@ -157,6 +166,18 @@ adb shell am instrument -w -e jacsEnrollmentChangePhase 2 \
 Phase 1 cancels a public create, which leaves a valid root and no record. Phase 2
 fails unless that root is now permanently invalidated, then expects create to
 succeed after exactly one prompt, sign, and delete the new root.
+
+The kept-open recovery export also needs a real authorization. With the same
+APK installed, run it and supply the fingerprint at each of its two prompts
+(`adb -e emu finger touch 1` on an emulator):
+
+```sh
+adb shell am instrument -w -e jacsSyntheticBiometric true \
+    -e class "$test#recoveryExportRelocksByDefaultAndKeepsTheSessionOnlyWhenAsked" "$runner"
+```
+
+It expects the default export to relock, so signing fails `LOCKED`, and the
+`lockAfter = false` export to keep the session signing until `lock()`.
 
 For sensor acceptance on a device with enrolled strong biometrics: create,
 relock/unlock, cancel and background during each prompt, cancel during Argon2

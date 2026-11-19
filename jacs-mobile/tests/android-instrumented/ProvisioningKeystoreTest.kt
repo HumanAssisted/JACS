@@ -23,6 +23,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -429,6 +430,58 @@ class ProvisioningKeystoreTest {
             main { vault.signDocumentJson("{\"purpose\":\"after-fresh-unlock\"}", fresh) }
             assertTrue(verifyWithKey(fresh.await(), key, MobileAlgorithm.PQ2025).valid)
             main { vault.lock() }
+        } finally {
+            main { vault.close(); activity.finish() }
+            EncryptedRecordStore(activity.applicationContext.noBackupFilesDir, alias).use { it.delete() }
+            JacsKeystore(alias).deleteRecordKey(byteArrayOf(2) + ByteArray(32))
+        }
+    }
+
+    /** Two prompts: create, then one unlock that covers a kept-open export and a signature. */
+    @Test fun recoveryExportRelocksByDefaultAndKeepsTheSessionOnlyWhenAsked() {
+        assumeTrue("Explicit task emulator authorization required",
+            InstrumentationRegistry.getArguments().getString("jacsSyntheticBiometric") == "true")
+        enrolled()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = startHost()
+        val alias = "jacs-recovery-keep-open-${UUID.randomUUID()}"
+        lateinit var vault: JacsBiometricVault
+        fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
+        fun assertLocked() {
+            val locked = Capture<String>()
+            main { vault.signMessageJson("{}", locked) }
+            assertTrue(locked.done.await(10, TimeUnit.SECONDS))
+            assertEquals(JacsVaultException.Code.LOCKED, locked.error?.code)
+        }
+        main { vault = JacsBiometricVault(activity, alias) }
+        try {
+            val created = Capture<JacsVaultIdentity>()
+            main { vault.createHuman("Recovery relock test", created) }
+            val identity = created.await()
+            val key = java.util.Base64.getDecoder().decode(identity.publicKeyBase64)
+            val relocked = Capture<JacsEncryptedRecovery>()
+            main { vault.createRecovery(relocked) }
+            val first = relocked.await()
+            assertFalse("The default export relocks before its callback", vault.isUnlocked())
+            assertLocked()
+            val unlocked = Capture<JacsVaultIdentity>()
+            main { vault.unlock("Recovery keep-open test", unlocked) }
+            assertEquals(identity, unlocked.await())
+            val keptOpen = Capture<JacsEncryptedRecovery>()
+            main { vault.createRecovery(keptOpen, lockAfter = false) }
+            val second = keptOpen.await()
+            assertTrue("The opt-in export keeps the session", vault.isUnlocked())
+            val signed = Capture<String>()
+            main { vault.signMessageJson("{\"purpose\":\"after-recovery-export\"}", signed) }
+            assertTrue(verifyWithKey(signed.await(), key, MobileAlgorithm.PQ2025).valid)
+            main { vault.lock() }
+            assertFalse(vault.isUnlocked())
+            assertLocked()
+            val id = JSONObject(identity.agentJson).getString("jacsId")
+            for (backup in listOf(first, second)) {
+                assertEquals(identity.agentJson, verifyRecovery(materialFromJson(backup.materialJson),
+                    backup.code, id, key, MobileAlgorithm.PQ2025))
+            }
         } finally {
             main { vault.close(); activity.finish() }
             EncryptedRecordStore(activity.applicationContext.noBackupFilesDir, alias).use { it.delete() }

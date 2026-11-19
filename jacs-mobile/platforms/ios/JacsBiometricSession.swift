@@ -245,19 +245,28 @@ public final class JacsBiometricSession {
 
     /// Generate the six-word code in Rust and clear this session before result
     /// delivery. Background/logout/cancellation still suppress queued results.
-    public func createTransfer(
+    /// `keepOpen` leaves the session usable, as for `createRecovery`.
+    public func createTransfer(keepOpen: Bool = false,
         completion: @escaping (Result<JacsBiometricTransfer, JacsBiometricError>) -> Void) {
-        exportAndClose({ agent in
+        let operation: (JacsSessionAgent) throws -> JacsBiometricTransfer = { agent in
             let code = try generateTransferCode()
             return JacsBiometricTransfer(code: code, material: try agent.export(code))
-        }, completion: completion)
+        }
+        if keepOpen { perform(operation, completion: completion) }
+        else { exportAndClose(operation, completion: completion) }
     }
 
-    /// Generate a durable 128-bit recovery secret in Rust. Lock before returning;
-    /// expose the code only for explicit display and never persist it with material.
-    public func createRecovery(
+    /// Generate a durable 128-bit recovery secret in Rust. By default, lock before
+    /// returning; expose the code only for explicit display and never persist it with material.
+    /// With `keepOpen`, the export runs like the session's other operations and the
+    /// session stays usable, so the export and the signatures that follow share one
+    /// biometric prompt; the caller must then call `close()` in a finally (`defer`).
+    /// Background, logout and `close()` still invalidate it and suppress a queued code.
+    public func createRecovery(keepOpen: Bool = false,
         completion: @escaping (Result<JacsBiometricRecovery, JacsBiometricError>) -> Void) {
-        exportAndClose({ JacsBiometricRecovery(try $0.recovery()) }, completion: completion)
+        let operation: (JacsSessionAgent) throws -> JacsBiometricRecovery = { JacsBiometricRecovery(try $0.recovery()) }
+        if keepOpen { perform(operation, completion: completion) }
+        else { exportAndClose(operation, completion: completion) }
     }
 
     private func exportAndClose<T>(_ operation: @escaping (JacsSessionAgent) throws -> T,

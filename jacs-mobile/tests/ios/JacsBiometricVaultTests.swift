@@ -779,6 +779,145 @@ final class JacsBiometricVaultTests: XCTestCase {
         wait(for: [done], timeout: 5)
     }
 
+    func testDefaultExportsRelockSoTheNextSigningIsInactive() throws {
+        let session = createSession()
+        let recovered = expectation(description: "default recovery")
+        session.createRecovery {
+            if case .failure = $0 { XCTFail("recovery failed") }
+            recovered.fulfill()
+        }
+        wait(for: [recovered], timeout: 5)
+        let refused = expectation(description: "relocked after recovery")
+        session.signMessageJSON("after-default-recovery") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("relocked session signed after recovery") }
+            refused.fulfill()
+        }
+        wait(for: [refused], timeout: 5)
+
+        let reopened: JacsBiometricSession = try authenticated { vault.unlock(account: "agent", reason: "Unlock", completion: $0) }
+        let transferred = expectation(description: "default transfer")
+        reopened.createTransfer {
+            if case .failure = $0 { XCTFail("transfer failed") }
+            transferred.fulfill()
+        }
+        wait(for: [transferred], timeout: 5)
+        let refusedAgain = expectation(description: "relocked after transfer")
+        reopened.signMessageJSON("after-default-transfer") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("relocked session signed after transfer") }
+            refusedAgain.fulfill()
+        }
+        wait(for: [refusedAgain], timeout: 5)
+        XCTAssertEqual(factory.restored.count, 2)
+        XCTAssertTrue(factory.restored.allSatisfy { $0.cleared && $0.signCalls == 0 })
+    }
+
+    func testKeepOpenExportsLeaveTheSameSessionSigningUnderOnePromptUntilClose() {
+        let session = createSession()
+        let recovered = expectation(description: "recovery keeps the session open")
+        session.createRecovery(keepOpen: true) {
+            if case .success(let result) = $0 { XCTAssertEqual(result.code.count, 39) } else { XCTFail("recovery failed") }
+            XCTAssertTrue(session.isActive)
+            recovered.fulfill()
+        }
+        wait(for: [recovered], timeout: 5)
+        let transferred = expectation(description: "transfer keeps the session open")
+        session.createTransfer(keepOpen: true) {
+            if case .success(let result) = $0 { XCTAssertEqual(result.code.split(separator: " ").count, 6) }
+            else { XCTFail("transfer failed") }
+            XCTAssertTrue(session.isActive)
+            transferred.fulfill()
+        }
+        wait(for: [transferred], timeout: 5)
+        XCTAssertFalse(factory.restored[0].cleared)
+        let signed = expectation(description: "same session signs after the exports")
+        session.signMessageJSON("after-export") {
+            if case .success(let document) = $0 { XCTAssertEqual(document, "signed:after-export") }
+            else { XCTFail("open session refused signing") }
+            signed.fulfill()
+        }
+        wait(for: [signed], timeout: 5)
+        XCTAssertEqual(auth.authentications, 1)
+        session.close()
+        worker.sync {}
+        XCTAssertTrue(factory.restored[0].cleared)
+        let closed = expectation(description: "closed session refuses signing")
+        session.signMessageJSON("after-close") {
+            if case .failure(.inactive) = $0 {} else { XCTFail("closed session signed") }
+            closed.fulfill()
+        }
+        wait(for: [closed], timeout: 5)
+        XCTAssertEqual(factory.restored[0].signCalls, 1)
+    }
+
+    func testKeepOpenExportsStillSuppressQueuedCodesOnBackgroundAndClose() throws {
+        let session = createSession()
+        callbacks.suspend()
+        let recovered = expectation(description: "kept-open recovery invalidated by background")
+        session.createRecovery(keepOpen: true) {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late recovery code escaped") }
+            recovered.fulfill()
+        }
+        worker.sync {}
+        XCTAssertTrue(session.isActive)
+        vault.invalidate()
+        XCTAssertFalse(session.isActive)
+        callbacks.resume()
+        wait(for: [recovered], timeout: 5)
+        worker.sync {}
+        XCTAssertTrue(factory.restored[0].cleared)
+
+        vault.resume()
+        let reopened: JacsBiometricSession = try authenticated { vault.unlock(account: "agent", reason: "Unlock", completion: $0) }
+        callbacks.suspend()
+        let transferred = expectation(description: "kept-open transfer invalidated by close")
+        reopened.createTransfer(keepOpen: true) {
+            if case .failure(.inactive) = $0 {} else { XCTFail("late transfer code escaped") }
+            transferred.fulfill()
+        }
+        worker.sync {}
+        XCTAssertTrue(reopened.isActive)
+        reopened.close()
+        callbacks.resume()
+        wait(for: [transferred], timeout: 5)
+        worker.sync {}
+        XCTAssertTrue(factory.restored[1].cleared)
+    }
+
+    func testRealRustKeepOpenRecoveryAndSignatureShareOneIdentityAndPrompt() throws {
+        // One fake prompt; the recovery export, its readback and the signature
+        // that follows run through the real UniFFI ABI on the same session.
+        vault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
+            authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
+        let session: JacsBiometricSession = try authenticated { vault.createHuman(account: "agent", reason: "Create", completion: $0) }
+        var recovery: JacsBiometricRecovery?
+        let exported = expectation(description: "real recovery keeps the session open")
+        session.createRecovery(keepOpen: true) {
+            if case .success(let value) = $0 { recovery = value } else { XCTFail("recovery failed") }
+            exported.fulfill()
+        }
+        wait(for: [exported], timeout: 15)
+        let backup = try XCTUnwrap(recovery)
+        XCTAssertTrue(session.isActive)
+        var document: String?
+        let signed = expectation(description: "real signature after the export")
+        session.signMessageJSON("{\"afterRecovery\":true}") {
+            if case .success(let value) = $0 { document = value } else { XCTFail("sign failed") }
+            signed.fulfill()
+        }
+        wait(for: [signed], timeout: 15)
+        XCTAssertEqual(auth.authentications, 1)
+        session.close()
+        XCTAssertFalse(session.isActive)
+        let identity = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(backup.material.agentJson.utf8)) as? [String: Any])
+        let id = try XCTUnwrap(identity["jacsId"] as? String)
+        XCTAssertEqual(try JacsMobile.verifyRecovery(material: backup.material, code: backup.code,
+            expectedAgentId: id, expectedPublicKey: backup.material.publicKey, expectedAlgorithm: .pq2025),
+            backup.material.agentJson)
+        let verified = try JacsMobile.verifyWithKey(json: try XCTUnwrap(document),
+            publicKey: backup.material.publicKey, algorithm: .pq2025)
+        XCTAssertTrue(verified.valid)
+    }
+
     func testEnrollmentDomainChangeAndBiometricDenialNeverImport() {
         createSession().close()
         auth = FakeAuthorization()

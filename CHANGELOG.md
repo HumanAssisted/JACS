@@ -1,5 +1,25 @@
 ## Unreleased
 
+### 2026-11-19 — Opt-in mobile exports that keep the session open
+
+- Android `createRecovery(callback, lockAfter = false)` and iOS
+  `createRecovery(keepOpen: true, completion:)` export recovery without
+  relocking the session. A host app can then make the export and the signatures
+  that follow under one biometric prompt, and lock itself afterwards: the
+  caller calls `lock()` (Android) or `close()` (iOS) in a finally.
+  `createTransfer` takes the same option.
+- The default is unchanged on both platforms: an export relocks before its
+  result is delivered. Android `@JvmOverloads` keeps the one-argument Java
+  methods. Background, activity stop, logout, `close()` and cancelling a
+  pending request still invalidate a kept-open session and suppress a queued
+  result.
+- iOS XCTests cover the default relock (the next signature fails `inactive`),
+  a kept-open session signing under one prompt until `close()`, suppression on
+  background and close, and a real Rust export, readback and signature on one
+  session. Android adds a host check of the Java overloads, an emulator check
+  that the opt-in never opens a locked vault, and an opt-in biometric test of
+  both paths.
+
 ### 2026-11-15 — Reopen persisted mobile identities within provisioning
 
 - Android provisioning uses a generated, non-exportable, per-use biometric
