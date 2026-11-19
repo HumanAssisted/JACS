@@ -79,7 +79,8 @@ fun main() {
     check(JacsBiometricVault.promptError(10) == JacsVaultException.Code.CANCELLED)
     check(JacsBiometricVault.promptError(11) == JacsVaultException.Code.NOT_ENROLLED)
     check(JacsBiometricVault.promptError(1) == JacsVaultException.Code.UNAVAILABLE)
-    // Java callers keep the one-argument exports, which relock; the opt-out is an overload.
+    // Java callers keep the one-argument exports, which relock; keepOpen is an overload.
+    // RecoveryVaultLifecycleTest runs both on an emulator with a live session.
     for (export in listOf("createRecovery", "createTransfer")) {
         JacsBiometricVault::class.java.getMethod(export, JacsVaultCallback::class.java)
         JacsBiometricVault::class.java.getMethod(export, JacsVaultCallback::class.java, Boolean::class.javaPrimitiveType)

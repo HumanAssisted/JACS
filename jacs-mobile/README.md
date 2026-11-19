@@ -154,8 +154,11 @@ not mean an Android native library can be loaded as browser WASM.
 ## Transfer and trust
 
 The vaults provide local `createTransfer` and pinned `receive` operations.
-`createTransfer` clears the source session before delivering the code and
-ciphertext. It does not create a relay session, sign a HAI upload, or send HTTP.
+By default, `createTransfer` clears the source session before delivering the code
+and ciphertext. With the `keepOpen` option, the session stays usable for the
+signatures that follow until the app calls `lock()` (Android) or `close()` (iOS);
+see the platform READMEs. It does not create a relay session, sign a HAI upload,
+or send HTTP.
 Application integration must construct and authenticate the complete transfer
 protocol inside its native session boundary; an exported blob alone is not a
 HAI `signed_transfer`. The public HAI client contracts describe that protocol.
@@ -313,7 +316,10 @@ No `MobileAgent` signing handle crosses an application bridge.
 
 For durable recovery, use iOS `session.createRecovery` or Android
 `vault.createRecovery`. The result contains a generated 128-bit code and encrypted
-`AgentMaterial`; owned sessions lock before delivery and reject late results.
+`AgentMaterial`. By default, owned sessions lock before delivery; they always
+reject late results. With `keepOpen`, the session stays usable after the export,
+so the export and the signatures that follow share one biometric prompt, until
+the app calls `lock()` (Android) or `close()` (iOS).
 `vault.receiveRecovery` pins the expected ID/public key from authenticated
 registration, normalizes pasted code formatting, rewraps behind local biometric
 protection and refuses to replace any existing record. Wrong input leaves a

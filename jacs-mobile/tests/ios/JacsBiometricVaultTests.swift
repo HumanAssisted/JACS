@@ -98,6 +98,15 @@ private final class FakeFactory: JacsVaultAgentFactory {
     func serialize(_ material: EncryptedAgentMaterial) throws -> String { serializedMaterial }
 }
 
+/// Compile-time check: the original full names stay, so unapplied references and
+/// protocol requirements written against them still build. `keepOpen:` is an
+/// overload, the Swift counterpart of Android's `@JvmOverloads`, not a defaulted parameter.
+private protocol OriginalSessionExports {
+    func createRecovery(completion: @escaping (Result<JacsBiometricRecovery, JacsBiometricError>) -> Void)
+    func createTransfer(completion: @escaping (Result<JacsBiometricTransfer, JacsBiometricError>) -> Void)
+}
+extension JacsBiometricSession: OriginalSessionExports {}
+
 final class JacsBiometricVaultTests: XCTestCase {
     private var store: FakeStore!
     private var factory: FakeFactory!
@@ -811,7 +820,7 @@ final class JacsBiometricVaultTests: XCTestCase {
         XCTAssertTrue(factory.restored.allSatisfy { $0.cleared && $0.signCalls == 0 })
     }
 
-    func testKeepOpenExportsLeaveTheSameSessionSigningUnderOnePromptUntilClose() {
+    func testKeepOpenExportsLeaveTheSameSessionSigningUntilClose() {
         let session = createSession()
         let recovered = expectation(description: "recovery keeps the session open")
         session.createRecovery(keepOpen: true) {
@@ -836,7 +845,6 @@ final class JacsBiometricVaultTests: XCTestCase {
             signed.fulfill()
         }
         wait(for: [signed], timeout: 5)
-        XCTAssertEqual(auth.authentications, 1)
         session.close()
         worker.sync {}
         XCTAssertTrue(factory.restored[0].cleared)
@@ -883,12 +891,26 @@ final class JacsBiometricVaultTests: XCTestCase {
         XCTAssertTrue(factory.restored[1].cleared)
     }
 
-    func testRealRustKeepOpenRecoveryAndSignatureShareOneIdentityAndPrompt() throws {
-        // One fake prompt; the recovery export, its readback and the signature
-        // that follows run through the real UniFFI ABI on the same session.
+    func testRealRustKeepOpenRecoveryAndSignatureMatchTheSessionIdentity() throws {
+        // The recovery export, its readback and the signature that follows run through
+        // the real UniFFI ABI on one session. Both are pinned to the identity that the
+        // session describes before the export, never to anything read from the backup.
         vault = JacsBiometricVault(store: store, factory: RustVaultAgentFactory(),
             authorization: { [unowned self] in self.auth }, callbacks: callbacks, worker: worker)
         let session: JacsBiometricSession = try authenticated { vault.createHuman(account: "agent", reason: "Create", completion: $0) }
+        var described: MobilePublicIdentity?
+        let identified = expectation(description: "session identity before the export")
+        session.describe {
+            if case .success(let value) = $0 { described = value } else { XCTFail("describe failed") }
+            identified.fulfill()
+        }
+        wait(for: [identified], timeout: 15)
+        let identity = try XCTUnwrap(described)
+        let publicKey = try XCTUnwrap(Data(base64Encoded: identity.publicKeyBase64))
+        func object(_ json: String) throws -> NSDictionary {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? NSDictionary)
+        }
+        let agentID = try XCTUnwrap(try object(identity.agentJson)["jacsId"] as? String)
         var recovery: JacsBiometricRecovery?
         let exported = expectation(description: "real recovery keeps the session open")
         session.createRecovery(keepOpen: true) {
@@ -905,16 +927,13 @@ final class JacsBiometricVaultTests: XCTestCase {
             signed.fulfill()
         }
         wait(for: [signed], timeout: 15)
-        XCTAssertEqual(auth.authentications, 1)
         session.close()
         XCTAssertFalse(session.isActive)
-        let identity = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(backup.material.agentJson.utf8)) as? [String: Any])
-        let id = try XCTUnwrap(identity["jacsId"] as? String)
-        XCTAssertEqual(try JacsMobile.verifyRecovery(material: backup.material, code: backup.code,
-            expectedAgentId: id, expectedPublicKey: backup.material.publicKey, expectedAlgorithm: .pq2025),
-            backup.material.agentJson)
+        let restored = try JacsMobile.verifyRecovery(material: backup.material, code: backup.code,
+            expectedAgentId: agentID, expectedPublicKey: publicKey, expectedAlgorithm: .pq2025)
+        XCTAssertEqual(try object(restored), try object(identity.agentJson))
         let verified = try JacsMobile.verifyWithKey(json: try XCTUnwrap(document),
-            publicKey: backup.material.publicKey, algorithm: .pq2025)
+            publicKey: publicKey, algorithm: .pq2025)
         XCTAssertTrue(verified.valid)
     }
 

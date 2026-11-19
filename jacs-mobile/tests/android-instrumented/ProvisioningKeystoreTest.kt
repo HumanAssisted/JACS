@@ -437,17 +437,19 @@ class ProvisioningKeystoreTest {
         }
     }
 
-    /** Two prompts: create, then one unlock that covers a kept-open export and a signature. */
-    @Test fun recoveryExportRelocksByDefaultAndKeepsTheSessionOnlyWhenAsked() {
+    /** Three prompts: create, then an unlock after each default export relocks. The last
+     * unlock covers both kept-open exports and the signature that follows them. */
+    @Test fun authorizedExportsRelockByDefaultAndKeepTheSessionOnlyWhenAsked() {
         assumeTrue("Explicit task emulator authorization required",
             InstrumentationRegistry.getArguments().getString("jacsSyntheticBiometric") == "true")
         enrolled()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = startHost()
-        val alias = "jacs-recovery-keep-open-${UUID.randomUUID()}"
+        val alias = "jacs-export-keep-open-${UUID.randomUUID()}"
         lateinit var vault: JacsBiometricVault
         fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
         fun assertLocked() {
+            assertFalse(vault.isUnlocked())
             val locked = Capture<String>()
             main { vault.signMessageJson("{}", locked) }
             assertTrue(locked.done.await(10, TimeUnit.SECONDS))
@@ -456,31 +458,47 @@ class ProvisioningKeystoreTest {
         main { vault = JacsBiometricVault(activity, alias) }
         try {
             val created = Capture<JacsVaultIdentity>()
-            main { vault.createHuman("Recovery relock test", created) }
+            main { vault.createHuman("Export relock test", created) }
             val identity = created.await()
             val key = java.util.Base64.getDecoder().decode(identity.publicKeyBase64)
+            val id = JSONObject(identity.agentJson).getString("jacsId")
+            fun unlock() {
+                val unlocked = Capture<JacsVaultIdentity>()
+                main { vault.unlock("Export keep-open test", unlocked) }
+                assertEquals(identity, unlocked.await())
+            }
             val relocked = Capture<JacsEncryptedRecovery>()
             main { vault.createRecovery(relocked) }
-            val first = relocked.await()
-            assertFalse("The default export relocks before its callback", vault.isUnlocked())
+            val firstRecovery = relocked.await()
             assertLocked()
-            val unlocked = Capture<JacsVaultIdentity>()
-            main { vault.unlock("Recovery keep-open test", unlocked) }
-            assertEquals(identity, unlocked.await())
+            unlock()
+            val relockedTransfer = Capture<JacsEncryptedTransfer>()
+            main { vault.createTransfer(relockedTransfer) }
+            val firstTransfer = relockedTransfer.await()
+            assertLocked()
+            unlock()
             val keptOpen = Capture<JacsEncryptedRecovery>()
-            main { vault.createRecovery(keptOpen, lockAfter = false) }
-            val second = keptOpen.await()
-            assertTrue("The opt-in export keeps the session", vault.isUnlocked())
+            main { vault.createRecovery(keptOpen, keepOpen = true) }
+            val secondRecovery = keptOpen.await()
+            assertTrue("The opt-in recovery export keeps the session", vault.isUnlocked())
+            val keptOpenTransfer = Capture<JacsEncryptedTransfer>()
+            main { vault.createTransfer(keptOpenTransfer, keepOpen = true) }
+            val secondTransfer = keptOpenTransfer.await()
+            assertTrue("The opt-in transfer export keeps the session", vault.isUnlocked())
             val signed = Capture<String>()
-            main { vault.signMessageJson("{\"purpose\":\"after-recovery-export\"}", signed) }
+            main { vault.signMessageJson("{\"purpose\":\"after-kept-open-exports\"}", signed) }
             assertTrue(verifyWithKey(signed.await(), key, MobileAlgorithm.PQ2025).valid)
             main { vault.lock() }
-            assertFalse(vault.isUnlocked())
             assertLocked()
-            val id = JSONObject(identity.agentJson).getString("jacsId")
-            for (backup in listOf(first, second)) {
+            for (backup in listOf(firstRecovery, secondRecovery)) {
                 assertEquals(identity.agentJson, verifyRecovery(materialFromJson(backup.materialJson),
                     backup.code, id, key, MobileAlgorithm.PQ2025))
+            }
+            for (transfer in listOf(firstTransfer, secondTransfer)) {
+                val received = MobileAgent.importPinned(materialFromJson(transfer.materialJson),
+                    transfer.code, id, key, MobileAlgorithm.PQ2025)
+                try { assertEquals(identity.agentJson, received.exportAgentJson()) }
+                finally { received.clearSecrets(); received.close() }
             }
         } finally {
             main { vault.close(); activity.finish() }

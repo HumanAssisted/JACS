@@ -243,10 +243,16 @@ public final class JacsBiometricSession {
         perform({ try $0.export(password) }, completion: completion)
     }
 
-    /// Generate the six-word code in Rust and clear this session before result
-    /// delivery. Background/logout/cancellation still suppress queued results.
-    /// `keepOpen` leaves the session usable, as for `createRecovery`.
-    public func createTransfer(keepOpen: Bool = false,
+    /// By default, generate the six-word code in Rust and clear this session before
+    /// result delivery. Background, logout and `close()` still suppress queued results.
+    public func createTransfer(
+        completion: @escaping (Result<JacsBiometricTransfer, JacsBiometricError>) -> Void) {
+        createTransfer(keepOpen: false, completion: completion)
+    }
+
+    /// `keepOpen: true` leaves the session usable, as for `createRecovery(keepOpen:completion:)`.
+    /// `keepOpen: false` is `createTransfer(completion:)`.
+    public func createTransfer(keepOpen: Bool,
         completion: @escaping (Result<JacsBiometricTransfer, JacsBiometricError>) -> Void) {
         let operation: (JacsSessionAgent) throws -> JacsBiometricTransfer = { agent in
             let code = try generateTransferCode()
@@ -258,11 +264,20 @@ public final class JacsBiometricSession {
 
     /// Generate a durable 128-bit recovery secret in Rust. By default, lock before
     /// returning; expose the code only for explicit display and never persist it with material.
-    /// With `keepOpen`, the export runs like the session's other operations and the
+    public func createRecovery(
+        completion: @escaping (Result<JacsBiometricRecovery, JacsBiometricError>) -> Void) {
+        createRecovery(keepOpen: false, completion: completion)
+    }
+
+    /// With `keepOpen: true`, the export runs like the session's other operations and the
     /// session stays usable, so the export and the signatures that follow share one
-    /// biometric prompt; the caller must then call `close()` in a finally (`defer`).
-    /// Background, logout and `close()` still invalidate it and suppress a queued code.
-    public func createRecovery(keepOpen: Bool = false,
+    /// biometric prompt: further exports and signatures need no new prompt until `close()`.
+    /// Call `close()` from the completion of the last operation, on success and failure
+    /// alike. Never call it in a `defer` around the call that starts the export: that
+    /// closes the session first, and the export fails `.inactive`. Background, logout and
+    /// `close()` still invalidate the session and suppress a queued code.
+    /// `keepOpen: false` is `createRecovery(completion:)`.
+    public func createRecovery(keepOpen: Bool,
         completion: @escaping (Result<JacsBiometricRecovery, JacsBiometricError>) -> Void) {
         let operation: (JacsSessionAgent) throws -> JacsBiometricRecovery = { JacsBiometricRecovery(try $0.recovery()) }
         if keepOpen { perform(operation, completion: completion) }

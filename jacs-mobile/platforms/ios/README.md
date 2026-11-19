@@ -97,13 +97,19 @@ The receiver still pins the agent ID/key/algorithm
 independently when importing. Transport and relay integration are separate.
 
 `session.createRecovery(completion:)` likewise returns a 128-bit recovery code
-and its encrypted material, and clears the session before delivery.
+and its encrypted material, and clears the session before delivery. Both
+original methods are unchanged. Their `keepOpen:` overloads,
 `createRecovery(keepOpen: true, completion:)` and
-`createTransfer(keepOpen: true, completion:)` run the export like the session's
+`createTransfer(keepOpen: true, completion:)`, run the export like the session's
 other operations and leave it usable, so the export and the signatures that
-follow share one biometric prompt. Call `close()` in a finally once those
-operations finish, on success and failure alike. Background, logout and
-`close()` still invalidate the session and suppress a queued result.
+follow share one biometric prompt. Kept-open exports reuse the existing
+authorization: further exports and signatures need no prompt until `close()`.
+Call `close()` from the completion of the last of those operations, on success
+and failure alike. An async wrapper that awaits them can close in a `defer`,
+which then runs after they finish. Never close in a `defer` around the call that
+starts the export: that closes the session first, and the export fails
+`.inactive`. Background, logout and `close()` still invalidate the session and
+suppress a queued result.
 
 ## Tests
 

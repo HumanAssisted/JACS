@@ -71,10 +71,10 @@ class RecoveryVaultLifecycleTest {
             assertEquals(JacsVaultException.Code.LOCKED, locked.error?.code)
             // Keeping the session open never opens one.
             val keptOpen = Capture<JacsEncryptedRecovery>()
-            main { vault.createRecovery(keptOpen, lockAfter = false) }; keptOpen.await()
+            main { vault.createRecovery(keptOpen, keepOpen = true) }; keptOpen.await()
             assertEquals(JacsVaultException.Code.LOCKED, keptOpen.error?.code)
             val keptOpenTransfer = Capture<JacsEncryptedTransfer>()
-            main { vault.createTransfer(keptOpenTransfer, lockAfter = false) }; keptOpenTransfer.await()
+            main { vault.createTransfer(keptOpenTransfer, keepOpen = true) }; keptOpenTransfer.await()
             assertEquals(JacsVaultException.Code.LOCKED, keptOpenTransfer.error?.code)
             assertFalse(vault.isUnlocked())
             val signing = Capture<String>()
@@ -116,5 +116,104 @@ class RecoveryVaultLifecycleTest {
         result.await()
         assertEquals(JacsVaultException.Code.CANCELLED, result.error?.code)
         assertFalse(vault.isUnlocked())
+    }
+
+    private class Installed(val agentJson: String, val publicKey: ByteArray) {
+        val jacsId: String = JSONObject(agentJson).getString("jacsId")
+    }
+
+    /** CI has no enrolled biometrics. This installs a live release-Rust session through
+     * the vault's own state machine, in the order a successful prompt does, with no
+     * prompt, Keystore key or authentication token. What follows an unlock then runs
+     * as real vault code. The vault owns and clears the agent once it is installed. */
+    private fun installSession(vault: JacsBiometricVault): Installed {
+        @Suppress("UNCHECKED_CAST")
+        val state = JacsBiometricVault::class.java.getDeclaredField("state")
+            .apply { isAccessible = true }.get(vault) as JacsVaultState<MobileAgent>
+        val agent = MobileAgent.createHuman()
+        var owned = false
+        try {
+            val installed = Installed(agent.exportAgentJson(), agent.publicKey())
+            val ticket = state.begin(false, true)
+            val operation = Any()
+            assertTrue(state.bindOperation(ticket, operation) && state.authenticate(ticket, operation))
+            owned = state.install(ticket, agent)
+            assertTrue("Session installed", owned && state.finish(ticket) && vault.isUnlocked())
+            return installed
+        } finally { if (!owned) { agent.clearSecrets(); agent.close() } }
+    }
+
+    private fun assertRecovers(result: Capture<JacsEncryptedRecovery>, identity: Installed) {
+        assertNull(result.error)
+        val backup = result.value!!
+        assertEquals(identity.agentJson, verifyRecovery(materialFromJson(backup.materialJson), backup.code,
+            identity.jacsId, identity.publicKey, MobileAlgorithm.PQ2025))
+    }
+
+    private fun assertTransfers(result: Capture<JacsEncryptedTransfer>, identity: Installed) {
+        assertNull(result.error)
+        val transfer = result.value!!
+        val received = MobileAgent.importPinned(materialFromJson(transfer.materialJson), transfer.code,
+            identity.jacsId, identity.publicKey, MobileAlgorithm.PQ2025)
+        try { assertEquals(identity.agentJson, received.exportAgentJson()) }
+        finally { received.clearSecrets(); received.close() }
+    }
+
+    @Test fun installedSessionExportsRelockByDefaultAndStayOpenOnlyWhenAsked() = withVault { vault ->
+        fun assertLocked() {
+            assertFalse(vault.isUnlocked())
+            val signing = Capture<String>()
+            main { vault.signMessageJson("{}", signing) }; signing.await()
+            assertEquals(JacsVaultException.Code.LOCKED, signing.error?.code)
+        }
+        // The one-argument methods that Java callers get from @JvmOverloads.
+        fun javaOverload(name: String) = JacsBiometricVault::class.java.getMethod(name, JacsVaultCallback::class.java)
+
+        // Each default export relocks before its callback, from Kotlin and from Java.
+        var identity = installSession(vault)
+        val recovery = Capture<JacsEncryptedRecovery>()
+        main { vault.createRecovery(recovery) }; recovery.await()
+        assertLocked(); assertRecovers(recovery, identity)
+        identity = installSession(vault)
+        val javaRecovery = Capture<JacsEncryptedRecovery>()
+        main { javaOverload("createRecovery").invoke(vault, javaRecovery) }; javaRecovery.await()
+        assertLocked(); assertRecovers(javaRecovery, identity)
+        identity = installSession(vault)
+        val transfer = Capture<JacsEncryptedTransfer>()
+        main { vault.createTransfer(transfer) }; transfer.await()
+        assertLocked(); assertTransfers(transfer, identity)
+        identity = installSession(vault)
+        val javaTransfer = Capture<JacsEncryptedTransfer>()
+        main { javaOverload("createTransfer").invoke(vault, javaTransfer) }; javaTransfer.await()
+        assertLocked(); assertTransfers(javaTransfer, identity)
+
+        // Asked to stay open, both exports leave the same session signing, with no
+        // new unlock, until lock().
+        identity = installSession(vault)
+        val keptRecovery = Capture<JacsEncryptedRecovery>()
+        main { vault.createRecovery(keptRecovery, keepOpen = true) }; keptRecovery.await()
+        assertNull(keptRecovery.error); assertTrue(vault.isUnlocked())
+        val keptTransfer = Capture<JacsEncryptedTransfer>()
+        main { vault.createTransfer(keptTransfer, keepOpen = true) }; keptTransfer.await()
+        assertNull(keptTransfer.error); assertTrue(vault.isUnlocked())
+        val signed = Capture<String>()
+        main { vault.signMessageJson("{\"purpose\":\"after-kept-open-exports\"}", signed) }; signed.await()
+        assertNull(signed.error)
+        assertTrue(verifyWithKey(signed.value!!, identity.publicKey, MobileAlgorithm.PQ2025).valid)
+        assertRecovers(keptRecovery, identity); assertTransfers(keptTransfer, identity)
+        main { vault.lock() }
+        assertLocked()
+
+        // Cancelling a pending kept-open export still ends the session.
+        installSession(vault)
+        val cancelled = Capture<JacsEncryptedRecovery>()
+        main { vault.createRecovery(cancelled, keepOpen = true).cancel() }; cancelled.await()
+        assertEquals(JacsVaultException.Code.CANCELLED, cancelled.error?.code)
+        assertLocked()
+        // The serial worker runs this after the cancelled export, so any late result
+        // from that export has reached the main thread before this callback.
+        val drained = Capture<JacsVaultInspection>()
+        main { vault.inspect(drained) }; drained.await()
+        assertEquals(1, cancelled.calls)
     }
 }
