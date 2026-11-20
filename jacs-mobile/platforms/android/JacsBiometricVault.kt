@@ -159,14 +159,14 @@ class JacsBiometricVault(
         } }
 
     fun signDocumentJson(json: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
-        useSession(callback) { it.signDocumentJson(json) }
+        useSession(callback, lockAfter = false) { it.signDocumentJson(json) }
 
     /** Complete a frozen prepared document only through the owned unlocked session. */
     fun signPreparedDocumentJson(preparedJson: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
-        useSession(callback) { it.signPreparedDocumentJson(preparedJson) }
+        useSession(callback, lockAfter = false) { it.signPreparedDocumentJson(preparedJson) }
 
     fun describe(callback: JacsVaultCallback<MobilePublicIdentity>): JacsVaultRequest =
-        useSession(callback) { it.describe() }
+        useSession(callback, lockAfter = false) { it.describe() }
 
     /** Public record validation only. No prompt/decryption or claim that the
      * Keystore key remains usable after biometric enrollment changes. */
@@ -198,27 +198,39 @@ class JacsBiometricVault(
     }
 
     fun signMessageJson(json: String, callback: JacsVaultCallback<String>): JacsVaultRequest =
-        useSession(callback) { it.signMessageJson(json) }
+        useSession(callback, lockAfter = false) { it.signMessageJson(json) }
 
     fun buildRequestAuthHeader(method: String, url: String, body: ByteArray, audience: String,
                                callback: JacsVaultCallback<String>): JacsVaultRequest {
         val bytes = body.copyOf()
-        return useSession(callback) { it.buildRequestAuthHeader(method, url, bytes, audience) }
+        return useSession(callback, lockAfter = false) { it.buildRequestAuthHeader(method, url, bytes, audience) }
     }
 
-    /** Generate the high-entropy six-word code locally, export ciphertext, and
-     * relock before delivering the result. Never send code and ciphertext to
-     * the same relay; show the code directly to the receiving user. */
-    fun createTransfer(callback: JacsVaultCallback<JacsEncryptedTransfer>): JacsVaultRequest =
-        useSession(callback, lockAfter = true) {
+    /** By default, generate the high-entropy six-word code locally, export
+     * ciphertext, and relock before delivering the result. Never send code and
+     * ciphertext to the same relay; show the code directly to the receiving user.
+     * [keepOpen] = true keeps the session installed, as for [createRecovery]. */
+    @JvmOverloads
+    fun createTransfer(callback: JacsVaultCallback<JacsEncryptedTransfer>,
+                       keepOpen: Boolean = false): JacsVaultRequest =
+        useSession(callback, lockAfter = !keepOpen) {
             val code = generateTransferCode()
             JacsEncryptedTransfer(code, materialToJson(it.exportEncryptedAgent(code)))
         }
 
     /** 128-bit durable recovery, separate from the six-word transfer format.
-     * Locks before callback; background/cancel discards late results. */
-    fun createRecovery(callback: JacsVaultCallback<JacsEncryptedRecovery>): JacsVaultRequest =
-        useSession(callback, lockAfter = true) {
+     * By default, locks before the callback; background/cancel discards late results.
+     * With [keepOpen] = true the session stays installed after the callback, so the
+     * export and the signatures that follow share one biometric prompt: further
+     * exports and signatures need no new prompt until [lock]. Call [lock] on the main
+     * thread from the callback of the last operation, on success and failure alike.
+     * Never call it in a finally around the call that starts the export: that
+     * cancels the export. Activity stop (background), destruction and cancelling a
+     * pending request still invalidate exactly as with the default. */
+    @JvmOverloads
+    fun createRecovery(callback: JacsVaultCallback<JacsEncryptedRecovery>,
+                       keepOpen: Boolean = false): JacsVaultRequest =
+        useSession(callback, lockAfter = !keepOpen) {
             val recovery = it.exportRecovery()
             JacsEncryptedRecovery(recovery.code, materialToJson(recovery.material))
         }
@@ -300,7 +312,8 @@ class JacsBiometricVault(
             } catch (error: Exception) { fail(ticket, callback, error) }
         } }
 
-    private fun <T> useSession(callback: JacsVaultCallback<T>, lockAfter: Boolean = false,
+    /** [lockAfter] has no default: every caller states whether its result relocks. */
+    private fun <T> useSession(callback: JacsVaultCallback<T>, lockAfter: Boolean,
                                operation: (MobileAgent) -> T): JacsVaultRequest =
         begin(true, false, callback) { ticket ->
             val agent = state.session(ticket)

@@ -10,6 +10,40 @@
 - Update Vite and Playwright for the browser signing tests, Hono and its Node
   server for native SDK examples, and the actions used to build and publish artifacts.
 
+### 2026-11-19 — Opt-in mobile exports that keep the session open
+
+- Android `createRecovery(callback, keepOpen = true)` and iOS
+  `createRecovery(keepOpen: true, completion:)` export recovery without
+  relocking the session. `createTransfer` takes the same option, with the same
+  name and polarity on both platforms. A host app can then make the export and
+  the signatures that follow under one biometric prompt. A kept-open session
+  needs no new prompt for further exports or signatures until the app locks it.
+- The app locks it by calling `lock()` (Android, on the main thread) or
+  `close()` (iOS) from the completion of the last operation, on success and
+  failure alike. Calling it in a `finally` or `defer` around the call that
+  starts the export ends the session first, so the export fails.
+- The default is unchanged on both platforms: an export relocks before its
+  result is delivered. Android `@JvmOverloads` keeps the one-argument Java
+  methods. iOS keeps `createRecovery(completion:)` and
+  `createTransfer(completion:)` as they were and adds `keepOpen:` overloads with
+  no default. Background, activity stop, logout and `close()` still invalidate
+  a kept-open session and suppress a queued result. On Android, so does
+  cancelling a pending request. Android's internal session helper now requires
+  every caller to say whether its result relocks.
+- iOS XCTests cover the default relock (the next signature fails `inactive`),
+  a kept-open session signing after two exports until `close()`, suppression on
+  background and close, a compile-time check of the original method names, and
+  a real Rust export whose readback and following signature are pinned to the
+  identity the session described before the export.
+- Android adds a host check of the Java overloads and an emulator test that
+  runs in CI. It installs a live Rust session without a prompt and checks four
+  things: default exports relock, from Kotlin and through the Java overloads;
+  `keepOpen = true` exports keep the session signing until `lock()`; cancelling
+  a pending kept-open export ends the session; and every export verifies
+  against the installed identity. An emulator check confirms the opt-in never
+  opens a locked vault, and an opt-in biometric test covers both exports on
+  both paths.
+
 ### 2026-11-15 — Reopen persisted mobile identities within provisioning
 
 - Android provisioning uses a generated, non-exportable, per-use biometric
