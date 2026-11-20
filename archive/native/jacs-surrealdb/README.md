@@ -36,6 +36,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - **Soft delete**: Tombstone pattern preserves audit history
 - **Search**: `CONTAINS` substring matching on `raw_contents`
 
+## Test the source checkout
+
+Run the embedded storage and conformance suites from the repository root.
+The unoptimized query executor needs the 8 MiB test-thread stack used by
+[SurrealDB 4.0.1](https://github.com/surrealdb/surrealdb/blob/v4.0.1/.cargo/config.toml).
+
+```sh
+RUST_MIN_STACK=8388608 cargo test --locked --manifest-path archive/native/jacs-surrealdb/Cargo.toml --tests
+```
+
 ## More Info
 
 See the [JACS README](https://humanassisted.github.io/JACS/native/advanced/storage.html) for the full storage backend overview.

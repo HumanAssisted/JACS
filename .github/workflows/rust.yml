@@ -110,6 +110,9 @@ jobs:
         with:
           workspaces: archive/native/jacs-surrealdb
       - name: Exercise the embedded adapter and JACS storage contract
+        env:
+          # SurrealDB 4.0.1's unoptimized query executor needs the upstream debug-test stack.
+          RUST_MIN_STACK: "8388608"
         run: cargo test --locked --manifest-path archive/native/jacs-surrealdb/Cargo.toml --tests
 
   dependency-backports:
