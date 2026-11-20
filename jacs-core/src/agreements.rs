@@ -766,7 +766,7 @@ pub mod v2 {
     pub fn create(agent: &mut CoreAgent, input: &Value) -> Result<Value, CoreError> {
         let agent_id = agent_id(agent);
         let version = uuid::Uuid::now_v7().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = crate::timestamp::now_rfc3339();
         let controllers = input
             .get("controllers")
             .cloned()
@@ -1239,7 +1239,7 @@ pub mod v2 {
         });
         next["jacsPreviousVersion"] = json!(current_version);
         next["jacsVersion"] = json!(new_version);
-        next["jacsVersionDate"] = json!(chrono::Utc::now().to_rfc3339());
+        next["jacsVersionDate"] = json!(crate::timestamp::now_rfc3339());
         let previous = array_mut(&mut next, "allPreviousVersions")?;
         if !previous
             .iter()
@@ -1487,13 +1487,13 @@ pub mod v2 {
     }
 
     fn now_timestamp() -> i64 {
-        chrono::Utc::now().timestamp()
+        time::OffsetDateTime::now_utc().unix_timestamp()
     }
 
     fn parse_rfc3339_timestamp(value: &str) -> Option<i64> {
-        chrono::DateTime::parse_from_rfc3339(value)
+        crate::timestamp::parse_rfc3339(value)
             .ok()
-            .map(|dt| dt.timestamp())
+            .map(|dt| dt.unix_timestamp())
     }
 
     fn agreement_expired(doc: &Value) -> bool {

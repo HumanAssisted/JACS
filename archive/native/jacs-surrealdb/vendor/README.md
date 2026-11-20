@@ -5,7 +5,10 @@ with the narrow changes below. They preserve their upstream licenses and public
 test fixtures. `Cargo.toml.orig` and `.cargo_vcs_info.json` remain unchanged.
 The normalized `Cargo.toml` files are the manifests Cargo actually builds.
 
-The adapter's `[patch.crates-io]` table applies these copies only when building
+SurrealDB 4 uses the published object_store 0.14.2. The 0.13.2 backport and
+its test lock remain here for reproducibility of earlier source builds.
+
+The adapter's `[patch.crates-io]` table applies the JWT and timer copies when building
 this source checkout. Cargo does not propagate a dependency's patch table to
 consumers. **These fixes are not published releases.** JACS release preparation,
 packaging and publication reject these unpublished dependencies. Each vendor

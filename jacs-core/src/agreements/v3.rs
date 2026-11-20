@@ -864,11 +864,10 @@ fn validate_jacs_time(field: &str, value: &str) -> Result<i64, CoreError> {
             "{field} must be jacs-time-v1 (YYYY-MM-DDTHH:MM:SSZ)"
         )));
     }
-    let parsed =
-        chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| {
-            CoreError::MalformedDocument(format!("{field} must be a valid jacs-time-v1 instant"))
-        })?;
-    Ok(parsed.and_utc().timestamp())
+    let parsed = crate::timestamp::parse_rfc3339(value).map_err(|_| {
+        CoreError::MalformedDocument(format!("{field} must be a valid jacs-time-v1 instant"))
+    })?;
+    Ok(parsed.unix_timestamp())
 }
 
 fn decode_base64url(field: &str, value: &str) -> Result<Vec<u8>, CoreError> {

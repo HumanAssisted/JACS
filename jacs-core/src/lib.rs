@@ -26,6 +26,7 @@ pub mod sign;
 pub mod signing;
 pub mod signing_context;
 pub mod strict_json;
+mod timestamp;
 pub mod transfer;
 pub mod verification;
 pub mod verification_registry;

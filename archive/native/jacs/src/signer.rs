@@ -453,4 +453,17 @@ mod tests {
             PurposeIsolationAssurance::SharedRawCapable
         );
     }
+
+    #[test]
+    fn archived_key_use_observations_preserve_chrono_wire_compatibility() {
+        for text in [
+            "2016-12-31T23:59:60.500Z",
+            "+12026-11-18T01:02:03.123456789Z",
+            "-0001-01-01T00:00:00Z",
+        ] {
+            let json = json!({"keyUseBeganAt": text, "envelope": {}});
+            let outcome: PreparedSigningOutcome = serde_json::from_value(json.clone()).unwrap();
+            assert_eq!(serde_json::to_value(&outcome).unwrap(), json);
+        }
+    }
 }

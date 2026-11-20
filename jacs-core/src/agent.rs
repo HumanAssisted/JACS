@@ -284,7 +284,7 @@ impl CoreAgent {
         }
         candidate["jacsPreviousVersion"] = self.agent_json["jacsVersion"].clone();
         candidate["jacsVersion"] = json!(uuid::Uuid::new_v4().to_string());
-        candidate["jacsVersionDate"] = json!(chrono::Utc::now().to_rfc3339());
+        candidate["jacsVersionDate"] = json!(crate::timestamp::now_rfc3339());
         // Registration attests a specific version and cannot survive an edit.
         candidate
             .as_object_mut()
@@ -559,8 +559,9 @@ impl CoreAgent {
         let signer = self.signer.as_ref().ok_or(CoreError::Locked)?;
         let algorithm = self.algorithm;
         let public_key_hash = sha256_hex(&self.public_key);
-        let date = chrono::Utc::now().to_rfc3339();
-        let iat = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc();
+        let date = crate::timestamp::format_utc(now, "+00:00");
+        let iat = now.unix_timestamp();
         let jti = uuid::Uuid::now_v7().to_string();
         let fields = default_signed_fields(document, placement_key);
 
@@ -733,7 +734,7 @@ fn build_signer(
 /// New identities use UUID versions and native-compatible document headers.
 pub fn ephemeral_agent_json(algorithm: SigningAlgorithm, public_key: &[u8]) -> Value {
     let version = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = crate::timestamp::now_rfc3339();
     json!({
         "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
         "jacsId": uuid::Uuid::new_v4().to_string(),
