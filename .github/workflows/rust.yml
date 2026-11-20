@@ -86,7 +86,7 @@ jobs:
       - name: Preserve native discovery, DNS and protocol verification boundaries
         run: |
           umask 022
-          for filter in key_resolution w3c 'a2a::' 'dns::bootstrap' 'agent::loaders' 'attestation::verify' 'trust::tests::enrolled_' secure_fetch; do
+          for filter in key_resolution w3c 'a2a::' 'dns::bootstrap' 'agent::loaders' 'attestation::verify' 'trust::tests::enrolled_' 'signer::tests::' secure_fetch; do
             cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --lib "$filter"
           done
       - name: Preserve native resolver consumers and signed media compatibility

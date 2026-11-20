@@ -1,18 +1,20 @@
 ## Unreleased
 
-### 2026-11-19 — Upgrade the held storage adapter and test WebAuthn 0.6.2
+### 2026-11-19 — Test native WebAuthn 0.6.2
 
-- Move the isolated in-memory adapter to SurrealDB 4.0.1 to address
-  RUSTSEC-2026-0454. The adapter still requires the local JWT and timer
-  backports. Its release hold continues.
-- WebAuthn 0.6.2 for native human approvals currently resolves a release
-  candidate of RSA. The native security audit blocks this candidate pending
-  a published crypto-glue version compatible with patched RSA.
+- Native approvals record the 0.6.2 serializer and accept previously signed
+  0.5.5 receipts. This upgrade is blocked until a published `crypto-glue`
+  release accepts patched RSA.
 
 ### 2026-11-19 — Consolidate dependency upgrades
 
+- Upgrade the isolated in-memory adapter to SurrealDB 4.0.1 to address
+  RUSTSEC-2026-0454. The adapter remains on release hold for its JWT and timer backports.
 - Update the portable JSON Schema validator to 0.61.2 and MCP to 3.10.0.
   The native SDK and its standalone consumers use the same validator version.
+- Use `time` to create and read timestamps on portable JACS documents. The public
+  signing deadline and key-use evidence APIs retain `chrono::DateTime<Utc>`
+  for existing Rust callers and archived receipts.
 - Update the native Criterion benchmarks, image and compression dependencies,
   and the observability example. Exercise PEM 4 and quick-xml 0.42 in the
   SurrealDB backports, including JWT tests with AWS-LC 1.19.
@@ -820,15 +822,6 @@ Key-management hardening from a focused security review (each fix is test-covere
 (unreleased)
 
 ## Unreleased
-
-### 2026-11-19 — Upgrade the held storage adapter and test WebAuthn 0.6.2
-
-- Move the isolated in-memory adapter to SurrealDB 4.0.1 to address
-  RUSTSEC-2026-0454. The adapter still requires the local JWT and timer
-  backports. Its release hold continues.
-- WebAuthn 0.6.2 for native human approvals currently resolves a release
-  candidate of RSA. The native security audit blocks this candidate pending
-  a published crypto-glue version compatible with patched RSA.
 
 ### Added
 

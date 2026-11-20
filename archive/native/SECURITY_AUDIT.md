@@ -12,6 +12,12 @@ Apache-2.0 change license apply to those files. The source hashes in
 `scripts/third_party_license_clarifications.toml` bind the shipped notices
 to the registry packages.
 
+The all-features adapter and observability audits still report the `chrono`
+and `humantime` maintenance advisories. SurrealDB 4.0.1 and `object_store`
+depend on these crates. Both advisories remain blocking in `cargo deny`.
+[chrono advisory](https://rustsec.org/advisories/RUSTSEC-2026-0543.html) ·
+[humantime advisory](https://rustsec.org/advisories/RUSTSEC-2026-0542.html)
+
 ## Temporary advisory dispositions
 
 | Advisory | Surface and reachability | Disposition | Owner | Review by |

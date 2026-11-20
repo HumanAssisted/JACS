@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1074
+Third-party packages: 1068
 License expressions: 44
 Distinct Cargo license files: 3
 
@@ -611,7 +611,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 485 package(s):
+Used by 479 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -997,10 +997,8 @@ Used by 485 package(s):
   - thiserror-impl 1.0.69 (https://github.com/dtolnay/thiserror)
   - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
   - thread_local 1.1.10 (https://github.com/Amanieu/thread_local-rs)
-  - time 0.3.53 (https://github.com/time-rs/time)
   - time 0.3.55 (https://github.com/time-rs/time)
   - time-core 0.1.9 (https://github.com/time-rs/time)
-  - time-macros 0.2.31 (https://github.com/time-rs/time)
   - time-macros 0.2.32 (https://github.com/time-rs/time)
   - tiny_http 0.12.0 (https://github.com/tiny-http/tiny-http)
   - tokio-rustls 0.26.4 (https://github.com/rustls/tokio-rustls)
@@ -1046,23 +1044,19 @@ Used by 485 package(s):
   - windows 0.62.2 (https://github.com/microsoft/windows-rs)
   - windows-collections 0.3.2 (https://github.com/microsoft/windows-rs)
   - windows-core 0.100.0 (https://github.com/microsoft/windows-rs)
-  - windows-core 0.61.2 (https://github.com/microsoft/windows-rs)
   - windows-core 0.62.2 (https://github.com/microsoft/windows-rs)
   - windows-future 0.3.2 (https://github.com/microsoft/windows-rs)
   - windows-implement 0.100.0 (https://github.com/microsoft/windows-rs)
   - windows-implement 0.60.2 (https://github.com/microsoft/windows-rs)
   - windows-interface 0.100.0 (https://github.com/microsoft/windows-rs)
   - windows-interface 0.59.3 (https://github.com/microsoft/windows-rs)
-  - windows-link 0.1.3 (https://github.com/microsoft/windows-rs)
   - windows-link 0.100.0 (https://github.com/microsoft/windows-rs)
   - windows-link 0.2.1 (https://github.com/microsoft/windows-rs)
   - windows-numerics 0.3.1 (https://github.com/microsoft/windows-rs)
   - windows-registry 0.6.1 (https://github.com/microsoft/windows-rs)
   - windows-result 0.100.0 (https://github.com/microsoft/windows-rs)
-  - windows-result 0.3.4 (https://github.com/microsoft/windows-rs)
   - windows-result 0.4.1 (https://github.com/microsoft/windows-rs)
   - windows-strings 0.100.0 (https://github.com/microsoft/windows-rs)
-  - windows-strings 0.4.2 (https://github.com/microsoft/windows-rs)
   - windows-strings 0.5.1 (https://github.com/microsoft/windows-rs)
   - windows-sys 0.48.0 (https://github.com/microsoft/windows-rs)
   - windows-sys 0.52.0 (https://github.com/microsoft/windows-rs)

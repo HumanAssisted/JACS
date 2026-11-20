@@ -75,9 +75,10 @@ secrecy = "0.10.3"
 # signature jti. The `js` feature is required on wasm32 so uuid uses
 # `getrandom`'s browser RNG path instead of `/dev/urandom`.
 uuid = { version = "1", features = ["v4", "v7", "js"] }
-# RFC3339 timestamps for `jacsSignature.date`. `default-features = false`
-# strips `clock` (native time), but we re-enable it on every target with
-# the `now` feature (the WASM build pulls Date.now via `wasmbind`).
+# RFC3339 signed timestamps. The wasm clock reads JavaScript Date on browsers.
+time = { version = "0.3.55", features = ["parsing", "wasm-bindgen"] }
+# Bounded signing exposes DateTime<Utc> in the public deadline, outcome and error
+# APIs. Keep native leap-second ordering and the serialization of archived evidence.
 chrono = { version = "0.4", default-features = false, features = ["std", "now", "serde", "wasmbind"] }
 
 [dev-dependencies]

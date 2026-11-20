@@ -60,7 +60,7 @@ impl CoreAgent {
         body: &[u8],
         audience: &str,
     ) -> Result<String, CoreError> {
-        let now = u64::try_from(chrono::Utc::now().timestamp())
+        let now = u64::try_from(time::OffsetDateTime::now_utc().unix_timestamp())
             .map_err(|_| malformed("system clock precedes Unix epoch"))?;
         build_request_auth_header_at(self, method, url, body, audience, now)
     }
