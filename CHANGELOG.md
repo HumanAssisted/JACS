@@ -1,5 +1,11 @@
 ## Unreleased
 
+### 2026-11-19 — Test native WebAuthn 0.6.2
+
+- Native approvals record the 0.6.2 serializer and accept previously signed
+  0.5.5 receipts. This upgrade is blocked until a published `crypto-glue`
+  release accepts patched RSA.
+
 ### 2026-11-19 — Consolidate dependency upgrades
 
 - Upgrade the isolated in-memory adapter to SurrealDB 4.0.1 to address

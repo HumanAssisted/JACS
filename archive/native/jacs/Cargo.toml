@@ -146,7 +146,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"], optional = true }
+webauthn-rs = { version = "=0.6.2", default-features = false, features = ["danger-allow-state-serialisation"], optional = true }
 # Feature-unify the existing WebAuthn backend for self-contained SDK artifacts.
 # This is not a second cryptographic backend or a core default dependency.
 openssl = { version = "0.10.81", default-features = false, optional = true }
