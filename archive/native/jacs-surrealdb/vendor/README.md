@@ -5,7 +5,10 @@ with the narrow changes below. They preserve their upstream licenses and public
 test fixtures. `Cargo.toml.orig` and `.cargo_vcs_info.json` remain unchanged.
 The normalized `Cargo.toml` files are the manifests Cargo actually builds.
 
-The adapter's `[patch.crates-io]` table applies these copies only when building
+SurrealDB 4 uses the published object_store 0.14.2. The 0.13.2 backport and
+its test lock remain here for reproducibility of earlier source builds.
+
+The adapter's `[patch.crates-io]` table applies the JWT and timer copies when building
 this source checkout. Cargo does not propagate a dependency's patch table to
 consumers. **These fixes are not published releases.** JACS release preparation,
 packaging and publication reject these unpublished dependencies. Each vendor
@@ -27,10 +30,10 @@ The original archive checksums are:
 | object_store 0.13.2 | `622acbc9100d3c10e2ee15804b0caa40e55c933d5aa53814cd520805b7958a49` |
 | wasmtimer 0.4.3 | `1c598d6b99ea013e35844697fc4670d08339d5cda15588f193c6beedd12f644b` |
 
-`object_store` raises only its optional `quick-xml` requirement from 0.39 to
-0.41, following upstream commit
-[`fd44ebb9`](https://github.com/apache/arrow-rs-object-store/commit/fd44ebb9c1158660795ec22d7b11acf31c3fe113).
-Its 0.13 API and source code remain unchanged. A direct 0.14 update cannot meet
+The original `object_store` backport raised its optional `quick-xml` dependency
+from 0.39 to 0.41. [Upstream commit fd44ebb9](https://github.com/apache/arrow-rs-object-store/commit/fd44ebb9c1158660795ec22d7b11acf31c3fe113).
+
+The local backport now uses quick-xml 0.42 and declares its Rust 1.86 minimum. A direct 0.14 update cannot meet
 SurrealDB's 0.13 requirement. This removes RUSTSEC-2026-0194 and
 RUSTSEC-2026-0195 from the graph.
 
@@ -51,7 +54,8 @@ That upstream patch targets jsonwebtoken 11, which cannot satisfy SurrealDB's
 [`b5d9c38e`](https://github.com/Keats/jsonwebtoken/commit/b5d9c38ed39a5c3883f9084ac1da87c61ed782a1).
 WASM enables the appropriate JavaScript entropy features for both getrandom
 0.2 and the new 0.4 dependency. The latter is optional with `rust_crypto`.
-The AWS-LC backend, EdDSA and RSA implementations remain unchanged.
+The local PEM reader uses pem 4.0.0. The standalone tests exercise PEM keys
+with both RustCrypto and the adapter's locked AWS-LC 1.19.0 backend.
 
 `wasmtimer` removes its unmaintained pin-utils dependency following
 [RUSTSEC-2026-0441's migration guidance](https://rustsec.org/advisories/RUSTSEC-2026-0441.html).

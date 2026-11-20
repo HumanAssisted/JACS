@@ -34,17 +34,17 @@ names = [
     "surrealdb-parse-common",
     "surrealdb-rpc",
     "surrealdb-runtime",
-    "surrealdb-sql",
-    "surrealdb-syn",
+    "surrealdb-parser-next",
+    "surrealdb-stored-derive",
 ]
 expression = "BUSL-1.1"
 path = "LICENSE"
-cargo-deny-hash = 0xbb1191d7
-sha256 = "98a94ac615f88370865016487b436fa404560910bd329794ed7502277a94b805"
+cargo-deny-hash = 0xd8f74b3a
+sha256 = "c6ced847ed26f18394b2bfdd73909f50b0a394d639305d592136014a5e6d262a"
 
 [[reviewed]]
 names = ["tokio-tungstenite-wasm"]
 expression = "MIT"
 path = "LICENSE"
 cargo-deny-hash = 0x5c83871f
-sha256 = "21a90dcb0db22db586f77424935222d55a4be191fe41e1a5839e383a254d2cb8"
+sha256 = "302cab6fde36468c2f57845375d54dac088c374686b4447d78ff8bcf1379ec83"

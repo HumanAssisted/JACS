@@ -29,6 +29,7 @@ use crate::signing_context::{
     AuthoritySigningClassificationV1, SigningContextSelectionV1, SigningRequestContextV1,
     local_document_v2_selection,
 };
+use crate::timestamp;
 use crate::verification_registry::SecurityProfileEntry;
 use crate::verify::{
     build_signature_content_v2, build_signature_metadata, default_signed_fields, sha256_hex,
@@ -680,19 +681,19 @@ pub struct SignatureMetadataV2 {
 impl SignatureMetadataV2 {
     /// Generate timestamp and identifier once, at preparation time.
     pub fn now() -> Self {
-        let now = chrono::Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         Self {
-            date: now.to_rfc3339(),
-            iat: now.timestamp(),
+            date: timestamp::format_utc(now, "+00:00"),
+            iat: now.unix_timestamp(),
             jti: uuid::Uuid::now_v7().to_string(),
         }
     }
 
     fn validate(&self) -> Result<(), CoreError> {
-        let parsed = chrono::DateTime::parse_from_rfc3339(&self.date).map_err(|e| {
+        let parsed = timestamp::parse_rfc3339(&self.date).map_err(|e| {
             CoreError::MalformedDocument(format!("signature date is not RFC3339: {e}"))
         })?;
-        if parsed.timestamp() != self.iat {
+        if parsed.unix_timestamp() != self.iat {
             return Err(CoreError::MalformedDocument(
                 "signature date and iat identify different UTC seconds".into(),
             ));
@@ -729,7 +730,7 @@ pub type NativeDocumentHeaderV1 = NativeMessageHeaderV1;
 impl NativeMessageHeaderV1 {
     /// Generate the complete native message header once, including its ID.
     pub fn now() -> Self {
-        let now = Utc::now().to_rfc3339();
+        let now = timestamp::now_rfc3339();
         let version = uuid::Uuid::new_v4().to_string();
         Self {
             jacs_id: uuid::Uuid::new_v4().to_string(),
@@ -743,7 +744,7 @@ impl NativeMessageHeaderV1 {
     /// Generate the native version/timestamp fields while using an
     /// authoritative operation UUID as the JACS document ID.
     pub fn now_with_id(jacs_id: impl Into<String>) -> Result<Self, CoreError> {
-        let now = Utc::now().to_rfc3339();
+        let now = timestamp::now_rfc3339();
         let version = uuid::Uuid::new_v4().to_string();
         Self::from_parts(jacs_id, version.clone(), now.clone(), version, now)
     }
@@ -803,7 +804,7 @@ impl NativeMessageHeaderV1 {
             ("jacsVersionDate", &self.jacs_version_date),
             ("jacsOriginalDate", &self.jacs_original_date),
         ] {
-            DateTime::parse_from_rfc3339(value).map_err(|error| {
+            timestamp::parse_rfc3339(value).map_err(|error| {
                 CoreError::MalformedDocument(format!(
                     "native message header '{field}' is not RFC3339: {error}"
                 ))
@@ -1104,6 +1105,23 @@ impl PreparedSigningError {
     pub fn into_core_error(self) -> CoreError {
         self.source
     }
+}
+
+// Compare the original UTC values. A POSIX conversion moves a leap-second
+// cutoff into the next minute and can authorize key use after it expired.
+fn check_key_use_deadline(
+    key_use_began_at: DateTime<Utc>,
+    deadline: Option<DateTime<Utc>>,
+) -> Result<(), PreparedSigningError> {
+    if deadline.is_some_and(|deadline| key_use_began_at >= deadline) {
+        return Err(PreparedSigningError::before_key_use(
+            CoreError::SignatureInvalid(
+                "prepared signing deadline elapsed before private-key use".into(),
+            ),
+        ));
+    }
+
+    Ok(())
 }
 
 impl std::fmt::Display for PreparedSigningError {
@@ -1909,13 +1927,7 @@ impl RestrictedSigningProvider {
 
         // This is intentionally the last work before private-key dispatch.
         let key_use_began_at = Utc::now();
-        if deadline.is_some_and(|deadline| key_use_began_at >= deadline) {
-            return Err(PreparedSigningError::before_key_use(
-                CoreError::SignatureInvalid(
-                    "prepared signing deadline elapsed before private-key use".into(),
-                ),
-            ));
-        }
+        check_key_use_deadline(key_use_began_at, deadline)?;
 
         let signature = self
             .agent
@@ -2282,6 +2294,20 @@ mod tests {
             serde_json::from_slice(&serialized).expect("deserialize");
         assert_eq!(round_trip.signature_input(), frozen_input);
         assert_eq!(round_trip.signature_input_digest(), frozen_digest);
+    }
+
+    #[test]
+    fn leap_second_deadline_expires_before_every_observation_in_the_next_minute() {
+        let cutoff: DateTime<Utc> = "2016-12-31T23:59:60.500Z".parse().unwrap();
+        let before: DateTime<Utc> = "2016-12-31T23:59:60.499999999Z".parse().unwrap();
+        let after: DateTime<Utc> = "2017-01-01T00:00:00.100Z".parse().unwrap();
+        assert!(std::time::SystemTime::from(after) < std::time::SystemTime::from(cutoff));
+        assert!(check_key_use_deadline(before, Some(cutoff)).is_ok());
+        for observed in [cutoff, after] {
+            let err = check_key_use_deadline(observed, Some(cutoff)).unwrap_err();
+            assert_eq!(err.phase(), PreparedSigningFailurePhase::BeforeKeyUse);
+            assert!(err.key_use_began_at().is_none());
+        }
     }
 
     #[test]

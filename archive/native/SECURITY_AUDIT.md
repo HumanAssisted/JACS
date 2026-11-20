@@ -5,13 +5,26 @@ scans full Git history for secrets, and checks Node, Python, Go, and Rust
 dependencies. A known advisory may be ignored only with a named owner, a
 bounded exposure statement, and a review date.
 
+The held adapter now uses SurrealDB 4.0.1, which includes the fix for
+RUSTSEC-2026-0454. Its component license files specify SurrealDB 4.0 and a
+2030-11-03 change date under BUSL-1.1. The database-service restriction and
+Apache-2.0 change license apply to those files. The source hashes in
+`scripts/third_party_license_clarifications.toml` bind the shipped notices
+to the registry packages.
+
+The all-features adapter and observability audits still report the `chrono`
+and `humantime` maintenance advisories. SurrealDB 4.0.1 and `object_store`
+depend on these crates. Both advisories remain blocking in `cargo deny`.
+[chrono advisory](https://rustsec.org/advisories/RUSTSEC-2026-0543.html) ·
+[humantime advisory](https://rustsec.org/advisories/RUSTSEC-2026-0542.html)
+
 ## Temporary advisory dispositions
 
 | Advisory | Surface and reachability | Disposition | Owner | Review by |
 |---|---|---|---|---|
 | RUSTSEC-2023-0071 | The separate SurrealDB lock includes `rsa 0.9.10` through `jsonwebtoken` for WASM; native targets use AWS-LC. The in-memory JACS adapter does not invoke JWT authentication or RSA private-key operations. The vendored JWT test lock exercises RSA against public upstream fixtures only. | Ignore only in the SurrealDB lock and its exact `vendor/jsonwebtoken/Cargo.lock` audit. Remove when upstream removes `rsa` or a constant-time release exists. | JACS storage maintainers | 2026-11-26 |
 | RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless` for embedded targets; it is absent from the native Linux build and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. The stale cargo-deny ignore was removed on 2026-11-05 because its selected graph does not encounter the advisory. | JACS storage maintainers | 2026-11-26 |
-| RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is required by SurrealDB's `surrealmx 0.27.0` persistence code. The JACS adapter opens only an in-memory database without a persistence path. The advisory reports maintenance status, not an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-11-26 |
+| RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is required by SurrealDB's `surrealmx 1.4.0` persistence code. The JACS adapter opens only an in-memory database without a persistence path. The advisory reports maintenance status, not an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-11-26 |
 
 Any new advisory fails CI. Review dates are deadlines, not automatic renewals.
 
@@ -175,7 +188,7 @@ allowlisted by exact historical fingerprint only. No fixture may be used as a
 trusted credential, and no path or detector has been excluded.
 
 The remaining RSA disposition is additionally bound to the exact version and
-parent chain in the SurrealDB 3.3.4 lock and RSA 0.9.10 in the vendor test lock.
+parent chain in the SurrealDB 4.0.1 lock and RSA 0.9.10 in the vendor test lock.
 The policy checker verifies RSA is absent from all-feature Linux, macOS and
 Windows trees and binds the reviewed JACS storage facade to SHA-256
 `06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa`.

@@ -67,6 +67,12 @@ jobs:
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
       - name: Validate the native SDK boundary
         run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs -p jacs-binding-core --no-default-features
+      - name: Compile the native Criterion benchmarks
+        run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features agreements,attestation --benches
+      - name: Compile the standalone observability example against its own lock
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/archive/native/target
+        run: cargo check --locked --manifest-path archive/native/jacs/examples/observability/Cargo.toml
       - name: Build the compatibility CLI for process-level regression tests
         run: cargo build --locked --manifest-path archive/native/Cargo.toml -p jacs-cli-compat --no-default-features --features mcp,agreements
       - name: Preserve upstream MCP redaction and advisory visibility
@@ -76,7 +82,7 @@ jobs:
       - name: Preserve native discovery, DNS and protocol verification boundaries
         run: |
           umask 022
-          for filter in key_resolution w3c 'a2a::' 'dns::bootstrap' 'agent::loaders' 'attestation::verify' 'trust::tests::enrolled_' secure_fetch; do
+          for filter in key_resolution w3c 'a2a::' 'dns::bootstrap' 'agent::loaders' 'attestation::verify' 'trust::tests::enrolled_' 'signer::tests::' secure_fetch; do
             cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --lib "$filter"
           done
       - name: Preserve native resolver consumers and signed media compatibility
@@ -84,6 +90,26 @@ jobs:
           # The explicit unsafe-backup fixtures expect the ordinary process umask.
           umask 022
           cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --test key_resolution_consumers --test dns_tests --test dns_policy_tests --test w3c_fixtures --test a2a_identity_binding --test a2a_v1_peer --test inline_text_tests --test image_signature_tests --test legacy_verify_guardrails --test pq2025_tests --test security_hardening_tests --test schema_security_tests --test schema_reexport
+
+  surrealdb-adapter:
+    name: SurrealDB 4 in-memory storage and conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.100.0"
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          workspaces: archive/native/jacs-surrealdb
+      - name: Exercise the embedded adapter and JACS storage contract
+        env:
+          # SurrealDB 4.0.1's unoptimized query executor needs the upstream debug-test stack.
+          RUST_MIN_STACK: "8388608"
+        run: cargo test --locked --manifest-path archive/native/jacs-surrealdb/Cargo.toml --tests
 
   dependency-backports:
     name: SurrealDB dependency backport regressions

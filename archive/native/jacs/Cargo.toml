@@ -51,9 +51,9 @@ build = "build.rs"
 [dependencies]
 base64 = "0.23.1"
 chrono = "0.4.40"
-jsonschema = { version = "0.60.2", features = ["resolve-http", "resolve-file"] }
+jsonschema = { version = "0.61.2", features = ["resolve-http", "resolve-file"] }
 log = "0.4.27"
-pem = "3.0.5"
+pem = "4.0.0"
 rand = "0.10.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -128,7 +128,7 @@ jacs-binding-core = { path = "../binding-core" }
 # synthesizers — re-add as a dev-only dependency.
 serde_json_canonicalizer = "0.4.1"
 color-eyre = "0.6"
-criterion = "0.6.0"
+criterion = "0.8.2"
 mdbook = "0.4.48"
 assert_cmd = "2.0"
 predicates = "3.1"

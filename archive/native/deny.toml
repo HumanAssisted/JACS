@@ -35,41 +35,36 @@ name = "ring"
 expression = "(Apache-2.0 OR ISC) AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0x0d99693a }]
 
-# SurrealDB uses BUSL-1.1; accepted for optional backend integration
-[[licenses.exceptions]]
-allow = ["BUSL-1.1"]
-name = "surrealdb-protocol"
-
 # SurrealDB crates without explicit license field in their published Cargo.toml
 [[licenses.clarify]]
 name = "surrealdb"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.clarify]]
 name = "surrealdb-core"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.clarify]]
 name = "surrealdb-types"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.clarify]]
 name = "surrealdb-types-derive"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.clarify]]
 name = "surrealdb-collections"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.clarify]]
 name = "surrealdb-strand"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.clarify]]
 name = "tokio-tungstenite-wasm"
@@ -100,13 +95,13 @@ name = "surrealdb-collections"
 allow = ["BUSL-1.1"]
 name = "surrealdb-strand"
 
-# SurrealDB 3.3 split these crates out of core. Their LICENSE files are
-# byte-identical to the existing reviewed BUSL-1.1 source (see the SHA-256
+# The SurrealDB 4 component crates use the same BUSL-1.1 license file.
+# Its exact bytes are recorded in the SHA-256
 # contract in scripts/third_party_license_clarifications.toml).
 [[licenses.clarify]]
 name = "surrealdb-catalog"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -115,7 +110,7 @@ name = "surrealdb-catalog"
 [[licenses.clarify]]
 name = "surrealdb-cnf"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -124,7 +119,7 @@ name = "surrealdb-cnf"
 [[licenses.clarify]]
 name = "surrealdb-common"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -133,7 +128,7 @@ name = "surrealdb-common"
 [[licenses.clarify]]
 name = "surrealdb-datastore"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -142,7 +137,7 @@ name = "surrealdb-datastore"
 [[licenses.clarify]]
 name = "surrealdb-engine-api"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -151,7 +146,7 @@ name = "surrealdb-engine-api"
 [[licenses.clarify]]
 name = "surrealdb-engine-local"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -160,7 +155,7 @@ name = "surrealdb-engine-local"
 [[licenses.clarify]]
 name = "surrealdb-expr"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -169,7 +164,7 @@ name = "surrealdb-expr"
 [[licenses.clarify]]
 name = "surrealdb-iam"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -178,7 +173,7 @@ name = "surrealdb-iam"
 [[licenses.clarify]]
 name = "surrealdb-idx"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -187,7 +182,7 @@ name = "surrealdb-idx"
 [[licenses.clarify]]
 name = "surrealdb-keyspace-macro"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -196,7 +191,7 @@ name = "surrealdb-keyspace-macro"
 [[licenses.clarify]]
 name = "surrealdb-kvs"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -205,7 +200,7 @@ name = "surrealdb-kvs"
 [[licenses.clarify]]
 name = "surrealdb-kvs-any"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -214,7 +209,7 @@ name = "surrealdb-kvs-any"
 [[licenses.clarify]]
 name = "surrealdb-kvs-mem"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -223,7 +218,7 @@ name = "surrealdb-kvs-mem"
 [[licenses.clarify]]
 name = "surrealdb-observe"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -232,7 +227,7 @@ name = "surrealdb-observe"
 [[licenses.clarify]]
 name = "surrealdb-parse-common"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -241,7 +236,7 @@ name = "surrealdb-parse-common"
 [[licenses.clarify]]
 name = "surrealdb-rpc"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
@@ -250,29 +245,29 @@ name = "surrealdb-rpc"
 [[licenses.clarify]]
 name = "surrealdb-runtime"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
 name = "surrealdb-runtime"
 
 [[licenses.clarify]]
-name = "surrealdb-sql"
+name = "surrealdb-parser-next"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
-name = "surrealdb-sql"
+name = "surrealdb-parser-next"
 
 [[licenses.clarify]]
-name = "surrealdb-syn"
+name = "surrealdb-stored-derive"
 expression = "BUSL-1.1"
-license-files = [{ path = "LICENSE", hash = 0xbb1191d7 }]
+license-files = [{ path = "LICENSE", hash = 0xd8f74b3a }]
 
 [[licenses.exceptions]]
 allow = ["BUSL-1.1"]
-name = "surrealdb-syn"
+name = "surrealdb-stored-derive"
 
 [licenses.private]
 ignore = true

@@ -841,9 +841,9 @@
 -version = "0.39.2"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "958f21e8e7ceb5a1aa7fa87fab28e7c75976e0bfe7e23ff069e0a260f894067d"
-+version = "0.41.0"
++version = "0.42.0"
 +source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
++checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
  dependencies = [
   "memchr",
   "serde",
@@ -2098,7 +2098,7 @@
 +checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -9,7 +9,11 @@
+@@ -9,9 +9,13 @@
  # will likely look very different (and much more reasonable).
  # See Cargo.toml.orig for the original contents.
  
@@ -2108,14 +2108,17 @@
  [package]
 +publish = false
  edition = "2024"
- rust-version = "1.85"
+-rust-version = "1.85"
++rust-version = "1.86"
  name = "object_store"
+ version = "0.13.2"
+ build = false
 @@ -153,7 +157,7 @@
  version = "2.1"
  
  [dependencies.quick-xml]
 -version = "0.39.0"
-+version = "0.41.0"
++version = "0.42.0"
  features = [
      "serialize",
      "overlapped-lists",

@@ -215,7 +215,7 @@ impl JacsTime {
         {
             return Err(invalid("invalid jacs-time-v1 timestamp"));
         }
-        chrono::DateTime::parse_from_rfc3339(value)
+        crate::timestamp::parse_rfc3339(value)
             .map_err(|_| invalid("invalid jacs-time-v1 calendar date"))?;
         Ok(Self(value.into()))
     }
@@ -223,15 +223,15 @@ impl JacsTime {
         &self.0
     }
     pub fn from_unix_seconds(seconds: i64) -> Result<Self, CoreError> {
-        let value = chrono::DateTime::from_timestamp(seconds, 0)
-            .ok_or_else(|| invalid("UTC second out of range"))?;
-        Self::parse(&value.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        let value = time::OffsetDateTime::from_unix_timestamp(seconds)
+            .map_err(|_| invalid("UTC second out of range"))?;
+        Self::parse(&crate::timestamp::format_utc(value, "Z"))
     }
     pub fn unix_seconds(&self) -> i64 {
         // Construction and deserialization validate the exact grammar.
-        chrono::DateTime::parse_from_rfc3339(&self.0)
+        crate::timestamp::parse_rfc3339(&self.0)
             .expect("validated timestamp")
-            .timestamp()
+            .unix_timestamp()
     }
 }
 impl std::fmt::Display for JacsTime {

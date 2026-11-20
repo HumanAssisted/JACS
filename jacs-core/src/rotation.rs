@@ -195,7 +195,7 @@ impl CoreAgent {
         if public_key == self.public_key {
             return Err(invalid("key rotation requires a different public key"));
         }
-        let timestamp = chrono::Utc::now().to_rfc3339();
+        let timestamp = crate::timestamp::now_rfc3339();
         let mut candidate = self.agent_json.clone();
         let object = candidate
             .as_object_mut()
@@ -408,7 +408,7 @@ pub fn verify_key_rotation(
         || context.old_agent_hash != identity_hash(old_identity)?
         || context.new_agent_hash != identity_hash(&new_unsigned)?
         || context.timestamp != required(candidate, "jacsVersionDate")?
-        || chrono::DateTime::parse_from_rfc3339(&context.timestamp).is_err()
+        || crate::timestamp::parse_rfc3339(&context.timestamp).is_err()
         || candidate.get("jacsRegistration").is_some()
         || candidate.get("jacsSha256").is_none()
     {

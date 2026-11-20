@@ -55,15 +55,15 @@ SURREAL_BACKEND_SHA256 = "06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5
 SURREAL_FACADE = ("jacs-surrealdb", "local facade")
 SURREAL_REVIEWED_CHAIN = {
     ("rsa", "0.9.10"): {("jsonwebtoken", "10.4.0")},
-    ("jsonwebtoken", "10.4.0"): {("surrealdb-core", "3.3.4"), ("surrealdb-expr", "3.3.4")},
-    ("surrealdb-core", "3.3.4"): {("surrealdb-engine-local", "3.3.4")},
-    ("surrealdb-expr", "3.3.4"): {
-        ("surrealdb-catalog", "3.3.4"), ("surrealdb-core", "3.3.4"),
-        ("surrealdb-datastore", "3.3.4"), ("surrealdb-idx", "3.3.4"),
-        ("surrealdb-runtime", "3.3.4"),
+    ("jsonwebtoken", "10.4.0"): {("surrealdb-core", "4.0.1"), ("surrealdb-expr", "4.0.1")},
+    ("surrealdb-core", "4.0.1"): {("surrealdb-engine-local", "4.0.1")},
+    ("surrealdb-expr", "4.0.1"): {
+        ("surrealdb-catalog", "4.0.1"), ("surrealdb-core", "4.0.1"),
+        ("surrealdb-datastore", "4.0.1"), ("surrealdb-idx", "4.0.1"),
+        ("surrealdb-runtime", "4.0.1"),
     },
-    ("surrealdb-engine-local", "3.3.4"): {("surrealdb", "3.3.4")},
-    ("surrealdb", "3.3.4"): {SURREAL_FACADE},
+    ("surrealdb-engine-local", "4.0.1"): {("surrealdb", "4.0.1")},
+    ("surrealdb", "4.0.1"): {SURREAL_FACADE},
 }
 
 

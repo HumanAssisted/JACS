@@ -47,7 +47,7 @@ Source graph: locked all-feature active portable workspace; archived native inte
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 296
+Third-party packages: 302
 License expressions: 20
 Distinct Cargo license files: 0
 
@@ -67,8 +67,8 @@ Used by 1 package(s):
 License expression: Apache-2.0
 Used by 4 package(s):
 
-  - rmcp 3.9.0 (https://github.com/modelcontextprotocol/rust-sdk/)
-  - rpassword 7.5.4 (https://github.com/conradkleinespel/rpassword)
+  - rmcp 3.10.0 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rpassword 7.5.5 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
   - unicode-general-category 1.1.0 (https://github.com/yeslogic/unicode-general-category)
 
@@ -118,7 +118,7 @@ Used by 40 package(s):
   - spki 0.8.0 (https://github.com/RustCrypto/formats)
   - utf8_iter 1.0.4 (https://github.com/hsivonen/utf8_iter)
   - utf8parse 0.2.2 (https://github.com/alacritty/vte)
-  - uuid 1.29.0 (https://github.com/uuid-rs/uuid)
+  - uuid 1.29.2 (https://github.com/uuid-rs/uuid)
   - wnaf 0.14.1 (https://github.com/RustCrypto/elliptic-curves)
   - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
@@ -163,12 +163,12 @@ Used by 47 package(s):
   - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
   - data-encoding 2.11.1 (https://github.com/ia0/data-encoding)
   - email_address 0.2.9 (https://github.com/johnstonskj/rust-email_address.git)
-  - fancy-regex 0.19.2 (https://github.com/fancy-regex/fancy-regex)
+  - fancy-regex 0.20.2 (https://github.com/fancy-regex/fancy-regex)
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
-  - jsonschema 0.60.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.60.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.60.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.61.2 (https://github.com/Stranger6667/jsonschema)
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
   - matchers 0.2.0 (https://github.com/hawkw/matchers)
   - micromap 0.3.0 (https://github.com/yegor256/micromap)
@@ -181,7 +181,7 @@ Used by 47 package(s):
   - phf_macros 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.14.0 (https://github.com/rust-phf/rust-phf)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
-  - referencing 0.60.2 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.61.2 (https://github.com/Stranger6667/jsonschema)
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
   - serde-wasm-bindgen 0.6.5 (https://github.com/RReverser/serde-wasm-bindgen)
@@ -210,7 +210,7 @@ Used by 47 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 148 package(s):
+Used by 154 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -250,6 +250,7 @@ Used by 148 package(s):
   - crypto-common 0.1.7 (https://github.com/RustCrypto/traits)
   - crypto-common 0.2.2 (https://github.com/RustCrypto/traits)
   - ctr 0.10.1 (https://github.com/RustCrypto/block-modes)
+  - deranged 0.5.9 (https://github.com/jhpratt/deranged)
   - digest 0.10.7 (https://github.com/RustCrypto/traits)
   - digest 0.11.3 (https://github.com/RustCrypto/traits)
   - displaydoc 0.2.7 (https://github.com/yaahc/displaydoc)
@@ -291,6 +292,7 @@ Used by 148 package(s):
   - num 0.4.3 (https://github.com/rust-num/num)
   - num-bigint 0.4.8 (https://github.com/rust-num/num-bigint)
   - num-complex 0.4.6 (https://github.com/rust-num/num-complex)
+  - num-conv 0.2.2 (https://github.com/jhpratt/num-conv)
   - num-integer 0.1.47 (https://github.com/rust-num/num-integer)
   - num-iter 0.1.46 (https://github.com/rust-num/num-iter)
   - num-rational 0.4.2 (https://github.com/rust-num/num-rational)
@@ -303,6 +305,7 @@ Used by 148 package(s):
   - pastey 0.2.3 (https://github.com/as1100k/pastey)
   - pbkdf2 0.13.0 (https://github.com/RustCrypto/password-hashes)
   - percent-encoding 2.3.2 (https://github.com/servo/rust-url/)
+  - powerfmt 0.2.1 (https://github.com/jhpratt/powerfmt)
   - proc-macro2 1.0.107 (https://github.com/dtolnay/proc-macro2)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
   - rand 0.10.3 (https://github.com/rust-random/rand)
@@ -337,6 +340,9 @@ Used by 148 package(s):
   - thiserror 2.0.21 (https://github.com/dtolnay/thiserror)
   - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
   - thread_local 1.1.10 (https://github.com/Amanieu/thread_local-rs)
+  - time 0.3.55 (https://github.com/time-rs/time)
+  - time-core 0.1.9 (https://github.com/time-rs/time)
+  - time-macros 0.2.32 (https://github.com/time-rs/time)
   - toml 0.9.12+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_datetime 0.7.5+spec-1.1.0 (https://github.com/toml-rs/toml)
   - toml_parser 1.1.3+spec-1.1.0 (https://github.com/toml-rs/toml)
