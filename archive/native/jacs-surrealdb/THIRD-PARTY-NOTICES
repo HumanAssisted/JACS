@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1042
+Third-party packages: 1047
 License expressions: 45
 Distinct Cargo license files: 4
 
@@ -182,7 +182,7 @@ Used by 3 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR MIT
-Used by 81 package(s):
+Used by 82 package(s):
 
   - addr2line 0.25.1 (https://github.com/gimli-rs/addr2line)
   - aes-gcm 0.11.1 (https://github.com/RustCrypto/AEADs)
@@ -199,7 +199,8 @@ Used by 81 package(s):
   - concurrent-queue 2.5.0 (https://github.com/smol-rs/concurrent-queue)
   - const-oid 0.10.2 (https://github.com/RustCrypto/formats)
   - const-oid 0.9.6 (https://github.com/RustCrypto/formats/tree/master/const-oid)
-  - criterion 0.6.0 (https://github.com/bheisler/criterion.rs)
+  - criterion 0.8.2 (https://github.com/criterion-rs/criterion.rs)
+  - criterion-plot 0.8.2 (https://github.com/criterion-rs/criterion.rs)
   - crypto-bigint 0.7.10 (https://github.com/RustCrypto/crypto-bigint)
   - ctor 1.0.13 (https://github.com/mmastrac/linktime)
   - ctutils 0.4.6 (https://github.com/RustCrypto/utils)
@@ -374,20 +375,23 @@ Used by 7 package(s):
 
 -------------------------------------------------------------------------------
 License expression: ISC AND (Apache-2.0 OR ISC)
-Used by 1 package(s):
+Used by 2 package(s):
 
   - aws-lc-rs 1.18.2 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-rs 1.19.0 (https://github.com/aws/aws-lc-rs)
 
 -------------------------------------------------------------------------------
 License expression: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)
-Used by 1 package(s):
+Used by 2 package(s):
 
   - aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-sys 0.47.0 (https://github.com/aws/aws-lc-rs)
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 200 package(s):
+Used by 203 package(s):
 
+  - alloca 0.4.0 (https://github.com/playXE/alloca-rs)
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
   - async-stream-impl 0.3.6 (https://github.com/tokio-rs/async-stream)
   - atoi 2.0.0 (https://github.com/pacman82/atoi-rs)
@@ -428,7 +432,7 @@ Used by 200 package(s):
   - dotenvy 0.15.7 (https://github.com/allan2/dotenvy)
   - duckdb 1.10506.1 (https://github.com/duckdb/duckdb-rs)
   - email_address 0.2.9 (https://github.com/johnstonskj/rust-email_address.git)
-  - fancy-regex 0.19.2 (https://github.com/fancy-regex/fancy-regex)
+  - fancy-regex 0.20.2 (https://github.com/fancy-regex/fancy-regex)
   - float-cmp 0.10.0 (https://github.com/mikedilger/float-cmp)
   - float_next_after 1.0.0 (https://gitlab.com/bronsonbdevost/next_afterf)
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
@@ -448,8 +452,8 @@ Used by 200 package(s):
   - http-body-util 0.1.4 (https://github.com/hyperium/http-body)
   - http-body-util 0.1.5 (https://github.com/hyperium/http-body)
   - http-range-header 0.4.2 (https://github.com/MarcusGrass/parse-range-headers)
-  - hyper 1.10.1 (https://github.com/hyperium/hyper)
   - hyper 1.11.1 (https://github.com/hyperium/hyper)
+  - hyper 1.12.0 (https://github.com/hyperium/hyper)
   - hyper-util 0.1.20 (https://github.com/hyperium/hyper-util)
   - hyper-util 0.1.21 (https://github.com/hyperium/hyper-util)
   - hyperlocal 0.9.1 (https://github.com/softprops/hyperlocal)
@@ -458,9 +462,9 @@ Used by 200 package(s):
   - i_overlay 4.0.7 (https://github.com/iShape-Rust/iOverlay)
   - i_shape 1.14.0 (https://github.com/iShape-Rust/iShape)
   - i_tree 0.16.0 (https://github.com/iShape-Rust/iTree)
-  - jsonschema 0.60.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.60.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.60.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.61.2 (https://github.com/Stranger6667/jsonschema)
   - jsonwebtoken 10.4.0 (https://github.com/Keats/jsonwebtoken)
   - kqueue 1.2.1 (https://gitlab.com/rust-kqueue/rust-kqueue)
   - kqueue-sys 1.1.2 (https://gitlab.com/rust-kqueue/rust-kqueue-sys)
@@ -495,7 +499,7 @@ Used by 200 package(s):
   - owo-colors 4.4.0 (https://github.com/owo-colors/owo-colors)
   - oxipng 10.2.1 (https://github.com/oxipng/oxipng)
   - papaya 0.2.5 (https://github.com/ibraheemdev/papaya)
-  - pem 3.0.6 (https://github.com/jcreekmore/pem-rs.git)
+  - pem 4.0.0 (https://github.com/jcreekmore/pem-rs.git)
   - phf 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_codegen 0.13.1 (https://github.com/rust-phf/rust-phf)
@@ -514,13 +518,14 @@ Used by 200 package(s):
   - pulldown-cmark 0.10.3 (https://github.com/raphlinus/pulldown-cmark)
   - pulldown-cmark-escape 0.10.1 (https://github.com/raphlinus/pulldown-cmark)
   - quick-xml 0.41.0 (https://github.com/tafia/quick-xml)
+  - quick-xml 0.42.0 (https://github.com/tafia/quick-xml)
   - quick_cache 0.6.24 (https://github.com/arthurprs/quick-cache)
   - rancor 0.1.3 (https://github.com/rkyv/rancor)
   - reblessive 0.4.3 (https://github.com/DelSkayn/reblessive.git)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
   - redox_syscall 0.9.4 (https://gitlab.redox-os.org/redox-os/kernel)
   - redox_users 0.5.3 (https://gitlab.redox-os.org/redox-os/users)
-  - referencing 0.60.2 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.61.2 (https://github.com/Stranger6667/jsonschema)
   - rend 0.5.4 (https://github.com/djkoloski/rend)
   - rgb 0.8.53 (https://github.com/kornelski/rust-rgb)
   - rkyv 0.8.18 (https://github.com/rkyv/rkyv)
@@ -584,6 +589,7 @@ Used by 200 package(s):
   - virtue 0.0.18 (https://github.com/bincode-org/virtue)
   - vsimd 0.8.0 (https://github.com/Nugine/simd)
   - want 0.3.1 (https://github.com/seanmonstar/want)
+  - want 0.3.2 (https://github.com/seanmonstar/want)
   - wasmtimer 0.4.3 (https://github.com/whizsid/wasmtimer-rs)
   - winnow 1.0.4 (https://github.com/winnow-rs/winnow)
   - zip 9.1.2 (https://github.com/zip-rs/zip2)
@@ -721,7 +727,7 @@ Used by 474 package(s):
   - find-msvc-tools 0.1.9 (https://github.com/rust-lang/cc-rs)
   - fips203 0.5.0 (https://github.com/integritychain/fips203)
   - fips204 0.5.0 (https://github.com/integritychain/fips204)
-  - flate2 1.1.10 (https://github.com/rust-lang/flate2-rs)
+  - flate2 1.1.11 (https://github.com/rust-lang/flate2-rs)
   - flate2 1.1.9 (https://github.com/rust-lang/flate2-rs)
   - form_urlencoded 1.2.2 (https://github.com/servo/rust-url)
   - fraction 0.17.0 (https://github.com/dnsl48/fraction.git)
@@ -782,6 +788,7 @@ Used by 474 package(s):
   - image 0.25.10 (https://github.com/image-rs/image)
   - image-webp 0.2.4 (https://github.com/image-rs/image-webp)
   - img-parts 0.4.1 (https://github.com/paolobarbolini/img-parts)
+  - img-parts 0.4.2 (https://github.com/paolobarbolini/img-parts)
   - indenter 0.3.4 (https://github.com/yaahc/indenter)
   - inout 0.1.4 (https://github.com/RustCrypto/utils)
   - inout 0.2.2 (https://github.com/RustCrypto/utils)
@@ -805,8 +812,8 @@ Used by 474 package(s):
   - libc 0.2.189 (https://github.com/rust-lang/libc)
   - libc 0.2.191 (https://github.com/rust-lang/libc)
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
-  - log 0.4.33 (https://github.com/rust-lang/log)
   - log 0.4.34 (https://github.com/rust-lang/log)
+  - log 0.4.35 (https://github.com/rust-lang/log)
   - logos 0.16.1 (https://github.com/maciejhirsz/logos)
   - logos-codegen 0.16.1 (https://github.com/maciejhirsz/logos)
   - logos-derive 0.16.1 (https://github.com/maciejhirsz/logos)
@@ -991,7 +998,6 @@ Used by 474 package(s):
   - unarray 0.1.4 (https://github.com/cameron1024/unarray)
   - unicase 2.9.0 (https://github.com/seanmonstar/unicase)
   - unicode-bidi 0.3.18 (https://github.com/servo/unicode-bidi)
-  - unicode-normalization 0.1.25 (https://github.com/unicode-rs/unicode-normalization)
   - unicode-segmentation 1.13.3 (https://github.com/unicode-rs/unicode-segmentation)
   - unicode-width 0.2.2 (https://github.com/unicode-rs/unicode-width)
   - universal-hash 0.6.1 (https://github.com/RustCrypto/traits)
@@ -1113,7 +1119,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 63 package(s):
+Used by 62 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
   - affinitypool 0.8.0 (https://github.com/surrealdb/affinitypool)
@@ -1123,7 +1129,6 @@ Used by 63 package(s):
   - bitflags 1.3.2 (https://github.com/bitflags/bitflags)
   - bs58 0.5.1 (https://github.com/Nullus157/bs58-rs)
   - core_detect 1.0.0 (https://github.com/thomcc/core_detect)
-  - criterion-plot 0.5.0 (https://github.com/bheisler/criterion.rs)
   - curve25519-dalek-derive 0.1.1 (https://github.com/dalek-cryptography/curve25519-dalek)
   - der-parser 9.0.0 (https://github.com/rusticata/der-parser.git)
   - fallible-iterator 0.3.0 (https://github.com/sfackler/rust-fallible-iterator)
@@ -1135,7 +1140,6 @@ Used by 63 package(s):
   - group 0.14.0 (https://github.com/zkcrypto/group)
   - ident_case 1.0.1 (https://github.com/TedDriggs/ident_case)
   - ipconfig 0.3.4 (https://github.com/liranringel/ipconfig)
-  - itertools 0.10.5 (https://github.com/rust-itertools/itertools)
   - lexical-core 1.0.6 (https://github.com/Alexhuszagh/rust-lexical)
   - lexical-parse-float 1.0.6 (https://github.com/Alexhuszagh/rust-lexical)
   - lexical-parse-integer 1.0.6 (https://github.com/Alexhuszagh/rust-lexical)
@@ -1154,6 +1158,7 @@ Used by 63 package(s):
   - object_store 0.14.1 (https://github.com/apache/arrow-rs-object-store)
   - openssl-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)
   - openssl-src 300.6.1+3.6.3 (https://github.com/alexcrichton/openssl-src-rs)
+  - page_size 0.6.0 (https://github.com/Elzair/page_size_rs)
   - pathdiff 0.2.3 (https://github.com/Manishearth/pathdiff)
   - plain 0.2.3 (https://github.com/randomites/plain)
   - psl-types 2.0.11 (https://github.com/addr-rs/psl-types)

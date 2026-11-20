@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "reviewed_on": "2026-10-27",
+  "reviewed_on": "2026-11-19",
   "purpose": "Unpublished source-only security backports; not release artifacts.",
   "packages": [
     {
@@ -15,18 +15,18 @@
         "https://github.com/Keats/jsonwebtoken/commit/b5d9c38ed39a5c3883f9084ac1da87c61ed782a1"
       ],
       "patch_file": "patches/jsonwebtoken-10.4.0.patch",
-      "patch_sha256": "7bf55f5c279893d50e2662a7ddd2d426d50f47bc6b5eb89c0ef5b8e112209080",
+      "patch_sha256": "5b99a42abdb084bba09eb97e83a99a624168536a43636f5199151de7bd782050",
       "original_file_count": 66,
       "changed_files": [
         {
           "path": "Cargo.lock",
           "original_sha256": "8a3d86181697f39b5220ee8c10d287102c2407cc1febc074c3f296f291442eb4",
-          "patched_sha256": "ee37e4cddded894c2b7c37a0d2ec7894e8e95a3dfcb1c2963894aec6e8056cce"
+          "patched_sha256": "369acd5cd66efef6a6f67be83165243dc5bc9d44d4d8f0938dd0f86a67faf7f0"
         },
         {
           "path": "Cargo.toml",
           "original_sha256": "3bf75ec9c841d9cd33d1fe5b0d656d841c4eb1dd6339e048c9c5719ce11a21af",
-          "patched_sha256": "8a78c1ca5fa529eecdb72d1ac4c92bc261768419c23ecdafcccc8a9b0f56b38b"
+          "patched_sha256": "ab6858eab0ccb7bfea32752f9cfc8ac6b24c2692d78250ec70ebe38e473885d4"
         },
         {
           "path": "src/crypto/rust_crypto/ecdsa.rs",
@@ -47,8 +47,8 @@
       "source_files_sha256": {
         ".cargo_vcs_info.json": "4e1e26cb132ad108c1a67087ec6ac8e7f629d56b22929bb1c993962c6422a354",
         "CHANGELOG.md": "dcfeddd21a03b861b5d0fe06f42e785f03360cfc5fb1a0fe416772b734e86cc8",
-        "Cargo.lock": "ee37e4cddded894c2b7c37a0d2ec7894e8e95a3dfcb1c2963894aec6e8056cce",
-        "Cargo.toml": "8a78c1ca5fa529eecdb72d1ac4c92bc261768419c23ecdafcccc8a9b0f56b38b",
+        "Cargo.lock": "369acd5cd66efef6a6f67be83165243dc5bc9d44d4d8f0938dd0f86a67faf7f0",
+        "Cargo.toml": "ab6858eab0ccb7bfea32752f9cfc8ac6b24c2692d78250ec70ebe38e473885d4",
         "Cargo.toml.orig": "3788086069df245dce586ab150c21f0f94dfa8e6300008ece404bc854eac0c1b",
         "LICENSE": "a8012be84ea176195305bfb4e9109ed6f28860a8e697bc50302e75c2040813f3",
         "README.md": "919e13ef828c7b77435c10b10e79f26f6f777a3e9ab47f0ea01531e6afc6c266",
@@ -124,23 +124,23 @@
         "https://github.com/apache/arrow-rs-object-store/commit/fd44ebb9c1158660795ec22d7b11acf31c3fe113"
       ],
       "patch_file": "patches/object_store-0.13.2.patch",
-      "patch_sha256": "9c66c22aff6f877221c78c002f2a78a5a941de96c3158fc108d0bfed5cd57487",
+      "patch_sha256": "6f79f7c4b24be06c30fdff579e4da01d82000bcecf11eef7d2ea98a4571e1501",
       "original_file_count": 64,
       "changed_files": [
         {
           "path": "Cargo.lock",
           "original_sha256": "6f1bbc6ce990e8d7ab78fe897c6c9e0d553888f9c1268450f6420621048ba035",
-          "patched_sha256": "814e5002fe10e93abbe1f44a35e52ac939cf06867b8be09ea0882e57cc66c6fd"
+          "patched_sha256": "45ec8f903499c3c82532aea5df06dc3a6604226842039d2e36a0d043fd716fb4"
         },
         {
           "path": "Cargo.toml",
           "original_sha256": "514dc1422134b4df23d2cc527c8aec2c9b518a673e8091a1b7e2fcd60274b6d3",
-          "patched_sha256": "a69a022c2387c958334e0713cb45aa19daf136feed229e9f7cbacf6a0ee5f844"
+          "patched_sha256": "da99da34f2643782b8eb7965d1a03c3faae929ff73438d30246afec5bf8cf199"
         }
       ],
       "source_files_sha256": {
-        "Cargo.lock": "814e5002fe10e93abbe1f44a35e52ac939cf06867b8be09ea0882e57cc66c6fd",
-        "Cargo.toml": "a69a022c2387c958334e0713cb45aa19daf136feed229e9f7cbacf6a0ee5f844",
+        "Cargo.lock": "45ec8f903499c3c82532aea5df06dc3a6604226842039d2e36a0d043fd716fb4",
+        "Cargo.toml": "da99da34f2643782b8eb7965d1a03c3faae929ff73438d30246afec5bf8cf199",
         "Cargo.toml.orig": "4a06df082f2db9ec31ae624b8f610acc435852f23ab7c35b97deb75c54c7aee8",
         "LICENSE.txt": "240b8a39fdfd2bd3b3539c02e34466334884fc84b056b57f06e9da35323ecd97",
         "NOTICE.txt": "ce50585d0a01fc345ea216f3c4fee8f1c4efcb6d79ef4af9a0af7e6ba78d7204",

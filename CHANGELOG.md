@@ -1,5 +1,15 @@
 ## Unreleased
 
+### 2026-11-19 — Consolidate dependency upgrades
+
+- Update the portable JSON Schema validator to 0.61.2 and MCP to 3.10.0.
+  The native SDK and its standalone consumers use the same validator version.
+- Update the native Criterion benchmarks, image and compression dependencies,
+  and the observability example. Exercise PEM 4 and quick-xml 0.42 in the
+  SurrealDB backports, including JWT tests with AWS-LC 1.19.
+- Update Vite and Playwright for the browser signing tests, Hono and its Node
+  server for native SDK examples, and the actions used to build and publish artifacts.
+
 ### 2026-11-15 — Reopen persisted mobile identities within provisioning
 
 - Android provisioning uses a generated, non-exportable, per-use biometric
