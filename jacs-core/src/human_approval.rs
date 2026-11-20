@@ -17,6 +17,9 @@ use serde_json::Value;
 pub const HUMAN_APPROVAL_PROFILE_V1: &str = "jacs-human-approval-webauthn-mapped-v1";
 pub const HUMAN_APPROVAL_BINDING_PROFILE_V1: &str = "jacs-human-approval-binding-v1";
 pub const HUMAN_APPROVAL_STATE_PROFILE_V1: &str = "webauthn-rs-passkey-authentication-0.5.5-v1";
+/// Retained state produced by the native WebAuthn 0.6.2 ceremony.
+pub const HUMAN_APPROVAL_STATE_PROFILE_0_6_2_V1: &str =
+    "webauthn-rs-passkey-authentication-0.6.2-v1";
 pub const HUMAN_APPROVAL_SUBJECT_PROFILE_V1: &str = "jacs-human-approved-document-v1";
 pub const HUMAN_APPROVED_DOCUMENT_PROFILE_V1: &str = "jacs-human-approved-document-v1";
 pub const MAX_HUMAN_APPROVED_DOCUMENT_BYTES: usize = 524_288;
@@ -220,7 +223,10 @@ pub struct HumanApprovalBindingV1 {
 impl HumanApprovalBindingV1 {
     pub fn validate(&self) -> Result<(), CoreError> {
         if self.profile != HUMAN_APPROVAL_BINDING_PROFILE_V1
-            || self.state_profile != HUMAN_APPROVAL_STATE_PROFILE_V1
+            || !matches!(
+                self.state_profile.as_str(),
+                HUMAN_APPROVAL_STATE_PROFILE_V1 | HUMAN_APPROVAL_STATE_PROFILE_0_6_2_V1
+            )
         {
             return Err(invalid("unsupported binding or retained-state profile"));
         }

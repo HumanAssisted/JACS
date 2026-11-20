@@ -30,9 +30,8 @@ CRATE_MANIFESTS = {
 # tables, then restore its publish steps and any release-only waivers.
 HELD_CRATES = {
     "jacs-surrealdb": (
-        "its lock pins unpublished jsonwebtoken and object_store source backports for "
-        "RUSTSEC-2026-0387, RUSTSEC-2026-0194 and RUSTSEC-2026-0195; as of 2026-11-02 "
-        "no published SurrealDB release accepts fixed versions"
+        "its lock pins unpublished jsonwebtoken and wasmtimer source backports for "
+        "RUSTSEC-2026-0387 and RUSTSEC-2026-0441"
     ),
 }
 

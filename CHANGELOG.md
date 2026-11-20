@@ -1,5 +1,14 @@
 ## Unreleased
 
+### 2026-11-19 — Upgrade the held storage adapter and test WebAuthn 0.6.2
+
+- Move the isolated in-memory adapter to SurrealDB 4.0.1 to address
+  RUSTSEC-2026-0454. The adapter still requires the local JWT and timer
+  backports. Its release hold continues.
+- WebAuthn 0.6.2 for native human approvals currently resolves a release
+  candidate of RSA. The native security audit blocks this candidate pending
+  a published crypto-glue version compatible with patched RSA.
+
 ### 2026-11-19 — Consolidate dependency upgrades
 
 - Update the portable JSON Schema validator to 0.61.2 and MCP to 3.10.0.
@@ -811,6 +820,15 @@ Key-management hardening from a focused security review (each fix is test-covere
 (unreleased)
 
 ## Unreleased
+
+### 2026-11-19 — Upgrade the held storage adapter and test WebAuthn 0.6.2
+
+- Move the isolated in-memory adapter to SurrealDB 4.0.1 to address
+  RUSTSEC-2026-0454. The adapter still requires the local JWT and timer
+  backports. Its release hold continues.
+- WebAuthn 0.6.2 for native human approvals currently resolves a release
+  candidate of RSA. The native security audit blocks this candidate pending
+  a published crypto-glue version compatible with patched RSA.
 
 ### Added
 

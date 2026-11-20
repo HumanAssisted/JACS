@@ -55,7 +55,7 @@ and application policy.
 - [Redb](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-redb/README.md): embedded key/value storage.
 - [SurrealDB](https://github.com/HumanAssisted/JACS/blob/main/archive/native/jacs-surrealdb/README.md): embedded in-memory backend.
 
-Current source pins SurrealDB 3.3.4 and carries unpublished dependency backports.
+Current source pins SurrealDB 4.0.1 and carries unpublished dependency backports.
 See [source backports and release blockers](https://github.com/HumanAssisted/JACS/blob/main/archive/native/SECURITY_AUDIT.md#source-backports-and-release-blockers-after-the-2026-10-27-updates).
 Repository patches are not published fixes for downstream crates.io consumers,
 so no release since 0.15.0 publishes `jacs-surrealdb`. crates.io keeps 0.15.0,

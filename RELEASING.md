@@ -42,7 +42,7 @@ compatibility executable is `jacs-compat`. The primary CLI remains `jacs` from
 `HELD_CRATES` in [the release catalog](scripts/release_catalog.py) lists crates
 that keep their source version aligned but are not packaged or published, with
 the reason. For 0.16.1 it holds `jacs-surrealdb`: its lock pins unpublished
-jsonwebtoken and object_store backports, so crates.io keeps 0.15.0. A held crate
+jsonwebtoken and wasmtimer backports, so crates.io keeps 0.15.0. A held crate
 is excluded from candidate preparation, its own lock, the publish steps,
 retries and registry parity; the generated release table names it with its
 registry version. No released crate may depend on a held crate. Only a crate
