@@ -123,7 +123,7 @@ jobs:
       - name: Authenticate jacs-core publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_core
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-core to crates.io
         env:
@@ -135,7 +135,7 @@ jobs:
       - name: Authenticate jacs-media publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_media
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-media to crates.io
         env:
@@ -147,7 +147,7 @@ jobs:
       - name: Authenticate jacs publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs to crates.io
         env:
@@ -159,7 +159,7 @@ jobs:
       - name: Authenticate jacs-binding-core publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_binding_core
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-binding-core to crates.io
         env:
@@ -171,7 +171,7 @@ jobs:
       - name: Authenticate jacs-mcp publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_mcp
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-mcp to crates.io
         env:
@@ -183,7 +183,7 @@ jobs:
       - name: Authenticate jacs-cli publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_cli
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-cli to crates.io
         env:
@@ -195,7 +195,7 @@ jobs:
       - name: Authenticate jacs-mcp-compat publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_mcp_compat
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-mcp-compat to crates.io
         env:
@@ -207,7 +207,7 @@ jobs:
       - name: Authenticate jacs-cli-compat publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_cli_compat
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-cli-compat to crates.io
         env:
@@ -219,7 +219,7 @@ jobs:
       - name: Authenticate jacs-wasm publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_wasm
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-wasm to crates.io
         env:
@@ -231,7 +231,7 @@ jobs:
       - name: Authenticate jacs-mobile publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_mobile
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-mobile to crates.io
         env:
@@ -243,7 +243,7 @@ jobs:
       - name: Authenticate jacsnpm publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacsnpm
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacsnpm to crates.io
         env:
@@ -255,7 +255,7 @@ jobs:
       - name: Authenticate jacspy publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacspy
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacspy to crates.io
         env:
@@ -267,7 +267,7 @@ jobs:
       - name: Authenticate jacsgo publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacsgo
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacsgo to crates.io
         env:
@@ -279,7 +279,7 @@ jobs:
       - name: Authenticate jacs-duckdb publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_duckdb
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-duckdb to crates.io
         env:
@@ -291,7 +291,7 @@ jobs:
       - name: Authenticate jacs-postgresql publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_postgresql
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-postgresql to crates.io
         env:
@@ -303,7 +303,7 @@ jobs:
       - name: Authenticate jacs-redb publish via crates.io OIDC
         if: vars.CRATES_IO_TRUSTED_PUBLISHING_ENABLED == 'true'
         id: auth_jacs_redb
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
       - name: Verify and publish jacs-redb to crates.io
         env:
