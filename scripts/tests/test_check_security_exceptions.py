@@ -5,10 +5,12 @@ import datetime as dt
 import importlib.util
 import hashlib
 import json
+import re
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "check-security-exceptions.py"
 SPEC = importlib.util.spec_from_file_location("check_security_exceptions", SCRIPT)
@@ -90,6 +92,29 @@ class SecurityExceptionPolicyTests(unittest.TestCase):
                 security_exceptions.require_exact_parents(
                     path, "chrono", security_exceptions.ACTIVE_CHRONO_PARENTS
                 )
+            with mock.patch.dict(
+                security_exceptions.MAINTENANCE_PARENTS,
+                {("Cargo.lock", "chrono"): security_exceptions.ACTIVE_CHRONO_PARENTS},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "reachability for 'chrono' changed"):
+                    security_exceptions.require_maintenance_parents(Path(directory))
+
+    def test_every_root_config_deny_run_pins_chrono(self) -> None:
+        """The root deny.toml's chrono ignore reaches every run that shares it."""
+        active = SCRIPT.parents[1]
+        security_exceptions.require_maintenance_parents()
+        workflow = (active / ".github/workflows/security.yml").read_text()
+        root_config_locks = set()
+        for line in workflow.splitlines():
+            if "cargo deny" not in line or "--config archive/native/deny.toml" in line:
+                continue
+            manifest = re.search(r"--manifest-path (\S+)/Cargo\.toml", line)
+            root_config_locks.add(f"{manifest.group(1)}/Cargo.lock" if manifest else "Cargo.lock")
+        pinned = {
+            lock for lock, crate in security_exceptions.MAINTENANCE_PARENTS if crate == "chrono"
+        }
+        self.assertEqual(root_config_locks, pinned)
 
     def test_workflow_waiver_is_bound_to_exact_archived_lock(self) -> None:
         valid = "cargo audit --file archive/native/jacs-surrealdb/Cargo.lock \\\n  --ignore RUSTSEC-2023-0071"

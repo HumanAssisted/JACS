@@ -56,6 +56,20 @@ CARGO_DENY_IGNORES = BLOCKING_IGNORES | ACTIVE_IGNORES | {
     "RUSTSEC-2025-0141",
     "RUSTSEC-2026-0542",
 }
+# Exact parents of the unmaintained crates behind the chrono and humantime
+# dispositions, per lockfile. A new parent is a new exposure. An empty set means
+# the crate must stay out of that lock: the mobile bindgen and wasmtimer audits
+# share the root deny.toml, so its chrono ignore would otherwise cover them too.
+MAINTENANCE_PARENTS = {
+    ("Cargo.lock", "chrono"): ACTIVE_CHRONO_PARENTS,
+    ("tools/jacs-mobile-bindgen/Cargo.lock", "chrono"): set(),
+    ("archive/native/jacs-surrealdb/vendor/wasmtimer/Cargo.lock", "chrono"): set(),
+    ("Cargo.lock", "humantime"): set(),
+    ("archive/native/Cargo.lock", "humantime"): {"object_store"},
+    ("archive/native/jacs-surrealdb/Cargo.lock", "humantime"): {"object_store", "surrealdb-rpc"},
+    ("archive/native/jacs-surrealdb/vendor/object_store/Cargo.lock", "humantime"): {"object_store"},
+    ("archive/native/jacs/examples/observability/Cargo.lock", "humantime"): {"object_store"},
+}
 
 
 SURREAL_BACKEND_SHA256 = "06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa"
@@ -148,6 +162,11 @@ def require_exact_parents(path: Path, dependency: str, expected: set[str]) -> No
             f"{path.relative_to(ROOT)} reachability for {dependency!r} changed: "
             f"expected parents {sorted(expected)}, got {sorted(actual)}"
         )
+
+
+def require_maintenance_parents(root: Path = ROOT) -> None:
+    for (lock, dependency), expected in MAINTENANCE_PARENTS.items():
+        require_exact_parents(root / lock, dependency, expected)
 
 
 def require_all_features_cargo_deny(text: str, source: str) -> None:
@@ -465,24 +484,17 @@ def main() -> int:
         # is a new exposure and blocks CI until reviewed explicitly.
         require_exact_parents(archive / "Cargo.lock", "quick-xml", {"object_store"})
         require_exact_parents(ROOT / "Cargo.lock", "quick-xml", set())
-        # The portable chrono ignore covers only these parents; a new one is a
-        # new exposure and blocks CI until reviewed.
-        require_exact_parents(ROOT / "Cargo.lock", "chrono", ACTIVE_CHRONO_PARENTS)
+        # The chrono and humantime ignores cover only these parents; a new one
+        # is a new exposure and blocks CI until reviewed.
+        require_maintenance_parents()
         # Standalone-lock exceptions must never silently broaden into the
         # primary workspace graph merely because deny.toml is shared.
         for standalone_only in (
             "rsa",
             "atomic-polyfill",
             "bincode",
-            "humantime",
         ):
             require_exact_parents(ROOT / "Cargo.lock", standalone_only, set())
-        require_exact_parents(
-            archive / "jacs-surrealdb/Cargo.lock", "humantime", {"object_store", "surrealdb-rpc"}
-        )
-        require_exact_parents(
-            archive / "jacs/examples/observability/Cargo.lock", "humantime", {"object_store"}
-        )
         require_exact_parents(
             archive / "jacs-surrealdb/Cargo.lock", "rsa", {"jsonwebtoken"}
         )
