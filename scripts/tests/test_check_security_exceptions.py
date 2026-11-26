@@ -5,10 +5,12 @@ import datetime as dt
 import importlib.util
 import hashlib
 import json
+import re
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "check-security-exceptions.py"
 SPEC = importlib.util.spec_from_file_location("check_security_exceptions", SCRIPT)
@@ -37,7 +39,7 @@ class SecurityExceptionPolicyTests(unittest.TestCase):
                 lock = tomllib.loads((ROOT / "jacs-surrealdb" / relative).read_text())
                 self.assertNotIn("pin-utils", {p["name"] for p in lock["package"]})
 
-    def test_active_graph_has_no_exception_contract(self) -> None:
+    def test_active_graph_exception_contract_matches_policy(self) -> None:
         active = SCRIPT.parents[1]
         policy = tomllib.loads((active / "deny.toml").read_text())
         reviewed = security_exceptions.load_reviewed_license_clarifications(
@@ -45,13 +47,74 @@ class SecurityExceptionPolicyTests(unittest.TestCase):
         )
         security_exceptions.require_no_active_exceptions(policy, reviewed)
 
-    def test_active_graph_rejects_all_exception_surfaces(self) -> None:
-        for section, key in (("advisories", "ignore"), ("licenses", "exceptions"), ("licenses", "clarify")):
-            with self.subTest(section=section, key=key):
-                with self.assertRaisesRegex(ValueError, "active portable graph"):
-                    security_exceptions.require_no_active_exceptions({section: {key: ["unexpected"]}}, {})
+    def test_active_graph_allows_only_the_dated_chrono_ignore(self) -> None:
+        allowed = {"advisories": {"ignore": ["RUSTSEC-2026-0543"]}}
+        security_exceptions.require_no_active_exceptions(allowed, {})
+        for ignores in (
+            [],
+            ["unexpected"],
+            ["RUSTSEC-2026-0543", "RUSTSEC-2099-9999"],
+            [{"id": "RUSTSEC-2026-0543", "reason": "table form hides the ID"}],
+        ):
+            with self.subTest(ignores=ignores):
+                with self.assertRaisesRegex(ValueError, "advisories.ignore must be exactly"):
+                    security_exceptions.require_no_active_exceptions(
+                        {"advisories": {"ignore": ignores}}, {}
+                    )
+
+    def test_active_graph_rejects_license_exception_surfaces(self) -> None:
+        allowed_advisories = {"ignore": ["RUSTSEC-2026-0543"]}
+        for key in ("exceptions", "clarify"):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, f"must not contain licenses.{key}"):
+                    security_exceptions.require_no_active_exceptions(
+                        {"advisories": allowed_advisories, "licenses": {key: ["unexpected"]}}, {}
+                    )
         with self.assertRaisesRegex(ValueError, "reviewed license"):
-            security_exceptions.require_no_active_exceptions({}, {"unexpected": {}})
+            security_exceptions.require_no_active_exceptions(
+                {"advisories": allowed_advisories}, {"unexpected": {}}
+            )
+
+    def test_portable_chrono_ignore_is_bound_to_its_reviewed_parents(self) -> None:
+        active = SCRIPT.parents[1]
+        security_exceptions.require_exact_parents(
+            active / "Cargo.lock", "chrono", security_exceptions.ACTIVE_CHRONO_PARENTS
+        )
+        parents = sorted(security_exceptions.ACTIVE_CHRONO_PARENTS) + ["new-parent"]
+        lock = '\nversion = 4\n[[package]]\nname = "chrono"\nversion = "0.4.45"\n' + "".join(
+            f'[[package]]\nname = "{name}"\nversion = "1.0.0"\ndependencies = ["chrono"]\n'
+            for name in parents
+        )
+        with tempfile.TemporaryDirectory(dir=active) as directory:
+            path = Path(directory) / "Cargo.lock"
+            path.write_text(lock)
+            with self.assertRaisesRegex(ValueError, "reachability for 'chrono' changed"):
+                security_exceptions.require_exact_parents(
+                    path, "chrono", security_exceptions.ACTIVE_CHRONO_PARENTS
+                )
+            with mock.patch.dict(
+                security_exceptions.MAINTENANCE_PARENTS,
+                {("Cargo.lock", "chrono"): security_exceptions.ACTIVE_CHRONO_PARENTS},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "reachability for 'chrono' changed"):
+                    security_exceptions.require_maintenance_parents(Path(directory))
+
+    def test_every_root_config_deny_run_pins_chrono(self) -> None:
+        """The root deny.toml's chrono ignore reaches every run that shares it."""
+        active = SCRIPT.parents[1]
+        security_exceptions.require_maintenance_parents()
+        workflow = (active / ".github/workflows/security.yml").read_text()
+        root_config_locks = set()
+        for line in workflow.splitlines():
+            if "cargo deny" not in line or "--config archive/native/deny.toml" in line:
+                continue
+            manifest = re.search(r"--manifest-path (\S+)/Cargo\.toml", line)
+            root_config_locks.add(f"{manifest.group(1)}/Cargo.lock" if manifest else "Cargo.lock")
+        pinned = {
+            lock for lock, crate in security_exceptions.MAINTENANCE_PARENTS if crate == "chrono"
+        }
+        self.assertEqual(root_config_locks, pinned)
 
     def test_workflow_waiver_is_bound_to_exact_archived_lock(self) -> None:
         valid = "cargo audit --file archive/native/jacs-surrealdb/Cargo.lock \\\n  --ignore RUSTSEC-2023-0071"

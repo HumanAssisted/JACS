@@ -12,9 +12,9 @@ Apache-2.0 change license apply to those files. The source hashes in
 `scripts/third_party_license_clarifications.toml` bind the shipped notices
 to the registry packages.
 
-The all-features adapter and observability audits still report the `chrono`
-and `humantime` maintenance advisories. SurrealDB 4.0.1 and `object_store`
-depend on these crates. Both advisories remain blocking in `cargo deny`.
+The `chrono` and `humantime` maintenance advisories have dated dispositions
+below since 2026-11-26. `chrono` is the only advisory the portable graph may
+ignore; `humantime` stays out of it.
 [chrono advisory](https://rustsec.org/advisories/RUSTSEC-2026-0543.html) ·
 [humantime advisory](https://rustsec.org/advisories/RUSTSEC-2026-0542.html)
 
@@ -22,9 +22,11 @@ depend on these crates. Both advisories remain blocking in `cargo deny`.
 
 | Advisory | Surface and reachability | Disposition | Owner | Review by |
 |---|---|---|---|---|
-| RUSTSEC-2023-0071 | The separate SurrealDB lock includes `rsa 0.9.10` through `jsonwebtoken` for WASM; native targets use AWS-LC. The in-memory JACS adapter does not invoke JWT authentication or RSA private-key operations. The vendored JWT test lock exercises RSA against public upstream fixtures only. | Ignore only in the SurrealDB lock and its exact `vendor/jsonwebtoken/Cargo.lock` audit. Remove when upstream removes `rsa` or a constant-time release exists. | JACS storage maintainers | 2026-11-26 |
-| RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless` for embedded targets; it is absent from the native Linux build and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. The stale cargo-deny ignore was removed on 2026-11-05 because its selected graph does not encounter the advisory. | JACS storage maintainers | 2026-11-26 |
-| RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is required by SurrealDB's `surrealmx 1.4.0` persistence code. The JACS adapter opens only an in-memory database without a persistence path. The advisory reports maintenance status, not an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-11-26 |
+| RUSTSEC-2023-0071 | The separate SurrealDB lock includes `rsa 0.9.10` through `jsonwebtoken` for WASM; native targets use AWS-LC. The in-memory JACS adapter does not invoke JWT authentication or RSA private-key operations. The vendored JWT test lock exercises RSA against public upstream fixtures only. | Ignore only in the SurrealDB lock and its exact `vendor/jsonwebtoken/Cargo.lock` audit. `jsonwebtoken` 12.0.0 accepts the fixed `rsa 0.10`, but SurrealDB 4.0.1, the latest release, requires `jsonwebtoken ^10.4.0`, and 10.x requires `rsa ^0.9.6`. Remove when SurrealDB accepts a `jsonwebtoken` release on `rsa` 0.10, or drops `rsa`. | JACS storage maintainers | 2026-12-26 |
+| RUSTSEC-2023-0089 (unmaintained) | `atomic-polyfill` is in the separate SurrealDB geometry/indexing graph through `heapless` for embedded targets; it is absent from the native Linux build and has no reported vulnerability. | Track upstream SurrealDB/geometry migration to `portable-atomic`; cargo-audit continues to report the warning. The stale cargo-deny ignore was removed on 2026-11-05 because its selected graph does not encounter the advisory. | JACS storage maintainers | 2026-12-26 |
+| RUSTSEC-2025-0141 (unmaintained) | `bincode 2.0.1` is required by SurrealDB's `surrealmx 1.4.0` persistence code. The JACS adapter opens only an in-memory database without a persistence path. The advisory reports maintenance status, not an exploitable flaw. | Track SurrealDB's serialization dependency; do not add new direct bincode use. | JACS storage maintainers | 2026-12-26 |
+| RUSTSEC-2026-0542 (unmaintained) | `humantime` is reached through `object_store` in the archived native, SurrealDB adapter, observability and `object_store` backport locks, and also through `surrealdb-rpc` in the adapter. It is absent from the portable graph. No patched version or exploitable flaw is reported. | Ignore in `archive/native/deny.toml` only, for the adapter and observability `cargo deny` runs; `cargo audit` still warns on the other two locks. Its exact parents in all four locks and its absence from the portable lock are machine-checked. Remove when `object_store` and SurrealDB move off it. | JACS storage maintainers | 2026-12-26 |
+| RUSTSEC-2026-0543 (unmaintained) | `chrono`'s maintainer soft-deprecated it ([chrono#1768](https://github.com/chronotope/chrono/issues/1768)) and filed this advisory; no patched version will be published. In the portable graph its only parents are `jacs-core` (public signing-deadline and key-use evidence APIs), `rmcp` (requires it on every target through 3.11.0) and `schemars`' `chrono04` feature, enabled by `rmcp`. SurrealDB, `object_store` and the native crates also use it in the archive graphs. | The only portable-graph ignore, in both `deny.toml` files, bound to those exact portable parents. The mobile bindgen and `wasmtimer` audits share the root `deny.toml`, so `chrono` is also checked absent from their locks. Remove when `rmcp` makes `chrono` optional ([rust-sdk#1469](https://github.com/modelcontextprotocol/rust-sdk/issues/1469)) and `jacs-core`'s public API moves to `time`, a breaking change for Rust callers. | JACS maintainers | 2026-12-26 |
 
 Any new advisory fails CI. Review dates are deadlines, not automatic renewals.
 
@@ -44,6 +46,34 @@ so the existing archive-only audit waiver and exact-parent checks remain.
 Recheck these assumptions if the backend, targets, authentication, or
 persistence configuration changes; this review does not claim the RSA flaw is
 fixed or waive any new advisory.
+
+### 2026-11-26 review
+
+The three dispositions above were due today, and each was renewed for 30 days
+after rechecking its assumptions:
+
+- `cargo tree --locked --all-features` for `jacs-surrealdb/Cargo.toml` on
+  `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin` still contains neither
+  `rsa` nor `atomic-polyfill`.
+- `bincode` still arrives only through `surrealmx` → `surrealdb-kvs-mem` →
+  `surrealdb-kvs-any`.
+- The adapter still opens `Surreal::new::<Mem>(())` with no JWT authentication
+  or persistence path.
+
+The RSA row changed its exit condition. A fixed `rsa 0.10` now exists, and
+`jsonwebtoken` 12.0.0 uses it, but SurrealDB 4.0.1 still requires
+`jsonwebtoken ^10.4.0`.
+
+The same review added the `chrono` and `humantime` maintenance dispositions.
+Before this, the release security gate had failed on every `main` run since at
+least 2026-11-09. Each run stopped at the first failing audit step, which hid
+later steps; one of them would have reported RUSTSEC-2026-0592 in a vendored
+test lock. A dated, parent-bound ignore keeps the gate able to report the next
+vulnerability. It does not waive any other advisory.
+
+Removing `chrono` from the portable graph needs two changes: an `rmcp` release
+without it, and a breaking `jacs-core` API change from `chrono::DateTime<Utc>`
+to `time`.
 
 ### 2026-11-05 audit follow-up
 
