@@ -32,4 +32,18 @@ allow = [
 # The portable graph has no custom license clarifications or proprietary exceptions.
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
-ignore = []
+# The only permitted portable-graph ignore. Each entry MUST carry a reason,
+# owner and review deadline, recorded in archive/native/SECURITY_AUDIT.md;
+# scripts/check-security-exceptions.py enforces the ID, the deadline and the
+# exact parent set.
+ignore = [
+    # chrono is unmaintained (informational, no patched version, no reported
+    # vulnerability). Its only parents here are jacs-core's public deadline and
+    # evidence APIs, rmcp (which requires chrono on every target, including
+    # 3.11.0) and schemars' chrono04 feature, which rmcp enables. Remove when
+    # rmcp drops chrono (modelcontextprotocol/rust-sdk#1469) and jacs-core's
+    # public API moves to `time`.
+    # Owner: JACS maintainers. Reviewed 2026-11-26 in SECURITY_AUDIT.md.
+    # Review by: 2026-12-26.
+    "RUSTSEC-2026-0543",
+]

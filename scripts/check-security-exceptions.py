@@ -40,13 +40,22 @@ NOTICE_PACKAGE_PATTERN = re.compile(r"^  - ([A-Za-z0-9_-]+) [^\r\n]+$", re.MULTI
 BLOCKING_IGNORES = {
     "RUSTSEC-2023-0071",
 }
-DOCUMENTED_EXCEPTIONS = BLOCKING_IGNORES | {
+# Unmaintained chrono (RUSTSEC-2026-0543) is the only advisory the portable graph
+# may ignore. It is dated in SECURITY_AUDIT.md and bound to these exact parents:
+# removing it needs rmcp to drop chrono and jacs-core's public API to move off it.
+ACTIVE_IGNORES = {"RUSTSEC-2026-0543"}
+ACTIVE_CHRONO_PARENTS = {"jacs-core", "rmcp", "schemars"}
+DOCUMENTED_EXCEPTIONS = BLOCKING_IGNORES | ACTIVE_IGNORES | {
     "RUSTSEC-2023-0089",
     "RUSTSEC-2025-0141",
+    "RUSTSEC-2026-0542",
 }
 # atomic-polyfill remains a tracked whole-lock cargo-audit warning, but is not
 # in cargo-deny's selected graph. Do not restore its stale ignore there.
-CARGO_DENY_IGNORES = BLOCKING_IGNORES | {"RUSTSEC-2025-0141"}
+CARGO_DENY_IGNORES = BLOCKING_IGNORES | ACTIVE_IGNORES | {
+    "RUSTSEC-2025-0141",
+    "RUSTSEC-2026-0542",
+}
 
 
 SURREAL_BACKEND_SHA256 = "06bf7503532266d231bf3f6abccb081b839cb8bbe76cff094a98e5170093d3fa"
@@ -162,8 +171,18 @@ def require_all_features_cargo_deny(text: str, source: str) -> None:
 
 
 def require_no_active_exceptions(policy: dict, reviewed: dict) -> None:
-    """The portable dependency graph has no reviewed exception surface."""
-    for section, key in (("advisories", "ignore"), ("licenses", "exceptions"), ("licenses", "clarify")):
+    """The portable graph's only exception is the dated ACTIVE_IGNORES set.
+
+    License exceptions, clarifications and any other advisory ignore stay
+    forbidden. Ignores must be plain advisory IDs, exactly ACTIVE_IGNORES.
+    """
+    ignores = policy.get("advisories", {}).get("ignore", [])
+    if not all(isinstance(entry, str) for entry in ignores) or set(ignores) != ACTIVE_IGNORES:
+        raise ValueError(
+            "active portable graph advisories.ignore must be exactly "
+            f"{sorted(ACTIVE_IGNORES)}, got {ignores!r}"
+        )
+    for section, key in (("licenses", "exceptions"), ("licenses", "clarify")):
         if policy.get(section, {}).get(key, []):
             raise ValueError(f"active portable graph must not contain {section}.{key}")
     if reviewed:
@@ -446,14 +465,24 @@ def main() -> int:
         # is a new exposure and blocks CI until reviewed explicitly.
         require_exact_parents(archive / "Cargo.lock", "quick-xml", {"object_store"})
         require_exact_parents(ROOT / "Cargo.lock", "quick-xml", set())
+        # The portable chrono ignore covers only these parents; a new one is a
+        # new exposure and blocks CI until reviewed.
+        require_exact_parents(ROOT / "Cargo.lock", "chrono", ACTIVE_CHRONO_PARENTS)
         # Standalone-lock exceptions must never silently broaden into the
         # primary workspace graph merely because deny.toml is shared.
         for standalone_only in (
             "rsa",
             "atomic-polyfill",
             "bincode",
+            "humantime",
         ):
             require_exact_parents(ROOT / "Cargo.lock", standalone_only, set())
+        require_exact_parents(
+            archive / "jacs-surrealdb/Cargo.lock", "humantime", {"object_store", "surrealdb-rpc"}
+        )
+        require_exact_parents(
+            archive / "jacs/examples/observability/Cargo.lock", "humantime", {"object_store"}
+        )
         require_exact_parents(
             archive / "jacs-surrealdb/Cargo.lock", "rsa", {"jsonwebtoken"}
         )

@@ -1,5 +1,24 @@
 ## Unreleased
 
+### 2026-11-26 — Dated dispositions for unmaintained chrono and humantime
+
+- `chrono` (RUSTSEC-2026-0543) is now the one advisory the portable graph may
+  ignore. Its maintainer has deprecated it and no fix will be published. The
+  ignore has an owner and a review date of 2026-12-26.
+  `scripts/check-security-exceptions.py` binds it to its current parents:
+  `jacs-core`, `rmcp` and `schemars`. A new parent, or any other portable ignore,
+  fails CI.
+- Removing it needs an `rmcp` release without `chrono`
+  (modelcontextprotocol/rust-sdk#1469) and a breaking `jacs-core` API move to
+  `time`.
+- `humantime` (RUSTSEC-2026-0542) is ignored only in the archived native
+  configuration, bound to `object_store` and `surrealdb-rpc`, and checked absent
+  from the portable lock.
+- The RSA, atomic-polyfill and bincode dispositions were due on 2026-11-26.
+  Their reachability was rechecked and they were renewed to 2026-12-26. The RSA
+  exit condition now names the `jsonwebtoken` → `rsa 0.9` chain that blocks the
+  fixed `rsa 0.10.0`.
+
 ### 2026-11-25 — Patch the url and rustix advisories
 
 - Update `url` to 2.5.9 to address RUSTSEC-2026-0592, a stack overflow in
