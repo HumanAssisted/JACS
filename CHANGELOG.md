@@ -1,5 +1,17 @@
 ## Unreleased
 
+### 2026-11-26 — Native WebAuthn 0.6.2 with patched RSA
+
+- Upgrade native `webauthn-rs` from 0.5.5 to 0.6.2. New approvals record the
+  0.6.2 retained-state serializer
+  (`webauthn-rs-passkey-authentication-0.6.2-v1`). Verification still accepts
+  signed 0.5.5 receipts.
+- `crypto-glue` 0.2.3 (published 2026-11-26, upstream kanidm/crypto-glue#49)
+  moves WebAuthn's RSA dependency to the patched stable `rsa` 0.10.0. The native
+  lock contains no other `rsa`, and its audit needs no RSA exception.
+- CI now runs the native approval tests for current ceremonies and archived
+  receipts.
+
 ### 2026-11-26 — Dated dispositions for unmaintained chrono and humantime
 
 - `chrono` (RUSTSEC-2026-0543) is now the one advisory the portable graph may
