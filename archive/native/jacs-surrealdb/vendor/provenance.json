@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "reviewed_on": "2026-11-19",
+  "reviewed_on": "2026-11-25",
   "purpose": "Unpublished source-only security backports; not release artifacts.",
   "packages": [
     {

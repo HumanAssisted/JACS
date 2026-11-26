@@ -7,9 +7,11 @@
   SDK, the SurrealDB adapter, the observability example and the `object_store`
   backport's test lock all lock it. The backport's patch and provenance digests
   follow its lock, and the patch still rebuilds it from the crates.io archive.
-- Update `rustix` to 1.1.6 in the same lockfiles and in the mobile bindgen tool
-  to address RUSTSEC-2026-0486, where xattr calls with a zero-length buffer
-  marked unwritten bytes as initialized.
+- Update `rustix` to 1.1.6 to address RUSTSEC-2026-0486, where xattr calls
+  with a zero-length buffer marked unwritten bytes as initialized. The
+  portable workspace, native SDK, SurrealDB adapter, observability example and
+  mobile bindgen tool lockfiles change; the `object_store` backport already
+  locked 1.1.6.
 - Apart from `form_urlencoded` 1.2.3, which `url` 2.5.9 requires, no other
   locked dependency changes. The third-party notices list the new versions.
   Post-quantum signing is unchanged:
