@@ -5,7 +5,7 @@
 //! review application. The authenticator signs a standard random challenge;
 //! it does not directly sign a JACS document or its digest.
 //!
-//! The retained 0.5.5 state is public, version-pinned, authenticated before
+//! Retained 0.5.5 and 0.6.2 states are public, version-pinned, authenticated before
 //! deserialization, and never edited. Current enrollment, recovery, revocation,
 //! one-use execution and trusted approval time are outside this MVP result.
 
@@ -79,6 +79,8 @@ pub fn credential_key_digest_v1(public_key: &COSEKey) -> Result<String, CoreErro
 /// do not redact a multi-credential state or rewrite the generated challenge.
 #[derive(Debug, Clone)]
 pub struct SelectedHumanApprovalCeremonyV1 {
+    /// Identifies the serializer for the authority's signed binding.
+    pub state_profile: &'static str,
     pub public_key: Value,
     pub authentication_state: Value,
     pub challenge: String,
@@ -105,6 +107,7 @@ pub fn start_selected_human_approval_v1(
         .to_owned();
     let credential_bytes: &[u8] = selected.cred_id().as_ref();
     Ok(SelectedHumanApprovalCeremonyV1 {
+        state_profile: HUMAN_APPROVAL_STATE_PROFILE_0_6_2_V1,
         public_key,
         challenge,
         authentication_state_digest: authentication_state_digest_v1(&authentication_state)?,
@@ -443,7 +446,7 @@ mod tests {
         let provenance = authority(&provenance_agent, &document);
         let binding = HumanApprovalBindingV1 {
             profile: HUMAN_APPROVAL_BINDING_PROFILE_V1.into(),
-            state_profile: HUMAN_APPROVAL_STATE_PROFILE_V1.into(),
+            state_profile: ceremony.state_profile.into(),
             human_id: "enrolled-human".into(),
             prepared_intent_digest: digest_json(
                 "TEST-REVIEWED-INTENT",

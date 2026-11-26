@@ -67,6 +67,10 @@ jobs:
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
       - name: Validate the native SDK boundary
         run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs -p jacs-binding-core --no-default-features
+      - name: Verify current WebAuthn ceremonies and archived approval receipts
+        run: |
+          cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features human-approval --lib human_approval::
+          cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs-binding-core --features human-approval --test human_approval
       - name: Compile the native Criterion benchmarks
         run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features agreements,attestation --benches
       - name: Compile the standalone observability example against its own lock

@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1049
+Third-party packages: 1072
 License expressions: 44
 Distinct Cargo license files: 3
 
@@ -86,7 +86,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0
-Used by 54 package(s):
+Used by 55 package(s):
 
   - approx 0.5.1 (https://github.com/brendanzab/approx)
   - arrow 58.4.0 (https://github.com/apache/arrow-rs)
@@ -108,6 +108,7 @@ Used by 54 package(s):
   - ciborium 0.2.2 (https://github.com/enarx/ciborium)
   - ciborium-io 0.2.2 (https://github.com/enarx/ciborium)
   - ciborium-ll 0.2.2 (https://github.com/enarx/ciborium)
+  - flagset 0.4.7 (https://github.com/enarx/flagset)
   - flatbuffers 25.12.19 (https://github.com/google/flatbuffers)
   - hyper-named-pipe 0.1.1 (https://github.com/fussybeaver/hyper-named-pipe)
   - libdeflate-sys 1.26.0 (https://github.com/libdeflater/libdeflater)
@@ -185,7 +186,7 @@ Used by 3 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR MIT
-Used by 81 package(s):
+Used by 93 package(s):
 
   - addr2line 0.25.1 (https://github.com/gimli-rs/addr2line)
   - aes-gcm 0.11.1 (https://github.com/RustCrypto/AEADs)
@@ -205,10 +206,14 @@ Used by 81 package(s):
   - criterion 0.8.2 (https://github.com/criterion-rs/criterion.rs)
   - criterion-plot 0.8.2 (https://github.com/criterion-rs/criterion.rs)
   - crypto-bigint 0.7.10 (https://github.com/RustCrypto/crypto-bigint)
+  - crypto-bigint 0.7.11 (https://github.com/RustCrypto/crypto-bigint)
+  - crypto-primes 0.7.2 (https://github.com/entropyxyz/crypto-primes)
   - ctor 1.0.13 (https://github.com/mmastrac/linktime)
   - ctutils 0.4.6 (https://github.com/RustCrypto/utils)
+  - ctutils 0.4.8 (https://github.com/RustCrypto/utils)
   - der 0.7.10 (https://github.com/RustCrypto/formats/tree/master/der)
   - der 0.8.2 (https://github.com/RustCrypto/formats)
+  - der_derive 0.8.0 (https://github.com/RustCrypto/formats)
   - ecdsa 0.17.0 (https://github.com/RustCrypto/signatures)
   - ed25519 2.2.3 (https://github.com/RustCrypto/signatures/tree/master/ed25519)
   - ed25519 3.0.0 (https://github.com/RustCrypto/signatures)
@@ -226,12 +231,14 @@ Used by 81 package(s):
   - keccak 0.1.6 (https://github.com/RustCrypto/sponges/tree/master/keccak)
   - mail-parser 0.11.5 (https://github.com/stalwartlabs/mail-parser)
   - mail-parser 0.11.9 (https://github.com/stalwartlabs/mail-parser)
+  - md5 0.8.1 (https://github.com/stainless-steel/md5)
   - multiversion_no_op 1.0.0 (https://github.com/hsivonen/multiversion_no_op)
   - nohash-hasher 0.2.0 (https://github.com/paritytech/nohash-hasher)
   - ntapi 0.4.3 (https://github.com/MSxDOS/ntapi)
   - object 0.37.3 (https://github.com/gimli-rs/object)
   - p256 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
   - p384 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
+  - p521 0.14.0 (https://github.com/RustCrypto/elliptic-curves)
   - parking 2.2.1 (https://github.com/smol-rs/parking)
   - pem-rfc7468 0.7.0 (https://github.com/RustCrypto/formats/tree/master/pem-rfc7468)
   - pem-rfc7468 1.0.0 (https://github.com/RustCrypto/formats)
@@ -240,6 +247,8 @@ Used by 81 package(s):
   - pin-project-internal 1.1.13 (https://github.com/taiki-e/pin-project)
   - pin-project-lite 0.2.17 (https://github.com/taiki-e/pin-project-lite)
   - pkcs1 0.7.5 (https://github.com/RustCrypto/formats/tree/master/pkcs1)
+  - pkcs1 0.8.0 (https://github.com/RustCrypto/formats)
+  - pkcs5 0.8.1 (https://github.com/RustCrypto/formats)
   - pkcs8 0.10.2 (https://github.com/RustCrypto/formats/tree/master/pkcs8)
   - pkcs8 0.11.0 (https://github.com/RustCrypto/formats)
   - polyval 0.7.3 (https://github.com/RustCrypto/universal-hashes)
@@ -260,12 +269,16 @@ Used by 81 package(s):
   - simd_cesu8 1.2.0 (https://github.com/seancroach/simd_cesu8)
   - spki 0.7.3 (https://github.com/RustCrypto/formats/tree/master/spki)
   - spki 0.8.0 (https://github.com/RustCrypto/formats)
+  - spki 0.8.1 (https://github.com/RustCrypto/formats)
   - tinytemplate 1.2.1 (https://github.com/bheisler/TinyTemplate)
+  - tls_codec 0.4.2 (https://github.com/RustCrypto/formats)
+  - tls_codec_derive 0.4.2 (https://github.com/RustCrypto/formats)
   - utf8_iter 1.0.4 (https://github.com/hsivonen/utf8_iter)
   - utf8parse 0.2.2 (https://github.com/alacritty/vte)
   - uuid 1.29.0 (https://github.com/uuid-rs/uuid)
   - uuid 1.29.3 (https://github.com/uuid-rs/uuid)
   - wnaf 0.14.1 (https://github.com/RustCrypto/elliptic-curves)
+  - x509-cert 0.3.1 (https://github.com/RustCrypto/formats)
   - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
 
@@ -601,10 +614,12 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 469 package(s):
+Used by 480 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
+  - aes 0.9.4 (https://github.com/RustCrypto/block-ciphers)
+  - aes-kw 0.3.1 (https://github.com/RustCrypto/key-wraps)
   - ahash 0.8.12 (https://github.com/tkaitchuck/ahash)
   - allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
   - ammonia 4.1.9 (https://github.com/rust-ammonia/ammonia)
@@ -623,8 +638,8 @@ Used by 469 package(s):
   - argon2 0.6.0 (https://github.com/RustCrypto/password-hashes)
   - arrayvec 0.7.8 (https://github.com/bluss/arrayvec)
   - as-slice 0.1.5 (https://github.com/japaric/as-slice)
-  - asn1-rs 0.6.2 (https://github.com/rusticata/asn1-rs.git)
-  - asn1-rs-derive 0.5.1 (https://github.com/rusticata/asn1-rs.git)
+  - asn1-rs 0.7.2 (https://github.com/rusticata/asn1-rs.git)
+  - asn1-rs-derive 0.6.0 (https://github.com/rusticata/asn1-rs.git)
   - assert_cmd 2.2.2 (https://github.com/assert-rs/assert_cmd.git)
   - astral-tokio-tar 0.6.4 (https://github.com/astral-sh/tokio-tar)
   - async-trait 0.1.92 (https://github.com/dtolnay/async-trait)
@@ -639,11 +654,13 @@ Used by 469 package(s):
   - blake2 0.11.0 (https://github.com/RustCrypto/hashes)
   - block-buffer 0.10.4 (https://github.com/RustCrypto/utils)
   - block-buffer 0.12.1 (https://github.com/RustCrypto/utils)
+  - block-padding 0.4.2 (https://github.com/RustCrypto/utils)
   - blowfish 0.9.1 (https://github.com/RustCrypto/block-ciphers)
   - borsh 1.7.0 (https://github.com/near/borsh-rs)
   - bstr 1.13.1 (https://github.com/BurntSushi/bstr)
   - bumpalo 3.20.3 (https://github.com/fitzgen/bumpalo)
   - cast 0.3.0 (https://github.com/japaric/cast.rs)
+  - cbc 0.2.1 (https://github.com/RustCrypto/block-modes)
   - cc 1.2.67 (https://github.com/rust-lang/cc-rs)
   - cc 1.4.5 (https://github.com/rust-lang/cc-rs)
   - cfg-if 1.0.4 (https://github.com/rust-lang/cfg-if)
@@ -687,11 +704,13 @@ Used by 469 package(s):
   - crypto-common 0.1.7 (https://github.com/RustCrypto/traits)
   - crypto-common 0.2.2 (https://github.com/RustCrypto/traits)
   - ctr 0.10.1 (https://github.com/RustCrypto/block-modes)
+  - cts 0.7.0 (https://github.com/RustCrypto/block-modes)
   - daachorse 5.1.0 (https://github.com/daac-tools/daachorse)
   - dbus-secret-service 4.1.0 (https://github.com/brotskydotcom/dbus-secret-service.git)
   - defmt 1.1.1 (https://github.com/knurling-rs/defmt)
   - defmt-macros 1.1.1 (https://github.com/knurling-rs/defmt)
   - defmt-parser 1.0.0 (https://github.com/knurling-rs/defmt)
+  - der-parser 10.0.0 (https://github.com/rusticata/der-parser.git)
   - deranged 0.5.8 (https://github.com/jhpratt/deranged)
   - derive_builder 0.20.2 (https://github.com/colin-kiegel/rust-derive-builder)
   - derive_builder_core 0.20.2 (https://github.com/colin-kiegel/rust-derive-builder)
@@ -798,6 +817,7 @@ Used by 469 package(s):
   - jobserver 0.1.35 (https://github.com/rust-lang/jobserver-rs)
   - js-sys 0.3.105 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys)
   - js-sys 0.3.107 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys)
+  - kbkdf 0.1.0-rc.1 (https://github.com/RustCrypto/KDFs/)
   - keyring 3.6.3 (https://github.com/hwchen/keyring-rs.git)
   - lazy_static 1.5.0 (https://github.com/rust-lang-nursery/lazy-static.rs)
   - lexicmp 0.2.0 (https://github.com/surrealdb/lexicmp)
@@ -832,7 +852,7 @@ Used by 469 package(s):
   - num-rational 0.4.2 (https://github.com/rust-num/num-rational)
   - num-traits 0.2.19 (https://github.com/rust-num/num-traits)
   - num_cpus 1.17.0 (https://github.com/seanmonstar/num_cpus)
-  - oid-registry 0.7.1 (https://github.com/rusticata/oid-registry.git)
+  - oid-registry 0.8.1 (https://github.com/rusticata/oid-registry.git)
   - once_cell 1.21.4 (https://github.com/matklad/once_cell)
   - once_cell_polyfill 1.70.2 (https://github.com/polyfill-rs/once_cell_polyfill)
   - opener 0.8.5 (https://github.com/Seeker14491/opener)
@@ -843,7 +863,6 @@ Used by 469 package(s):
   - parse-display-derive 0.9.1 (https://github.com/frozenlib/parse-display)
   - password-hash 0.5.0 (https://github.com/RustCrypto/traits/tree/master/password-hash)
   - password-hash 0.6.1 (https://github.com/RustCrypto/traits)
-  - pastey 0.1.1 (https://github.com/as1100k/pastey)
   - pastey 0.2.3 (https://github.com/as1100k/pastey)
   - path-clean 1.0.1 (https://github.com/danreeves/path-clean)
   - pbkdf2 0.12.2 (https://github.com/RustCrypto/password-hashes/tree/master/pbkdf2)
@@ -880,6 +899,7 @@ Used by 469 package(s):
   - rand 0.8.7 (https://github.com/rust-random/rand)
   - rand 0.8.8 (https://github.com/rust-random/rand)
   - rand 0.9.5 (https://github.com/rust-random/rand)
+  - rand_chacha 0.10.0 (https://github.com/rust-random/rand)
   - rand_chacha 0.3.1 (https://github.com/rust-random/rand)
   - rand_chacha 0.9.0 (https://github.com/rust-random/rand)
   - rand_core 0.10.1 (https://github.com/rust-random/rand_core)
@@ -907,6 +927,7 @@ Used by 469 package(s):
   - resolv-conf 0.7.6 (https://github.com/hickory-dns/resolv-conf)
   - roaring 0.11.5 (https://github.com/RoaringBitmap/roaring-rs)
   - robust 1.2.0 (https://github.com/georust/robust)
+  - rsa 0.10.0 (https://github.com/RustCrypto/RSA)
   - rsa 0.9.10 (https://github.com/RustCrypto/RSA)
   - rstar 0.10.0 (https://github.com/georust/rstar)
   - rstar 0.11.0 (https://github.com/georust/rstar)
@@ -919,8 +940,10 @@ Used by 469 package(s):
   - rustls-platform-verifier-android 0.1.1 (https://github.com/rustls/rustls-platform-verifier)
   - rustversion 1.0.23 (https://github.com/dtolnay/rustversion)
   - salsa20 0.10.2 (https://github.com/RustCrypto/stream-ciphers)
+  - salsa20 0.11.0 (https://github.com/RustCrypto/stream-ciphers)
   - scopeguard 1.2.0 (https://github.com/bluss/scopeguard)
   - scrypt 0.11.0 (https://github.com/RustCrypto/password-hashes/tree/master/scrypt)
+  - scrypt 0.12.0 (https://github.com/RustCrypto/password-hashes)
   - security-framework 2.11.1 (https://github.com/kornelski/rust-security-framework)
   - security-framework 3.7.0 (https://github.com/kornelski/rust-security-framework)
   - security-framework-sys 2.17.0 (https://github.com/kornelski/rust-security-framework)
@@ -938,6 +961,7 @@ Used by 469 package(s):
   - serde_with 3.23.0 (https://github.com/jonasbb/serde_with/)
   - serde_with_macros 3.23.0 (https://github.com/jonasbb/serde_with/)
   - sha1 0.10.7 (https://github.com/RustCrypto/hashes)
+  - sha1 0.11.0 (https://github.com/RustCrypto/hashes)
   - sha2 0.10.9 (https://github.com/RustCrypto/hashes)
   - sha2 0.11.1 (https://github.com/RustCrypto/hashes)
   - sha3 0.10.9 (https://github.com/RustCrypto/hashes)
@@ -1070,7 +1094,7 @@ Used by 469 package(s):
   - windows_x86_64_msvc 0.48.5 (https://github.com/microsoft/windows-rs)
   - windows_x86_64_msvc 0.52.6 (https://github.com/microsoft/windows-rs)
   - windows_x86_64_msvc 0.53.1 (https://github.com/microsoft/windows-rs)
-  - x509-parser 0.16.0 (https://github.com/rusticata/x509-parser.git)
+  - x509-parser 0.18.1 (https://github.com/rusticata/x509-parser.git)
   - xattr 1.6.1 (https://github.com/Stebalien/xattr)
 
 -------------------------------------------------------------------------------
@@ -1112,7 +1136,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT/Apache-2.0
-Used by 65 package(s):
+Used by 64 package(s):
 
   - addr 0.15.6 (https://github.com/addr-rs/addr)
   - affinitypool 0.8.0 (https://github.com/surrealdb/affinitypool)
@@ -1123,7 +1147,6 @@ Used by 65 package(s):
   - bs58 0.5.1 (https://github.com/Nullus157/bs58-rs)
   - core_detect 1.0.0 (https://github.com/thomcc/core_detect)
   - curve25519-dalek-derive 0.1.1 (https://github.com/dalek-cryptography/curve25519-dalek)
-  - der-parser 9.0.0 (https://github.com/rusticata/der-parser.git)
   - fallible-iterator 0.3.0 (https://github.com/sfackler/rust-fallible-iterator)
   - fallible-streaming-iterator 0.1.9 (https://github.com/sfackler/fallible-streaming-iterator)
   - ff 0.14.0 (https://github.com/zkcrypto/ff)
@@ -1190,16 +1213,16 @@ Used by 1 package(s):
 License expression: MPL-2.0
 Used by 10 package(s):
 
-  - base64urlsafedata 0.5.5 (https://github.com/kanidm/webauthn-rs)
+  - crypto-glue 0.2.3 (https://github.com/kanidm/crypto-glue/)
   - cssparser 0.37.0 (https://github.com/servo/rust-cssparser)
   - cssparser 0.38.0 (https://github.com/servo/rust-cssparser)
   - dtoa-short 0.3.5 (https://github.com/upsuper/dtoa-short)
   - mdbook 0.4.52 (https://github.com/rust-lang/mdBook)
   - option-ext 0.2.0 (https://github.com/soc/option-ext.git)
-  - webauthn-attestation-ca 0.5.5 (https://github.com/kanidm/webauthn-rs)
-  - webauthn-rs 0.5.5 (https://github.com/kanidm/webauthn-rs)
-  - webauthn-rs-core 0.5.5 (https://github.com/kanidm/webauthn-rs)
-  - webauthn-rs-proto 0.5.5 (https://github.com/kanidm/webauthn-rs)
+  - webauthn-attestation-ca 0.6.2 (https://github.com/kanidm/webauthn-rs)
+  - webauthn-rs 0.6.2 (https://github.com/kanidm/webauthn-rs)
+  - webauthn-rs-core 0.6.2 (https://github.com/kanidm/webauthn-rs)
+  - webauthn-rs-proto 0.6.2 (https://github.com/kanidm/webauthn-rs)
 
 -------------------------------------------------------------------------------
 License expression: Unicode-3.0

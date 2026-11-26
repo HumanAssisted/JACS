@@ -38,7 +38,7 @@ base64 = "0.23.1"
 serial_test = "3"
 p256 = { version = "0.14", features = ["ecdsa"] }
 rand_10 = { package = "rand", version = "0.10" }
-webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation"] }
+webauthn-rs = { version = "=0.6.2", default-features = false, features = ["danger-allow-state-serialisation"] }
 
 [[example]]
 name = "generate_human_approval_fixture"

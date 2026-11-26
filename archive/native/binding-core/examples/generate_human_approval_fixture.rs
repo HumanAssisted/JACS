@@ -76,7 +76,7 @@ fn main() {
     let provenance = pin(&agent, &document);
     let binding = HumanApprovalBindingV1 {
         profile: HUMAN_APPROVAL_BINDING_PROFILE_V1.into(),
-        state_profile: HUMAN_APPROVAL_STATE_PROFILE_V1.into(),
+        state_profile: ceremony.state_profile.into(),
         human_id: "enrolled-human".into(),
         prepared_intent_digest: digest_json(
             "TEST-REVIEWED-INTENT",
