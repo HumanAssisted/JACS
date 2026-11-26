@@ -1,5 +1,18 @@
 ## Unreleased
 
+### 2026-11-25 — Patch the url and rustix advisories
+
+- Update `url` to 2.5.9 to address RUSTSEC-2026-0592, a stack overflow in
+  `Url::origin()` on nested `blob:` URLs. The portable workspace, the native
+  SDK, the SurrealDB adapter and the observability example all lock it.
+- Update `rustix` to 1.1.6 in the same lockfiles and in the mobile bindgen tool
+  to address RUSTSEC-2026-0486, where xattr calls with a zero-length buffer
+  marked unwritten bytes as initialized.
+- Apart from `form_urlencoded` 1.2.3, which `url` 2.5.9 requires, no other
+  locked dependency changes. The third-party notices list the new versions.
+  Post-quantum signing is unchanged:
+  ML-DSA-87 stays on `fips204` 0.5.0, its latest release.
+
 ### 2026-11-19 — Consolidate dependency upgrades
 
 - Upgrade the isolated in-memory adapter to SurrealDB 4.0.1 to address
