@@ -124,13 +124,13 @@
         "https://github.com/apache/arrow-rs-object-store/commit/fd44ebb9c1158660795ec22d7b11acf31c3fe113"
       ],
       "patch_file": "patches/object_store-0.13.2.patch",
-      "patch_sha256": "6f79f7c4b24be06c30fdff579e4da01d82000bcecf11eef7d2ea98a4571e1501",
+      "patch_sha256": "16a8fcde2cac11aae4c7cec30970c315d08e909f6d78b37727d9c3ae6799aa8e",
       "original_file_count": 64,
       "changed_files": [
         {
           "path": "Cargo.lock",
           "original_sha256": "6f1bbc6ce990e8d7ab78fe897c6c9e0d553888f9c1268450f6420621048ba035",
-          "patched_sha256": "45ec8f903499c3c82532aea5df06dc3a6604226842039d2e36a0d043fd716fb4"
+          "patched_sha256": "54ced27f422c34476bae313075ea6ffb67a268ab59f4fb9f3521979ddc0649a5"
         },
         {
           "path": "Cargo.toml",
@@ -139,7 +139,7 @@
         }
       ],
       "source_files_sha256": {
-        "Cargo.lock": "45ec8f903499c3c82532aea5df06dc3a6604226842039d2e36a0d043fd716fb4",
+        "Cargo.lock": "54ced27f422c34476bae313075ea6ffb67a268ab59f4fb9f3521979ddc0649a5",
         "Cargo.toml": "da99da34f2643782b8eb7965d1a03c3faae929ff73438d30246afec5bf8cf199",
         "Cargo.toml.orig": "4a06df082f2db9ec31ae624b8f610acc435852f23ab7c35b97deb75c54c7aee8",
         "LICENSE.txt": "240b8a39fdfd2bd3b3539c02e34466334884fc84b056b57f06e9da35323ecd97",
