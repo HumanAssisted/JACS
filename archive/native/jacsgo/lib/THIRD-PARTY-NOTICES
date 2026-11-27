@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1070
+Third-party packages: 1059
 License expressions: 44
 Distinct Cargo license files: 3
 
@@ -395,7 +395,7 @@ Used by 2 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 206 package(s):
+Used by 202 package(s):
 
   - alloca 0.4.0 (https://github.com/playXE/alloca-rs)
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -507,14 +507,10 @@ Used by 206 package(s):
   - oxipng 10.2.1 (https://github.com/oxipng/oxipng)
   - papaya 0.2.5 (https://github.com/ibraheemdev/papaya)
   - pem 4.0.0 (https://github.com/jcreekmore/pem-rs.git)
-  - phf 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf 0.14.0 (https://github.com/rust-phf/rust-phf)
-  - phf_codegen 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf_codegen 0.14.0 (https://github.com/rust-phf/rust-phf)
-  - phf_generator 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf_generator 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_macros 0.14.0 (https://github.com/rust-phf/rust-phf)
-  - phf_shared 0.13.1 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.14.0 (https://github.com/rust-phf/rust-phf)
   - plotters 0.3.7 (https://github.com/plotters-rs/plotters)
   - plotters-backend 0.3.7 (https://github.com/plotters-rs/plotters)
@@ -612,7 +608,7 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT OR Apache-2.0
-Used by 480 package(s):
+Used by 474 package(s):
 
   - aead 0.6.1 (https://github.com/RustCrypto/traits)
   - aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
@@ -620,7 +616,6 @@ Used by 480 package(s):
   - aes-kw 0.3.1 (https://github.com/RustCrypto/key-wraps)
   - ahash 0.8.12 (https://github.com/tkaitchuck/ahash)
   - allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
-  - ammonia 4.1.9 (https://github.com/rust-ammonia/ammonia)
   - ammonia 4.2.5 (https://github.com/rust-ammonia/ammonia)
   - android_system_properties 0.1.6 (https://github.com/nical/android_system_properties)
   - anes 0.1.6 (https://github.com/zrzka/anes-rs)
@@ -785,7 +780,6 @@ Used by 480 package(s):
   - hmac 0.12.1 (https://github.com/RustCrypto/MACs)
   - hmac 0.13.0 (https://github.com/RustCrypto/MACs)
   - home 0.5.12 (https://github.com/rust-lang/cargo)
-  - html5ever 0.39.0 (https://github.com/servo/html5ever)
   - html5ever 0.40.1 (https://github.com/servo/html5ever)
   - http 1.5.0 (https://github.com/hyperium/http)
   - httparse 1.10.1 (https://github.com/seanmonstar/httparse)
@@ -829,7 +823,6 @@ Used by 480 package(s):
   - logos 0.16.1 (https://github.com/maciejhirsz/logos)
   - logos-codegen 0.16.1 (https://github.com/maciejhirsz/logos)
   - logos-derive 0.16.1 (https://github.com/maciejhirsz/logos)
-  - markup5ever 0.39.0 (https://github.com/servo/html5ever)
   - markup5ever 0.40.0 (https://github.com/servo/html5ever)
   - md-5 0.10.6 (https://github.com/RustCrypto/hashes)
   - md-5 0.11.0 (https://github.com/RustCrypto/hashes)
@@ -979,9 +972,7 @@ Used by 480 package(s):
   - sqlx-postgres 0.8.6 (https://github.com/launchbadge/sqlx)
   - stable_deref_trait 1.2.1 (https://github.com/storyyeller/stable_deref_trait)
   - string_cache 0.11.0 (https://github.com/servo/string-cache)
-  - string_cache 0.9.0 (https://github.com/servo/string-cache)
   - string_cache_codegen 0.11.2 (https://github.com/servo/string-cache)
-  - string_cache_codegen 0.6.1 (https://github.com/servo/string-cache)
   - structmeta 0.3.0 (https://github.com/frozenlib/structmeta)
   - structmeta-derive 0.3.0 (https://github.com/frozenlib/structmeta)
   - syn 2.0.119 (https://github.com/dtolnay/syn)
@@ -1040,7 +1031,6 @@ Used by 480 package(s):
   - web-sys 0.3.105 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys)
   - web-sys 0.3.107 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys)
   - web-time 1.1.0 (https://github.com/daxpedda/web-time)
-  - web_atoms 0.2.6 (https://github.com/servo/html5ever)
   - web_atoms 0.3.0 (https://github.com/servo/html5ever)
   - widestring 1.2.1 (https://github.com/VoidStarKat/widestring-rs)
   - windows 0.62.2 (https://github.com/microsoft/windows-rs)
@@ -1209,10 +1199,9 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MPL-2.0
-Used by 10 package(s):
+Used by 9 package(s):
 
   - crypto-glue 0.2.3 (https://github.com/kanidm/crypto-glue/)
-  - cssparser 0.37.0 (https://github.com/servo/rust-cssparser)
   - cssparser 0.38.0 (https://github.com/servo/rust-cssparser)
   - dtoa-short 0.3.5 (https://github.com/upsuper/dtoa-short)
   - mdbook 0.4.52 (https://github.com/rust-lang/mdBook)

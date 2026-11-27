@@ -89,6 +89,10 @@ jobs:
           for filter in key_resolution w3c 'a2a::' 'dns::bootstrap' 'agent::loaders' 'attestation::verify' 'trust::tests::enrolled_' 'signer::tests::' secure_fetch; do
             cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --lib "$filter"
           done
+      - name: Verify signed email parsing and canonical fixtures
+        run: |
+          cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --lib email::
+          cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --test email_fixture_conformance_tests --test html_inline_email_fixture_tests
       - name: Preserve native resolver consumers and signed media compatibility
         run: |
           # The explicit unsafe-backup fixtures expect the ordinary process umask.

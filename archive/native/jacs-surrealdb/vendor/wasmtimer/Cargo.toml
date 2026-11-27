@@ -11,6 +11,7 @@
 
 [package]
 publish = false
+rust-version = "1.95"
 edition = "2021"
 name = "wasmtimer"
 version = "0.4.3"

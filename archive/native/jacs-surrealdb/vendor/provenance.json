@@ -215,10 +215,12 @@
       "upstream_backports": [],
       "local_backport_references": [
         "https://rustsec.org/advisories/RUSTSEC-2026-0441.html",
-        "https://docs.rs/pin-project-lite/0.2.17/pin_project_lite/macro.pin_project.html"
+        "https://docs.rs/pin-project-lite/0.2.17/pin_project_lite/macro.pin_project.html",
+        "https://github.com/Amanieu/parking_lot/blob/1a5c3dd5c328b574234082e3ae4d8de078090d87/CHANGELOG.md",
+        "https://github.com/Amanieu/parking_lot/pull/533"
       ],
       "patch_file": "patches/wasmtimer-0.4.3.patch",
-      "patch_sha256": "6600da8da9d98907918b82b5053f411287701532a0c37602f2cd1e46a6162ea1",
+      "patch_sha256": "548f0e0e5390b82e1c6c0b62d62667789ac53e89b358e661fa8dff0874bb2048",
       "original_file_count": 31,
       "changed_files": [
         {
@@ -229,7 +231,7 @@
         {
           "path": "Cargo.toml",
           "original_sha256": "7d99cdcfab2d3a8b4957ff944e62c831ed4502a03237585508b66a38cb45273b",
-          "patched_sha256": "4e424d64491ff2cba158c880637a3283a035a67db669ca4c1a946654902e1e88"
+          "patched_sha256": "1e14dd562582d61e4c5d4972678e04e9d4fba06f3be6102b52eb359a84c9633d"
         },
         {
           "path": "src/tokio/interval.rs",
@@ -255,7 +257,7 @@
         ".vim/coc-settings.json": "9c25868917c0ad75434c1c717f7b9cf9e91f5d4b8bbaa980484ccf843cd5659b",
         "CHANGELOG.md": "fdd0b75f8f5e65bf6918b1bc6ea7a6fd23bdfc5bac5cef3d72fd55cc8f3723ef",
         "Cargo.lock": "1a83080cbb5e726fb93846aa45e31cae57154987e1455fa6e367a31a8d3416a2",
-        "Cargo.toml": "4e424d64491ff2cba158c880637a3283a035a67db669ca4c1a946654902e1e88",
+        "Cargo.toml": "1e14dd562582d61e4c5d4972678e04e9d4fba06f3be6102b52eb359a84c9633d",
         "Cargo.toml.orig": "5a6c6af59400642b2db235ae1a105dde4cb613c546b589243c04d52e5c16301e",
         "LICENSE": "f88ea9858dad78936c111a587ae789c6c26c9e07b46aa8ba5a7153bf97ca3e1e",
         "README.md": "60743399a36a8c896f47bec4229548ed4ec6050928d41984dbcc9f487de0e541",

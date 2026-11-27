@@ -860,15 +860,16 @@
 +checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -10,6 +10,7 @@
+@@ -10,6 +10,8 @@
  # See Cargo.toml.orig for the original contents.
  
  [package]
 +publish = false
++rust-version = "1.95"
  edition = "2021"
  name = "wasmtimer"
  version = "0.4.3"
-@@ -44,7 +45,7 @@
+@@ -44,7 +46,7 @@
  tokio = [
      "futures",
      "parking_lot",
@@ -877,7 +878,7 @@
  ]
  tokio-test-util = ["tokio"]
  tokio-util = [
-@@ -64,6 +65,11 @@
+@@ -64,6 +66,11 @@
  name = "web"
  path = "tests/web.rs"
  
@@ -889,7 +890,7 @@
  [dependencies.futures]
  version = "^0.3"
  optional = true
-@@ -74,9 +80,9 @@
+@@ -74,9 +81,9 @@
  [dependencies.parking_lot]
 -version = "^0.12"
 +version = "^0.13"
@@ -902,7 +903,7 @@
  optional = true
  
  [dependencies.serde_crate]
-@@ -100,3 +106,5 @@
+@@ -100,3 +107,5 @@
  
  [dev-dependencies.wasm-bindgen-test]
  version = "0.3.0"
