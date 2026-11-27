@@ -232,9 +232,9 @@
 -checksum = "96936507f153605bddfcda068dd804796c84324ed2510809e5b2a624c81da765"
 -dependencies = [
 - "autocfg",
-+version = "0.4.14"
++version = "0.5.0"
 +source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
++checksum = "65d91b22da179613dcf4d6ec8349563f52a363f6849e03b00dd0a185ec4a59af"
 +dependencies = [
   "scopeguard",
  ]
@@ -306,24 +306,25 @@
 -version = "0.12.4"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "70d58bf43669b5795d1576d0641cfb6fbb2057bf629506267a92807158584a13"
-+version = "0.12.5"
++version = "0.13.0"
 +source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
++checksum = "a9cf937ca4e1d0b7578784559063422fc39ae7c5a00f02471f2614d5486fd226"
  dependencies = [
   "lock_api",
   "parking_lot_core",
-@@ -203,67 +244,55 @@
+@@ -203,67 +244,54 @@
  
  [[package]]
  name = "parking_lot_core"
 -version = "0.9.11"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "bc838d2a56b5b1a6c25f55575dfc605fabb63bb2365f6c2353ef9159aa69e4a5"
-+version = "0.9.12"
+-dependencies = [
+- "cfg-if",
++version = "0.10.0"
 +source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
- dependencies = [
-  "cfg-if",
++checksum = "9cfff060068cc18aa7815010fcaf80c68c7fb9e85fc7f5c0f9bf142c21d19826"
++dependencies = [
   "libc",
   "redox_syscall",
   "smallvec",
@@ -375,9 +376,9 @@
 -version = "0.5.17"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "5407465600fb0548f1442edf71dd20683c6ed326200ace4b1ef0763521bb3b77"
-+version = "0.5.18"
++version = "0.9.5"
 +source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
++checksum = "580c875845b41ecb1564ad1ae4703044cef774145e3d7a94dc2b3fa7c97868fd"
  dependencies = [
   "bitflags",
  ]
@@ -399,7 +400,7 @@
  
  [[package]]
  name = "same-file"
-@@ -282,18 +311,28 @@
+@@ -282,18 +310,28 @@
  
  [[package]]
  name = "serde"
@@ -435,7 +436,7 @@
  dependencies = [
   "proc-macro2",
   "quote",
-@@ -302,39 +341,40 @@
+@@ -302,39 +340,40 @@
  
  [[package]]
  name = "serde_json"
@@ -492,7 +493,7 @@
  dependencies = [
   "proc-macro2",
   "quote",
-@@ -343,9 +383,9 @@
+@@ -343,9 +382,9 @@
  
  [[package]]
  name = "unicode-ident"
@@ -505,7 +506,7 @@
  
  [[package]]
  name = "walkdir"
-@@ -359,24 +399,44 @@
+@@ -359,24 +398,44 @@
  
  [[package]]
  name = "wasm-bindgen"
@@ -561,7 +562,7 @@
   "proc-macro2",
   "quote",
   "syn",
-@@ -384,73 +444,52 @@
+@@ -384,73 +443,52 @@
  ]
  
  [[package]]
@@ -667,7 +668,7 @@
  
  [[package]]
  name = "wasmtimer"
-@@ -459,7 +498,7 @@
+@@ -459,7 +497,7 @@
   "futures",
   "js-sys",
   "parking_lot",
@@ -676,7 +677,7 @@
   "serde",
   "serde_json",
   "slab",
-@@ -469,164 +508,31 @@
+@@ -469,164 +507,31 @@
  ]
  
  [[package]]
@@ -888,8 +889,10 @@
  [dependencies.futures]
  version = "^0.3"
  optional = true
-@@ -75,8 +81,8 @@
- version = "^0.12"
+@@ -74,9 +80,9 @@
+ [dependencies.parking_lot]
+-version = "^0.12"
++version = "^0.13"
  optional = true
  
 -[dependencies.pin-utils]

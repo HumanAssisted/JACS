@@ -113,7 +113,7 @@ No new advisory exception has been added.
 
 | Removed dependency | Advisory | Source fix |
 |---|---|---|
-| `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | Backport the P-256/P-384 0.14 migration from jsonwebtoken PR #551 to compatible jsonwebtoken 10.4.0, preserving its public signature traits. The source lock now uses `crypto-bigint 0.7.10`. Upgrading to the published jsonwebtoken 11.1 alone would not fix this path. |
+| `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | Backport the P-256/P-384 0.14 migration from jsonwebtoken PR #551 to compatible jsonwebtoken 10.4.0, preserving its public signature traits. The adapter lock uses `crypto-bigint 0.7.11` with `ctutils 0.4.8`. This patch fixes constant-time operations on Thumb-1. The reviewed native adapter targets are x86_64 and AArch64. [Upstream security fix](https://github.com/RustCrypto/crypto-bigint/pull/1391). Upgrading to the published jsonwebtoken 11.1 alone would not fix this path. |
 | `quick-xml 0.39.4` | RUSTSEC-2026-0194 / RUSTSEC-2026-0195 | Backport the `quick-xml 0.41` dependency migration to compatible object_store 0.13.2 without changing SurrealDB's cloud backend API or feature set. |
 | `pin-utils 0.1.0` | RUSTSEC-2026-0441 | Replace wasmtimer 0.4.3's field projections with maintained pin-project-lite and standard Pin; preserve its timer API and execute upstream and added tests in WASM. |
 

@@ -38,7 +38,8 @@ SurrealDB's 0.13 requirement. This removes RUSTSEC-2026-0194 and
 RUSTSEC-2026-0195 from the graph.
 
 `jsonwebtoken` upgrades its RustCrypto P-256/P-384 dependencies to 0.14 and
-requires the fixed `crypto-bigint` 0.7.10. Its ECDSA adapter follows
+requires `crypto-bigint` 0.7.10 or a compatible patch. The adapter lock
+selects 0.7.11. Its ECDSA adapter follows
 [upstream PR #551](https://github.com/Keats/jsonwebtoken/pull/551), pinned for
 review to commit
 [`3739623a`](https://github.com/jh247247/jsonwebtoken/commit/3739623abb1d0fd4d87ca7a517ddcc3310307e2d).
@@ -63,10 +64,12 @@ This is a local backport, not a merged upstream change. `Timeout<F>` uses
 `pin-project-lite` for structural projection, preserving support for `!Unpin`
 futures and polling the future before its deadline. `Interval` uses standard
 `Pin::new` for its already-Unpin `Sleep` field. Timer scheduling, public APIs
-and the original MIT license are unchanged. The dependency was already in the
-SurrealDB graph; its adapter lock changes only wasmtimer's source and removes
-pin-utils. The vendor's separate test lock is refreshed, including the old
-futures-util version that also depended on pin-utils.
+and the original MIT license are unchanged. Both the adapter lock and the
+vendor test lock omit pin-utils. The timer's Tokio feature now uses
+parking_lot 0.13 for the mutex guarding its JavaScript timer callback. This
+maintenance update requires Rust 1.95. Upstream removed automatic fair
+unlocking, which was already disabled on wasm32-unknown-unknown. Other
+SurrealDB dependencies still use parking_lot 0.12.
 
 Each vendor is an independent Cargo workspace. Its checked-in test lockfile
 was refreshed and audited so CI can reproduce upstream tests without relying
@@ -103,7 +106,7 @@ Node: address stability, completion, expiry, cancellation/drop, ready-future
 precedence and ownership through getters/`into_inner`. Its independent lock
 uses wasm-bindgen 0.2.128; wasm-pack selects the matching test runner. The
 timer-only check separately validates the adapter's exact production lock
-(including wasm-bindgen 0.2.126) without compiling SurrealDB.
+(including wasm-bindgen 0.2.130) without compiling SurrealDB.
 
 Local validation also ran the complete RustCrypto suite, the AWS-LC integration
 suite, RustCrypto without PEM, all 189 available object_store library tests

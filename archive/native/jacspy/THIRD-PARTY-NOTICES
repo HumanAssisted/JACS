@@ -47,7 +47,7 @@ Source graphs: locked all-feature archived workspace plus excluded archived crat
 First-party packages are excluded by exact workspace IDs or the local core manifest.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 1072
+Third-party packages: 1070
 License expressions: 44
 Distinct Cargo license files: 3
 
@@ -60,9 +60,8 @@ Used by 2 package(s):
 
 -------------------------------------------------------------------------------
 License expression: (MIT OR Apache-2.0) AND Apache-2.0
-Used by 2 package(s):
+Used by 1 package(s):
 
-  - moka 0.12.15 (https://github.com/moka-rs/moka)
   - moka 0.12.16 (https://github.com/moka-rs/moka)
 
 -------------------------------------------------------------------------------
@@ -134,7 +133,7 @@ Used by 55 package(s):
   - rpassword 7.5.4 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.5 (https://github.com/conradkleinespel/rtoolbox)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
-  - similar 2.7.0 (https://github.com/mitsuhiko/similar)
+  - similar 3.2.1 (https://github.com/mitsuhiko/similar)
   - storekey 0.11.0 (https://github.com/surrealdb/storekey)
   - storekey-derive 0.11.0 (https://github.com/surrealdb/storekey)
   - surrealdb-protocol 0.14.1 (https://github.com/surrealdb/surrealdb-protocol)
@@ -186,7 +185,7 @@ Used by 3 package(s):
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0 OR MIT
-Used by 93 package(s):
+Used by 91 package(s):
 
   - addr2line 0.25.1 (https://github.com/gimli-rs/addr2line)
   - aes-gcm 0.11.1 (https://github.com/RustCrypto/AEADs)
@@ -205,11 +204,9 @@ Used by 93 package(s):
   - const-oid 0.9.6 (https://github.com/RustCrypto/formats/tree/master/const-oid)
   - criterion 0.8.2 (https://github.com/criterion-rs/criterion.rs)
   - criterion-plot 0.8.2 (https://github.com/criterion-rs/criterion.rs)
-  - crypto-bigint 0.7.10 (https://github.com/RustCrypto/crypto-bigint)
   - crypto-bigint 0.7.11 (https://github.com/RustCrypto/crypto-bigint)
   - crypto-primes 0.7.2 (https://github.com/entropyxyz/crypto-primes)
   - ctor 1.0.13 (https://github.com/mmastrac/linktime)
-  - ctutils 0.4.6 (https://github.com/RustCrypto/utils)
   - ctutils 0.4.8 (https://github.com/RustCrypto/utils)
   - der 0.7.10 (https://github.com/RustCrypto/formats/tree/master/der)
   - der 0.8.2 (https://github.com/RustCrypto/formats)
@@ -398,7 +395,7 @@ Used by 2 package(s):
 
 -------------------------------------------------------------------------------
 License expression: MIT
-Used by 205 package(s):
+Used by 206 package(s):
 
   - alloca 0.4.0 (https://github.com/playXE/alloca-rs)
   - async-stream 0.3.6 (https://github.com/tokio-rs/async-stream)
@@ -471,9 +468,9 @@ Used by 205 package(s):
   - i_overlay 4.0.7 (https://github.com/iShape-Rust/iOverlay)
   - i_shape 1.14.0 (https://github.com/iShape-Rust/iShape)
   - i_tree 0.16.0 (https://github.com/iShape-Rust/iTree)
-  - jsonschema 0.61.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.61.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.63.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.63.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.63.2 (https://github.com/Stranger6667/jsonschema)
   - jsonwebtoken 10.4.0 (https://github.com/Keats/jsonwebtoken)
   - kqueue 1.2.1 (https://gitlab.com/rust-kqueue/rust-kqueue)
   - kqueue-sys 1.1.2 (https://gitlab.com/rust-kqueue/rust-kqueue-sys)
@@ -495,7 +492,7 @@ Used by 205 package(s):
   - munge 0.4.7 (https://github.com/djkoloski/munge)
   - munge_macro 0.4.7 (https://github.com/djkoloski/munge)
   - napi 3.12.2 (https://github.com/napi-rs/napi-rs)
-  - napi-build 2.4.1 (https://github.com/napi-rs/napi-rs)
+  - napi-build 2.6.0 (https://github.com/napi-rs/napi-rs)
   - napi-derive 3.6.7 (https://github.com/napi-rs/napi-rs)
   - napi-derive-backend 6.1.4 (https://github.com/napi-rs/napi-rs)
   - napi-sys 3.4.0 (https://github.com/napi-rs/napi-rs)
@@ -534,8 +531,9 @@ Used by 205 package(s):
   - raw-cpuid 11.6.0 (https://github.com/gz/rust-cpuid)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
   - redox_syscall 0.9.4 (https://gitlab.redox-os.org/redox-os/kernel)
+  - redox_syscall 0.9.5 (https://gitlab.redox-os.org/redox-os/kernel)
   - redox_users 0.5.3 (https://gitlab.redox-os.org/redox-os/users)
-  - referencing 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.63.2 (https://github.com/Stranger6667/jsonschema)
   - rend 0.5.4 (https://github.com/djkoloski/rend)
   - rgb 0.8.53 (https://github.com/kornelski/rust-rgb)
   - rkyv 0.8.18 (https://github.com/rkyv/rkyv)
@@ -658,6 +656,7 @@ Used by 480 package(s):
   - blowfish 0.9.1 (https://github.com/RustCrypto/block-ciphers)
   - borsh 1.7.0 (https://github.com/near/borsh-rs)
   - bstr 1.13.1 (https://github.com/BurntSushi/bstr)
+  - bstr 1.14.0 (https://github.com/BurntSushi/bstr)
   - bumpalo 3.20.3 (https://github.com/fitzgen/bumpalo)
   - cast 0.3.0 (https://github.com/japaric/cast.rs)
   - cbc 0.2.1 (https://github.com/RustCrypto/block-modes)
@@ -669,10 +668,10 @@ Used by 480 package(s):
   - chunked_transfer 1.5.0 (https://github.com/frewsxcv/rust-chunked-transfer)
   - cipher 0.4.4 (https://github.com/RustCrypto/traits)
   - cipher 0.5.2 (https://github.com/RustCrypto/traits)
-  - clap 4.6.7 (https://github.com/clap-rs/clap)
+  - clap 4.6.9 (https://github.com/clap-rs/clap)
   - clap_builder 4.6.7 (https://github.com/clap-rs/clap)
   - clap_complete 4.6.9 (https://github.com/clap-rs/clap)
-  - clap_derive 4.6.7 (https://github.com/clap-rs/clap)
+  - clap_derive 4.6.9 (https://github.com/clap-rs/clap)
   - clap_lex 1.1.0 (https://github.com/clap-rs/clap)
   - cmake 0.1.58 (https://github.com/rust-lang/cmake-rs)
   - color-eyre 0.6.5 (https://github.com/eyre-rs/eyre)
@@ -761,7 +760,7 @@ Used by 480 package(s):
   - getrandom 0.4.3 (https://github.com/rust-random/getrandom)
   - gimli 0.32.3 (https://github.com/gimli-rs/gimli)
   - glob 0.3.4 (https://github.com/rust-lang/glob)
-  - granit-parser 2.0.0 (https://github.com/bourumir-wyngs/granit-parser)
+  - granit-parser 2.2.0 (https://github.com/bourumir-wyngs/granit-parser)
   - half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   - hash32 0.1.1 (https://github.com/japaric/hash32)
   - hash32 0.2.1 (https://github.com/japaric/hash32)
@@ -824,6 +823,7 @@ Used by 480 package(s):
   - libc 0.2.189 (https://github.com/rust-lang/libc)
   - libc 0.2.191 (https://github.com/rust-lang/libc)
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
+  - lock_api 0.5.0 (https://github.com/Amanieu/parking_lot)
   - log 0.4.34 (https://github.com/rust-lang/log)
   - log 0.4.35 (https://github.com/rust-lang/log)
   - logos 0.16.1 (https://github.com/maciejhirsz/logos)
@@ -858,6 +858,8 @@ Used by 480 package(s):
   - opener 0.8.5 (https://github.com/Seeker14491/opener)
   - openssl-probe 0.2.1 (https://github.com/rustls/openssl-probe)
   - parking_lot 0.12.5 (https://github.com/Amanieu/parking_lot)
+  - parking_lot 0.13.0 (https://github.com/Amanieu/parking_lot)
+  - parking_lot_core 0.10.0 (https://github.com/Amanieu/parking_lot)
   - parking_lot_core 0.9.12 (https://github.com/Amanieu/parking_lot)
   - parse-display 0.9.1 (https://github.com/frozenlib/parse-display)
   - parse-display-derive 0.9.1 (https://github.com/frozenlib/parse-display)
@@ -896,6 +898,7 @@ Used by 480 package(s):
   - quote 1.0.46 (https://github.com/dtolnay/quote)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
   - rand 0.10.3 (https://github.com/rust-random/rand)
+  - rand 0.10.4 (https://github.com/rust-random/rand)
   - rand 0.8.7 (https://github.com/rust-random/rand)
   - rand 0.8.8 (https://github.com/rust-random/rand)
   - rand 0.9.5 (https://github.com/rust-random/rand)
@@ -915,12 +918,9 @@ Used by 480 package(s):
   - ref-cast 1.0.27 (https://github.com/dtolnay/ref-cast)
   - ref-cast-impl 1.0.25 (https://github.com/dtolnay/ref-cast)
   - ref-cast-impl 1.0.27 (https://github.com/dtolnay/ref-cast)
-  - regex 1.13.1 (https://github.com/rust-lang/regex)
   - regex 1.13.2 (https://github.com/rust-lang/regex)
-  - regex-automata 0.4.18 (https://github.com/rust-lang/regex)
   - regex-automata 0.4.19 (https://github.com/rust-lang/regex)
   - regex-lite 0.1.9 (https://github.com/rust-lang/regex)
-  - regex-syntax 0.8.11 (https://github.com/rust-lang/regex)
   - regex-syntax 0.8.12 (https://github.com/rust-lang/regex)
   - reqwest 0.13.4 (https://github.com/seanmonstar/reqwest)
   - reqwest 0.13.5 (https://github.com/seanmonstar/reqwest)
@@ -949,12 +949,11 @@ Used by 480 package(s):
   - security-framework-sys 2.17.0 (https://github.com/kornelski/rust-security-framework)
   - semver 1.0.28 (https://github.com/dtolnay/semver)
   - serde 1.0.229 (https://github.com/serde-rs/serde)
-  - serde-saphyr 2.0.0 (https://github.com/bourumir-wyngs/serde-saphyr)
+  - serde-saphyr 2.2.0 (https://github.com/bourumir-wyngs/serde-saphyr)
   - serde_cbor_2 0.13.0 (https://github.com/kanidm/cbor)
   - serde_core 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive 1.0.229 (https://github.com/serde-rs/serde)
   - serde_derive_internals 0.30.0 (https://github.com/serde-rs/serde)
-  - serde_json 1.0.151 (https://github.com/serde-rs/json)
   - serde_json 1.0.154 (https://github.com/serde-rs/json)
   - serde_path_to_error 0.1.20 (https://github.com/dtolnay/path-to-error)
   - serde_repr 0.1.21 (https://github.com/dtolnay/serde-repr)
@@ -986,7 +985,7 @@ Used by 480 package(s):
   - structmeta 0.3.0 (https://github.com/frozenlib/structmeta)
   - structmeta-derive 0.3.0 (https://github.com/frozenlib/structmeta)
   - syn 2.0.119 (https://github.com/dtolnay/syn)
-  - syn 3.0.5 (https://github.com/dtolnay/syn)
+  - syn 3.0.10 (https://github.com/dtolnay/syn)
   - syn 3.0.6 (https://github.com/dtolnay/syn)
   - system-configuration 0.7.0 (https://github.com/mullvad/system-configuration-rs)
   - system-configuration-sys 0.6.0 (https://github.com/mullvad/system-configuration-rs)
@@ -1041,7 +1040,6 @@ Used by 480 package(s):
   - web-sys 0.3.105 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys)
   - web-sys 0.3.107 (https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys)
   - web-time 1.1.0 (https://github.com/daxpedda/web-time)
-  - web_atoms 0.2.5 (https://github.com/servo/html5ever)
   - web_atoms 0.2.6 (https://github.com/servo/html5ever)
   - web_atoms 0.3.0 (https://github.com/servo/html5ever)
   - widestring 1.2.1 (https://github.com/VoidStarKat/widestring-rs)

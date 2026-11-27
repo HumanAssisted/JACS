@@ -151,9 +151,9 @@ impl TokenSink for TemplateVersionSink {
             Token::ParseError(_) => self.invalid.set(true),
             Token::TagToken(tag) if tag.kind == TagKind::StartTag => {
                 for attr in &tag.attrs {
-                    if attr.name.local.as_ref() == "data-hai-template-version" {
+                    if attr.name.local.as_str() == "data-hai-template-version" {
                         self.count.set(self.count.get() + 1);
-                        if tag.name.as_ref() != "html" {
+                        if tag.name.as_str() != "html" {
                             self.invalid.set(true);
                         }
                         *self.version.borrow_mut() = match attr.value.as_ref() {
@@ -167,7 +167,7 @@ impl TokenSink for TemplateVersionSink {
                         };
                     }
                 }
-                if tag.name.as_ref() == "script" {
+                if tag.name.as_str() == "script" {
                     return TokenSinkResult::RawData(RawKind::ScriptData);
                 }
             }
@@ -216,7 +216,7 @@ impl TokenSink for PresentationNormalizeSink {
             Token::TagToken(tag) => {
                 write_tag(&mut output, &tag);
                 self.in_envelope.set(false);
-                if tag.kind == TagKind::StartTag && tag.name.as_ref() == "script" {
+                if tag.kind == TagKind::StartTag && tag.name.as_str() == "script" {
                     if is_jacs_envelope_script(&tag.attrs) {
                         if self.seen_envelope.replace(true) {
                             self.invalid.set(true);
@@ -514,7 +514,7 @@ impl TokenSink for EnvelopeSink {
         match token {
             Token::TagToken(tag)
                 if tag.kind == TagKind::StartTag
-                    && tag.name.as_ref() == "script"
+                    && tag.name.as_str() == "script"
                     && self.captured.borrow().is_none()
                     && is_jacs_envelope_script(&tag.attrs) =>
             {
@@ -528,7 +528,7 @@ impl TokenSink for EnvelopeSink {
             }
             Token::TagToken(tag)
                 if tag.kind == TagKind::EndTag
-                    && tag.name.as_ref() == "script"
+                    && tag.name.as_str() == "script"
                     && self.in_target_script.get() =>
             {
                 self.in_target_script.set(false);
@@ -553,7 +553,7 @@ fn has_attr_value(attrs: &[Attribute], name: &str, value: &str) -> bool {
 }
 
 fn attr_name(name: &QualName) -> &str {
-    name.local.as_ref()
+    name.local.as_str()
 }
 
 #[derive(Default)]
@@ -593,7 +593,7 @@ impl TokenSink for HtmlNormalizeSink {
             {
                 if should_skip_subtree(&tag) {
                     self.skip_depth.set(1);
-                    if tag.name.as_ref() == "script" {
+                    if tag.name.as_str() == "script" {
                         return TokenSinkResult::RawData(RawKind::ScriptData);
                     }
                 }
@@ -624,10 +624,10 @@ impl HtmlNormalizeSink {
             Token::TagToken(tag)
                 if tag.kind == TagKind::StartTag
                     && !tag.self_closing
-                    && !is_void_element(tag.name.as_ref()) =>
+                    && !is_void_element(tag.name.as_str()) =>
             {
                 self.skip_depth.set(self.skip_depth.get() + 1);
-                if tag.name.as_ref() == "script" {
+                if tag.name.as_str() == "script" {
                     TokenSinkResult::RawData(RawKind::ScriptData)
                 } else {
                     TokenSinkResult::Continue
@@ -646,12 +646,12 @@ fn should_remove_artifact_element(tag: &Tag) -> bool {
     has_attr_value(&tag.attrs, HAI_JACS_ENVELOPE_MARKER, "v1")
         || has_attr_value(&tag.attrs, HAI_VERIFY_FOOTER_MARKER, "v1")
         || has_attr_value(&tag.attrs, "data-hai-logo-verify-link", "v1")
-        || (tag.name.as_ref() == "img"
+        || (tag.name.as_str() == "img"
             && has_attr_value(&tag.attrs, "src", &format!("cid:{HAI_LOGO_CID}")))
 }
 
 fn should_skip_subtree(tag: &Tag) -> bool {
-    !tag.self_closing && !is_void_element(tag.name.as_ref()) && tag.name.as_ref() != "img"
+    !tag.self_closing && !is_void_element(tag.name.as_str()) && tag.name.as_str() != "img"
 }
 
 fn is_void_element(name: &str) -> bool {
@@ -686,7 +686,7 @@ fn write_tag(output: &mut String, tag: &Tag) {
     match tag.kind {
         TagKind::StartTag => {
             output.push('<');
-            output.push_str(tag.name.as_ref());
+            output.push_str(tag.name.as_str());
             let mut attrs = tag.attrs.iter().collect::<Vec<_>>();
             attrs.sort_by(|left, right| {
                 attr_name(&left.name)
@@ -707,7 +707,7 @@ fn write_tag(output: &mut String, tag: &Tag) {
         }
         TagKind::EndTag => {
             output.push_str("</");
-            output.push_str(tag.name.as_ref());
+            output.push_str(tag.name.as_str());
             output.push('>');
         }
     }

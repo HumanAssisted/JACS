@@ -245,7 +245,7 @@ class ExecutableSupplyChainTests(unittest.TestCase):
     ) -> None:
         action = (
             "rust-lang/crates-io-auth-action@"
-            "c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1"
+            "3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1"
         )
         cases = (("release-crate.yml", tuple(
             (name, "auth_" + name.replace("-", "_"), f"Verify and publish {name} to crates.io")

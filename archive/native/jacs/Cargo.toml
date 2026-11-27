@@ -51,7 +51,7 @@ build = "build.rs"
 [dependencies]
 base64 = "0.23.1"
 chrono = "0.4.40"
-jsonschema = { version = "0.61.2", features = ["resolve-http", "resolve-file"] }
+jsonschema = { version = "0.63.0", features = ["resolve-http", "resolve-file"] }
 log = "0.4.27"
 pem = "4.0.0"
 rand = "0.10.2"
@@ -71,7 +71,7 @@ regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
 encoding_rs = "0.8.35"
-similar = "2.6"
+similar = "3.2"
 rpassword = "7.3.1"
 validator = "0.21.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }
@@ -86,7 +86,7 @@ futures-executor = "0.3.31"
 # 0.1.7 floor: 0.1.6 pulled in unmaintained proc-macro-error2 (RUSTSEC-2026-0173)
 getset = "0.1.7"
 hex = "0.4"
-html5ever = "0.39"
+html5ever = "0.40"
 hickory-resolver = { version = "0.26.3", features = ["dnssec-ring"] }
 hkdf = "0.13"
 zeroize = "1.8"
