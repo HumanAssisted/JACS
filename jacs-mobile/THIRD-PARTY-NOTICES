@@ -47,8 +47,8 @@ Source graph: locked all-feature active portable workspace; archived native inte
 First-party workspace packages are excluded by exact Cargo package ID.
 License expressions are reproduced exactly from Cargo package metadata.
 
-Third-party packages: 302
-License expressions: 20
+Third-party packages: 304
+License expressions: 21
 Distinct Cargo license files: 0
 
 -------------------------------------------------------------------------------
@@ -59,15 +59,16 @@ Used by 1 package(s):
 
 -------------------------------------------------------------------------------
 License expression: (MIT OR Apache-2.0) AND Unicode-3.0
-Used by 1 package(s):
+Used by 2 package(s):
 
   - unicode-ident 1.0.24 (https://github.com/dtolnay/unicode-ident)
+  - unicode-normalization 0.1.26 (https://github.com/unicode-rs/unicode-normalization)
 
 -------------------------------------------------------------------------------
 License expression: Apache-2.0
 Used by 4 package(s):
 
-  - rmcp 3.10.0 (https://github.com/modelcontextprotocol/rust-sdk/)
+  - rmcp 3.11.0 (https://github.com/modelcontextprotocol/rust-sdk/)
   - rpassword 7.5.5 (https://github.com/conradkleinespel/rpassword)
   - rtoolbox 0.0.6 (https://github.com/conradkleinespel/rtoolbox)
   - unicode-general-category 1.1.0 (https://github.com/yeslogic/unicode-general-category)
@@ -118,9 +119,9 @@ Used by 40 package(s):
   - spki 0.8.0 (https://github.com/RustCrypto/formats)
   - utf8_iter 1.0.4 (https://github.com/hsivonen/utf8_iter)
   - utf8parse 0.2.2 (https://github.com/alacritty/vte)
-  - uuid 1.29.2 (https://github.com/uuid-rs/uuid)
+  - uuid 1.29.3 (https://github.com/uuid-rs/uuid)
   - wnaf 0.14.1 (https://github.com/RustCrypto/elliptic-curves)
-  - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
+  - zeroize 1.9.2 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
 
 -------------------------------------------------------------------------------
@@ -166,9 +167,9 @@ Used by 47 package(s):
   - fancy-regex 0.20.2 (https://github.com/fancy-regex/fancy-regex)
   - fluent-uri 0.4.1 (https://github.com/yescallop/fluent-uri-rs)
   - generic-array 0.14.7 (https://github.com/fizyk20/generic-array.git)
-  - jsonschema 0.61.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-regex 0.61.2 (https://github.com/Stranger6667/jsonschema)
-  - jsonschema-value 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema 0.63.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-regex 0.63.2 (https://github.com/Stranger6667/jsonschema)
+  - jsonschema-value 0.63.2 (https://github.com/Stranger6667/jsonschema)
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
   - matchers 0.2.0 (https://github.com/hawkw/matchers)
   - micromap 0.3.0 (https://github.com/yegor256/micromap)
@@ -181,7 +182,7 @@ Used by 47 package(s):
   - phf_macros 0.14.0 (https://github.com/rust-phf/rust-phf)
   - phf_shared 0.14.0 (https://github.com/rust-phf/rust-phf)
   - redox_syscall 0.5.18 (https://gitlab.redox-os.org/redox-os/syscall)
-  - referencing 0.61.2 (https://github.com/Stranger6667/jsonschema)
+  - referencing 0.63.2 (https://github.com/Stranger6667/jsonschema)
   - schemars 1.2.2 (https://github.com/GREsau/schemars)
   - schemars_derive 1.2.2 (https://github.com/GREsau/schemars)
   - serde-wasm-bindgen 0.6.5 (https://github.com/RReverser/serde-wasm-bindgen)
@@ -238,9 +239,9 @@ Used by 154 package(s):
   - chacha20 0.10.2 (https://github.com/RustCrypto/stream-ciphers)
   - chrono 0.4.45 (https://github.com/chronotope/chrono)
   - cipher 0.5.2 (https://github.com/RustCrypto/traits)
-  - clap 4.6.7 (https://github.com/clap-rs/clap)
+  - clap 4.6.9 (https://github.com/clap-rs/clap)
   - clap_builder 4.6.7 (https://github.com/clap-rs/clap)
-  - clap_derive 4.6.7 (https://github.com/clap-rs/clap)
+  - clap_derive 4.6.9 (https://github.com/clap-rs/clap)
   - clap_lex 1.1.0 (https://github.com/clap-rs/clap)
   - colorchoice 1.0.5 (https://github.com/rust-cli/anstyle.git)
   - core-foundation-sys 0.8.7 (https://github.com/servo/core-foundation-rs)
@@ -308,14 +309,14 @@ Used by 154 package(s):
   - powerfmt 0.2.1 (https://github.com/jhpratt/powerfmt)
   - proc-macro2 1.0.107 (https://github.com/dtolnay/proc-macro2)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
-  - rand 0.10.3 (https://github.com/rust-random/rand)
+  - rand 0.10.4 (https://github.com/rust-random/rand)
   - rand_core 0.10.1 (https://github.com/rust-random/rand_core)
   - rand_core 0.6.4 (https://github.com/rust-random/rand)
   - ref-cast 1.0.27 (https://github.com/dtolnay/ref-cast)
   - ref-cast-impl 1.0.27 (https://github.com/dtolnay/ref-cast)
-  - regex 1.13.1 (https://github.com/rust-lang/regex)
-  - regex-automata 0.4.18 (https://github.com/rust-lang/regex)
-  - regex-syntax 0.8.11 (https://github.com/rust-lang/regex)
+  - regex 1.13.2 (https://github.com/rust-lang/regex)
+  - regex-automata 0.4.19 (https://github.com/rust-lang/regex)
+  - regex-syntax 0.8.12 (https://github.com/rust-lang/regex)
   - rustc_version 0.4.1 (https://github.com/djc/rustc-version-rs)
   - rustversion 1.0.23 (https://github.com/dtolnay/rustversion)
   - scopeguard 1.2.0 (https://github.com/bluss/scopeguard)
@@ -335,7 +336,7 @@ Used by 154 package(s):
   - stable_deref_trait 1.2.1 (https://github.com/storyyeller/stable_deref_trait)
   - static_assertions 1.1.0 (https://github.com/nvzqz/static-assertions-rs)
   - syn 2.0.119 (https://github.com/dtolnay/syn)
-  - syn 3.0.5 (https://github.com/dtolnay/syn)
+  - syn 3.0.10 (https://github.com/dtolnay/syn)
   - tempfile 3.27.0 (https://github.com/Stebalien/tempfile)
   - thiserror 2.0.21 (https://github.com/dtolnay/thiserror)
   - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
@@ -452,6 +453,12 @@ License expression: Zlib
 Used by 1 package(s):
 
   - foldhash 0.2.0 (https://github.com/orlp/foldhash)
+
+-------------------------------------------------------------------------------
+License expression: Zlib OR Apache-2.0 OR MIT
+Used by 1 package(s):
+
+  - tinyvec 1.13.3 (https://github.com/Lokathor/tinyvec)
 ===== END GENERATED CARGO DEPENDENCY INVENTORY =====
 ===============================================================================
 

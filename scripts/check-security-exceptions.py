@@ -214,7 +214,7 @@ def require_surreal_crypto_disposition(lock: dict, backend: bytes, native_graphs
     packages = lock["package"]
     identities = {(p["name"], p["version"]) for p in packages}
     for name, reviewed_versions in (
-        ("crypto-bigint", {"0.7.10"}), ("rsa", {"0.9.10"}),
+        ("crypto-bigint", {"0.7.11"}), ("rsa", {"0.9.10"}),
     ):
         versions = {p["version"] for p in packages if p["name"] == name}
         if versions != reviewed_versions:

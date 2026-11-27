@@ -35,7 +35,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: "1.100.0"
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: Enforce the five-crate primitive boundary
         run: python3 scripts/check_workspace_boundary.py
       - name: Compile all active features with warnings denied
@@ -64,7 +64,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: "1.100.0"
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
       - name: Validate the native SDK boundary
         run: cargo check --locked --manifest-path archive/native/Cargo.toml -p jacs -p jacs-binding-core --no-default-features
       - name: Verify current WebAuthn ceremonies and archived approval receipts
@@ -89,6 +89,10 @@ jobs:
           for filter in key_resolution w3c 'a2a::' 'dns::bootstrap' 'agent::loaders' 'attestation::verify' 'trust::tests::enrolled_' 'signer::tests::' secure_fetch; do
             cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --lib "$filter"
           done
+      - name: Verify signed email parsing and canonical fixtures
+        run: |
+          cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --lib email::
+          cargo test --locked --manifest-path archive/native/Cargo.toml -p jacs --no-default-features --features a2a,attestation,pq-tests --test email_fixture_conformance_tests --test html_inline_email_fixture_tests
       - name: Preserve native resolver consumers and signed media compatibility
         run: |
           # The explicit unsafe-backup fixtures expect the ordinary process umask.
@@ -106,7 +110,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: "1.100.0"
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
         with:
           workspaces: archive/native/jacs-surrealdb
       - name: Exercise the embedded adapter and JACS storage contract
@@ -127,13 +131,13 @@ jobs:
         with:
           toolchain: "1.100.0"
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
         with:
           workspaces: |
             archive/native/jacs-surrealdb/vendor/jsonwebtoken
             archive/native/jacs-surrealdb/vendor/object_store
             archive/native/jacs-surrealdb/vendor/wasmtimer
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
       - name: Install wasm-pack for actual WASM timer regressions

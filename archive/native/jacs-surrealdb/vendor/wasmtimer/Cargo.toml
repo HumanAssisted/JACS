@@ -11,6 +11,7 @@
 
 [package]
 publish = false
+rust-version = "1.95"
 edition = "2021"
 name = "wasmtimer"
 version = "0.4.3"
@@ -78,7 +79,7 @@ optional = true
 version = "^0.3"
 
 [dependencies.parking_lot]
-version = "^0.12"
+version = "^0.13"
 optional = true
 
 [dependencies.pin-project-lite]

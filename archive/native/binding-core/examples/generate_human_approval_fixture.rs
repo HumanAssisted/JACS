@@ -27,7 +27,7 @@ fn pin(agent: &CoreAgent, document: &Value) -> PinnedHumanApprovalAuthorityV1 {
 }
 
 fn main() {
-    let key = SigningKey::try_generate_from_rng(&mut rand_10::rngs::SysRng)
+    let key = SigningKey::try_generate_from_rng(&mut rand::rngs::SysRng)
         .expect("OS randomness for the ephemeral fixture key");
     let point = key.verifying_key().to_sec1_point(false);
     // Public registered-credential fixture, matching the native verifier tests.

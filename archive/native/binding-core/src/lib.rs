@@ -721,7 +721,7 @@ fn resolve_password_context(
 }
 
 fn generate_private_key_password_value() -> BindingResult<String> {
-    use rand::Rng;
+    use rand::RngExt;
 
     const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const LOWER: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
